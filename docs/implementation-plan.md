@@ -146,3 +146,16 @@ GitHub Actions для документации не нужны. Без отде�
 - [ ] Сетевые VPN/DNS adapters и ingress quota/expiry — BLOCKED до разрешения работы с серверами.
 
 Подробнее: [phase4-payment-handlers](phase4-payment-handlers.md).
+
+## O. Этап 5 — возвраты, outbox и HTMLBubbles без VPS (2026-11-06)
+
+- [x] `refunded_payment` Telegram Stars: проверка sender/order/amount/original charge и атомарное `apply_verified_refund` без повторного отзыва.
+- [x] Для Продамуса реализован общий метод применения **уже независимо подтверждённого** возврата; неподтверждённый webhook/ручное заявление покупателя не считается доказательством.
+- [x] PostgreSQL 0005: durable outbox retry, короткая транзакционная выдача очереди, session advisory lock и fencing на время adapter call; missing adapter не помечает право ACTIVE.
+- [x] Реальный PostgreSQL-backed dispatcher написан, но нет подключённых боевых VPN/DNS adapter: лишь mock E2E в disposable PostgreSQL.
+- [x] HTMLBubbles для MNEBYVPN: HTML/CSS/JS-интерактивная карточка нескольких пакетов, срока, квоты и переключаемых вкладок; никакой передачи токенов/адресов в разметке. Доставка именно HTMLBubble через публичный Bot API требует проверки.
+- [x] Rich Messages: команда `/my` / `/status` показывает актуальные записи PostgreSQL через документированный `sendRichMessage`.
+- [ ] Проверить заявленный пользователем Bot API 10.4 по точной официальной ссылке: доступные `core.telegram.org/bots/api` и changelog показывают 10.3; клиент 13.2 HTMLBubbles уже работает, но не равен публичному методу отправки ботом.
+- [ ] Провайдерный боевой refund API, реальные data-plane adapter, тесты сетевого отключения и quota — остаются заблокированными до отдельной серверной работы.
+
+См. [подробности этапа 5](phase5-refunds-outbox-bubbles.md).

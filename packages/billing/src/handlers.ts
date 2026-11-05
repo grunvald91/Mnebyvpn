@@ -116,7 +116,22 @@ export async function handleTelegramUpdate(
   }
   if (msg?.chat.type === 'private' && msg.text && validUserId(msg.from?.id)
       && msg.chat.id === msg.from.id) {
-    if (msg.text.startsWith('/start') || msg.text.startsWith('/plans')) {
+    if (msg.text === '/my' || msg.text === '/status') {
+      const packages=await db.listUserPackages(msg.from.id);
+      const html=packages.length
+        ? '<h3>Мои пакеты</h3>' + packages.map((p,i)=>{
+            const state=p.state==='ACTIVE'?'Активен':p.state==='REFUNDED'?'Возврат':
+              p.state==='EXPIRED'?'Истёк':'Ожидает подключения';
+            const expires=p.expiresAt?.toISOString().slice(0,10)??'—';
+            const quota=p.quotaLimitBytes===null?'—':
+              String(p.quotaLimitBytes-p.quotaUsedBytes)+' байт';
+            return '<p><b>Пакет '+(i+1)+' · '+(p.product==='vpn'?'VPN':'MNEBYDNS')+
+              '</b><br>Статус: '+state+'<br>До: '+expires+
+              '<br>Остаток квоты: '+quota+'</p>';
+          }).join('')
+        : '<h3>Мои пакеты</h3><p>У вас пока нет оплаченных пакетов. Выберите тариф командой /plans.</p>';
+      await tg.call('sendRichMessage',{chat_id:msg.chat.id,rich_message:{html}});
+    } else if (msg.text.startsWith('/start') || msg.text.startsWith('/plans')) {
       const plans = await db.plans('telegram_stars');
       const available = plans.filter(p => p.stars !== null);
       const html = '<h3>Выбери пакет MNEBYVPN</h3>' +

@@ -211,6 +211,23 @@ export class PgBillingStore {
       c.release();
     }
   }
+
+  /** No bearer IPv6, VPN credentials, profile URLs or personally sensitive traffic history. */
+  async listUserPackages(telegramUserId:number):Promise<Array<{
+    product:'vpn'|'smart_dns'; state:string; expiresAt:Date|null;
+    quotaLimitBytes:bigint|null; quotaUsedBytes:bigint;
+  }>> {
+    if(!Number.isSafeInteger(telegramUserId) || telegramUserId<=0) throw new Error('Invalid actor');
+    const {rows}=await this.pool.query(
+      `SELECT e.product,e.state,e.expires_at,e.quota_limit_bytes,e.quota_used_bytes
+        FROM entitlements e JOIN accounts a ON a.id=e.account_id
+        WHERE a.telegram_user_id=$1 ORDER BY e.starts_at DESC LIMIT 20`,[String(telegramUserId)]);
+    return rows.map(r=>({
+      product:r.product,state:r.state,expiresAt:r.expires_at,
+      quotaLimitBytes:r.quota_limit_bytes===null?null:BigInt(r.quota_limit_bytes),
+      quotaUsedBytes:BigInt(r.quota_used_bytes),
+    }));
+  }
   async pendingOutboxForOrder(orderId: string): Promise<number> {
     const {rows} = await this.pool.query(
       `SELECT count(*)::int AS count FROM reconcile_outbox b
