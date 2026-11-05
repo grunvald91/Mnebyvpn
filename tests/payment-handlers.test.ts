@@ -86,9 +86,7 @@ test('multipart decoder handles official nested products syntax and rejects ambi
   form.set('order_num',oid);
   form.set('products[0][name]','VPN');
   form.set('products[0][price]','99.00');
-  const body=new Uint8Array(await new Response(form).arrayBuffer());
-  const contentType=new Response(form).headers.get('content-type')!;
-  // The boundary must match the serialized body. Serialize the SAME Request.
+  // Serialize and parse the SAME multipart request boundary.
   const request=new Request('https://example.test',{method:'POST',body:form});
   const raw=new Uint8Array(await request.arrayBuffer());
   const got=await parseProdamusFormData(request.headers.get('content-type')!,raw);
@@ -98,5 +96,6 @@ test('multipart decoder handles official nested products syntax and rejects ambi
   const bad=new FormData();
   bad.append('__proto__[admin]','1');
   const bReq=new Request('https://example.test',{method:'POST',body:bad});
-  await assert.rejects(()=>parseProdamusFormData(bReq.headers.get('content-type')!,new Uint8Array(await bReq.arrayBuffer())));
+  const badRaw = new Uint8Array(await bReq.arrayBuffer());
+  await assert.rejects(()=>parseProdamusFormData(bReq.headers.get('content-type')!, badRaw));
 });

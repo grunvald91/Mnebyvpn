@@ -108,7 +108,7 @@ export async function handleTelegramUpdate(
       const plan = await db.plan(id);
       if (!plan || plan.stars === null) return;
       const order = await db.createTelegramOrder(cb.from.id, id, 'tg-callback:'+cb.id);
-      await tg.call('sendInvoice', buildStarsInvoice(starsOrderFromDB(order), plan, config.starsPayloadSecret));
+      await tg.call('sendInvoice', { ...buildStarsInvoice(starsOrderFromDB(order), plan, config.starsPayloadSecret) });
     } finally {
       await tg.call('answerCallbackQuery',{callback_query_id: cb.id});
     }
