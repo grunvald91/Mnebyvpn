@@ -38,7 +38,8 @@ const response = (res: ServerResponse, status: number, message: string): void =>
   res.writeHead(status).end(message);
 };
 class TelegramHttp {
-  constructor(private readonly token: string) {}
+  private readonly token: string;
+  constructor(token: string) { this.token = token; }
   async call(method: string, params: Record<string, unknown>): Promise<unknown> {
     if (!/^[A-Za-z]+$/.test(method)) throw new Error('Invalid Bot API method');
     const result = await fetch('https://api.telegram.org/bot'+this.token+'/'+method,{

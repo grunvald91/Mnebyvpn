@@ -70,7 +70,8 @@ function mapPlan(row: Row): PricedPlan {
 }
 /** Database must have migrations 0001-0004; no paid data plane is touched. */
 export class PgBillingStore {
-  constructor(readonly pool: Pool) {}
+  readonly pool: Pool;
+  constructor(pool: Pool) { this.pool = pool; }
   async plan(planId: string): Promise<PricedPlan | null> {
     const { rows } = await this.pool.query('SELECT * FROM billing_plans WHERE id=$1 AND enabled=true', [planId]);
     return rows.length ? mapPlan(rows[0]) : null;
