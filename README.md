@@ -45,3 +45,7 @@
 ## Ревью шести дополнительных архитектурных рисков (2026-11-05)
 
 **Это не закрытые баги в коде; реализация ещё не началась.** [Отчёт по 6 рискам](docs/review-20261105-six-gaps.md). Ключевые контракты: [авторизация SNI](docs/smart-dns-access-gate.md), [очередность прав](docs/provisioning-ordering.md), [scale-out + денежный учёт](docs/scale-out-contract.md), [offline expiry VPN](docs/offline-expiry.md), [DNS RR policy](docs/dns-record-policy.md). **Paid Smart DNS/SNI и платный autoscaling — BLOCKED, пока нет прохождения тестов.**
+
+## Тариф MNEBYDNS: общая квота
+
+Одна подписка = один оплаченный пакет байтов на **любом количестве устройств** (можно пользоваться совместно). Ограничение выполняется на SNI ingress по суммарному трафику, не по числу DNS-запросов. Техническая привязка потока к пакету пока не испытана: [ADR-0005](docs/decisions/0005-shared-dns-quota.md).

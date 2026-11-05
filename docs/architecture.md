@@ -61,7 +61,7 @@ flowchart TB
 
 ## Gate v3: шесть инвариантов перед платной эксплуатацией
 
-- Smart DNS и прозрачный TLS/SNI relay НЕ имеют общей автоматической subscriber auth: токен DoH не попадает в TLS ClientHello. Платный relay остаётся BLOCKED до [proxy-side authentication](smart-dns-access-gate.md).
+- Smart DNS и прозрачный TLS/SNI relay НЕ имеют общей автоматической subscriber auth: токен DoH не попадает в TLS ClientHello. Платный relay остаётся BLOCKED до проверенной [привязки каждого соединения к подписке и общего server-side quota enforcement](smart-dns-access-gate.md). HWID/идентификация устройств для этого не нужны.
 - Любая команда выдачи VPN/DNS должна применять **последнее desired state** и защищаться `revision + fencing`; см. [порядок применения](provisioning-ordering.md).
 - Новый узел не равен переносу клиентов. Для scale-out необходимы проверенные client updates, выбор и замер разгрузки; см. [scale-out](scale-out-contract.md).
 - Покупка VPS возможна только после атомарного резерва бюджета с учётом ресурсов неизвестного исхода; см. [budget contract](scale-out-contract.md).
@@ -69,3 +69,7 @@ flowchart TB
 - Для Smart DNS требуются согласованные ответы A/AAAA/HTTPS/SVCB/CNAME/DNSSEC; без этого домен исключается из Smart proxy; см. [DNS RR policy](dns-record-policy.md).
 
 **Все эти пункты спроектированы, но НЕ проверены на реальных узлах и клиентах.**
+
+## Бизнес-модель MNEBYDNS
+
+**Одна подписка = одна общая квота трафика без лимита устройств.** Уникальный DoH URL позволяет проверять DNS-запросы, но не является счётчиком HTTPS байтов. Каждый ingress поток должен быть связан с quota bucket подписки. Рассматриваем персональный destination IPv6 как передаваемое право доступа, а не доказательство личности, с ограничениями IPv4-only и риском расходования чужой квоты. См. [ADR-0005](decisions/0005-shared-dns-quota.md).

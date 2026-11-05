@@ -42,3 +42,7 @@
 Повторы и идемпотентность **не обеспечивают** порядка между ENABLE старой ревизии и DISABLE новой. Outbox должен быть только сигналом пересчитать текущее желаемое состояние; каждую пару `(account_id, service_type)` обрабатывать с монотонной `revision`, fencing token, сериализацией, проверкой state до/после provider API и reconcile. При неизвестном результате не повторять старую выдачу без сверки. См. [provisioning-ordering](provisioning-ordering.md).
 
 VPN offline-expiry не доказан для текущих версий панели/узла: **платная модель требует теста** отключения при потере Panel и максимального stale entitlement window. См. [offline-expiry](offline-expiry.md). DNS token revoke не эквивалентен прямому SNI ingress deny; см. [smart-dns-access-gate](smart-dns-access-gate.md).
+
+## Продукт MNEBYDNS: пакет трафика без лицензирования устройств
+
+Единый `subscription_id` имеет `quota_limit_bytes`, `quota_used_bytes`, `quota_state`, `expires_at`, `revision`. **Любое количество устройств** разделяет один пакет и срок. Когда `quota_used_bytes >= quota_limit_bytes`, ingress обязан запрещать новые прокси-подключения и в рамках согласованного hard-cap завершать/лимитировать действующие. Отзыв DoH токена сам по себе не останавливает прокси. Учёт нескольких ingress требует согласованной квоты и concurrency control. См. [ADR-0005](decisions/0005-shared-dns-quota.md).
