@@ -83,3 +83,13 @@ GitHub Actions для документации не нужны. Без отде�
 - [ ] Проверить риски передачи bearer IP, IPv4-only сети и механизм revoke.
 
 До испытаний нельзя продавать гарантированную квоту гигабайт HTTPS/SNI прокси. См. [ADR-0005](decisions/0005-shared-dns-quota.md).
+
+## J. Кодовый фундамент — первая реализация (2026-11-05)
+
+- [x] Чистая TypeScript-модель прав/сроков/ревизий и общей квоты с 6 локально пройденными тестами.
+- [x] Подготовлена SQL-миграция бизнес-таблиц, outbox/fencing и атомарного учёта DNS-квоты (**не применялась к PostgreSQL**).
+- [x] Поднят локальный диагностический HTTP endpoint; readiness остаётся 503 до проверки сетевого исполнения.
+- [ ] Integration тесты на настоящем PostgreSQL, транзакционный worker с CAS/fencing, провайдер платежей и adapters.
+- [ ] Direct-IP/SNI ingress attribution и on-wire quota enforcement — **BLOCKED**, до отдельного end-to-end PoC.
+
+Подробности: [phase1-status](phase1-status.md). Код в feature branch, без вмешательства в действующие VPS.
