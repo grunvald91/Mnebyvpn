@@ -71,8 +71,7 @@ test('Telegram refunded_payment is idempotent and does not revoke another purcha
   }};
   const refunded_payment={currency:'XTR',total_amount:29,invoice_payload:starsPayload(a.id,key),
     telegram_payment_charge_id:'charge-a'};
-  const update={update_id:501,message:{chat:{id:771101,type:'private'},
-    from:{id:771101},refunded_payment}};
+  const update={update_id:501,message:{chat:{id:771101,type:'private'},refunded_payment}};
   await handleTelegramUpdate(update,db,tg,config);
   await handleTelegramUpdate({...update,update_id:502},db,tg,config);
   const {rows}=await pool.query(

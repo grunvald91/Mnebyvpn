@@ -72,13 +72,13 @@ export async function handleTelegramUpdate(
   const msg = update.message;
   if (msg?.refunded_payment) {
     // Only verified Telegram webhook transport, not a client-supplied event.
-    if (!validUserId(msg.from?.id) || msg.chat.type!=='private' || msg.chat.id!==msg.from.id)
-      throw new Error('Unexpected refund source');
+    if (msg.chat.type!=='private' || !validUserId(msg.chat.id))
+      throw new Error('Unexpected refund chat');
     const refund=msg.refunded_payment;
     const orderId=parseStarsPayload(refund.invoice_payload,config.starsPayloadSecret);
     const order=orderId ? await db.order(orderId) : null;
     if(!order || order.provider!=='telegram_stars' || order.currency!=='XTR' ||
-       order.telegramUserId!==msg.from.id || refund.currency!=='XTR' ||
+       order.telegramUserId!==msg.chat.id || refund.currency!=='XTR' ||
        !Number.isSafeInteger(refund.total_amount) || order.amount!==refund.total_amount ||
        !refund.telegram_payment_charge_id || refund.telegram_payment_charge_id.length>160)
       throw new Error('Refund event mismatched');
