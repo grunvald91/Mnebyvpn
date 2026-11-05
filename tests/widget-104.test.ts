@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
+import { Script } from 'node:vm';
 import {
   vpnWidgetHtml,vpnWidgetPayload,statusWidgetData,plansWidgetData,validateWidgetData,planWidgetKey,
 } from '../packages/telegram-ui/src/widget-104.ts';
@@ -127,4 +128,20 @@ test('widget_query from another chat or forwarded shared copy never accesses pri
   assert.deepEqual(f.calls.map(x=>x.method),['answerWidgetQuery','answerWidgetQuery']);
   assert.deepEqual(f.calls.map(x=>x.params.data),['NOT_ALLOWED','NOT_ALLOWED']);
   assert.deepEqual(f.traces,[]);
+});
+
+test('private widget inline script compiles in sandbox JavaScript',()=>{
+ const html=vpnWidgetHtml();
+ const scriptStart=html.indexOf('<script>')+8,scriptEnd=html.indexOf('</script>');
+ assert.ok(scriptStart>=8 && scriptEnd>scriptStart);
+ const code=html.slice(scriptStart,scriptEnd);
+
+ assert.doesNotThrow(()=>new Script(code));
+});
+test('plan button key changes when price, name or duration changes',()=>{
+ const original=planWidgetKey(plan);
+ assert.equal(original.length,16);
+ assert.notEqual(original,planWidgetKey({...plan,stars:(plan.stars??0)+1}));
+ assert.notEqual(original,planWidgetKey({...plan,title:'Новый тариф'}));
+ assert.notEqual(original,planWidgetKey({...plan,durationSeconds:plan.durationSeconds+3600}));
 });

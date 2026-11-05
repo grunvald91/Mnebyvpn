@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
+import { Script, createContext } from 'node:vm';
 import {
   referralPublicData,referralWidgetHtml,referralWidgetPayload,
 } from '../packages/telegram-ui/src/referral-widget.ts';
@@ -101,4 +102,33 @@ test('expired/invalid referral is rejected, never creates order',async()=>{
     from:{id:chatId},text:'/start rAAAAAAAAAAAAAAAA'}},f.db,f.tg,cfg);
  assert.deepEqual(f.calls.map(x=>x.method),['sendMessage']);
  assert.equal(f.trace.some(x=>x.startsWith('order:')),false);
+});
+
+test('forwarded widget executes profile-1 JS and opens the exact selected referral deep link',()=>{
+ const state=referralPublicData([offer],'MnebyvpnTestBot');
+ const html=referralWidgetHtml();
+ const scriptStart=html.indexOf('<script>')+8,scriptEnd=html.indexOf('</script>');
+ assert.ok(scriptStart>=8 && scriptEnd>scriptStart);
+ const code=html.slice(scriptStart,scriptEnd);
+
+ const callbacks=new Map<string,()=>void>();
+ const nodes=new Map<string, {hidden:boolean;textContent:string;addEventListener:(event:string,listener:()=>void)=>void}>();
+ const getElementById=(id:string)=>{
+   if(!nodes.has(id))nodes.set(id,{hidden:false,textContent:'',
+     addEventListener:(_event:string,fn:()=>void)=>{callbacks.set(id,fn)}});
+   return nodes.get(id);
+ };
+ const opened:string[]=[];
+ const doc={getElementById};
+ const tw={publicData:state,openTelegramLink:(url:string)=>{opened.push(url)},ready:()=>{}};
+ new Script(code).runInContext(createContext({document:doc,TelegramWidget:tw}));
+ assert.equal(nodes.get('n0')?.textContent,'VPN на 30 дней');
+ assert.match(nodes.get('x0')?.textContent??'',/150 ⭐/);
+ callbacks.get('b0')?.();
+ assert.deepEqual(opened,['https://t.me/MnebyvpnTestBot?start=r'+token]);
+ tw.publicData=JSON.stringify({v:1,c:[{n:'Fake',p:'VPN',s:1,r:'1',u:'https://evil.test/'}]});
+ opened.length=0;
+ new Script(code).runInContext(createContext({document:doc,TelegramWidget:tw}));
+ callbacks.get('b0')?.();
+ assert.deepEqual(opened,[],'must never open injected external URL');
 });
