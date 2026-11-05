@@ -17,3 +17,7 @@
 | NEW ИИ ops/autoscale | не было контроля сети | operations-automation.md и ADR-0004: policy + guarded controller + cloud provisioner | реальный провайдер, бюджет, метрики, runbooks |
 
 Ссылки на официальные документы: https://docs.rw/install/remnawave-panel/ , https://docs.rw/install/remnawave-node/ , https://docs.rw/sdk/typescript-sdk/ , https://www.rfc-editor.org/rfc/rfc6066.html .
+
+## Follow-up review: 6 дополнительных вопросов, не закрытых реализацией
+
+Шесть новых P1 и ссылки на подробные спецификации добавлены отдельно: [review-20261105-six-gaps](review-20261105-six-gaps.md). P1-DNS-AUTH и P1-OFFLINE — блокеры корректного платного доступа до end-to-end тестов. Масштабирование запрещено до proof of migration + atomic budget accounting; DNS rewrite без RR policy запрещён.

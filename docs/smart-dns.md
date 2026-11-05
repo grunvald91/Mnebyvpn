@@ -70,3 +70,9 @@ TLS end-to-end остаётся между приложением и ориги�
 Первоисточники: https://coredns.io/plugins/rewrite/ ; https://coredns.io/plugins/template/ ; https://www.rfc-editor.org/rfc/rfc6066.html ; https://www.rfc-editor.org/rfc/rfc9460.html ; https://nginx.org/en/docs/stream/ngx_stream_ssl_preread_module.html .
 
 Aeternia публично описывает **личный DNS, маршрутизацию и ATLAS-клиент**, но внутреннюю реализацию не документирует: https://aeternia.space/offer?lang=en . MNEBYDNS не использует её код, бренд или API.
+
+## Выпуск платного Smart DNS + SNI пока ЗАБЛОКИРОВАН
+
+Существующий текст об «отзыве DNS-токена» обеспечивает только доступ к персональным DNS-запросам, **но не запрещает** прямое TLS подключение к SNI ingress с сохранённым IP и известным разрешённым доменом. Прокси должен проверять подписчика **самостоятельно**, иначе его нельзя продавать как ограничиваемую по подписке услугу. DNS rewriting/SNI allowlist/IP-адрес клиента не являются надёжной заменой subscriber authentication.
+
+Решение и отрицательные тесты: [smart-dns-access-gate](smart-dns-access-gate.md). Для A/AAAA/HTTPS/SVCB/CNAME/DNSSEC обязательна единая [DNS RR policy](dns-record-policy.md); unsupported domains не направлять в Smart route. До этих испытаний допускается только изолированный PoC, **не коммерческий запуск**.

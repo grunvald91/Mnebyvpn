@@ -58,3 +58,14 @@ flowchart TB
 Подробнее: [smart-dns](smart-dns.md), [operations](operations-automation.md), [deployment](deployment-contract.md), [infrastructure](infrastructure.md).
 
 Проверенные принципы: https://docs.rw/learn-en/templates/ ; https://docs.rw/learn-en/routing-rules/ ; https://github.com/coredns/coredns ; https://nginx.org/en/docs/stream/ngx_stream_ssl_preread_module.html ; https://www.rfc-editor.org/rfc/rfc6066.html.
+
+## Gate v3: шесть инвариантов перед платной эксплуатацией
+
+- Smart DNS и прозрачный TLS/SNI relay НЕ имеют общей автоматической subscriber auth: токен DoH не попадает в TLS ClientHello. Платный relay остаётся BLOCKED до [proxy-side authentication](smart-dns-access-gate.md).
+- Любая команда выдачи VPN/DNS должна применять **последнее desired state** и защищаться `revision + fencing`; см. [порядок применения](provisioning-ordering.md).
+- Новый узел не равен переносу клиентов. Для scale-out необходимы проверенные client updates, выбор и замер разгрузки; см. [scale-out](scale-out-contract.md).
+- Покупка VPS возможна только после атомарного резерва бюджета с учётом ресурсов неизвестного исхода; см. [budget contract](scale-out-contract.md).
+- Не подтверждено, что Remnawave Node сам отключает expired пользователей при разрыве связи с панелью; см. [offline-expiry](offline-expiry.md).
+- Для Smart DNS требуются согласованные ответы A/AAAA/HTTPS/SVCB/CNAME/DNSSEC; без этого домен исключается из Smart proxy; см. [DNS RR policy](dns-record-policy.md).
+
+**Все эти пункты спроектированы, но НЕ проверены на реальных узлах и клиентах.**

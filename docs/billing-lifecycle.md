@@ -36,3 +36,9 @@
 8. Outbox restart повторяет safe idempotent действия, уникальный order не дублируется.
 
 Нет выбранного СБП-провайдера: тарифы, API и статус самозанятого должны быть проверены перед реализацией оплаты.
+
+## Конкурентное применение прав — обязательная спецификация
+
+Повторы и идемпотентность **не обеспечивают** порядка между ENABLE старой ревизии и DISABLE новой. Outbox должен быть только сигналом пересчитать текущее желаемое состояние; каждую пару `(account_id, service_type)` обрабатывать с монотонной `revision`, fencing token, сериализацией, проверкой state до/после provider API и reconcile. При неизвестном результате не повторять старую выдачу без сверки. См. [provisioning-ordering](provisioning-ordering.md).
+
+VPN offline-expiry не доказан для текущих версий панели/узла: **платная модель требует теста** отключения при потере Panel и максимального stale entitlement window. См. [offline-expiry](offline-expiry.md). DNS token revoke не эквивалентен прямому SNI ingress deny; см. [smart-dns-access-gate](smart-dns-access-gate.md).

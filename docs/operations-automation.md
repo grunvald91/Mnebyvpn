@@ -78,3 +78,7 @@ Lifecycle: `CapacityAlert` → `ScaleProposal` → `BudgetAuthorization` → `Pr
 5. P4 ограниченный autoscaler после нагрузочного теста/испытания восстановления и одобрения денежных лимитов.
 
 Источники: https://github.com/prometheus/blackbox_exporter ; https://github.com/prometheus/alertmanager ; https://opentofu.org/docs/ .
+
+## Два обязательных контракта до включения autoscaling
+
+**Распределение нагрузки:** node registration и обновление списка серверов НЕ означают автоматическую миграцию существующих VPN-клиентов. Новых пользователей назначать по capacity, старых переводить только подтверждённым механизмом; измерять реальную разгрузку. **Денежные операции:** `reserve budget` атомарно по общему account/period до cloud create; созданные и ресурсы с `unknown outcome` учитываются; новые create запрещены до provider inventory reconciliation. Подробнее [scale-out-contract](scale-out-contract.md). Без этих тестов `autoscaling=disabled`, независимо от LLM-рекомендаций.

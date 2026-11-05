@@ -41,3 +41,7 @@
 - Измерения двух VPS (05.11.2026): https://github.com/grunvald91/telegram-proxy-infra/actions/runs/42045124823 и https://github.com/grunvald91/telegram-proxy-infra/actions/runs/42048759983
 
 **Документация — не подтверждение работающего продукта.** Ни серверы, ни DNS, ни автоскейлер в этом коммите не изменялись.
+
+## Ревью шести дополнительных архитектурных рисков (2026-11-05)
+
+**Это не закрытые баги в коде; реализация ещё не началась.** [Отчёт по 6 рискам](docs/review-20261105-six-gaps.md). Ключевые контракты: [авторизация SNI](docs/smart-dns-access-gate.md), [очередность прав](docs/provisioning-ordering.md), [scale-out + денежный учёт](docs/scale-out-contract.md), [offline expiry VPN](docs/offline-expiry.md), [DNS RR policy](docs/dns-record-policy.md). **Paid Smart DNS/SNI и платный autoscaling — BLOCKED, пока нет прохождения тестов.**
