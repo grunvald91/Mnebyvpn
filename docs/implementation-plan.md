@@ -93,3 +93,16 @@ GitHub Actions для документации не нужны. Без отде�
 - [ ] Direct-IP/SNI ingress attribution и on-wire quota enforcement — **BLOCKED**, до отдельного end-to-end PoC.
 
 Подробности: [phase1-status](phase1-status.md). Код в feature branch, без вмешательства в действующие VPS.
+
+## K. Этап 2 — разработка без серверов (2026-11-05)
+
+- [x] Миграция 0002: уникальный capture, доверенная обработка платежа/возврата, атомарный bundle и outbox.
+- [x] Функции PostgreSQL для expiry sweep, fencing и CAS подтверждения наблюдаемого результата (SQL создан, **не запускался в PostgreSQL**).
+- [x] Независимый TypeScript reconciler всегда читает текущее desired state, а не исполняет старый ENABLE из очереди; 8/8 локальных тестов и проверка TypeScript без ошибок.
+- [x] Подготовлен SQL contract test для повторного webhook, дублирования capture, bundle, refund и устаревшего ack (**не запускался**).
+- [ ] Подключить disposable PostgreSQL в тестовой среде, выполнить обе миграции и конкурентные SQL тесты.
+- [ ] Реализовать PostgreSQL storage + межпроцессный exclusive lock и production worker; сейчас только интерфейсы, алгоритм и SQL primitives.
+- [ ] Реализовать независимую проверку подписи и статуса у выбранного СБП-провайдера.
+- [ ] Интеграционные тесты изолированных Remnawave и Smart DNS адаптеров; платный ingress закрыт до on-wire авторизации/квоты.
+
+**По решению владельца:** весь VPS preflight, карты портов, серверные бэкапы, установка, DNS/TLS и операции на действующих узлах откладываются. Разработка кода и локальных тестов продолжается. [Статус этапа 2](phase2-status.md).
