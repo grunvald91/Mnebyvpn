@@ -97,9 +97,9 @@ GitHub Actions для документации не нужны. Без отде�
 ## K. Этап 2 — разработка без серверов (2026-11-05)
 
 - [x] Миграция 0002: уникальный capture, доверенная обработка платежа/возврата, атомарный bundle и outbox.
-- [x] Функции PostgreSQL для expiry sweep, fencing и CAS подтверждения наблюдаемого результата (SQL создан, **не запускался в PostgreSQL**).
+- [x] Функции PostgreSQL для expiry sweep, fencing и CAS подтверждения наблюдаемого результата (SQL прошёл контрактный тест на disposable PostgreSQL 17.6).
 - [x] Независимый TypeScript reconciler всегда читает текущее desired state, а не исполняет старый ENABLE из очереди; 8/8 локальных тестов и проверка TypeScript без ошибок.
-- [x] Подготовлен SQL contract test для повторного webhook, дублирования capture, bundle, refund и устаревшего ack (**не запускался**).
+- [x] Подготовлен SQL contract test для повторного webhook, дублирования capture, bundle, refund и устаревшего ack (успешно запускался в GitHub Actions на PostgreSQL 17.6).
 - [ ] Подключить disposable PostgreSQL в тестовой среде, выполнить обе миграции и конкурентные SQL тесты.
 - [ ] Реализовать PostgreSQL storage + межпроцессный exclusive lock и production worker; сейчас только интерфейсы, алгоритм и SQL primitives.
 - [ ] Реализовать независимую проверку подписи и статуса у выбранного СБП-провайдера.
@@ -121,11 +121,15 @@ GitHub Actions для документации не нужны. Без отде�
 
 ## M. Исправления 5 замечаний review (2026-11-05)
 
-- [x] Код Prodamus/SQL: отдельная signed delivery и identity capture; hash уведомления с изменяемым `attempt` не используется для идентификации повторной оплаты; тесты повторной доставки подготовлены (SQL пока не исполнялся).
+- [x] Код Prodamus/SQL: отдельная signed delivery и identity capture; hash уведомления с изменяемым `attempt` не используется для идентификации повторной оплаты; тесты повторной доставки проверены контрактными SQL тестами.
 - [x] Политика IPv6: **запрещено переиспользование** между подписками навсегда; in-memory policy registry + SQL uniqueness-требование (не сеть).
 - [x] Политика DNS cache: upstream cache перед персонализацией; персональные ответы никогда в shared cache; TypeScript model/tests для двух подписок.
 - [x] Модель: каждый оплаченный пакет — независимый entitlement и network credential; отдельный refund, единица lock — entitlement_id. Автопополнение старого пакета отложено.
 - [x] Отрицательные тесты: больше нет требования идентифицировать «третье лицо», bearer-квота может быть передана; при inactive quota/IP — deny.
-- [ ] PostgreSQL migration+contract tests и DNS cache E2E на реальном resolver/ingress — **UNVERIFIED**; release gates остаются закрыты.
+- [x] PostgreSQL 0001–0003 migrations и SQL contract tests + 25 TypeScript unit-тестов — CI PASS ([run](https://github.com/grunvald91/Mnebyvpn/actions/runs/42109968701)).
+- [ ] Concurrency/partition, настоящий Prodamus/Telegram transport, реальный CoreDNS/ingress — **UNVERIFIED**; release gates остаются закрыты.
 
 См. [review fixes](review-20261105-followup.md).
+
+
+**CI-проверка (05.11.2026):** [GitHub Actions run 42109968701](https://github.com/grunvald91/Mnebyvpn/actions/runs/42109968701) — `success`: TypeScript typecheck, **25/25 unit-тестов**, миграции PostgreSQL 0001–0003 и SQL contract tests на disposable PostgreSQL 17.6. Это не тесты конкурентных клиентов, реального Prodamus/Telegram API, CoreDNS/SNI ingress или действующих VPS; эти gates **UNVERIFIED**.

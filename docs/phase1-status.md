@@ -19,10 +19,13 @@ npm run start:diagnostics
 # readiness намеренно 503: curl -i http://127.0.0.1:8789/readyz
 ```
 
-SQL миграция **не применялась**, полноценный тест на PostgreSQL и конкурентный нагрузочный тест ещё не выполнены. Нет платёжной интеграции, боевого worker/outbox executor, VPN/DNS adapters, сетевого тарификатора или реального ingress. `debit_smart_dns_quota` не ограничивает трафик сама по себе: каждый поток и его байты ещё нужно безопасно связать с подпиской; действующие долгие подключения требуют дополнительного enforcement. Платный Smart DNS/SNI и autoscaling **BLOCKED** до соответствующих acceptance gates.
+SQL миграция **не применялась к действующим VPS**. Позднее она успешно выполнена на временном PostgreSQL 17.6 в GitHub Actions; конкурентный нагрузочный тест ещё не выполнен. Нет платёжной интеграции, боевого worker/outbox executor, VPN/DNS adapters, сетевого тарификатора или реального ingress. `debit_smart_dns_quota` не ограничивает трафик сама по себе: каждый поток и его байты ещё нужно безопасно связать с подпиской; действующие долгие подключения требуют дополнительного enforcement. Платный Smart DNS/SNI и autoscaling **BLOCKED** до соответствующих acceptance gates.
 
 ## Следующие шаги по `docs/implementation-plan.md`
 
 1. Preflight без изменений серверов: карта портов/SNI, ресурсы, offsite backup и восстановление, pinned version manifest.
 2. PostgreSQL integration/contract tests (`debit_smart_dns_quota`: конкуренция, идемпотентность, refund) и транзакционный worker с reconcile/fencing.
 3. Изолированный VPN pilot после разрешённых ресурсов и согласования портов; Smart DNS — отдельный тестовый стенд с проверкой ingress attribution.
+
+
+**CI-проверка (05.11.2026):** [GitHub Actions run 42109968701](https://github.com/grunvald91/Mnebyvpn/actions/runs/42109968701) — `success`: TypeScript typecheck, **25/25 unit-тестов**, миграции PostgreSQL 0001–0003 и SQL contract tests на disposable PostgreSQL 17.6. Это не тесты конкурентных клиентов, реального Prodamus/Telegram API, CoreDNS/SNI ingress или действующих VPS; эти gates **UNVERIFIED**.

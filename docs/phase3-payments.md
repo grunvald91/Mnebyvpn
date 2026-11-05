@@ -16,7 +16,7 @@
 
 ## Ограничения готовности
 
-1. Новые тесты **написаны, но не исполнялись** в данной итерации; test-vectors от действующей формы и настоящие уведомления не проверялись. Каноникализацию Prodamus необходимо сверить с тестовым webhook и SDK примерами до запуска.
+1. Unit-тесты Prodamus и Stars выполнены в GitHub Actions и прошли; test-vectors от действующей формы и реальные Prodamus/Telegram уведомления **не проверялись**. Каноникализацию Prodamus необходимо сверить с тестовым webhook и SDK примерами до запуска.
 2. Отсутствуют runtime HTTP/multipart webhook endpoints, authenticated Telegram Bot API update transport, секреты Payform, ссылки мерчанта и продакшен-учётная запись. Ничего не оплачено и доступ не выдавался.
 3. Подписанные уведомления — только входные сигналы. Бизнес-БД должна проверять сумму/провайдера и идемпотентно вызывать транзакционный settle (миграция 0002); PostgreSQL integration ещё не проверен.
 4. Для Telegram цифровых товаров официальный Bot API предусматривает Stars/XTR; конфигурация поверхностей оплаты отделена от коммерческого решения использовать оба провайдера.
@@ -32,3 +32,6 @@
 ## Исправление P1 по повторам Продамус
 
 Уведомления повторно доставляются с изменённым `attempt`. Идентичность оплаты: `(provider, transaction_id, merchant_order_id, trusted amount, currency)`. `payload_sha256` — хеш **конкретной доставки** и может различаться; он хранится в `payment_delivery_receipts`, не определяет дубликат. После успешного `PAID` валидатор принимает повторный **подписанный** webhook, а SQL отвечает `DUPLICATE_EVENT` или `DUPLICATE_CAPTURE` без добавления новой подписки. После `REFUNDED` задержанная доставка подтверждённой исходной оплаты также не восстанавливает доступ. Тесты написаны, но PostgreSQL/merchant end-to-end пока не запускались.
+
+
+**CI-проверка (05.11.2026):** [GitHub Actions run 42109968701](https://github.com/grunvald91/Mnebyvpn/actions/runs/42109968701) — `success`: TypeScript typecheck, **25/25 unit-тестов**, миграции PostgreSQL 0001–0003 и SQL contract tests на disposable PostgreSQL 17.6. Это не тесты конкурентных клиентов, реального Prodamus/Telegram API, CoreDNS/SNI ingress или действующих VPS; эти gates **UNVERIFIED**.

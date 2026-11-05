@@ -12,7 +12,7 @@
 ## Проверено в локальной среде
 - Node 22.16.0: 8/8 unit-тестов пройдены.
 - TypeScript 5.8.3: компиляционная проверка нового модуля и тестов успешна.
-- **PostgreSQL здесь не установлен**. Миграции и SQL-тесты **не запускались**, проверка SQL-конкуренции и DDL на реальной базе не подтверждена.
+- PostgreSQL **не установлен на VPS**, но миграции 0001–0003 и SQL contract tests выполнены на временном PostgreSQL 17.6 в GitHub Actions (PASS). Тесты конкурентных сессий/отказов сети ещё не проведены.
 
 ## Границы готовности
 1. SQL-функции не подтверждают платежи самостоятельно. Подпись webhook, независимая сверка в платёжном API, доверенные тарифы и роль доступа к функциям ещё не реализованы.
@@ -26,3 +26,6 @@
 - Реализовать PostgreSQL-backed worker и межпроцессный lock/fencing с отказоустойчивым reconcile.
 - Подключить provider-neutral billing interface с реальной независимой verification после выбора платёжного провайдера.
 - Подготовить Telegram UX и локальные mock adapters. Действующие серверы не трогать.
+
+
+**CI-проверка (05.11.2026):** [GitHub Actions run 42109968701](https://github.com/grunvald91/Mnebyvpn/actions/runs/42109968701) — `success`: TypeScript typecheck, **25/25 unit-тестов**, миграции PostgreSQL 0001–0003 и SQL contract tests на disposable PostgreSQL 17.6. Это не тесты конкурентных клиентов, реального Prodamus/Telegram API, CoreDNS/SNI ingress или действующих VPS; эти gates **UNVERIFIED**.
