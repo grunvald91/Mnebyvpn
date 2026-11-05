@@ -159,3 +159,5 @@ GitHub Actions для документации не нужны. Без отде�
 - [ ] Провайдерный боевой refund API, реальные data-plane adapter, тесты сетевого отключения и quota — остаются заблокированными до отдельной серверной работы.
 
 См. [подробности этапа 5](phase5-refunds-outbox-bubbles.md).
+
+**Phase 5 verification:** [CI 42118297218](https://github.com/grunvald91/Mnebyvpn/actions/runs/42118297218) **PASS**: 32 unit, 5 PostgreSQL integration, migrations 0001–0005 и contracts. Real network adapters и коммерческие E2E gates не проверены.

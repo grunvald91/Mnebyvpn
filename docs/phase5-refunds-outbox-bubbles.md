@@ -21,3 +21,7 @@
 - Разработанный backend-worker не запускался в постоянном процессе; без настоящих data-plane adapters лишь unit/integration mocks. Не гарантирует on-wire deny/expiry.
 - Полный revoke старого VPN профиля и hard traffic limit MNEBYDNS НЕ ПРОВЕРЕН; серверы не изменялись.
 - Администраторские операции refund требуют аудита, одобрения и проверки фактического provider result перед вызовом store, при недетерминированном результате запрет слепого повтора.
+
+## Результат независимой CI-проверки
+
+[GitHub Actions run 42118297218](https://github.com/grunvald91/Mnebyvpn/actions/runs/42118297218) — **SUCCESS**, 32 из 32 unit-тестов, 5 из 5 интеграционных тестов на временном PostgreSQL 17.6, TypeScript typecheck, миграции 0001–0005 и SQL contract tests. Подтверждены отказ при отсутствии сетевого адаптера, mock grant → verified full refund → mock disable, повторный Telegram refunded_payment и независимость других покупок. Это **не** испытание настоящих Remnawave/CoreDNS и не реальная оплата/возврат.
