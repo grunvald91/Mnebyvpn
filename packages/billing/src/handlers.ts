@@ -1,4 +1,6 @@
-import { createHash } from 'node:crypto';
+import {
+  vpnWidgetPayload, statusWidgetData, plansWidgetData,
+} from '../../telegram-ui/src/widget-104.ts';
 import {
   parseStarsPayload, validateStarsPreCheckout, validateStarsSuccess, buildStarsInvoice,
   type TelegramPreCheckout, type TelegramSuccessfulPayment,
@@ -34,6 +36,15 @@ export interface TelegramUpdate {
     data?: string;
     message?: { chat: { id: number; type: string } };
   };
+  widget_query?: {
+    id:string;
+    from:{id:number};
+    chat?:{id:number;type:string};
+    message_id?:number;
+    inline_message_id?:string;
+    data:string;
+  };
+  shared_widget_query?: {id:string;from:{id:number};data:string;widget_id:string};
   pre_checkout_query?: TelegramPreCheckout;
 }
 const validUserId = (id: unknown): id is number =>
@@ -42,20 +53,80 @@ const escapeHtml = (value: string): string =>
   value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"','&quot;');
 const planId = (value: string): boolean => /^[a-z0-9][a-z0-9_-]{0,63}$/.test(value);
 
-/** HTMLBubbles are NOT documented as a stable Bot API method; never assume that runtime. */
-export interface ExperimentalBubbleRenderer {
-  renderPlanList?(plans: ReadonlyArray<{ id: string; title: string; price: number }>): unknown;
-}
+/** Telegram Bot API 10.4 HTML widgets are implemented in widget-104.ts. */
 export function htmlPlanList(plans: ReadonlyArray<{ planId: string; title: string; stars: number | null }>): string {
   if (!plans.length) return '<b>Тарифы пока не опубликованы.</b>';
   return '<b>Выбери пакет MNEBYVPN</b>\n\n' +
     plans.map(p => '• <b>' + escapeHtml(p.title) + '</b> — ' + p.stars + ' ⭐').join('\n');
 }
 
+async function handleVpnWidgetQuery(
+  query: NonNullable<TelegramUpdate['widget_query']>,
+  db: PgBillingStore, tg: TelegramApi, config: PaymentHandlersConfig
+):Promise<void> {
+  let answer='NOT_ALLOWED';
+  const privateOrigin=Number.isSafeInteger(query.from?.id)&&query.from.id>0 &&
+    query.chat?.type==='private' && query.chat.id===query.from.id &&
+    Number.isSafeInteger(query.message_id) && (query.message_id??0)>0 &&
+    typeof query.data==='string' && Buffer.byteLength(query.data,'utf8')<=64;
+  try {
+    if(privateOrigin) {
+      const id=query.from.id;
+      if(query.data==='view:status'||query.data==='refresh'||query.data==='view:plans') {
+        const data=query.data==='view:plans'
+          ? plansWidgetData(await db.plans('telegram_stars'))
+          : statusWidgetData(await db.listUserPackages(id));
+        try {
+          await tg.call('editMessageWidgetData',{
+            chat_id:id,message_id:query.message_id,chat_data:data,
+          });
+        } catch (error) {
+          // A no-op update is already in the correct state.
+          if(!/message is not modified/i.test(String(error)))throw error;
+        }
+        answer=data;
+      } else if(/^buy:[0-3]$/.test(query.data)) {
+        const index=Number(query.data.slice(4));
+        const available=(await db.plans('telegram_stars')).filter(p=>p.stars!==null);
+        const selected=available[index];
+        if(!selected)answer='PLAN_UNAVAILABLE';
+        else {
+          // Never accept amount, plan ID or account ID from the widget.
+          const plan=await db.plan(selected.planId);
+          if(!plan || plan.stars===null)answer='PLAN_UNAVAILABLE';
+          else {
+            const order=await db.createTelegramOrder(id,plan.planId,'widget-query:'+query.id);
+            await tg.call('sendInvoice',{
+              ...buildStarsInvoice(starsOrderFromDB(order),plan,config.starsPayloadSecret),
+            });
+            answer='INVOICE_SENT';
+          }
+        }
+      } else answer='UNKNOWN_ACTION';
+    }
+  } catch {
+    answer='RETRY_LATER';
+  }
+  // Always answer in <=15 s. 10.4 result is data, not result or text.
+  await tg.call('answerWidgetQuery',{widget_query_id:query.id,data:answer});
+}
+
 /** Verified Telegram update transport is a precondition of this handler. */
 export async function handleTelegramUpdate(
   update: TelegramUpdate, db: PgBillingStore, tg: TelegramApi, config: PaymentHandlersConfig,
 ): Promise<void> {
+  if(update.shared_widget_query) {
+    // This bot sends non-shared personal widgets; forwarded copies never reveal
+    // subscription data or trigger payment. Answer even an unexpected query.
+    await tg.call('answerWidgetQuery',{
+      widget_query_id:update.shared_widget_query.id,data:'NOT_ALLOWED',
+    });
+    return;
+  }
+  if(update.widget_query) {
+    await handleVpnWidgetQuery(update.widget_query,db,tg,config);
+    return;
+  }
   const pc = update.pre_checkout_query;
   if (pc) {
     const orderId = parseStarsPayload(pc.invoice_payload, config.starsPayloadSecret);
@@ -146,21 +217,12 @@ export async function handleTelegramUpdate(
   if (msg?.chat.type === 'private' && msg.text && validUserId(msg.from?.id)
       && msg.chat.id === msg.from.id) {
     if (msg.text === '/my' || msg.text === '/status') {
-      const packages=await db.listUserPackages(msg.from.id);
-      const html=packages.length
-        ? '<h3>Мои пакеты</h3>' + packages.map((p,i)=>{
-            const state=p.state==='ACTIVE'?'Активен':p.state==='REFUNDED'?'Возврат':
-              p.state==='EXPIRED'?'Истёк':'Ожидает подключения';
-            const expires=p.expiresAt?.toISOString().slice(0,10)??'—';
-            const quota=p.quotaLimitBytes===null?'—':
-              String(p.quotaLimitBytes-p.quotaUsedBytes)+' байт';
-            return '<p><b>Пакет '+(i+1)+' · '+(p.product==='vpn'?'VPN':'MNEBYDNS')+
-              '</b><br>Статус: '+state+'<br>До: '+expires+
-              '<br>Остаток квоты: '+quota+'</p>';
-          }).join('')
-        : '<h3>Мои пакеты</h3><p>У вас пока нет оплаченных пакетов. Выберите тариф командой /plans.</p>';
-      await tg.call('sendRichMessage',{chat_id:msg.chat.id,rich_message:{html}});
-    } else if (msg.text.startsWith('/start') || msg.text.startsWith('/plans')) {
+      const data=statusWidgetData(await db.listUserPackages(msg.from.id));
+      await tg.call('sendWidget',{...vpnWidgetPayload(msg.chat.id,data)});
+    } else if (msg.text === '/plans') {
+      const data=plansWidgetData(await db.plans('telegram_stars'));
+      await tg.call('sendWidget',{...vpnWidgetPayload(msg.chat.id,data)});
+    } else if (msg.text.startsWith('/start')) {
       const plans = await db.plans('telegram_stars');
       const available = plans.filter(p => p.stars !== null);
       const html = '<h3>Выбери пакет MNEBYVPN</h3>' +

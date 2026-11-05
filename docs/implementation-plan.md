@@ -161,3 +161,14 @@ GitHub Actions для документации не нужны. Без отде�
 См. [подробности этапа 5](phase5-refunds-outbox-bubbles.md).
 
 **Phase 5 verification:** [CI 42118297218](https://github.com/grunvald91/Mnebyvpn/actions/runs/42118297218) **PASS**: 32 unit, 5 PostgreSQL integration, migrations 0001–0005 и contracts. Real network adapters и коммерческие E2E gates не проверены.
+
+## P. Этап 6 — Telegram Bot API 10.4, HTMLBubbles
+
+- [x] Проверена спецификация TelegramMessenger/widget-sandbox/docs/tgw-format.md: layer 233, sendWidget, widget_query, answerWidgetQuery, editMessageWidgetData.
+- [x] Модуль статической HTML карточки VPN/MNEBYDNS со статусом, квотой и тарифами, SDK profile 1.
+- [x] Личные данные только в chat_data (не в пересылаемом HTML или public_data); static original виджет, shared_widget_query запрещён.
+- [x] Доставка sendWidget в /my, /status, /plans и обработчики refresh/view/buy через widget_query, server-side цены Stars.
+- [x] Ограничения 32KB HTML, 4KB zlib и 1024B chat_data; safety margin 3800B.
+- [ ] Реальные Telegram 10.4/13.2 E2E тесты после разрешения на работу с ботом, без сервера пока.
+
+Подробности: docs/phase6-telegram-widgets.md

@@ -25,3 +25,5 @@
 ## Результат независимой CI-проверки
 
 [GitHub Actions run 42118297218](https://github.com/grunvald91/Mnebyvpn/actions/runs/42118297218) — **SUCCESS**, 32 из 32 unit-тестов, 5 из 5 интеграционных тестов на временном PostgreSQL 17.6, TypeScript typecheck, миграции 0001–0005 и SQL contract tests. Подтверждены отказ при отсутствии сетевого адаптера, mock grant → verified full refund → mock disable, повторный Telegram refunded_payment и независимость других покупок. Это **не** испытание настоящих Remnawave/CoreDNS и не реальная оплата/возврат.
+
+**Корректировка 06.11.2026:** техническая спецификация Telegram Bot API 10.4 найдена в https://github.com/TelegramMessenger/widget-sandbox/blob/main/docs/tgw-format.md . Настоящие вызовы sendWidget, editMessageWidgetData, answerWidgetQuery реализованы на этапе 6. Старые предположения об отсутствии 10.4 выше устарели.

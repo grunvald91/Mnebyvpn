@@ -61,3 +61,5 @@
 **CI-проверка (05.11.2026):** [GitHub Actions run 42109968701](https://github.com/grunvald91/Mnebyvpn/actions/runs/42109968701) — `success`: TypeScript typecheck, **25/25 unit-тестов**, миграции PostgreSQL 0001–0003 и SQL contract tests на disposable PostgreSQL 17.6. Это не тесты конкурентных клиентов, реального Prodamus/Telegram API, CoreDNS/SNI ingress или действующих VPS; эти gates **UNVERIFIED**.
 
 - [Этап 5: подтверждённые возвраты, PostgreSQL outbox worker и HTMLBubble-модель](docs/phase5-refunds-outbox-bubbles.md)
+
+- [Telegram Bot API 10.4: HTMLBubbles MNEBYVPN](docs/phase6-telegram-widgets.md)
