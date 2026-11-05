@@ -228,6 +228,41 @@ export class PgBillingStore {
       quotaUsedBytes:BigInt(r.quota_used_bytes),
     }));
   }
+
+  /** Apply ONLY independently provider-confirmed full refund, never customer POST. */
+  async applyVerifiedRefund(input: {
+    provider: PaymentProvider; orderId: string;
+    transactionId: string; refundEventId: string; payloadHash: string;
+    amount: number; currency: 'RUB' | 'XTR';
+  }): Promise<'APPLIED'|'DUPLICATE_EVENT'|'DUPLICATE_REFUND'> {
+    if (!uuid.test(input.orderId) || !/^[0-9a-f]{64}$/.test(input.payloadHash) ||
+      !input.transactionId || !input.refundEventId || input.transactionId.length>160 ||
+      input.refundEventId.length>160) throw new Error('Invalid refund event');
+    const c=await this.pool.connect();
+    try {
+      await c.query('BEGIN');
+      const {rows}=await c.query(orderSQL+' FOR UPDATE OF o',[input.orderId]);
+      if(!rows.length)throw new Error('Refund order absent');
+      const o=mapOrder(rows[0]);
+      if(o.provider!==input.provider || o.currency!==input.currency || o.amount!==input.amount)
+        throw new Error('Refund mismatch');
+      const paid=await c.query(
+        'SELECT transaction_id FROM provider_captures WHERE provider=$1 AND order_id=$2',
+        [input.provider,input.orderId]);
+      if(paid.rows[0]?.transaction_id!==input.transactionId)throw new Error('Unknown original charge');
+      const result=await c.query('SELECT apply_verified_refund($1,$2,$3,$4,$5) AS result',
+        [input.orderId,input.provider,input.refundEventId,input.transactionId,input.payloadHash]);
+      const outcome=result.rows[0].result as string;
+      if(!['APPLIED','DUPLICATE_EVENT','DUPLICATE_REFUND'].includes(outcome))
+        throw new Error('Refund denied: '+outcome);
+      await c.query('COMMIT');
+      return outcome as 'APPLIED'|'DUPLICATE_EVENT'|'DUPLICATE_REFUND';
+    } catch(error) {
+      await c.query('ROLLBACK');
+      throw error;
+    } finally { c.release(); }
+  }
+
   async pendingOutboxForOrder(orderId: string): Promise<number> {
     const {rows} = await this.pool.query(
       `SELECT count(*)::int AS count FROM reconcile_outbox b

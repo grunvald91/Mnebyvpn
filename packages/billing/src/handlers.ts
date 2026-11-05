@@ -24,6 +24,10 @@ export interface TelegramUpdate {
     from?: { id: number };
     text?: string;
     successful_payment?: TelegramSuccessfulPayment;
+    refunded_payment?: {
+      currency: string; total_amount: number;
+      invoice_payload: string; telegram_payment_charge_id: string;
+    };
   };
   callback_query?: {
     id: string; from: { id: number };
@@ -66,6 +70,31 @@ export async function handleTelegramUpdate(
     return;
   }
   const msg = update.message;
+  if (msg?.refunded_payment) {
+    // Only verified Telegram webhook transport, not a client-supplied event.
+    if (!validUserId(msg.from?.id) || msg.chat.type!=='private' || msg.chat.id!==msg.from.id)
+      throw new Error('Unexpected refund source');
+    const refund=msg.refunded_payment;
+    const orderId=parseStarsPayload(refund.invoice_payload,config.starsPayloadSecret);
+    const order=orderId ? await db.order(orderId) : null;
+    if(!order || order.provider!=='telegram_stars' || order.currency!=='XTR' ||
+       order.telegramUserId!==msg.from.id || refund.currency!=='XTR' ||
+       !Number.isSafeInteger(refund.total_amount) || order.amount!==refund.total_amount ||
+       !refund.telegram_payment_charge_id || refund.telegram_payment_charge_id.length>160)
+      throw new Error('Refund event mismatched');
+    const status=await db.applyVerifiedRefund({
+      provider:'telegram_stars',orderId:order.id,transactionId:refund.telegram_payment_charge_id,
+      refundEventId:'refund:'+refund.telegram_payment_charge_id,
+      payloadHash:starsPaymentHash(refund),amount:order.amount,currency:'XTR',
+    });
+    if(status==='APPLIED') {
+      try {
+        await tg.call('sendMessage',{chat_id:msg.chat.id,
+          text:'↩️ Возврат подтверждён. Право в базе отозвано; ожидается синхронизация узлов.'});
+      } catch { /* do not roll back confirmed refund on notification failure */ }
+    }
+    return;
+  }
   if (msg?.successful_payment) {
     if (!validUserId(msg.from?.id) || msg.chat.type !== 'private' || msg.chat.id !== msg.from.id)
       throw new Error('Unexpected Telegram payment sender');
