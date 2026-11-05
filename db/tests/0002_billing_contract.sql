@@ -30,6 +30,9 @@ BEGIN
   SELECT settle_verified_payment(o,'fake-provider','paid-event-1','capture-1',repeat('a',64),
                                  29900,'RUB',3600,1024) INTO v;
   IF v <> 'DUPLICATE_EVENT' THEN RAISE EXCEPTION 'duplicate payment: %',v; END IF;
+  SELECT settle_verified_payment(o,'fake-provider','paid-event-1','capture-1',repeat('f',64),
+                                 29900,'RUB',3600,1024) INTO v;
+  IF v <> 'DENY_EVENT_REUSED' THEN RAISE EXCEPTION 'modified replay: %',v; END IF;
   SELECT settle_verified_payment(o2,'fake-provider','paid-event-2','capture-1',repeat('b',64),
                                  19900,'RUB',3600,200) INTO v;
   IF v <> 'DENY_CAPTURE_REUSED' THEN RAISE EXCEPTION 'capture reused: %',v; END IF;
@@ -64,6 +67,8 @@ BEGIN
   IF count_found <> 4 THEN RAISE EXCEPTION 'refund outbox signals missing'; END IF;
   SELECT apply_verified_refund(o,'fake-provider','refund-event-1','capture-1',repeat('c',64)) INTO v;
   IF v <> 'DUPLICATE_EVENT' THEN RAISE EXCEPTION 'duplicate refund: %',v; END IF;
+  SELECT apply_verified_refund(o,'fake-provider','refund-event-1','capture-1',repeat('e',64)) INTO v;
+  IF v <> 'DENY_EVENT_REUSED' THEN RAISE EXCEPTION 'modified refund replay: %',v; END IF;
 END;
 $$;
 ROLLBACK;

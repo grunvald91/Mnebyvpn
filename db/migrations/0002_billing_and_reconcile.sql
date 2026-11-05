@@ -60,7 +60,12 @@ BEGIN
   SELECT * INTO v_existing FROM verified_payment_events
     WHERE provider = p_provider AND provider_event_id = p_provider_event_id;
   IF FOUND THEN
-    IF v_existing.order_id = p_order_id AND v_existing.event_kind = 'PAID' THEN
+    IF v_existing.order_id = p_order_id AND v_existing.event_kind = 'PAID'
+       AND v_existing.payload_sha256 = p_payload_sha256 AND EXISTS (
+         SELECT 1 FROM provider_captures
+          WHERE provider = p_provider AND transaction_id = p_provider_transaction_id
+            AND order_id = p_order_id
+       ) THEN
       RETURN 'DUPLICATE_EVENT';
     END IF;
     RETURN 'DENY_EVENT_REUSED';
@@ -131,7 +136,8 @@ BEGIN
   SELECT * INTO v_existing FROM verified_payment_events
     WHERE provider = p_provider AND provider_event_id = p_provider_event_id;
   IF FOUND THEN
-    IF v_existing.order_id = p_order_id AND v_existing.event_kind = 'REFUND' THEN
+    IF v_existing.order_id = p_order_id AND v_existing.event_kind = 'REFUND'
+       AND v_existing.payload_sha256 = p_payload_sha256 THEN
       RETURN 'DUPLICATE_EVENT';
     END IF;
     RETURN 'DENY_EVENT_REUSED';
