@@ -27,3 +27,7 @@ HTML неизменяем, пересылается вместе с сообще
 - Сделать живой sendWidget E2E через действующий Bot API 10.4 и Telegram-клиент с layer 233: проверить chatDataChanged и отказ пересланных виджетов.
 - Проверить старые клиенты: caption в unsupported-media, fallback /start.
 - Реальные платежи Prodamus/Stars и VPN/DNS ingress вне текущего этапа, серверы не трогали.
+
+## CI-проверка этапа
+
+[GitHub Actions run 42121805631](https://github.com/grunvald91/Mnebyvpn/actions/runs/42121805631): **success**, 39/39 модульных тестов и 5/5 интеграционных тестов на временной PostgreSQL, TypeScript typecheck и SQL миграции/контрактные тесты. Новые тесты включают лимиты mini-HTML, неподвижный HTML/приватное chat_data, оригинальный widget_query, отказ на пересылках и Stars invoice с серверным тарифом. Живой отправки в Telegram эта CI-проверка не осуществляла.
