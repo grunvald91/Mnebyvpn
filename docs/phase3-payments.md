@@ -28,3 +28,7 @@
 - Прогнать тесты и TypeScript typecheck, проверить Prodamus HMAC на эталонном тестовом webhook.
 - Реализовать handler update Telegram Stars, webhook Prodamus и базы заказов с подготовленными transactional SQL функциями.
 - Написать тесты concurrent capture/refund/expiry на disposable PostgreSQL.
+
+## Исправление P1 по повторам Продамус
+
+Уведомления повторно доставляются с изменённым `attempt`. Идентичность оплаты: `(provider, transaction_id, merchant_order_id, trusted amount, currency)`. `payload_sha256` — хеш **конкретной доставки** и может различаться; он хранится в `payment_delivery_receipts`, не определяет дубликат. После успешного `PAID` валидатор принимает повторный **подписанный** webhook, а SQL отвечает `DUPLICATE_EVENT` или `DUPLICATE_CAPTURE` без добавления новой подписки. После `REFUNDED` задержанная доставка подтверждённой исходной оплаты также не восстанавливает доступ. Тесты написаны, но PostgreSQL/merchant end-to-end пока не запускались.

@@ -118,3 +118,14 @@ GitHub Actions для документации не нужны. Без отде�
 - [ ] Реализовать независимый канал refund и безопасное хранение платёжных credentials.
 
 Весь этап ограничен исходным кодом и тестами. Никакого запуска VPS, API-платежей или боевых запросов.
+
+## M. Исправления 5 замечаний review (2026-11-05)
+
+- [x] Код Prodamus/SQL: отдельная signed delivery и identity capture; hash уведомления с изменяемым `attempt` не используется для идентификации повторной оплаты; тесты повторной доставки подготовлены (SQL пока не исполнялся).
+- [x] Политика IPv6: **запрещено переиспользование** между подписками навсегда; in-memory policy registry + SQL uniqueness-требование (не сеть).
+- [x] Политика DNS cache: upstream cache перед персонализацией; персональные ответы никогда в shared cache; TypeScript model/tests для двух подписок.
+- [x] Модель: каждый оплаченный пакет — независимый entitlement и network credential; отдельный refund, единица lock — entitlement_id. Автопополнение старого пакета отложено.
+- [x] Отрицательные тесты: больше нет требования идентифицировать «третье лицо», bearer-квота может быть передана; при inactive quota/IP — deny.
+- [ ] PostgreSQL migration+contract tests и DNS cache E2E на реальном resolver/ingress — **UNVERIFIED**; release gates остаются закрыты.
+
+См. [review fixes](review-20261105-followup.md).

@@ -107,6 +107,8 @@ function minorFromRub(sum: Field | undefined): number | null {
  * Must be called ONLY for parsed POST notifications, with the HTTP Sign
  * header. Caller also needs an atomic SQL settle (unique capture and order).
  * Returning from urlSuccess alone is not evidence of payment.
+ * PAID/REFUNDED orders may receive the same valid capture again: downstream SQL
+ * must match provider+transaction+order+amount+currency and return DUPLICATE.
  */
 export function verifyProdamusPayment(
   data: Fields, signHeader: string, order: ProdamusOrder | null, cfg: ProdamusConfig
@@ -115,7 +117,7 @@ export function verifyProdamusPayment(
   if (data.payment_status !== 'success') return { ok: false, reason: 'NOT_PAID' };
   if (data.payment_init === 'auto') return { ok: false, reason: 'RECURRING_NOT_IMPLEMENTED' };
   const transactionId = data.order_id;
-  if (!order || order.state !== 'PENDING' || order.provider !== 'prodamus'
+  if (!order || !['PENDING', 'PAID', 'REFUNDED'].includes(order.state) || order.provider !== 'prodamus'
       || order.currency !== 'RUB' || data.order_num !== order.id
       || data.domain !== httpsUrl(cfg.formUrl).hostname
       || typeof transactionId !== 'string' || transactionId.length === 0

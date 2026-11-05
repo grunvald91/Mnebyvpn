@@ -7,7 +7,7 @@
 - `account`: единая идентичность пользователя (например Telegram ID, не телефон как секрет).
 - `order`: idempotency key, выбранный product (`vpn`, `smart_dns`, `bundle`), amount/currency, intent/provider.
 - `payment_event`: уникальный `provider_event_id`, provider_verified_at, signed payload hash, никакие полные чувствительные payload в log.
-- `entitlement`: account_id, product, starts_at, expires_at, state, revision, quota, source_order.
+- `entitlement`: отдельное право для **конкретной покупки** (`source_order_id + product`), `subscription_id`, собственная квота и своя конфигурация; несколько покупок одного продукта у аккаунта создают разные entitlements.
 - `provisioning`: adapter (`remnawave` / `mnebydns`), external_ref, desired_revision, applied_revision, error state, retries.
 - `outbox`: атомарно записанная команда исполнителю, idempotency, attempts, locks/lease, deadline.
 
@@ -17,9 +17,9 @@
 
 - **PAID** только после проверки webhook **и** статуса у платёжного провайдера.
 - Одно подтверждённое списание = одно изменение entitlement, защищённое unique order/transaction IDs, транзакционной блокировкой.
-- Продление: `max(now, old_expires_at) + purchased_duration` как кандидат бизнес-правила; формально проверить возвраты/смену плана и календарные тарифы.
+- **На текущем этапе только независимые разовые пакеты:** повторная покупка создаёт новое право и новую сетевую конфигурацию, а не продлевает старую. Для продления существующего пакета без смены адреса потребуется отдельная транзакционная политика и учёт refund.
 - Ошибка Remnawave/DNS не теряет оплату: entitlement остаётся в БД, pending outbox, безопасный retry; при долгой ошибке — уведомление и support/refund policy.
-- Refund/chargeback: отдельный идемпотентный переход с заявленной политикой; revoke соответствующего VPN/DNS доступа.
+- Refund/chargeback: отдельный идемпотентный переход и отзыв только entitlements, созданных **возвращённым заказом**; другие оплаченные пакеты того же аккаунта не менять.
 - Reconciliation job сравнивает `desired entitlement` с реальными `VPN enabled/expiry` и `DNS token enabled/expiry`; исправляет расхождения.
 - Срок истёк → запрет сетевой аутентификации **уже импортированного профиля**, не только скрытие подписки/DoH URL.
 - Если провайдер позволяет подписки/автоплатежи — отдельное согласие и проверка юридических условий; не включать автоматически.
@@ -35,11 +35,11 @@
 7. Refund/chargeback и восстановление после ошибочного revoke корректны.
 8. Outbox restart повторяет safe idempotent действия, уникальный order не дублируется.
 
-Нет выбранного СБП-провайдера: тарифы, API и статус самозанятого должны быть проверены перед реализацией оплаты.
+Владелец выбрал **Продамус и Telegram Stars**. Эталонные подписи, реальный webhook/invoice transport и интеграция PostgreSQL ещё не прошли тесты.
 
 ## Конкурентное применение прав — обязательная спецификация
 
-Повторы и идемпотентность **не обеспечивают** порядка между ENABLE старой ревизии и DISABLE новой. Outbox должен быть только сигналом пересчитать текущее желаемое состояние; каждую пару `(account_id, service_type)` обрабатывать с монотонной `revision`, fencing token, сериализацией, проверкой state до/после provider API и reconcile. При неизвестном результате не повторять старую выдачу без сверки. См. [provisioning-ordering](provisioning-ordering.md).
+Повторы и идемпотентность **не обеспечивают** порядка между ENABLE старой ревизии и DISABLE новой. Outbox должен быть только сигналом пересчитать текущее желаемое состояние; каждый отдельный `entitlement_id` обрабатывать с монотонной `revision`, fencing token, сериализацией, проверкой state до/после provider API и reconcile. При неизвестном результате не повторять старую выдачу без сверки. См. [provisioning-ordering](provisioning-ordering.md).
 
 VPN offline-expiry не доказан для текущих версий панели/узла: **платная модель требует теста** отключения при потере Panel и максимального stale entitlement window. См. [offline-expiry](offline-expiry.md). DNS token revoke не эквивалентен прямому SNI ingress deny; см. [smart-dns-access-gate](smart-dns-access-gate.md).
 

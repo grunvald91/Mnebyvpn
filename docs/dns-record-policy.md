@@ -33,3 +33,15 @@
 6. Совместимость iOS/Android/Windows и конкретных сайтов; каждый verified домен имеет дату и версию.
 
 Требует отдельного PoC с пакетным анализом в **контролируемой тестовой сети**, прежде чем включать rewrite. Стандарты: https://www.rfc-editor.org/rfc/rfc9460.html ; https://www.rfc-editor.org/rfc/rfc1034 ; https://www.rfc-editor.org/rfc/rfc4033 ; https://coredns.io/plugins/rewrite/ .
+
+## Персонализация и кеш (review P1)
+
+1. До персонализации CoreDNS/Upstream могут кешировать только **оригинальные общие DNS ответы** (ключ qname/qtype/class с обычными RR правилами).
+2. Привязанный к `subscription_id` индивидуальный destination IPv6 вычисляется **после общего кеша**, лишь при актуальном entitlement/revision; никакой `cache` / `prefetch` / `serve_stale` на персональном результате в общей зоне.
+3. В DoH gateway отключить HTTP cache для персональных ответов; `Cache-Control: no-store` не отменяет DNS TTL на клиенте.
+4. Если CoreDNS pipeline не позволяет гарантировать это разделение, поместить personalization в отдельный authenticated gateway с отключённым кешем персональных ответов; не включать shared `rewrite + cache` поверх индивидуальных AAAA.
+5. Тест: одновременные запросы одного FQDN с токенами A/B на одном backend/кеше → разные IP. Revoke A и повторный запрос B → прежний IP B; IP A не может выдаться C даже после TTL.
+
+`packages/dns-policy/src/personalized.ts` реализует только **модель правил**, не сетевой CoreDNS plugin. До реальных DNS E2E статус UNVERIFIED.
+
+Источник кеш-плагина: https://coredns.io/plugins/cache/

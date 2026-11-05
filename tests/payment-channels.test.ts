@@ -124,4 +124,16 @@ test('Prodamus webhook requires signed success, order_num, sum, domain and captu
   assert.equal(verifyProdamusPayment(canceled, signProdamus(canceled, key), rubOrder, config).ok, false);
   const auto = { ...body, payment_init: 'auto' };
   assert.equal(verifyProdamusPayment(auto, signProdamus(auto, key), rubOrder, config).ok, false);
+  // Prodamus retries carry a new 'attempt' but refer to the SAME capture.
+  const retry = { ...body, attempt: '2' };
+  const alreadyPaid = { ...rubOrder, state: 'PAID' as const };
+  const repeat = verifyProdamusPayment(retry, signProdamus(retry, key), alreadyPaid, config);
+  assert.equal(repeat.ok, true);
+  if (repeat.ok) {
+    assert.equal(repeat.capture.providerTransactionId, 'capture-123');
+    assert.equal(repeat.capture.amountMinor, 19900);
+    assert.notEqual(repeat.capture.payloadSha256, result.ok ? result.capture.payloadSha256 : '');
+  }
+  const refunded = { ...rubOrder, state: 'REFUNDED' as const };
+  assert.equal(verifyProdamusPayment(retry, signProdamus(retry, key), refunded, config).ok, true);
 });

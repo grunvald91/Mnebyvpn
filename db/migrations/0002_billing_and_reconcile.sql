@@ -19,6 +19,30 @@ CREATE TABLE provider_captures (
   UNIQUE (order_id)
 );
 
+-- Do not treat delivery payload hash (including Prodamus attempt) as payment identity.
+CREATE TABLE payment_delivery_receipts (
+  provider text NOT NULL,
+  transaction_id text NOT NULL,
+  event_kind text NOT NULL CHECK (event_kind IN ('PAID', 'REFUND')),
+  payload_sha256 text NOT NULL CHECK (payload_sha256 ~ '^[a-f0-9]{64}$'),
+  first_seen_at timestamptz NOT NULL DEFAULT now(),
+  last_seen_at timestamptz NOT NULL DEFAULT now(),
+  deliveries bigint NOT NULL DEFAULT 1 CHECK (deliveries > 0),
+  PRIMARY KEY(provider, transaction_id, event_kind, payload_sha256)
+);
+
+CREATE FUNCTION record_payment_delivery(
+  p_provider text, p_transaction_id text, p_kind text, p_payload_sha256 text
+) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO payment_delivery_receipts (provider, transaction_id, event_kind, payload_sha256)
+    VALUES (p_provider, p_transaction_id, p_kind, p_payload_sha256)
+    ON CONFLICT(provider, transaction_id, event_kind, payload_sha256)
+      DO UPDATE SET last_seen_at = clock_timestamp(),
+                    deliveries = payment_delivery_receipts.deliveries + 1;
+END;
+$$;
+
 -- Only call AFTER verification of webhook signature AND independent provider
 -- status lookup. Amount, currency, duration, quota and product MUST come from
 -- trusted server-side order/plan data, not user-supplied webhook fields.
@@ -61,14 +85,28 @@ BEGIN
     WHERE provider = p_provider AND provider_event_id = p_provider_event_id;
   IF FOUND THEN
     IF v_existing.order_id = p_order_id AND v_existing.event_kind = 'PAID'
-       AND v_existing.payload_sha256 = p_payload_sha256 AND EXISTS (
+       AND o.state IN ('PAID', 'REFUNDED') AND EXISTS (
          SELECT 1 FROM provider_captures
           WHERE provider = p_provider AND transaction_id = p_provider_transaction_id
             AND order_id = p_order_id
        ) THEN
+      PERFORM record_payment_delivery(p_provider, p_provider_transaction_id, 'PAID', p_payload_sha256);
       RETURN 'DUPLICATE_EVENT';
     END IF;
     RETURN 'DENY_EVENT_REUSED';
+  END IF;
+
+  -- A provider can redeliver the same captured payment under another event ID.
+  IF EXISTS (SELECT 1 FROM provider_captures
+             WHERE provider = p_provider AND transaction_id = p_provider_transaction_id) THEN
+    IF EXISTS (SELECT 1 FROM provider_captures
+               WHERE provider = p_provider AND transaction_id = p_provider_transaction_id
+                 AND order_id = p_order_id)
+       AND o.state IN ('PAID', 'REFUNDED') THEN
+      PERFORM record_payment_delivery(p_provider, p_provider_transaction_id, 'PAID', p_payload_sha256);
+      RETURN 'DUPLICATE_CAPTURE';
+    END IF;
+    RETURN 'DENY_CAPTURE_REUSED';
   END IF;
 
   IF o.state <> 'PENDING' THEN RETURN 'DENY_ORDER_ALREADY_SETTLED'; END IF;
@@ -90,6 +128,7 @@ BEGIN
                                       verified_at, payload_sha256, event_kind)
     VALUES (p_provider, p_provider_event_id, p_order_id,
             v_start, p_payload_sha256, 'PAID');
+  PERFORM record_payment_delivery(p_provider, p_provider_transaction_id, 'PAID', p_payload_sha256);
   UPDATE orders SET state = 'PAID' WHERE id = p_order_id;
 
   FOREACH v_product IN ARRAY CASE WHEN o.product = 'bundle'
@@ -137,10 +176,17 @@ BEGIN
     WHERE provider = p_provider AND provider_event_id = p_provider_event_id;
   IF FOUND THEN
     IF v_existing.order_id = p_order_id AND v_existing.event_kind = 'REFUND'
-       AND v_existing.payload_sha256 = p_payload_sha256 THEN
+       AND o.state = 'REFUNDED' THEN
+      PERFORM record_payment_delivery(p_provider, p_provider_transaction_id, 'REFUND', p_payload_sha256);
       RETURN 'DUPLICATE_EVENT';
     END IF;
     RETURN 'DENY_EVENT_REUSED';
+  END IF;
+  IF o.state = 'REFUNDED' AND EXISTS (
+       SELECT 1 FROM verified_payment_events
+        WHERE provider = p_provider AND order_id = p_order_id AND event_kind = 'REFUND') THEN
+    PERFORM record_payment_delivery(p_provider, p_provider_transaction_id, 'REFUND', p_payload_sha256);
+    RETURN 'DUPLICATE_REFUND';
   END IF;
   IF o.state <> 'PAID' THEN RETURN 'DENY_NOT_PAID'; END IF;
 
@@ -148,6 +194,7 @@ BEGIN
                                       verified_at, payload_sha256, event_kind)
     VALUES (p_provider, p_provider_event_id, p_order_id,
             clock_timestamp(), p_payload_sha256, 'REFUND');
+  PERFORM record_payment_delivery(p_provider, p_provider_transaction_id, 'REFUND', p_payload_sha256);
   UPDATE orders SET state = 'REFUNDED' WHERE id = p_order_id;
   UPDATE entitlements
      SET state = 'REFUNDED', revision = revision + 1
@@ -242,6 +289,7 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION record_payment_delivery(text,text,text,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION settle_verified_payment(uuid,text,text,text,text,bigint,text,bigint,bigint) FROM PUBLIC;
 REVOKE ALL ON FUNCTION apply_verified_refund(uuid,text,text,text,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION expire_due_entitlements() FROM PUBLIC;
