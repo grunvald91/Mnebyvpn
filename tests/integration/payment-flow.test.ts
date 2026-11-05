@@ -15,8 +15,8 @@ const planId='test-'+randomUUID().slice(0,8);
 const key='z'.repeat(48);
 before(async()=>{
  await pool.query(
-  \`INSERT INTO billing_plans(id,product,title,duration_seconds,rub_minor,stars,enabled)
-   VALUES($1,'vpn','Test VPN',3600,9900,37,true)\`,[planId]);
+  `INSERT INTO billing_plans(id,product,title,duration_seconds,rub_minor,stars,enabled)
+   VALUES($1,'vpn','Test VPN',3600,9900,37,true)`,[planId]);
 });
 after(async()=>{await pool.end();});
 

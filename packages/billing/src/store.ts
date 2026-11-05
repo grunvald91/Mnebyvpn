@@ -52,13 +52,13 @@ function mapOrder(row: Row): OrderRecord {
     state: row.state, expiresAt: row.expires_at, telegramUserId,
   };
 }
-const orderSQL = \`
+const orderSQL = `
  SELECT o.id, o.account_id, o.provider, o.currency, o.amount_minor,
         o.product, o.state, t.plan_id, t.plan_title, t.duration_seconds,
         t.dns_quota_bytes, t.expires_at, a.telegram_user_id
  FROM orders o JOIN order_terms t ON t.order_id=o.id
  JOIN accounts a ON a.id=o.account_id
- WHERE o.id=$1\`;
+ WHERE o.id=$1`;
 function mapPlan(row: Row): PricedPlan {
   return {
     planId: row.id, product: row.product, title: row.title,
@@ -128,9 +128,9 @@ export class PgBillingStore {
       let accountId: string;
       if ('telegramUserId' in who) {
         const account = await c.query(
-          \`INSERT INTO accounts(id,telegram_user_id) VALUES(gen_random_uuid(),$1)
+          `INSERT INTO accounts(id,telegram_user_id) VALUES(gen_random_uuid(),$1)
            ON CONFLICT(telegram_user_id) DO UPDATE
-           SET telegram_user_id=EXCLUDED.telegram_user_id RETURNING id\`,
+           SET telegram_user_id=EXCLUDED.telegram_user_id RETURNING id`,
           [String(who.telegramUserId)]
         );
         accountId = account.rows[0].id;
@@ -147,13 +147,13 @@ export class PgBillingStore {
       const currency = provider === 'telegram_stars' ? 'XTR' : 'RUB';
       const id = randomUUID();
       await c.query(
-        \`INSERT INTO orders(id,account_id,product,provider,amount_minor,currency)
-         VALUES($1,$2,$3,$4,$5,$6)\`,
+        `INSERT INTO orders(id,account_id,product,provider,amount_minor,currency)
+         VALUES($1,$2,$3,$4,$5,$6)`,
         [id, accountId, p.product, provider, price, currency]
       );
       await c.query(
-        \`INSERT INTO order_terms(order_id,plan_id,plan_title,duration_seconds,dns_quota_bytes,expires_at)
-         VALUES($1,$2,$3,$4,$5,clock_timestamp()+interval '1 hour')\`,
+        `INSERT INTO order_terms(order_id,plan_id,plan_title,duration_seconds,dns_quota_bytes,expires_at)
+         VALUES($1,$2,$3,$4,$5,clock_timestamp()+interval '1 hour')`,
         [id, p.id, p.title, p.duration_seconds, p.dns_quota_bytes]
       );
       await c.query(
@@ -191,7 +191,7 @@ export class PgBillingStore {
       if (order.provider !== capture.provider || order.amount !== capture.amount ||
           order.currency !== capture.currency) throw new Error('Payment does not match order snapshot');
       const {rows: result} = await c.query(
-        \`SELECT settle_verified_payment($1,$2,$3,$4,$5,$6,$7,$8,$9) AS outcome\`,
+        `SELECT settle_verified_payment($1,$2,$3,$4,$5,$6,$7,$8,$9) AS outcome`,
         [order.id, capture.provider, capture.providerEventId, capture.providerTransactionId,
          capture.payloadHash, String(order.amount), order.currency,
          String(order.durationSeconds),
@@ -212,9 +212,9 @@ export class PgBillingStore {
   }
   async pendingOutboxForOrder(orderId: string): Promise<number> {
     const {rows} = await this.pool.query(
-      \`SELECT count(*)::int AS count FROM reconcile_outbox b
+      `SELECT count(*)::int AS count FROM reconcile_outbox b
        JOIN entitlements e ON e.id=b.entitlement_id
-       WHERE e.source_order_id=$1 AND b.handled_at IS NULL\`,[orderId]
+       WHERE e.source_order_id=$1 AND b.handled_at IS NULL`,[orderId]
     );
     return rows[0].count;
   }
