@@ -29,6 +29,7 @@
 - [Этапы и приёмка](docs/implementation-plan.md)
 - [Начало реализации: фундамент и незакрытые проверки](docs/phase1-status.md)
 - [Этап 2: биллинг и сверка прав без VPS](docs/phase2-status.md)
+- [Этап 3: платёжные адаптеры Продамус + Telegram Stars](docs/phase3-payments.md)
 - [Итоги ревью и исправления P0/P1](docs/review-remediation.md)
 - [ADR-0001: Универсальные клиенты](docs/decisions/0001-universal-client-architecture.md)
 - [ADR-0002: Два VPS](docs/decisions/0002-two-vps-special-nodes.md)
