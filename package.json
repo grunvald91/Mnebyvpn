@@ -1,13 +1,24 @@
 {
   "name": "mnebyvpn",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.16.0" },
+  "engines": {
+    "node": ">=22.16.0"
+  },
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:integration": "node --experimental-strip-types --test tests/integration/*.test.ts",
     "start:diagnostics": "node --experimental-strip-types apps/service/src/server.ts",
+    "start:payments": "node --experimental-strip-types apps/service/src/payments-server.ts",
     "typecheck": "tsc --noEmit"
   },
-  "devDependencies": { "@types/node": "^22.15.0", "typescript": "~5.8.3" }
+  "dependencies": {
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/pg": "^8.15.5",
+    "typescript": "~5.8.3"
+  }
 }
