@@ -133,3 +133,16 @@ GitHub Actions для документации не нужны. Без отде�
 
 
 **CI-проверка (05.11.2026):** [GitHub Actions run 42109968701](https://github.com/grunvald91/Mnebyvpn/actions/runs/42109968701) — `success`: TypeScript typecheck, **25/25 unit-тестов**, миграции PostgreSQL 0001–0003 и SQL contract tests на disposable PostgreSQL 17.6. Это не тесты конкурентных клиентов, реального Prodamus/Telegram API, CoreDNS/SNI ingress или действующих VPS; эти gates **UNVERIFIED**.
+
+## N. Этап 4 — PostgreSQL backend и платежные вебхуки, без VPS
+
+- [x] PostgreSQL 0004: enabled тарифы с независимыми RUB/XTR, неизменяемые условия заказа и idempotency keys.
+- [x] Сервис заказов: Telegram Stars, доверенная внешняя веб-сессия для Продамуса, транзакционный settle с записью в outbox.
+- [x] Продамус: Sign / multipart webhook + проверка суммы/заказа/транзакции; обработка redelivery.
+- [x] Stars: pre_checkout_query, successful_payment, возвратный idempotency settlement; счета XTR.
+- [x] Telegram Bot API **10.3 Rich Messages** с callback кнопками прямо в сообщении. **10.4 и HTMLBubbles официально не подтверждены**; experimental расширение оставлено неактивным.
+- [x] Offline CI [run 42113245766](https://github.com/grunvald91/Mnebyvpn/actions/runs/42113245766): **30/30 unit, 3/3 integration**, 0001–0004 migrations и SQL contracts, TypeScript typecheck — PASS.
+- [ ] Реальное включение Prodamus/Stars, backend status reconciliation, Telegram sandbox charge, user acceptance, refunds, внешняя идентификация покупателя и боевой worker — НЕ ВЫПОЛНЕНО.
+- [ ] Сетевые VPN/DNS adapters и ingress quota/expiry — BLOCKED до разрешения работы с серверами.
+
+Подробнее: [phase4-payment-handlers](phase4-payment-handlers.md).

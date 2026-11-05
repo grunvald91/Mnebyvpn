@@ -24,3 +24,9 @@
 - **Никаких** серверов, прокси, firewall, DNS, TLS и реальных учетных записей этой веткой не затрагиваем.
 
 CI: `npm run typecheck`, `npm test`, `db/tests/*.sql`, `npm run test:integration` на ephemeral PostgreSQL.
+
+## CI-подтверждение
+
+Проверка от 5 ноября 2026: [run 42113245766](https://github.com/grunvald91/Mnebyvpn/actions/runs/42113245766) **success**. Подтверждены 30 модульных тестов, 3 интеграционных сценария на disposable PostgreSQL 17.6, миграции 0001–0004 и SQL contract tests, typecheck. Осуществлялось на временном GitHub Runner, не на VPS MNEBYVPN.
+
+Тесты проверяют идемпотентные создания заказов Stars при параллельных запросах, повторное уведомление Prodamus, повторное successful_payment, но не реальный merchant credentials, интернет-оплату или доступ к VPN/DNS.
