@@ -1,4 +1,4 @@
-import { randomUUID, createHash } from 'node:crypto';
+import { randomUUID, createHash, randomBytes } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
 import type { PaymentProvider, PricedPlan } from './channels.ts';
 import type { StarsOrder } from './stars.ts';
@@ -88,10 +88,10 @@ export class PgBillingStore {
     const { rows } = await this.pool.query(orderSQL,[orderId]);
     return rows.length ? mapOrder(rows[0]) : null;
   }
-  async createTelegramOrder(telegramUserId: number, planId: string, requestId: string): Promise<OrderRecord> {
+  async createTelegramOrder(telegramUserId: number, planId: string, requestId: string, inviteToken?:string): Promise<OrderRecord> {
     if (!Number.isSafeInteger(telegramUserId) || telegramUserId <= 0)
       throw new Error('Invalid authenticated Telegram user ID');
-    return this.createOrder('telegram_stars', { telegramUserId }, planId, requestId);
+    return this.createOrder('telegram_stars', { telegramUserId }, planId, requestId, inviteToken);
   }
   /**
    * This method is for an independently authenticated WEBSITE session only.
@@ -104,10 +104,12 @@ export class PgBillingStore {
   private async createOrder(
     provider: PaymentProvider,
     who: { telegramUserId: number } | { accountId: string },
-    planId: string, requestId: string,
+    planId: string, requestId: string, inviteToken?: string,
   ): Promise<OrderRecord> {
     if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(planId)
         || !requestId || requestId.length > 160) throw new Error('Invalid request identity');
+    if (inviteToken!==undefined && !/^[A-Za-z0-9_-]{16,24}$/.test(inviteToken))
+      throw new Error('Invalid invite token');
     const c = await this.pool.connect();
     try {
       await c.query('BEGIN');
@@ -123,6 +125,9 @@ export class PgBillingStore {
         if (order.planId !== planId ||
             ('accountId' in who ? order.accountId !== who.accountId : order.telegramUserId !== who.telegramUserId))
           throw new Error('Request key reused for another customer or plan');
+        const saved=await c.query('SELECT invite_token FROM order_referrals WHERE order_id=$1',[order.id]);
+        if ((saved.rows[0]?.invite_token??undefined)!==inviteToken)
+          throw new Error('Request key reused with different referral');
         await c.query('COMMIT');
         return order;
       }
@@ -139,6 +144,16 @@ export class PgBillingStore {
         const account = await c.query('SELECT id FROM accounts WHERE id=$1',[who.accountId]);
         if (!account.rowCount) throw new Error('Unknown website account');
         accountId = who.accountId;
+      }
+      let referralOwner: string | null=null;
+      if(inviteToken!==undefined){
+        if(provider!=='telegram_stars')throw new Error('Referral requires authenticated Telegram checkout');
+        const invite=await c.query(
+          'SELECT referrer_account_id FROM referral_invites WHERE token=$1 AND plan_id=$2',
+          [inviteToken,planId]);
+        if(!invite.rowCount)throw new Error('Unknown or mismatched referral');
+        referralOwner=invite.rows[0].referrer_account_id;
+        if(referralOwner===accountId)throw new Error('Self-referral is not permitted');
       }
       const plan = await c.query('SELECT * FROM billing_plans WHERE id=$1 AND enabled=true',[planId]);
       if (!plan.rowCount) throw new Error('Plan not offered');
@@ -161,6 +176,11 @@ export class PgBillingStore {
         'INSERT INTO checkout_requests(channel,request_id,order_id) VALUES($1,$2,$3)',
         [provider,requestId,id]
       );
+      if(referralOwner!==null){
+        await c.query(
+          'INSERT INTO order_referrals(order_id,invite_token,referrer_account_id) VALUES($1,$2,$3)',
+          [id,inviteToken,referralOwner]);
+      }
       const result = await c.query(orderSQL,[id]);
       await c.query('COMMIT');
       return mapOrder(result.rows[0]);
@@ -263,6 +283,55 @@ export class PgBillingStore {
     } finally { c.release(); }
   }
 
+
+  /** Public catalog offers, created for this authenticated Telegram account.
+   * Only active Stars plans appear in forwarded cards; RUB pricing may also be shown.
+   */
+  async referralOffers(telegramUserId:number,max=3):Promise<Array<{
+    planId:string;title:string;product:Product;stars:number;rubMinor:number|null;token:string;
+  }>> {
+    if(!Number.isSafeInteger(telegramUserId)||telegramUserId<=0||max<1||max>4)
+      throw new Error('Invalid referral owner or page size');
+    const c=await this.pool.connect();
+    try {
+      await c.query('BEGIN');
+      const {rows:users}=await c.query(
+        `INSERT INTO accounts(id,telegram_user_id) VALUES(gen_random_uuid(),$1)
+         ON CONFLICT(telegram_user_id) DO UPDATE SET telegram_user_id=EXCLUDED.telegram_user_id
+         RETURNING id`,[String(telegramUserId)]);
+      const owner=users[0].id as string;
+      const plans=await c.query(
+        'SELECT * FROM billing_plans WHERE enabled=true AND stars IS NOT NULL ORDER BY id LIMIT $1',[max]);
+      const offers=[];
+      for(const row of plans.rows){
+        const token=randomBytes(12).toString('base64url');
+        const inserted=await c.query(
+          `INSERT INTO referral_invites(token,referrer_account_id,plan_id)
+           VALUES($1,$2,$3)
+           ON CONFLICT(referrer_account_id,plan_id) DO NOTHING RETURNING token`,
+          [token,owner,row.id]);
+        const active=inserted.rows[0]?.token ??
+          (await c.query('SELECT token FROM referral_invites WHERE referrer_account_id=$1 AND plan_id=$2',
+           [owner,row.id])).rows[0]?.token;
+        if(!active)throw new Error('Referral invite collision; retry');
+        offers.push({planId:row.id as string,title:row.title as string,product:row.product as Product,
+          stars:safeInt(row.stars),rubMinor:row.rub_minor===null?null:safeInt(row.rub_minor),
+          token:active as string});
+      }
+      await c.query('COMMIT');
+      return offers;
+    } catch(error){await c.query('ROLLBACK');throw error;}
+    finally{c.release();}
+  }
+
+  async referralPlan(token:string):Promise<PricedPlan|null> {
+    if(!/^[A-Za-z0-9_-]{16,24}$/.test(token))return null;
+    const {rows}=await this.pool.query(
+      `SELECT p.* FROM referral_invites i JOIN billing_plans p ON p.id=i.plan_id
+       WHERE i.token=$1 AND p.enabled=true AND p.stars IS NOT NULL`,[token]);
+    return rows.length?mapPlan(rows[0]):null;
+  }
+
   async pendingOutboxForOrder(orderId: string): Promise<number> {
     const {rows} = await this.pool.query(
       `SELECT count(*)::int AS count FROM reconcile_outbox b
@@ -271,6 +340,13 @@ export class PgBillingStore {
     );
     return rows[0].count;
   }
+}
+/** Immutable purchase snapshot, never live mutable plan prices at invoice time. */
+export function pricedPlanForOrder(record:OrderRecord):PricedPlan {
+ return {planId:record.planId,title:record.planTitle,product:record.product,
+   stars:record.provider==='telegram_stars'?record.amount:null,
+   rubMinor:record.provider==='prodamus'?record.amount:null,
+   durationSeconds:record.durationSeconds,dnsQuotaBytes:record.dnsQuotaBytes};
 }
 export function starsOrderFromDB(record: OrderRecord): StarsOrder {
   if (record.provider !== 'telegram_stars' || record.currency !== 'XTR' || !record.telegramUserId)

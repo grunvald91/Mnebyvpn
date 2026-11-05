@@ -172,3 +172,15 @@ GitHub Actions для документации не нужны. Без отде�
 - [ ] Реальные Telegram 10.4/13.2 E2E тесты после разрешения на работу с ботом, без сервера пока.
 
 Подробности: docs/phase6-telegram-widgets.md
+
+## Q. Этап 7 — реферальные HTMLBubbles и исправления ревью
+
+- [x] Определение оплачиваемого плана по digest *условий*, не изменяемому порядковому номеру.
+- [x] Stars invoice по immutable order snapshot, без повторного чтения изменившейся цены.
+- [x] Публичный пересылаемый HTMLBubble /share с VPN и Smart DNS, Stars/RUB ценами из каталога, без приватного chat_data.
+- [x] Короткая ссылка на Telegram бота с preselected plan, проверка live price и explicit Stars invoice.
+- [x] SQL 0006 referral_invites/order_referrals, атомарная атрибуция, запрет self-referral и изменения приглашения при replay.
+- [ ] Внешняя авторизованная оплата Продамус по реферальной ссылке, боевые провайдеры и сеть — не включены.
+- [ ] Реальные E2E виджетов и antiabuse/rate-limiting — до запуска.
+
+См. docs/phase7-referral-bubbles.md и docs/review-referrals-20261106.md.

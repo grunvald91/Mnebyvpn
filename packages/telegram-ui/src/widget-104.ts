@@ -3,15 +3,29 @@
  * never embedded in HTML or in public_data.
  */
 import { deflateSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 
 export interface StatusPackage {
   product:'vpn'|'smart_dns';state:string;expiresAt:Date|null;
   quotaLimitBytes:bigint|null;quotaUsedBytes:bigint;
 }
-export interface StarsPlan {title:string;planId:string;stars:number|null}
-type Card={n:string;d:string;p:number;buy:boolean};
+export interface StarsPlan {
+  title:string;planId:string;stars:number|null;
+  product?:string;durationSeconds?:number;dnsQuotaBytes?:bigint|null;
+}
+type Card={n:string;d:string;p:number;buy:boolean;key?:string};
 type State={v:1;k:'status'|'plans';c:Card[];more:number;updated:string};
 const MAX=4, GIB=1024n*1024n*1024n;
+/** Stable opaque catalog key, not a secret; never depend on mutable list order. */
+export function planWidgetKey(plan:StarsPlan):string {
+ if(!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(plan.planId) ||
+    plan.stars===null || !Number.isSafeInteger(plan.stars) || plan.stars<=0)
+   throw new Error('Invalid plan');
+ const terms=JSON.stringify([plan.planId,plan.title,plan.stars,
+   plan.product??null,plan.durationSeconds??null,
+   plan.dnsQuotaBytes===undefined||plan.dnsQuotaBytes===null?null:String(plan.dnsQuotaBytes)]);
+ return createHash('sha256').update('mnebyvpn:plan:v2:'+terms).digest('base64url').slice(0,16);
+}
 const gb=(n:bigint):string=>{
   const x=(n<0n?0n:n)*100n/GIB;
   return String(x/100n)+'.'+String(x%100n).padStart(2,'0')+' ГБ';
@@ -42,7 +56,7 @@ export function plansWidgetData(items:ReadonlyArray<StarsPlan>,now=new Date()):s
   const plans=items.filter(p=>p.stars!==null);
   return pack({v:1,k:'plans',c:plans.slice(0,MAX).map(p=>{
     if(!Number.isSafeInteger(p.stars)||p.stars===null||p.stars<=0)throw new Error('Invalid Stars price');
-    return {n:p.title.slice(0,72),d:String(p.stars)+' ⭐ за пакет',p:0,buy:true};
+    return {n:p.title.slice(0,72),d:String(p.stars)+' ⭐ за пакет',p:0,buy:true,key:planWidgetKey(p)};
   }),more:Math.max(0,plans.length-MAX),updated:stamp(now)});
 }
 export function validateWidgetData(json:string):void {
@@ -108,7 +122,7 @@ button[aria-selected=true],.buy{color:var(--tg-theme-button-text-color);backgrou
   },function(err){el("notice").textContent="Ошибка: "+String(err.code||"RETRY").slice(0,24)})
    .finally(function(){busy=false});
  }
- for(var i=0;i<4;i++){(function(j){el("b"+j).addEventListener("click",function(){ask("buy:"+j)})})(i)}
+ for(var i=0;i<4;i++){(function(j){el("b"+j).addEventListener("click",function(){ask("buy:"+String(view&&view.c[j]&&view.c[j].key||""))})})(i)}
  el("tabstatus").addEventListener("click",function(){ask("view:status")});
  el("tabplans").addEventListener("click",function(){ask("view:plans")});
  el("refresh").addEventListener("click",function(){ask(view&&view.k==="plans"?"view:plans":"view:status")});

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
 import {
-  vpnWidgetHtml,vpnWidgetPayload,statusWidgetData,plansWidgetData,validateWidgetData,
+  vpnWidgetHtml,vpnWidgetPayload,statusWidgetData,plansWidgetData,validateWidgetData,planWidgetKey,
 } from '../packages/telegram-ui/src/widget-104.ts';
 import { handleTelegramUpdate,type TelegramApi } from '../packages/billing/src/handlers.ts';
 import type { PgBillingStore,OrderRecord } from '../packages/billing/src/store.ts';
@@ -106,7 +106,7 @@ test('10.4 widget_query Stars purchase uses server-side published plan and invoi
   const f=fakeStore();
   await handleTelegramUpdate({update_id:105,widget_query:{
     id:'q-buy-1',from:{id:445566},chat:{id:445566,type:'private'},
-    message_id:123,data:'buy:0',
+    message_id:123,data:'buy:'+planWidgetKey(plan),
   }},f.db,f.tg,config);
   assert.deepEqual(f.calls.map(x=>x.method),['sendInvoice','answerWidgetQuery']);
   assert.equal(f.calls[0].params.chat_id,445566);

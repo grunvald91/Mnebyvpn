@@ -52,7 +52,7 @@ class TelegramHttp {
     return (data as {result?:unknown}).result;
   }
 }
-function getConfig(): {db:string; bot:TelegramHttp; tgSecret:string; starsSecret:string; pd:ProdamusConfig} {
+function getConfig(): {db:string; bot:TelegramHttp; tgSecret:string; starsSecret:string; pd:ProdamusConfig;botUsername?:string} {
   const env = required('MNEBYVPN_ENV');
   if (env !== 'offline-test') throw new Error('Only offline-test runner is enabled');
   const db=required('DATABASE_URL');
@@ -62,7 +62,7 @@ function getConfig(): {db:string; bot:TelegramHttp; tgSecret:string; starsSecret
   if (tgSecret.length<24 || starsSecret.length<32 || formSecret.length<32) throw new Error('Secrets too short');
   return {
     db, bot:new TelegramHttp(required('TELEGRAM_BOT_TOKEN')),
-    tgSecret,starsSecret,
+    tgSecret,starsSecret,botUsername:process.env.TELEGRAM_BOT_USERNAME,
     pd:{
       formUrl:required('PRODAMUS_FORM_URL'),
       notificationUrl:required('PRODAMUS_NOTIFICATION_URL'),
@@ -93,6 +93,7 @@ export function startOfflinePaymentsServer(): void {
         if (!Number.isSafeInteger(update.update_id)) {response(res,400,'BAD_UPDATE'); return;}
         await handleTelegramUpdate(update,db,config.bot,{
           starsPayloadSecret:config.starsSecret,prodamus:config.pd,
+          telegramBotUsername:config.botUsername,
         });
         response(res,200,'OK');
         return;

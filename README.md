@@ -63,3 +63,6 @@
 - [Этап 5: подтверждённые возвраты, PostgreSQL outbox worker и HTMLBubble-модель](docs/phase5-refunds-outbox-bubbles.md)
 
 - [Telegram Bot API 10.4: HTMLBubbles MNEBYVPN](docs/phase6-telegram-widgets.md)
+
+- [Ревью кода HTMLBubbles и реферальных покупок](docs/review-referrals-20261106.md)
+- [Этап 7: пересылаемые реферальные HTMLBubbles](docs/phase7-referral-bubbles.md)

@@ -1,6 +1,7 @@
 import {
-  vpnWidgetPayload, statusWidgetData, plansWidgetData,
+  vpnWidgetPayload, statusWidgetData, plansWidgetData,planWidgetKey,
 } from '../../telegram-ui/src/widget-104.ts';
+import { referralWidgetPayload } from '../../telegram-ui/src/referral-widget.ts';
 import {
   parseStarsPayload, validateStarsPreCheckout, validateStarsSuccess, buildStarsInvoice,
   type TelegramPreCheckout, type TelegramSuccessfulPayment,
@@ -9,7 +10,7 @@ import {
   verifyProdamusPayment, type Fields, type ProdamusConfig,
 } from './prodamus.ts';
 import {
-  PgBillingStore, prodamusOrderFromDB, starsOrderFromDB, starsPaymentHash,
+  PgBillingStore, prodamusOrderFromDB, starsOrderFromDB, starsPaymentHash, pricedPlanForOrder,
 } from './store.ts';
 
 export interface TelegramApi {
@@ -18,6 +19,8 @@ export interface TelegramApi {
 export interface PaymentHandlersConfig {
   starsPayloadSecret: string;
   prodamus: ProdamusConfig;
+  /** Real Telegram @bot username, configured at deployment. Never invent it. */
+  telegramBotUsername?: string;
 }
 export interface TelegramUpdate {
   update_id: number;
@@ -85,19 +88,19 @@ async function handleVpnWidgetQuery(
           if(!/message is not modified/i.test(String(error)))throw error;
         }
         answer=data;
-      } else if(/^buy:[0-3]$/.test(query.data)) {
-        const index=Number(query.data.slice(4));
-        const available=(await db.plans('telegram_stars')).filter(p=>p.stars!==null);
-        const selected=available[index];
-        if(!selected)answer='PLAN_UNAVAILABLE';
+      } else if(/^buy:[A-Za-z0-9_-]{16}$/.test(query.data)) {
+        const planKey=query.data.slice(4);
+        const candidates=(await db.plans('telegram_stars'))
+          .filter(p=>p.stars!==null && planWidgetKey(p)===planKey);
+        if(candidates.length!==1)answer='PLAN_UNAVAILABLE';
         else {
-          // Never accept amount, plan ID or account ID from the widget.
-          const plan=await db.plan(selected.planId);
+          // Revalidate plan against the DB, then invoice its IMMUTABLE order terms.
+          const plan=await db.plan(candidates[0].planId);
           if(!plan || plan.stars===null)answer='PLAN_UNAVAILABLE';
           else {
             const order=await db.createTelegramOrder(id,plan.planId,'widget-query:'+query.id);
             await tg.call('sendInvoice',{
-              ...buildStarsInvoice(starsOrderFromDB(order),plan,config.starsPayloadSecret),
+              ...buildStarsInvoice(starsOrderFromDB(order),pricedPlanForOrder(order),config.starsPayloadSecret),
             });
             answer='INVOICE_SENT';
           }
@@ -208,7 +211,7 @@ export async function handleTelegramUpdate(
       const plan = await db.plan(id);
       if (!plan || plan.stars === null) return;
       const order = await db.createTelegramOrder(cb.from.id, id, 'tg-callback:'+cb.id);
-      await tg.call('sendInvoice', { ...buildStarsInvoice(starsOrderFromDB(order), plan, config.starsPayloadSecret) });
+      await tg.call('sendInvoice', { ...buildStarsInvoice(starsOrderFromDB(order), pricedPlanForOrder(order), config.starsPayloadSecret) });
     } finally {
       await tg.call('answerCallbackQuery',{callback_query_id: cb.id});
     }
@@ -222,6 +225,41 @@ export async function handleTelegramUpdate(
     } else if (msg.text === '/plans') {
       const data=plansWidgetData(await db.plans('telegram_stars'));
       await tg.call('sendWidget',{...vpnWidgetPayload(msg.chat.id,data)});
+    } else if (msg.text === '/share') {
+      if (!config.telegramBotUsername) {
+        await tg.call('sendMessage',{chat_id:msg.chat.id,
+          text:'Реферальные карточки пока не настроены: отсутствует имя бота.'});
+        return;
+      }
+      const offers=await db.referralOffers(msg.from.id);
+      if (!offers.length) {
+        await tg.call('sendMessage',{chat_id:msg.chat.id,
+          text:'Пока нет опубликованных тарифов для реферальной карточки.'});
+        return;
+      }
+      await tg.call('sendWidget',{
+        ...referralWidgetPayload(msg.chat.id,offers,config.telegramBotUsername),
+      });
+    } else if (/^\/start\s+r[A-Za-z0-9_-]{16,24}$/.test(msg.text.trim())) {
+      const token=msg.text.trim().split(' ')[1].slice(1);
+      const offer=await db.referralPlan(token);
+      if (!offer || offer.stars===null) {
+        await tg.call('sendMessage',{chat_id:msg.chat.id,
+          text:'Предложение недоступно. Выберите действующий тариф командой /plans.'});
+        return;
+      }
+      try {
+        // The referral is recorded in the SAME transaction as the order.
+        const order=await db.createTelegramOrder(msg.from.id,offer.planId,
+          'referral-start:'+update.update_id,token);
+        await tg.call('sendInvoice',{
+          ...buildStarsInvoice(starsOrderFromDB(order),pricedPlanForOrder(order),
+            config.starsPayloadSecret),
+        });
+      } catch {
+        await tg.call('sendMessage',{chat_id:msg.chat.id,
+          text:'Не удалось оформить предложение. Проверьте тариф или откройте /plans.'});
+      }
     } else if (msg.text.startsWith('/start')) {
       const plans = await db.plans('telegram_stars');
       const available = plans.filter(p => p.stars !== null);
