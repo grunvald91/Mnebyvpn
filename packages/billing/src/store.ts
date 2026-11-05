@@ -301,7 +301,12 @@ export class PgBillingStore {
          RETURNING id`,[String(telegramUserId)]);
       const owner=users[0].id as string;
       const plans=await c.query(
-        'SELECT * FROM billing_plans WHERE enabled=true AND stars IS NOT NULL ORDER BY id LIMIT $1',[max]);
+        `WITH ranked AS (
+           SELECT *,row_number() OVER (PARTITION BY product ORDER BY id) AS product_rank
+           FROM billing_plans WHERE enabled=true AND stars IS NOT NULL
+         )
+         SELECT * FROM ranked ORDER BY product_rank,
+           CASE product WHEN 'vpn' THEN 0 WHEN 'smart_dns' THEN 1 ELSE 2 END,id LIMIT $1`,[max]);
       const offers=[];
       for(const row of plans.rows){
         const token=randomBytes(12).toString('base64url');
