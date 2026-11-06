@@ -5,6 +5,7 @@
  */
 import {setTimeout as delay} from 'node:timers/promises';
 import {Pool} from 'pg';
+import {pathToFileURL} from 'node:url';
 import {PgOutboxDispatcher} from '../../../packages/provisioning/src/pg-worker.ts';
 
 export interface ExpiryDispatcher {
@@ -62,6 +63,6 @@ async function main():Promise<void>{
     await pool.end();
   }
 }
-if(process.env.MNEBYVPN_EXPIRY_WORKER==='enabled'){
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   await main();
 }
