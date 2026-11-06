@@ -6,6 +6,9 @@ export interface VpnExpiryReminder {
   telegramUserId:string;
   daysBefore:1|3;
   expiresAt:Date;
+  // PostgreSQL timestamps have microseconds. JS Date only has milliseconds,
+  // so preserve the exact database representation for PK/deadline equality.
+  expiresAtExact:string;
   attempt:number;
 }
 export type DeliveryResult =
@@ -70,7 +73,7 @@ export class PgVpnExpiryReminderQueue {
       'FROM pick WHERE r.entitlement_id=pick.entitlement_id '+
       'AND r.days_before=pick.days_before AND r.expires_at=pick.expires_at '+
       'RETURNING r.entitlement_id,r.days_before,r.expires_at,r.attempts) '+
-      'SELECT c.*,a.telegram_user_id FROM claimed c '+
+      'SELECT c.*,c.expires_at::text AS expiry_exact,a.telegram_user_id FROM claimed c '+
       'JOIN entitlements e ON e.id=c.entitlement_id JOIN accounts a ON a.id=e.account_id');
     if(result.rowCount!==1)return null;
     const r=result.rows[0];
@@ -78,11 +81,14 @@ export class PgVpnExpiryReminderQueue {
     const days=Number(r.days_before);
     const attempts=Number(r.attempts);
     const expiry=new Date(r.expires_at);
+    const expiryExact=String(r.expiry_exact??'');
     if(!/^[1-9][0-9]{0,15}$/.test(userId)||![1,3].includes(days)||
-       !Number.isSafeInteger(attempts)||attempts<1||Number.isNaN(expiry.getTime()))
+       !Number.isSafeInteger(attempts)||attempts<1||Number.isNaN(expiry.getTime())||
+       !/^\d{4}-\d\d-\d\d /.test(expiryExact))
       throw Error('Invalid reminder data');
     return {entitlementId:String(r.entitlement_id),
-      telegramUserId:userId,daysBefore:days as 1|3,expiresAt:expiry,attempt:attempts};
+      telegramUserId:userId,daysBefore:days as 1|3,expiresAt:expiry,
+      expiresAtExact:expiryExact,attempt:attempts};
   }
   /** Final check before network I/O; renewals and refunds cancel stale jobs. */
   async stillEligible(job:VpnExpiryReminder):Promise<boolean>{
@@ -99,7 +105,7 @@ export class PgVpnExpiryReminderQueue {
       'e.expires_at<=clock_timestamp()+interval \'72 hours\' ELSE '+
       'e.expires_at>clock_timestamp() AND '+
       'e.expires_at<=clock_timestamp()+interval \'24 hours\' END) LIMIT 1',
-      [job.entitlementId,job.expiresAt,job.telegramUserId,job.daysBefore]);
+      [job.entitlementId,job.expiresAtExact,job.telegramUserId,job.daysBefore]);
     return result.rowCount===1;
   }
   async finalize(job:VpnExpiryReminder,status:'SENT'|'SKIPPED'|'FAILED'|'PENDING',
@@ -112,7 +118,7 @@ export class PgVpnExpiryReminderQueue {
       'sent_at=CASE WHEN $5=\'SENT\' THEN clock_timestamp() ELSE NULL END,'+
       'last_error_code=$7 WHERE entitlement_id=$1 AND days_before=$2 '+
       'AND expires_at=$3 AND attempts=$4 AND status=\'SENDING\'',
-      [job.entitlementId,job.daysBefore,job.expiresAt,job.attempt,status,seconds,reason]);
+      [job.entitlementId,job.daysBefore,job.expiresAtExact,job.attempt,status,seconds,reason]);
   }
   /** Never leave indefinitely queued jobs after expiry or renewal. */
   async discardStale():Promise<number>{
