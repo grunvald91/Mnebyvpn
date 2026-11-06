@@ -139,3 +139,21 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
   assert.match(client,/if\(state\.product!=='vpn'\|\|!plan/);
   assert.match(client,/Способ оплаты выбирается на защищённой странице/);
 });
+
+
+test('free 24h trial CTA remains visible in compact mobile layouts',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
+  const skin=readFileSync(new URL('../apps/web/public/neo.css',import.meta.url),'utf8');
+  const base=readFileSync(new URL('../apps/web/public/site.css',import.meta.url),'utf8');
+  assert.match(html,/id="trial-hero-button"[^>]*>🎁 Бесплатные 24 часа<\/button>/);
+  assert.match(html,/id="trial-button"/);
+  assert.match(base,/\.hero-art,\.hero-actions,\.hero-notes,\.features\{display:none\}/);
+  const mobileFix=skin.slice(skin.lastIndexOf('Mobile trial CTA:'));
+  assert.ok(mobileFix.includes('@media (max-width: 680px)'));
+  assert.match(mobileFix,/\.hero \.hero-actions\s*\{\s*display:\s*flex/);
+  assert.match(mobileFix,/#trial-button\.trial-button\s*\{\s*display:\s*flex/);
+  assert.match(mobileFix,/min-height:\s*44px/);
+  // neo.css loads after site.css: the last mobile rule overrides both hide rules.
+  assert.ok(html.indexOf('href="/site.css"')<html.indexOf('href="/neo.css"'));
+});
