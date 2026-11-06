@@ -101,12 +101,16 @@ export class PgOutboxDispatcher {
     const {rows}=await this.store.pool.query('SELECT expire_due_entitlements() AS count');
     return asInt(rows[0].count);
   }
-  async claim():Promise<OutboxSignal|null> {
+  async claim(products?:Product[]):Promise<OutboxSignal|null> {
+    if(products&&(!products.length||products.some(x=>x!=='vpn'&&x!=='smart_dns')))
+      throw Error('Invalid product filter');
     const {rows}=await this.store.pool.query(
       `WITH pick AS (
-         SELECT id FROM reconcile_outbox
-          WHERE handled_at IS NULL AND next_attempt_at<=clock_timestamp()
-          ORDER BY next_attempt_at,id LIMIT 1 FOR UPDATE SKIP LOCKED
+         SELECT b.id FROM reconcile_outbox b
+          JOIN entitlements e ON e.id=b.entitlement_id
+          WHERE b.handled_at IS NULL AND b.next_attempt_at<=clock_timestamp()
+            AND ($1::text[] IS NULL OR e.product=ANY($1::text[]))
+          ORDER BY b.next_attempt_at,b.id LIMIT 1 FOR UPDATE OF b SKIP LOCKED
        ), reserved AS (
          UPDATE reconcile_outbox b SET attempts=attempts+1,
            next_attempt_at=clock_timestamp()+interval '60 seconds'
@@ -114,14 +118,14 @@ export class PgOutboxDispatcher {
           RETURNING b.id,b.entitlement_id,b.desired_revision
        )
        SELECT r.id,r.entitlement_id,r.desired_revision,e.product
-         FROM reserved r JOIN entitlements e ON e.id=r.entitlement_id`);
+         FROM reserved r JOIN entitlements e ON e.id=r.entitlement_id`,[products??null]);
     if(!rows.length)return null;
     const r=rows[0];
     return {id:String(r.id),entitlementId:r.entitlement_id,
       revision:asInt(r.desired_revision),product:r.product};
   }
-  async processOnce():Promise<{status:'empty'|'synced'|'retry';reason?:string;signal?:OutboxSignal}> {
-    const signal=await this.claim();
+  async processOnce(products?:Product[]):Promise<{status:'empty'|'synced'|'retry';reason?:string;signal?:OutboxSignal}> {
+    const signal=await this.claim(products);
     if(!signal)return {status:'empty'};
     const adapter=this.adapters[signal.product];
     if(!adapter) {
