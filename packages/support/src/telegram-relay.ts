@@ -27,6 +27,24 @@ export function validSupportContact(raw:unknown):raw is string {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)||
     /^@[A-Za-z0-9_]{5,32}$/.test(value);
 }
+
+export function operatorReplyTarget(message:unknown,operatorId:number):
+  {userId:number;answer:string}|null{
+  if(!message||typeof message!=='object')return null;
+  const m=message as Record<string,any>;
+  if(m.chat?.type!=='private'||m.chat?.id!==operatorId||
+     m.from?.id!==operatorId||m.reply_to_message?.from?.is_bot!==true)
+    return null;
+  const quoted=typeof m.reply_to_message.text==='string'
+    ?m.reply_to_message.text:'';
+  const found=/^✉️ MNEBYVPN — обращение из бота\nID Telegram: ([0-9]{1,16})\n/.exec(quoted);
+  if(!found)return null;
+  const userId=Number(found[1]);
+  const answer=typeof m.text==='string'?m.text.trim():'';
+  if(!Number.isSafeInteger(userId)||userId<=0||userId===operatorId||
+     !validSupportText(answer,1,1500))return null;
+  return {userId,answer};
+}
 export async function telegramSupportSend(
   config:SupportConfig,text:string,to:number=config.operatorId,
 ):Promise<void>{
