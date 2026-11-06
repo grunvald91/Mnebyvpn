@@ -35,7 +35,7 @@ jobs:
             assert who.get('ok') and str((who.get('result') or {}).get('username','')).lower()=='mnebyvpn_bot'
             info=call('getWebhookInfo')
             current=(info.get('result') or {}).get('url') or ''
-            if current and current not in ('https://mnebyvpn.site/webhooks/telegram','https://cdn.servgo.ru/mnebyvpn-telegram/webhook'):
+            if current and current not in ('https://mnebyvpn.site/webhooks/telegram','https://cdn.servgo.ru/mnebyvpn-telegram/webhook','https://cdn.servgo.ru:8443/mnebyvpn-telegram/webhook'):
               raise ValueError('Another Telegram webhook is already configured')
             print('telegram_bot_verified=true')
             print('webhook_currently_set='+str(bool(current)).lower())
@@ -45,7 +45,7 @@ jobs:
               # Source: infra GitHub Actions run 42209151934. Telegram then
               # independently calls this URL using its own network.
               result=call('setWebhook',{
-                'url':'https://cdn.servgo.ru/mnebyvpn-telegram/webhook',
+                'url':'https://cdn.servgo.ru:8443/mnebyvpn-telegram/webhook',
                 'secret_token':secret,
                 'allowed_updates':['message','callback_query','pre_checkout_query'],
                 'max_connections':5,
@@ -54,10 +54,12 @@ jobs:
               if not result.get('ok') or result.get('result') is not True:
                 raise ValueError('Telegram rejected setWebhook')
               checked=call('getWebhookInfo').get('result') or {}
-              if checked.get('url')!='https://cdn.servgo.ru/mnebyvpn-telegram/webhook':
+              if checked.get('url')!='https://cdn.servgo.ru:8443/mnebyvpn-telegram/webhook':
                 raise ValueError('Telegram did not persist the intended webhook')
               print('telegram_webhook_activated=true')
               print('telegram_webhook_url_verified=true')
+              print('telegram_webhook_using_foreign_8443=true')
+              print('telegram_pending_after_activation='+str(checked.get('pending_update_count','unknown')))
             else:
               # Telegram updates must reach a verified foreign server.
               # Disable only our old Russian-host webhook, preserving pending updates.
