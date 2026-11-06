@@ -16,7 +16,9 @@ archive="$root/inbox/$DEPLOY_SHA.tgz"
 release="$root/releases/$DEPLOY_SHA"
 current="$root/current"
 test -d "$root/releases" || { echo "Dedicated release directory not provisioned" >&2; exit 3; }
-test -f "$root/runtime.env" || { echo "Dedicated runtime.env not provisioned" >&2; exit 3; }
+for config in runtime-bot.env runtime-vpn.env; do
+  test -f "$root/$config" || { echo "Dedicated runtime config not provisioned" >&2; exit 3; }
+done
 test -f "$archive" || { echo "Expected deployment artifact missing" >&2; exit 3; }
 if [[ -e "$current" && ! -L "$current" ]]; then
   echo "Refusing to replace non-symlink current" >&2
