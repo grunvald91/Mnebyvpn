@@ -121,7 +121,7 @@ jobs:
           test -f node_modules/pg/package.json
           mkdir -p release
           tar -czf release/release.tgz apps packages package.json node_modules
-          sha256sum release/release.tgz > release/release.tgz.sha256
+          (cd release && sha256sum release.tgz > release.tgz.sha256)
           printf '%s\n' "$GITHUB_SHA" > release/commit.sha
       - name: Publish tested runtime for gated deployment
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
