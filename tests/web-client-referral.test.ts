@@ -30,7 +30,7 @@ function openPage(href:string,stored:Map<string,string>,authenticated=false){
     if(path==='/api/plans')return {ok:true,json:async()=>({
       plans:[{id:'vpn-30',title:'VPN 30 days',product:'vpn',
         durationDays:30,rubMinor:9900,dnsQuotaBytes:null}],
-      checkoutEnabled:true,trialOffers:['vpn'],
+      checkoutEnabled:true,loginEnabled:true,trialOffers:['vpn'],
     })};
     if(path==='/api/me')return authState.value
       ?{ok:true,json:async()=>({csrf:'csrf-test',access:[],orders:[]})}
