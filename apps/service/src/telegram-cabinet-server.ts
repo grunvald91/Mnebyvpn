@@ -10,7 +10,7 @@
 import {createServer,type IncomingMessage,type ServerResponse} from 'node:http';
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {Pool} from 'pg';
-import {operatorReplyTarget,supportConfig,supportLimiter,telegramSupportSend,validSupportText}
+import {operatorReplyTarget,operatorWebsiteReply,supportConfig,supportLimiter,telegramSupportSend,validSupportText}
   from '../../../packages/support/src/telegram-relay.ts';
 import {PgBillingStore} from '../../../packages/billing/src/store.ts';
 import {activationView,awaitActivation,deviceView,manualView}
@@ -219,20 +219,14 @@ async function handleOperatorReply(update:any){
     // private message cannot be sent to an unknown email or @username.
     const quoted=m.reply_to_message?.from?.is_bot===true
       ?m.reply_to_message?.text:'';
-    const siteTicket=typeof quoted==='string'
-      ?/^✉️ MNEBYVPN — обращение с сайта\nЗаявка: ([0-9a-f-]{36})\n/.exec(quoted)
-      :null;
+    const siteTicket=operatorWebsiteReply(m,support.operatorId);
     if(siteTicket){
-      const answer=typeof m.text==='string'?m.text.trim():'';
-      if(!validSupportText(answer,1,1500)){
-        return {method:'sendMessage',chat_id:support.operatorId,
-          text:'Для ответа посетителю сайта напишите текст до 1500 символов в ответ на уведомление.'};
-      }
+      const {ticketId,answer}=siteTicket;
       const webPort=Number(process.env.WEB_PORT??'8791');
       if(!Number.isSafeInteger(webPort)||webPort<1||webPort>65535)
         return {method:'sendMessage',chat_id:support.operatorId,
           text:'Не настроен внутренний канал ответов на сайт.'};
-      const ticketId=siteTicket[1],payload=JSON.stringify({ticketId,message:answer});
+      const payload=JSON.stringify({ticketId,message:answer});
       const signature=createHmac('sha256',support.botToken)
         .update('MNEBYVPN-support\n'+ticketId+'\n'+answer).digest('hex');
       // Try co-located website first; if site and bot are deployed on
@@ -256,6 +250,10 @@ async function handleOperatorReply(update:any){
       }
       return {method:'sendMessage',chat_id:support.operatorId,
         text:'⚠️ Сайт не подтвердил сохранение ответа. Проверьте обращение, прежде чем повторять.'};
+    }
+    if(typeof quoted==='string'&&quoted.startsWith('✉️ MNEBYVPN — обращение с сайта')){
+      return {method:'sendMessage',chat_id:support.operatorId,
+        text:'Для ответа на обращение сайта нажмите «Ответить» и отправьте текст до 1500 символов.'};
     }
     if(typeof quoted==='string'&&
        quoted.startsWith('✉️ MNEBYVPN — обращение из бота')){
