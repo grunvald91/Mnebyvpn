@@ -311,7 +311,7 @@ function installHtml(subUrl:string,client:'incy'|'karing'):string {
   return '<!doctype html><html lang="ru"><head><meta charset="utf-8">'+
     '<meta name="viewport" content="width=device-width,initial-scale=1">'+
     '<meta name="referrer" content="no-referrer">'+
-    '<title>Подключение MnebyVPN</title>'+
+    '<title>Подключение MNEBYVPN</title>'+
     '<link rel="stylesheet" href="/neo.css"></head>'+
     '<body style="margin:0"><main data-client="'+client+'" data-sub="'+subUrl+'">'+
     '<h1>Подключить VPN в '+app+'</h1>'+
@@ -357,7 +357,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       res.setHeader('subscription-userinfo',
         'upload=0; download=0; total=0; expire='+
         Math.floor(owner.expiresAt.getTime()/1000));
-      res.setHeader('profile-title','base64:'+Buffer.from('MnebyVPN').toString('base64'));
+      res.setHeader('profile-title','base64:'+Buffer.from('MNEBYVPN').toString('base64'));
       send(res,200,Buffer.from(profile+'\n','utf8').toString('base64')+'\n',
         'text/plain; charset=utf-8');
     }catch{
@@ -400,7 +400,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     }
     try{
       await telegramSupportSend(support,
-        '✉️ MnebyVPN — обращение с сайта\nКонтакт: '+contact+
+        '✉️ MNEBYVPN — обращение с сайта\nКонтакт: '+contact+
         '\n\nСообщение:\n'+message);
       json(res,200,{delivered:true});
     }catch{
