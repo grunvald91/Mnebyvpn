@@ -284,7 +284,7 @@ function installHtml(subUrl:string,client:'incy'|'karing'):string {
     '<link rel="stylesheet" href="/neo.css"></head>'+
     '<body style="margin:0"><main data-client="'+client+'" data-sub="'+subUrl+'">'+
     '<h1>Подключить VPN в '+app+'</h1>'+
-    '<p>Установите '+app+', затем нажмите кнопку ниже для импорта подписки.</p>'+
+    '<p>Пробуем открыть '+app+' автоматически. Если переход не произошёл, нажмите кнопку ниже.</p>'+
     '<p><button id="open-app" type="button">Открыть в '+app+'</button></p>'+
     '<p>Если приложение не открылось — скопируйте ссылку и вставьте её в '+app+
       ' через «Добавить подписку / Импорт из URL».</p>'+
