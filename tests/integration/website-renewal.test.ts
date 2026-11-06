@@ -79,7 +79,10 @@ test('Smart DNS renewal adds purchased quota without resetting spent bytes',asyn
   assert.equal(await capture(first.id,'charge-dns-initial-'+suffix,5000),'APPLIED');
   const row=await pool.query('SELECT id FROM entitlements WHERE source_order_id=$1',[first.id]);
   const target=row.rows[0].id as string;
-  await pool.query('UPDATE entitlements SET quota_used_bytes=131072 WHERE id=$1',[target]);
+  await pool.query("UPDATE entitlements SET state='ACTIVE' WHERE id=$1",[target]);
+  const metered=await pool.query('SELECT debit_smart_dns_quota($1,$2,$3) AS result',
+    [target,'dns-renew-usage-'+suffix,131072]);
+  assert.equal(metered.rows[0].result,'ACCEPTED');
   const renewal=await store.createWebsiteOrder(accountId,planId,'dns-renew-'+suffix,undefined,target);
   assert.equal(await capture(renewal.id,'charge-dns-renew-'+suffix,5000),'APPLIED');
   const afterRenew=await pool.query('SELECT quota_limit_bytes,quota_used_bytes FROM entitlements WHERE id=$1',[target]);
