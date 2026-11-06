@@ -77,3 +77,12 @@ test('unactivated trial never shows a fabricated expiry or quota amount',()=>{
   assert.equal(trial.secondsRemaining,null);
   assert.equal(trial.quotaUsedBytes,null);
 });
+
+test('public website references the configured Telegram bot in navigation, hero and footer',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
+  const links=html.match(/https:\/\/t\.me\/MnebyVPN_bot/g)||[];
+  assert.equal(links.length,3);
+  assert.match(html,/@MnebyVPN_bot/);
+  assert.match(html,/rel="noopener noreferrer"/);
+});
