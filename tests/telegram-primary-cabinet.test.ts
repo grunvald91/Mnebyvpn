@@ -20,7 +20,7 @@ before(async()=>{
   cwd:fileURLToPath(new URL('../',import.meta.url)),stdio:['ignore','ignore','pipe'],
   env:{...process.env,DATABASE_URL:'',MNEBYVPN_ENV:'production',BOT_PUBLIC_INFO_ONLY:'no',
    BOT_PORT:String(port),TELEGRAM_WEBHOOK_SECRET_SHA256:digest,
-   SUPPORT_TELEGRAM_BOT_TOKEN:'',SUPPORT_TELEGRAM_CHAT_ID:'',
+   TELEGRAM_TOKEN_BOT:'',
    SUPPORT_TELEGRAM_OPERATOR_ID:''},
  });
  child.stderr?.on('data',b=>errors+=b.toString());
@@ -61,7 +61,7 @@ test('support button and /support use ForceReply, without false delivery when re
  const prompted=await button.json() as any;
  assert.equal(prompted.method,'sendMessage');
  assert.equal(prompted.reply_markup.force_reply,true);
- assert.match(prompted.text,/MnebyVPN/);
+ assert.match(prompted.text,/MNEBYVPN/);
  const command=await update({update_id:201,message:{chat:{id:user,type:'private'},
   from:{id:user},text:'/support'}});
  assert.equal((await command.json() as any).reply_markup.force_reply,true);
@@ -72,7 +72,7 @@ test('support button and /support use ForceReply, without false delivery when re
  assert.doesNotMatch(response.text,/Обращение отправлено/);
  const reply=await update({update_id:203,message:{chat:{id:user,type:'private'},
   from:{id:user},text:'Помогите подключить VPN на телефон',
-  reply_to_message:{from:{is_bot:true},text:'✉️ MnebyVPN — напишите вопрос в поддержку.'}}});
+  reply_to_message:{from:{is_bot:true},text:'✉️ MNEBYVPN — напишите вопрос в поддержку.'}}});
  assert.match((await reply.json() as any).text,/Канал поддержки ещё настраивается/);
 });
 test('VPN callback edits Telegram message instead of redirect to website',async()=>{
