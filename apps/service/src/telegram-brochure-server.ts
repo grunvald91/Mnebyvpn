@@ -57,7 +57,7 @@ async function readBody(req:IncomingMessage){
 function menu(id:number){
   return {
     method:'sendMessage',chat_id:id,
-    text:'🌐 Мне бы VPN\n\nПодготавливаем VPN и Smart DNS. Сайт уже доступен, но подключение, пробный доступ и оплата пока не запущены.\n\nКогда проверим безопасность соединений и выдачу доступа, здесь появится управление подпиской.',
+    text:'🌐 MnebyVPN\n\nПодготавливаем VPN и Smart DNS. Сайт уже доступен, но подключение, пробный доступ и оплата пока не запущены.\n\nКогда проверим безопасность соединений и выдачу доступа, здесь появится управление подпиской.',
     reply_markup:{inline_keyboard:[
       [{text:'🌍 Открыть сайт',url:'https://mnebyvpn.site'}],
       [{text:'🌐 VPN',callback_data:'info:vpn'},
