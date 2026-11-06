@@ -117,7 +117,13 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
   assert.match(neoCss,/@media\(max-width:680px\)/);
   assert.match(html,/<h1>VPN без<span> лишних шагов<\/span><\/h1>/);
   assert.doesNotMatch(html,/<p class="hero-lead">/);
-  assert.match(neoCss,/\.hero\{display:block;position:relative;min-height:116px;padding:14px 0 7px/);
+  assert.match(neoCss,/\.hero\{display:block;position:relative;min-height:82px;padding:10px 0 5px/);
+  assert.match(neoCss,/\.portal-avatar/);
+  assert.match(html,/<img class="portal-avatar" src="\/brand-avatar\.webp"/);
+  assert.match(html,/<img class="brand-avatar" src="\/brand-avatar\.webp"/);
+  assert.match(html,/rel="icon" type="image\/webp" href="\/brand-avatar\.webp"/);
+  assert.match(server,/url\.pathname === '\/brand-avatar\.webp'/);
+  assert.match(server,/brandAvatar, 'image\/webp'/);
   assert.match(html,/В тариф входит/);
   assert.match(html,/VPN-подключение<\/span><strong id="selected-quota">Входит/);
   assert.doesNotMatch(html,/Не входит|↗|→/);
