@@ -24,12 +24,12 @@ test('node endpoint and HMAC are exact, never unencrypted public control',async(
   assert.ok(Math.abs(Date.now()/1000-request.ts)<5);
   assert.equal(request.id,entitlement);
   calls++;
-  if(request.op==='inspect')return Response.json(state);
+  if(request.op==='inspect')return Response.json(state,{headers:{Date:new Date().toUTCString()}});
   assert.equal(request.op,'apply');
   state={revision:request.revision,enabled:request.enabled,
    expiresAt:request.enabled?request.expiresAt:null,
    credential:request.enabled?credential:null};
-  return Response.json({status:'applied',revision:request.revision});
+  return Response.json({status:'applied',revision:request.revision},{headers:{Date:new Date().toUTCString()}});
  };
  const node=new SignedXrayNodeApi(key,mock);
  assert.equal(node.enforcesHardExpiry,true);
@@ -56,13 +56,40 @@ test('unsafe or inconsistent remote state fails closed',async()=>{
  assert.throws(()=>parseNodeRecord({revision:2,enabled:true,expiresAt:expiry.toISOString()}));
  assert.throws(()=>parseNodeRecord({revision:2,enabled:true,expiresAt:'bad',credential}));
  assert.throws(()=>parseNodeRecord({revision:-1,enabled:false,expiresAt:null}));
- const stale:typeof fetch=async()=>Response.json({status:'stale',revision:99});
+ const stale:typeof fetch=async()=>Response.json({status:'stale',revision:99},{headers:{Date:new Date().toUTCString()}});
  const api=new SignedXrayNodeApi(key,stale);
  assert.equal(await api.apply({entitlementId:entitlement,revision:2,
    enabled:false,expiresAt:null},entitlement+':2:disable'),'unknown');
  await assert.rejects(api.apply({entitlementId:entitlement,revision:2,
    enabled:false,expiresAt:null},entitlement+':1:enable'));
- const fail:typeof fetch=async()=>new Response('{}',{status:503});
+ const fail:typeof fetch=async()=>new Response('{}',{status:503,headers:{Date:new Date().toUTCString()}});
  await assert.rejects(new SignedXrayNodeApi(key,fail).inspect(entitlement),
    /HTTP 503/);
+});
+
+test('31-second foreign-node clock skew is compensated for exact 24h deadline',async()=>{
+ let current:any={revision:0,enabled:false,expiresAt:null};
+ let submittedDeadline='';
+ const skewMs=-31_000;
+ const remote:typeof fetch=async(_input,opts)=>{
+   const nowHeader=new Date(Date.now()+skewMs).toUTCString();
+   const body=JSON.parse(String(opts?.body));
+   if(body.op==='inspect')
+     return Response.json(current,{headers:{Date:nowHeader}});
+   submittedDeadline=body.expiresAt;
+   current={revision:body.revision,enabled:true,
+     expiresAt:body.expiresAt,credential};
+   return Response.json({status:'applied',revision:body.revision},
+     {headers:{Date:nowHeader}});
+ };
+ const api=new SignedXrayNodeApi(key,remote);
+ const desired={entitlementId:entitlement,revision:7,
+   enabled:true,expiresAt:new Date(Date.now()+86400_000)};
+ assert.equal(await api.apply(desired,entitlement+':7:enable'),'applied');
+ const appliedMs=Date.parse(submittedDeadline);
+ assert.ok(Math.abs((appliedMs-desired.expiresAt.getTime())-skewMs)<=1500,
+   'node must receive deadline in its own clock frame');
+ assert.equal((await api.inspect(entitlement)).revision,7);
+ assert.equal(await api.profileFor(entitlement,7,desired.expiresAt),
+   makeVpnImportUri(credential));
 });

@@ -19,15 +19,15 @@ test('signed Xray adapter drives real 24h trial database transitions and revocat
    const body=JSON.parse(String(options?.body));
    if(body.op==='inspect'){
      const found=state.get(body.id);
-     return Response.json(found??{revision:0,enabled:false,expiresAt:null});
+     return Response.json(found??{revision:0,enabled:false,expiresAt:null},{headers:{Date:new Date().toUTCString()}});
    }
    const old=state.get(body.id);
    if(old&&old.revision>body.revision)return Response.json({
-     status:'stale',revision:old.revision});
+     status:'stale',revision:old.revision},{headers:{Date:new Date().toUTCString()}});
    state.set(body.id,{revision:body.revision,enabled:body.enabled,
       expiresAt:body.enabled?body.expiresAt:null,
       credential:body.enabled?credential:null});
-   return Response.json({status:'applied',revision:body.revision});
+   return Response.json({status:'applied',revision:body.revision},{headers:{Date:new Date().toUTCString()}});
  };
  const node=new SignedXrayNodeApi('ab'.repeat(32),fakeNode);
  const worker=new PgOutboxDispatcher(pool,{vpn:node});
