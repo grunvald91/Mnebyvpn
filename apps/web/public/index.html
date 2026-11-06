@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#080c20">
-  <meta name="description" content="Мне бы VPN — выбор срока VPN-подписки и управление доступом. Smart DNS и совместный тариф — в разработке.">
-  <title>Мне бы VPN — тарифы и личный кабинет</title>
+  <meta name="description" content="Мне бы VPN — проект простого VPN-подключения и понятного управления доступом. Начинаем с VPN, другие возможности развиваем и проверяем.">
+  <title>Мне бы VPN — VPN без лишних шагов</title>
   <link rel="stylesheet" href="/site.css">
   <link rel="stylesheet" href="/neo.css">
   <link rel="icon" type="image/webp" href="/brand-avatar.webp">
@@ -33,14 +33,16 @@
   <main>
     <section class="hero shell">
       <div class="hero-copy">
-        <p class="eyebrow"><span class="eyebrow-line"></span> ПРОСТО. ПОНЯТНО. ПОД КОНТРОЛЕМ.</p>
+        <p class="eyebrow"><span class="eyebrow-line"></span> НА СТАРТЕ. ПРОЩЕ С КАЖДЫМ ШАГОМ.</p>
         <h1>VPN без<span> лишних шагов</span></h1>
+        <p class="hero-lead">Подключение, управление и помощь — без технической путаницы. Мы создаём сервис, которым удобно пользоваться.</p>
+        <p class="hero-start"><strong>Мы только начинаем.</strong> <a href="#support">Помогите проекту стать лучше</a></p>
         <div class="hero-actions">
-          <button class="button button-primary" id="trial-hero-button" type="button">🎁 Бесплатные 24 часа</button>
-          <a class="button button-secondary" href="#plans">Тарифы</a>
+          <button class="button button-primary hidden" id="trial-hero-button" type="button" tabindex="-1" aria-hidden="true">Бесплатные 24 часа</button>
+          <a class="button button-primary" href="#plans">Выбрать VPN</a>
           <a class="button button-outline telegram-hero-link" href="#account">Мой доступ</a>
         </div>
-        <div class="hero-notes"><span><b class="note-dot"></b> Прозрачные сроки</span><span><b class="note-dot"></b> Один аккаунт</span></div>
+        <div class="hero-notes"><span><b class="note-dot"></b> Меньше сложных шагов</span><span><b class="note-dot"></b> Помощь — в приоритете</span><span><b class="note-dot"></b> Развиваем возможности</span></div>
       </div>
       <div class="portal-art" aria-hidden="true"><span class="portal-flare"></span><img class="portal-avatar" src="/brand-avatar.webp" alt="" width="112" height="112" decoding="async"><span class="portal-orbit"></span></div>
       <div class="hero-art" aria-hidden="true">
@@ -53,8 +55,8 @@
 
     <section class="features shell" id="features">
       <div class="section-head">
-        <div><p class="eyebrow">ВОЗМОЖНОСТИ</p><h2>VPN — основной продукт. Остальное — в разработке.</h2></div>
-        <p class="section-desc">Выбирайте подходящий вариант и отслеживайте всё в своём кабинете.</p>
+        <div><p class="eyebrow">ВОЗМОЖНОСТИ</p><h2>Начинаем с VPN. Идём к большему.</h2></div>
+        <p class="section-desc">Один понятный сервис для подключения и управления. Новые режимы появятся после проверки.</p>
       </div>
       <div class="feature-grid">
         <article class="feature-card"><span class="feature-icon">◈</span><h3>VPN</h3><p>Защищённый туннель для интернет-соединений через совместимый VPN-клиент.</p><span class="feature-meta">Отдельный VPN-доступ</span></article>
@@ -131,6 +133,24 @@
           <div class="coming-item coming-dns"><span class="coming-icon" aria-hidden="true"><span class="layered-icon"></span></span><p><strong>Smart DNS и тариф VPN + DNS</strong><span>В разработке. Станут доступны после проверки совместной работы.</span></p><span class="coming-status">В разработке</span></div>
           <div class="coming-item coming-network"><span class="coming-icon" aria-hidden="true"><span class="signal-icon">▂▅▇</span></span><p><strong>Обычный интернет при ограничениях мобильной сети</strong><span>Планируем отдельный режим для ситуаций, когда привычные сайты и приложения недоступны. Пока не работает; возможности зависят от сети и устройства.</span></p><span class="coming-status">Планируется</span></div>
         </section>
+      </div>
+    </section>
+
+    <section class="launch-support shell" id="support" aria-labelledby="launch-support-title">
+      <div class="launch-support-copy">
+        <p class="eyebrow">ПРОЕКТ В НАЧАЛЕ ПУТИ</p>
+        <h2 id="launch-support-title">Делаем сложное простым</h2>
+        <p>«Мне бы VPN» создаётся с одной идеей: технологии должны помогать, а не заставлять разбираться в настройках. Наши ориентиры — понятное подключение, быстрая и человеческая помощь, удобная работа на разных устройствах и больше функций в одном месте.</p>
+        <p class="launch-support-state">Сейчас сосредоточены на VPN. Smart DNS, совместный режим и другие возможности пока разрабатываются и не предлагаются как готовый доступ.</p>
+      </div>
+      <div class="launch-support-action">
+        <h3>Поддержите развитие проекта</h3>
+        <p>Если вам близка эта идея, поделитесь проектом и расскажите о нём тем, кому важно простое подключение. Так вы поможете нам найти первых пользователей.</p>
+        <div class="launch-support-buttons">
+          <a class="button button-primary" href="https://t.me/share/url?url=https%3A%2F%2Ft.me%2FMnebyVPN_bot" target="_blank" rel="noopener noreferrer">Поделиться проектом</a>
+          <a class="button button-outline" href="https://t.me/MnebyVPN_bot" target="_blank" rel="noopener noreferrer">Открыть бота</a>
+        </div>
+        <p class="launch-support-fine">Это не сбор пожертвований. Платные подключения — только после завершения необходимых проверок.</p>
       </div>
     </section>
 
