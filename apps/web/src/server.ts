@@ -171,7 +171,7 @@ async function callback(req: IncomingMessage, res: ServerResponse, url: URL) {
     cookie(req, challengeCookie), url.searchParams.get('state'), sessionSecret);
   setCookie(res, challengeCookie, '', 0);
   const code = url.searchParams.get('code');
-  if (!verifier || !code || code.length > 2048 || !/^[A-Za-z0-9_.-]+$/.test(code)) {
+  if (!verifier || !code || code.length > 2048 || /[\\x00-\\x1F\\x7F]/.test(code)) {
     redirect(res, '/?login=failed'); return;
   }
   try {
