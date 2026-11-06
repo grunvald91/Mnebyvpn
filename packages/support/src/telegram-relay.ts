@@ -10,11 +10,13 @@ export function supportConfig(env:NodeJS.ProcessEnv=process.env):SupportConfig|n
   // Its addition to the private backend environment must be audited.
   const botToken=env.TELEGRAM_TOKEN_BOT??'';
   const operator=env.SUPPORT_TELEGRAM_OPERATOR_ID??'';
-  if(!botToken&&!operator)return null;
+  // Support is optional: a partial or invalid configuration must never
+  // crash the primary VPN bot, billing, or the public website.
+  if(!botToken||!operator)return null;
   if(!/^[0-9]{5,20}:[A-Za-z0-9_-]{25,}$/.test(botToken)||
      !/^[1-9][0-9]{0,15}$/.test(operator)||
      !Number.isSafeInteger(Number(operator)))
-    throw Error('Invalid MNEBYVPN support operator configuration');
+    return null;
   return {botToken,operatorId:Number(operator)};
 }
 export function validSupportText(raw:unknown,min=10,max=1500):raw is string {
