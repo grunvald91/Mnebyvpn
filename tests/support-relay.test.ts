@@ -24,6 +24,8 @@ test('validate support text and callback contact without accepting controls',()=
   assert.equal(validSupportText('abc\u0000def'),false);
   assert.equal(validSupportText('x'.repeat(1501)),false);
   assert.equal(validSupportContact('@mnebyvpn_user'),true);
+  assert.equal(validSupportContact('hello@example.com'),true);
+  assert.equal(validSupportContact('not-a-contact'),false);
   assert.equal(validSupportContact('bad\ncontact'),false);
 });
 test('support limiter permits three messages per window, then reopens',()=>{
