@@ -5,7 +5,7 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { createHash,randomBytes } from 'node:crypto';
+import { createHash,createHmac,randomBytes,randomUUID,timingSafeEqual } from 'node:crypto';
 import { Pool } from 'pg';
 import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
   from '../../../packages/support/src/telegram-relay.ts';
@@ -122,6 +122,8 @@ if(guestTrialEnabled&&(!/^[a-f0-9]{64}$/i.test(workerProfileToken)||!subscriptio
   throw Error('Guest VPN trial requires the isolated authenticated node worker');
 const guestCookie=tls?'__Host-mnebyvpn_guest':'mnebyvpn_guest';
 const guestPattern=/^[A-Za-z0-9_-]{43}$/;
+const supportCookie=tls?'__Host-mnebyvpn_support':'mnebyvpn_support';
+const supportCookiePattern=/^([0-9a-f-]{36})\.([A-Za-z0-9_-]{43})$/;
 const policy = [
   "default-src 'none'", "script-src 'self'", "style-src 'self'",
   "connect-src 'self'", "img-src 'self' data:", "font-src 'self'",
@@ -381,6 +383,47 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if(req.method==='GET'&&url.pathname==='/api/support/status'){
     json(res,200,{available:!!support});return;
   }
+  if(req.method==='GET'&&url.pathname==='/api/support/ticket'){
+    const matched=supportCookiePattern.exec(cookie(req,supportCookie)??'');
+    if(!matched){json(res,200,{status:'NONE'});return;}
+    const tokenHash=sessionHash(matched[2]);
+    const result=await pool.query(
+      "SELECT delivery_state,answer,answered_at FROM website_support_tickets WHERE id=$1 AND token_sha256=$2",
+      [matched[1],tokenHash]);
+    if(result.rowCount!==1){json(res,200,{status:'NONE'});return;}
+    json(res,200,{status:result.rows[0].delivery_state,
+      answer:result.rows[0].answer??null,
+      answeredAt:result.rows[0].answered_at?.toISOString()??null});
+    return;
+  }
+  if(req.method==='POST'&&url.pathname==='/api/support/operator-reply'){
+    if(!support){json(res,503,{code:'SUPPORT_NOT_CONFIGURED'});return;}
+    if(!req.headers['content-type']?.startsWith('application/json')){
+      json(res,415,{code:'UNSUPPORTED_MEDIA_TYPE'});return;
+    }
+    const body=await bodyJson(req);
+    const ticketId=body.ticketId,message=body.message;
+    if(typeof ticketId!=='string'||
+       !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ticketId)||
+       !validSupportText(message,1,1500)){
+      json(res,400,{code:'INVALID_REPLY'});return;
+    }
+    const signature=req.headers['x-mnebyvpn-support-signature'];
+    if(typeof signature!=='string'||!/^[0-9a-f]{64}$/i.test(signature)){
+      json(res,403,{code:'FORBIDDEN'});return;
+    }
+    const expected=createHmac('sha256',support.botToken)
+      .update('MNEBYVPN-support\n'+ticketId+'\n'+message).digest('hex');
+    if(!timingSafeEqual(Buffer.from(signature,'hex'),Buffer.from(expected,'hex'))){
+      json(res,403,{code:'FORBIDDEN'});return;
+    }
+    const updated=await pool.query(
+      "UPDATE website_support_tickets SET answer=$2,answered_at=clock_timestamp() "+
+      "WHERE id=$1 AND answer IS NULL AND delivery_state<>'FAILED' RETURNING id",
+      [ticketId,message.trim()]);
+    if(updated.rowCount!==1){json(res,409,{code:'TICKET_NOT_OPEN'});return;}
+    json(res,200,{saved:true});return;
+  }
   if(req.method==='POST'&&url.pathname==='/api/support'){
     if(!support){json(res,503,{code:'SUPPORT_NOT_CONFIGURED'});return;}
     if(req.headers.origin!==publicOrigin||
@@ -398,15 +441,23 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     if(!contactLimit(contactKey)||!globalSupportLimit('global')){
       json(res,429,{code:'SUPPORT_RATE_LIMIT'});return;
     }
+    const ticketId=randomUUID(),ticketToken=randomBytes(32).toString('base64url');
+    await pool.query(
+      "INSERT INTO website_support_tickets(id,token_sha256,contact,question) VALUES($1,$2,$3,$4)",
+      [ticketId,sessionHash(ticketToken),contact,message]);
     try{
       await telegramSupportSend(support,
-        '✉️ MNEBYVPN — обращение с сайта\nКонтакт: '+contact+
-        '\n\nСообщение:\n'+message);
-      json(res,200,{delivered:true});
+        '✉️ MNEBYVPN — обращение с сайта\nЗаявка: '+ticketId+
+        '\nКонтакт: '+contact+'\n\nСообщение:\n'+message);
+      await pool.query("UPDATE website_support_tickets SET delivery_state='DELIVERED',delivered_at=clock_timestamp() WHERE id=$1",
+        [ticketId]);
+      setCookie(res,supportCookie,ticketId+'.'+ticketToken,60*60*24*30);
+      json(res,200,{delivered:true,webTicket:true});return;
     }catch{
-      json(res,503,{code:'SUPPORT_DELIVERY_FAILED'});
+      await pool.query("UPDATE website_support_tickets SET delivery_state='FAILED' WHERE id=$1 AND delivery_state='PENDING'",
+        [ticketId]).catch(()=>{});
+      json(res,503,{code:'SUPPORT_DELIVERY_UNCONFIRMED'});return;
     }
-    return;
   }
   if (req.method === 'GET' && url.pathname === '/healthz') {
     json(res, 200, { status: 'ok', component: 'web-cabinet' }); return;
