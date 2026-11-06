@@ -31,6 +31,7 @@ const pool=process.env.DATABASE_URL ? new Pool({
 const store=pool?new PgBillingStore(pool):null;
 // A bot must never silently inherit the provisioning worker's write token.
 const vpnReadToken=process.env.REMNAWAVE_READ_API_TOKEN;
+const nodeProfileToken=process.env.VPN_WORKER_PROFILE_TOKEN??'';
 const vpnApi=(process.env.REMNAWAVE_API_URL&&vpnReadToken&&
   process.env.VPN_SUBSCRIPTION_ORIGIN&&process.env.REMNAWAVE_SQUAD_UUIDS)
   ?new RemnawaveApi({
@@ -138,6 +139,27 @@ async function connectVpn(id:number){
   if(!candidate)return msg(
     '🔌 Подключение VPN\n\nПока нет действующего VPN-доступа, полностью подтверждённого узлом. Если вы запросили пробные сутки, проверьте статус.',
     [[{text:'🔐 Мои подключения',callback_data:'nav:status'}],[homeButton]]);
+  if(/^[a-f0-9]{64}$/i.test(nodeProfileToken)){
+    try{
+      const response=await fetch('http://127.0.0.1:8794/profile',{
+        method:'POST',redirect:'error',signal:AbortSignal.timeout(6000),
+        headers:{'Authorization':'Bearer '+nodeProfileToken,
+          'Content-Type':'application/json'},
+        body:JSON.stringify({telegramUserId:id}),
+      });
+      if(!response.ok)throw Error('VPN profile worker unavailable');
+      const payload:unknown=await response.json();
+      const url=(payload as {profile?:unknown})?.profile;
+      if(typeof url!=='string'||!url.startsWith('vless://')||
+         !url.includes('@cdn.servgo.ru:8443?'))
+        throw Error('Unconfirmed VPN credential');
+      return msg('🔌 Ваш VPN готов\n\nСкопируйте личную ссылку VLESS ниже и импортируйте её в приложение с поддержкой VLESS / WebSocket / TLS. Не пересылайте ссылку другим людям.\n\n'+url,
+        [[{text:'🔐 Мои подключения',callback_data:'nav:status'}],[homeButton]]);
+    }catch{
+      return msg('🔌 Подключение VPN\n\nУзел ещё не подтвердил профиль. Проверьте статус через несколько секунд.',
+        [[{text:'🔁 Проверить снова',callback_data:'nav:connect'}],[homeButton]]);
+    }
+  }
   if(!vpnApi)return msg(
     '🔌 Подключение VPN\n\nДоступ подтверждён в кабинете, но серверная выдача конфигураций ещё не настроена. Данные не изменены.',
     [[{text:'🔁 Проверить снова',callback_data:'nav:connect'}],[homeButton]]);
