@@ -52,7 +52,7 @@ test('signed Xray adapter drives real 24h trial database transitions and revocat
    assert.equal(active?.revision,2);
    assert.equal(state.get(id!).revision,2);
    assert.equal(await node.profileFor(id!,active!.revision,active!.expiresAt),
-     'vless://'+credential+'@cdn.servgo.ru:8443?encryption=none&security=tls&type=ws&host=cdn.servgo.ru&sni=cdn.servgo.ru&path=%2Fmnebyvpn-vpn%2Fws#'+encodeURIComponent('Мне бы VPN'));
+     'vless://'+credential+'@cdn.servgo.ru:8443?encryption=none&security=tls&type=ws&host=cdn.servgo.ru&sni=cdn.servgo.ru&path=%2Fmnebyvpn-vpn%2Fws#'+encodeURIComponent('MNEBYVPN'));
    // Prove refund/expiry takes away the profile, not just changes the DB state.
    await pool.query(
      "UPDATE entitlements SET starts_at=now()-interval '25 hours',"+
