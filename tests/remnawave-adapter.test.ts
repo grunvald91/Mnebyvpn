@@ -25,7 +25,7 @@ test('hard-expiry acceptance needs private report digest and all pinned versions
 });
 test('panel records must have exact entitlement ownership, monotonic revision and expiry',()=>{
   assert.deepEqual(parseRemnawaveObservation(id,null),
-    {revision:0,enabled:false,expiresAt:null});
+    {revision:0,enabled:false,expiresAt:null,absent:true});
   assert.deepEqual(parseRemnawaveObservation(id,record(2,'DISABLED')),{
     revision:2,enabled:false,expiresAt:now,
   });
@@ -52,7 +52,7 @@ test('adapter applies allowed operations and rejects stale/replayed operation ID
  };
  const a=new RemnawaveProvisioningAdapter(panel,proof);
  const desired={entitlementId:id,revision:1,enabled:true,expiresAt:now};
- assert.equal(a.enforcesHardExpiry,true);
+ assert.equal('enforcesHardExpiry' in a,false,'panel read-back alone cannot confirm node expiry');
  assert.deepEqual(await a.inspect(id),{revision:0,enabled:false,expiresAt:null});
  await assert.rejects(a.apply(desired,'bad'));
  assert.deepEqual(writes,[]);
