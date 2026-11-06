@@ -8,9 +8,14 @@
  * only by authenticated Telegram updates, not caller-supplied account IDs.
  */
 import {createServer,type IncomingMessage,type ServerResponse} from 'node:http';
-import {createHash,timingSafeEqual} from 'node:crypto';
+import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {Pool} from 'pg';
-import {PgBillingStore} from '../../../packages/billing/src/store.ts';
+import {
+  PgBillingStore,starsOrderFromDB,pricedPlanForOrder,starsPaymentHash,
+} from '../../../packages/billing/src/store.ts';
+import {
+  buildStarsInvoice,parseStarsPayload,validateStarsPreCheckout,validateStarsSuccess,
+} from '../../../packages/billing/src/stars.ts';
 import {activationView,awaitActivation,deviceView,manualView}
   from './vpn-onboarding.ts';
 import {formatDuration,formatRoubles} from '../../../packages/telegram-ui/src/menu.ts';
@@ -20,6 +25,11 @@ const digest=process.env.TELEGRAM_WEBHOOK_SECRET_SHA256??'';
 if(!/^[a-f0-9]{64}$/.test(digest))
   throw new Error('TELEGRAM_WEBHOOK_SECRET_SHA256 is mandatory');
 const expected=Buffer.from(digest,'hex');
+// The existing high-entropy webhook credential is purpose-separated for invoice
+// payload HMAC. A dedicated STARS_PAYLOAD_SECRET overrides it when configured.
+const starsSecret=process.env.STARS_PAYLOAD_SECRET||
+  createHmac('sha256',expected).update('mnebyvpn:stars:invoice:v1').digest('hex');
+if(starsSecret.length<32)throw new Error('STARS_PAYLOAD_SECRET too short');
 const port=Number(process.env.BOT_PORT??'8793');
 if(!Number.isSafeInteger(port)||port<1||port>65535)
   throw new Error('Invalid BOT_PORT');
@@ -138,10 +148,107 @@ async function vpnPlans(){
   const list=rows.map(x=>formatDuration(Number(x.duration_seconds))+' — '+
     (x.rub_minor!==null?formatRoubles(Number(x.rub_minor)):'цена уточняется')+
     (x.stars!==null?' / '+Number(x.stars)+' ⭐':''));
+  // Only published server-side prices can initiate a purchase. Draft prices
+  // remain informational and never create a payment order.
+  if(!store)throw new Error('DB unavailable');
+  const stars=await store.plans('telegram_stars');
+  const rub=await store.plans('prodamus');
+  const options:Button[][]=[];
+  for(const p of stars.filter(p=>p.product==='vpn'&&p.stars!==null)){
+    if(p.planId.length>53)continue; // Telegram callback_data <= 64 bytes
+    const days=p.durationSeconds/86400;
+    const pair:Button[]=[{text:'⭐ '+formatDuration(p.durationSeconds)+' · '+p.stars+' Stars',
+      callback_data:'buy:stars:'+p.planId}];
+    // Independent website checkout. The bot never processes RUB transactions.
+    if([15,30,60,90].includes(days)&&rub.some(r=>r.product==='vpn'&&r.durationSeconds===p.durationSeconds))
+      pair.push({text:'💳 Prodamus (сайт)',url:'https://mnebyvpn.site/?product=vpn&days='+days});
+    options.push(pair);
+  }
+  for(const p of rub.filter(p=>p.product==='vpn'&&
+    !stars.some(q=>q.product==='vpn'&&q.durationSeconds===p.durationSeconds))){
+    const days=p.durationSeconds/86400;
+    if([15,30,60,90].includes(days))
+      options.push([{text:'💳 '+formatDuration(p.durationSeconds)+' · Prodamus (сайт)',
+        url:'https://mnebyvpn.site/?product=vpn&days='+days}]);
+  }
   return msg('🌐 VPN\n\n'+(list.length?list.join('\n'):'Тарифы готовятся к публикации.')+
-    '\n\nПодключение и управление полностью через этот бот. Пробные 24 часа — без оплаты.\n\nДо подтверждённой выдачи доступа платежи не принимаются.',
-    [[{text:'🎁 Получить 24 часа бесплатно',callback_data:'trial:vpn'}],
+    '\n\n⭐ Stars — оплата внутри Telegram. 💳 Prodamus — на независимом сайте.'+
+    '\nПробные 24 часа — без оплаты.',
+    [...options,[{text:'🎁 Получить 24 часа бесплатно',callback_data:'trial:vpn'}],
      [{text:'🔐 Мои подключения',callback_data:'nav:status'}],[homeButton]]);
+}
+async function issueStars(id:number,planId:string,updateId:number){
+  if(!store)throw new Error('DB unavailable');
+  const plan=await store.plan(planId);
+  if(!plan||plan.product!=='vpn'||plan.stars===null)
+    throw new Error('PLAN_NOT_OFFERED');
+  const order=await store.createTelegramOrder(id,planId,'cabinet-stars:'+updateId);
+  const invoice=buildStarsInvoice(starsOrderFromDB(order),
+    pricedPlanForOrder(order),starsSecret);
+  // Telegram performs sendInvoice from this authenticated webhook response.
+  // A repeated delivery reuses the same order; pre-checkout validates its state.
+  return {method:'sendInvoice',...invoice};
+}
+async function receiveStars(update:any){
+  if(!store)throw new Error('DB unavailable');
+  const pc=update.pre_checkout_query;
+  if(pc){
+    const oid=typeof pc.invoice_payload==='string'
+      ?parseStarsPayload(pc.invoice_payload,starsSecret):null;
+    const order=oid?await store.order(oid):null;
+    const checked=validateStarsPreCheckout(pc,
+      order?.provider==='telegram_stars'?starsOrderFromDB(order):null,starsSecret);
+    return {method:'answerPreCheckoutQuery',pre_checkout_query_id:pc.id,
+      ok:checked.ok,...(checked.ok?{}:{error_message:checked.error_message})};
+  }
+  const m=update.message;
+  if(!validId(m?.from?.id)||m.chat?.type!=='private'||m.chat.id!==m.from.id)
+    throw new Error('Untrusted Telegram payment actor');
+  if(m.successful_payment){
+    const payment=m.successful_payment;
+    const oid=parseStarsPayload(payment.invoice_payload,starsSecret);
+    const record=oid?await store.order(oid):null;
+    const checked=validateStarsSuccess(payment,m.from.id,
+      record?.provider==='telegram_stars'?starsOrderFromDB(record):null,starsSecret);
+    if(!checked.ok)throw new Error('Unverified Stars charge: '+checked.reason);
+    const status=await store.settleVerified({
+      provider:'telegram_stars',orderId:checked.capture.orderId,
+      providerTransactionId:checked.capture.providerTransactionId,
+      providerEventId:checked.capture.providerEventId,
+      amount:checked.capture.amount,currency:'XTR',
+      payloadHash:starsPaymentHash(payment),
+    });
+    if(status==='APPLIED')
+      return {method:'sendMessage',chat_id:m.from.id,
+        text:'✅ Оплата Stars подтверждена. Заказ записан, проверяем выдачу VPN. Статус — в «Мои подключения».',
+        reply_markup:{inline_keyboard:[[{text:'🔐 Мои подключения',callback_data:'nav:status'}]]}};
+    if(status==='DUPLICATE_EVENT'||status==='DUPLICATE_CAPTURE')return null;
+    throw new Error('Stars settlement rejected: '+status);
+  }
+  if(m.refunded_payment){
+    const refund=m.refunded_payment;
+    const oid=parseStarsPayload(refund.invoice_payload,starsSecret);
+    const record=oid?await store.order(oid):null;
+    if(!record||record.provider!=='telegram_stars'||record.currency!=='XTR'||
+       record.telegramUserId!==m.from.id||refund.currency!=='XTR'||
+       refund.total_amount!==record.amount||
+       typeof refund.telegram_payment_charge_id!=='string'||
+       !refund.telegram_payment_charge_id||
+       refund.telegram_payment_charge_id.length>160)
+      throw new Error('Unverified Stars refund');
+    const status=await store.applyVerifiedRefund({
+      provider:'telegram_stars',orderId:record.id,
+      transactionId:refund.telegram_payment_charge_id,
+      refundEventId:'refund:'+refund.telegram_payment_charge_id,
+      payloadHash:starsPaymentHash(refund),
+      amount:record.amount,currency:'XTR',
+    });
+    if(status==='APPLIED')
+      return {method:'sendMessage',chat_id:m.from.id,
+        text:'↩️ Возврат Stars зарегистрирован. Доступ пересчитывается. Проверьте «Мои подключения».'};
+    return null;
+  }
+  return null;
 }
 async function trial(id:number){
   if(!store)throw new Error('DB unavailable');
@@ -194,12 +301,8 @@ function oneAction(actor:{id:number;messageId?:number;callbackId?:string},view:R
   return {method:'sendMessage',chat_id:actor.id,...view};
 }
 async function processUpdate(update:any){
-  if(update.message?.successful_payment||update.message?.refunded_payment)
-    throw new Error('Financial event needs durable settlement');
-  if(update.pre_checkout_query?.id)return {
-    method:'answerPreCheckoutQuery',pre_checkout_query_id:update.pre_checkout_query.id,
-    ok:false,error_message:'Оплата откроется после проверки реальной выдачи VPN.',
-  };
+  if(update.message?.successful_payment||update.message?.refunded_payment||
+     update.pre_checkout_query?.id)return receiveStars(update);
   if(update.widget_query?.id)return {
     method:'answerWidgetQuery',widget_query_id:update.widget_query.id,data:'UNAVAILABLE',
   };
@@ -215,7 +318,11 @@ async function processUpdate(update:any){
     else if(text==='/share')action='nav:share';
     else if(text==='/help'||text==='/support')action='nav:help';
   }
-  try {return oneAction(actor,await render(actor.id,action));}
+  try {
+    if(/^buy:stars:[a-z0-9][a-z0-9_-]{0,52}$/.test(action))
+      return issueStars(actor.id,action.slice('buy:stars:'.length),update.update_id);
+    return oneAction(actor,await render(actor.id,action));
+  }
   catch{
     // Never acknowledge a trial that was not durably recorded.
     return oneAction(actor,dbUnavailable());
