@@ -4,7 +4,9 @@ on:
   # One short offline run per actual code push, not duplicate PR + push runs.
   push:
     branches:
+      - main
       - feat/phase1-foundation-20261105
+      - feat/web-cabinet-20261106
     paths:
       - 'apps/**'
       - 'packages/**'
@@ -74,6 +76,10 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0009_trial_activation_on_provision.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0010_late_payment_capture.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0011_telegram_invoice_dispatch.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0012_website_renewals.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0013_entitlement_credits.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0014_website_sessions.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0015_dns_credit_metering.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0002_billing_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0003_ipv6_claims_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0005_outbox_contract.sql

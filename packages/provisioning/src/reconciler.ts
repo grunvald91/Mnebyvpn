@@ -53,7 +53,7 @@ export function effectiveDesired(desired: DesiredAccess, now: Date): DesiredAcce
 
 const matches = (a: ObservedAccess,d: DesiredAccess,clock:Date):boolean => {
   if(a.enabled!==d.enabled||a.revision!==d.revision)return false;
-  if(!d.enabled||!d.isTrial)return true;
+  if(!d.enabled)return true;
   const actual=a.expiresAt?.getTime(),target=d.expiresAt?.getTime();
   if(actual===undefined||target===undefined||
      !Number.isFinite(actual)||!Number.isFinite(target))return false;
@@ -62,7 +62,8 @@ const matches = (a: ObservedAccess,d: DesiredAccess,clock:Date):boolean => {
     // observed node-side hard deadline is absent, elapsed or too distant.
     return actual>clock.getTime()&&actual<=target+1000;
   }
-  // The second trial revision must install the exact final 24h deadline.
+  // ALL paid and trial credentials must expose a node-observed hard expiry.
+  // A revision+enabled acknowledgement without a real deadline is insufficient.
   return Math.abs(actual-target)<=1000;
 };
 
@@ -79,7 +80,7 @@ export async function reconcileEntitlement(
   return store.withLock(entitlementId, async fence => {
     for (let round = 0; round < MAX_CORRECTIONS; round++) {
       const desired = effectiveDesired(await store.readDesired(entitlementId), now());
-      if(desired.trialPendingActivation && adapter.enforcesHardExpiry!==true){
+      if(desired.enabled && adapter.enforcesHardExpiry!==true){
         await store.requestReconcile(entitlementId,'expiry_enforcement_unverified');
         return {status:'retry_required',reason:'expiry_enforcement_unverified'};
       }
