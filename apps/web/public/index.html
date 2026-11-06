@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0a1122">
+  <meta name="description" content="МНЕ БЫ VPN — VPN и Smart DNS, подписки и управление доступом в одном кабинете.">
+  <title>МНЕ БЫ VPN — доступ и подписки</title>
+  <link rel="stylesheet" href="/site.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="ambient ambient-a" aria-hidden="true"></div>
+  <div class="ambient ambient-b" aria-hidden="true"></div>
+  <header class="header">
+    <div class="shell header-inner">
+      <a href="/" class="brand" aria-label="МНЕ БЫ VPN — главная">
+        <span class="symbol" aria-hidden="true"><span class="symbol-opening"></span></span>
+        <span class="brand-text">МНЕ БЫ<span>VPN</span></span>
+      </a>
+      <nav class="desktop-nav" aria-label="Основные разделы">
+        <a href="#features">Возможности</a>
+        <a href="#plans">Тарифы</a>
+        <a href="#account">Мой доступ</a>
+      </nav>
+      <a class="button button-small button-outline" href="/auth/login" id="auth-link">Войти <span aria-hidden="true">↗</span></a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero shell">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="eyebrow-line"></span> ПРОСТО. ПОНЯТНО. ПОД КОНТРОЛЕМ.</p>
+        <h1>Открой<span> новые горизонты</span> интернета.</h1>
+        <p class="hero-lead">VPN и Smart DNS — в одном личном кабинете. Управляйте доступом, продлевайте подписку и следите за её сроком и квотой.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#plans">Выбрать доступ <span aria-hidden="true">↗</span></a>
+          <a class="button button-secondary" href="#account">Мой кабинет <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="hero-notes"><span><b class="note-dot"></b> Прозрачные сроки</span><span><b class="note-dot"></b> Один аккаунт</span></div>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <div class="horizon"><div class="horizon-glow"></div><div class="horizon-sun"></div><div class="horizon-water"></div><div class="horizon-grid"></div></div>
+        <div class="wall wall-left"></div><div class="wall wall-right"></div>
+        <span class="floating-tag floating-tag-one">Мир без лишних границ</span>
+        <span class="floating-tag floating-tag-two">MNEBYVPN / 01</span>
+      </div>
+    </section>
+
+    <section class="features shell" id="features">
+      <div class="section-head">
+        <div><p class="eyebrow">ВОЗМОЖНОСТИ</p><h2>Один сервис. Два способа подключения.</h2></div>
+        <p class="section-desc">Выбирайте подходящий вариант и отслеживайте всё в своём кабинете.</p>
+      </div>
+      <div class="feature-grid">
+        <article class="feature-card"><span class="feature-icon">◈</span><h3>VPN</h3><p>Защищённый туннель для интернет-соединений через совместимый VPN-клиент.</p><span class="feature-meta">Отдельный VPN-доступ</span></article>
+        <article class="feature-card"><span class="feature-icon">◎</span><h3>Smart DNS</h3><p>Шифрованные DNS-запросы и выборочная маршрутизация поддерживаемых сервисов. Не заменяет VPN.</p><span class="feature-meta">Общая квота на пакет</span></article>
+        <article class="feature-card"><span class="feature-icon">⌘</span><h3>Вместе</h3><p>Один аккаунт для VPN и Smart DNS. Совместная работа на устройствах проходит проверку.</p><span class="feature-meta">Единый кабинет</span></article>
+      </div>
+    </section>
+
+    <section class="plans-section" id="plans">
+      <div class="shell">
+        <div class="section-head">
+          <div><p class="eyebrow">ПОДПИСКИ</p><h2>Выберите свой доступ</h2></div>
+          <p class="section-desc">Стоимость и квоты показываются только из опубликованных тарифов.</p>
+        </div>
+        <div class="plan-controls">
+          <div class="tabs" role="group" aria-label="Тип доступа">
+            <button class="tab selected" data-product="vpn" type="button" aria-pressed="true">VPN</button>
+            <button class="tab" data-product="smart_dns" type="button" aria-pressed="false">Smart DNS</button>
+            <button class="tab" data-product="bundle" type="button" aria-pressed="false">Вместе</button>
+          </div>
+          <div class="days-tabs" role="group" aria-label="Срок тарифа">
+            <button class="days-tab selected" data-days="15" type="button" aria-pressed="true">15 дней</button>
+            <button class="days-tab" data-days="30" type="button" aria-pressed="false">30 дней</button>
+            <button class="days-tab" data-days="60" type="button" aria-pressed="false">60 дней</button>
+            <button class="days-tab" data-days="90" type="button" aria-pressed="false">90 дней</button>
+          </div>
+        </div>
+        <div class="price-layout">
+          <article class="price-card">
+            <div class="price-card-top"><span class="small-overline">ВАШ ТАРИФ</span><span class="pill">Без автосписаний</span></div>
+            <h3 id="selected-plan-name">VPN · 15 дней</h3>
+            <div class="price-line"><strong id="selected-price">—</strong><span id="price-unit">₽ за период</span></div>
+            <p class="price-sub" id="price-description">Проверяем доступные предложения…</p>
+            <div class="price-divider"></div>
+            <div class="price-info">
+              <div><span>Срок действия</span><strong id="selected-duration">15 дней</strong></div>
+              <div><span>DNS-квота</span><strong id="selected-quota">Не входит</strong></div>
+              <div><span>Продление</span><strong>Из личного кабинета</strong></div>
+            </div>
+            <button type="button" class="button button-primary button-block" id="buy-button" disabled>Загрузка тарифов…</button>
+            <p class="small-print" id="checkout-hint" role="status">Покупка откроется после проверки платёжного подключения.</p>
+          </article>
+          <aside class="benefits">
+            <div class="benefit"><span class="benefit-number">01</span><div><h3>Без путаницы</h3><p>Срок доступа и остаток квоты видны в кабинете после входа.</p></div></div>
+            <div class="benefit"><span class="benefit-number">02</span><div><h3>Удобное продление</h3><p>Новый заказ оформляется на тот же аккаунт, что используется в Telegram-боте.</p></div></div>
+            <div class="benefit"><span class="benefit-number">03</span><div><h3>Данные без догадок</h3><p>Если сервер ещё не подтвердил расход DNS, цифры не подменяются условными значениями.</p></div></div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="account-section shell" id="account">
+      <div class="section-head">
+        <div><p class="eyebrow">МОЙ КАБИНЕТ</p><h2>Всё о вашем доступе</h2></div>
+        <p class="section-desc">Один вход — ваши подписки и платежи в одном месте.</p>
+      </div>
+      <div class="account-panel">
+        <div class="account-toolbar"><div class="account-heading"><span class="avatar">M</span><div><strong id="account-name">Личный кабинет</strong><p id="account-subtitle">Войдите, чтобы увидеть данные</p></div></div><button id="logout-button" type="button" class="text-button hidden">Выйти</button></div>
+        <div id="login-prompt" class="login-prompt">
+          <div class="prompt-symbol" aria-hidden="true">↗</div><h3>Ваш доступ — под рукой</h3><p>Войдите через Telegram, чтобы видеть свои подписки, оставшиеся дни и DNS-квоту.</p><a href="/auth/login" class="button button-primary">Войти через Telegram</a>
+        </div>
+        <div id="account-content" class="hidden">
+          <div class="metric-cards">
+            <div class="metric-card"><span>Активные подключения</span><strong id="active-count">—</strong><small>VPN и Smart DNS</small></div>
+            <div class="metric-card"><span>Ближайшее окончание</span><strong id="days-left">—</strong><small id="days-hint">Без активных подписок</small></div>
+          </div>
+          <div class="account-content-grid"><div><h3 class="panel-title">Мои подписки</h3><div id="access-list" class="access-list"><p class="muted">Загрузка…</p></div></div><div><h3 class="panel-title">История платежей</h3><div id="orders-list" class="orders-list"><p class="muted">Загрузка…</p></div></div></div>
+          <p class="dashboard-disclaimer">Показания DNS-квоты доступны только после проверки реального серверного учёта трафика. Дата оплаты сама по себе не подтверждает активацию подключения.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="footer"><div class="shell footer-inner"><div class="brand footer-brand"><span class="symbol"><span class="symbol-opening"></span></span><span class="brand-text">МНЕ БЫ<span>VPN</span></span></div><p>VPN и Smart DNS — разные режимы доступа. Доступность зависит от сети, устройства и выбранной конфигурации.</p><a href="https://github.com/grunvald91/Mnebyvpn" rel="noopener noreferrer" target="_blank">О проекте ↗</a></div></footer>
+  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
