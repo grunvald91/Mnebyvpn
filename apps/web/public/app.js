@@ -67,25 +67,27 @@ function renderPlan() {
   const plan = state.plans.find(p=>p.product===state.product && p.durationDays===state.days);
   text('selected-plan-name', plan?.title || productNames[state.product] + ' · ' + state.days + ' дней');
   text('selected-duration',state.days+' дней');
-  text('selected-quota',state.product==='vpn'?'Не входит':plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
+  text('selected-quota',state.product==='vpn'?'Входит':plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
   text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):'—');
   byId('cancel-renewal-button').classList.toggle('hidden',!state.renewalTargetId);
   text('price-description',plan?(state.renewalTargetId?
     'Срок прибавится к выбранному доступу после подтверждения оплаты.':
     'Новая покупка создаёт отдельный доступ. Для продления используйте кнопку в кабинете.'):
-    'Тариф ещё не опубликован. Стоимость и квота появятся после утверждения.');
+    'Тариф ещё не опубликован. Стоимость появится после утверждения.');
   const buy=byId('buy-button');
-  buy.disabled=!plan||!state.checkoutEnabled||state.busy;
-  buy.textContent=state.busy?'Создаём заказ…':!plan?'Тариф пока недоступен':
-    !state.checkoutEnabled?'Покупка пока недоступна':
-    !state.loggedIn?'Войти и купить':state.renewalTargetId?'Оплатить продление':'Купить доступ';
+  const inDevelopment=state.product!=='vpn';
+  buy.disabled=inDevelopment||!plan||!state.checkoutEnabled||state.busy;
+  buy.textContent=inDevelopment?'В разработке':state.busy?'Создаём заказ…':!plan?'Тариф пока недоступен':
+    !state.checkoutEnabled?'Оплата пока недоступна':
+    !state.loggedIn?'Войти для оплаты':state.renewalTargetId?'К оплате продления':'Перейти к оплате';
   const trial=byId('trial-button');
-  const trialAvailable=state.trialOffers.includes(state.product);
+  const trialAvailable=state.product==='vpn' && state.trialOffers.includes(state.product);
   trial.disabled=!trialAvailable||state.busy;
   trial.textContent=trialAvailable?'Попробовать 24 часа бесплатно':'Пробные 24 часа — пока недоступны';
-  text('checkout-hint',!plan?'Неопубликованные тарифы не продаются.':
+  text('checkout-hint',inDevelopment?'Smart DNS и совместный тариф находятся в разработке и пока не продаются.':
+    !plan?'Неопубликованные тарифы не продаются.':
     !state.checkoutEnabled?'Онлайн-оплата включится после проверки платёжного подключения.':
-    'Оплата проходит на защищённой странице Продамус.');
+    'Способ оплаты выбирается на защищённой странице платёжного провайдера.');
 }
 function node(tag, cls, content) {
   const el=document.createElement(tag);
@@ -293,7 +295,7 @@ function applyLinkOptions() {
 }
 async function purchase() {
   const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
-  if(!plan||!state.checkoutEnabled||state.busy)return;
+  if(state.product!=='vpn'||!plan||!state.checkoutEnabled||state.busy)return;
   if(!state.loggedIn) {
     saveSelection();
     location.assign('/auth/login');return;
@@ -325,7 +327,7 @@ async function purchase() {
   } finally {state.busy=false;renderPlan();}
 }
 async function claimTrial() {
-  if(state.busy || !state.trialOffers.includes(state.product))return;
+  if(state.busy || state.product!=='vpn' || !state.trialOffers.includes(state.product))return;
   if(!state.loggedIn){
     saveSelection();
     location.assign('/auth/login');return;
