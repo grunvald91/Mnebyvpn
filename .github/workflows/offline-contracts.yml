@@ -1,0 +1,91 @@
+name: Offline code and database contracts
+
+on:
+  # One short offline run per actual code push, not duplicate PR + push runs.
+  push:
+    branches:
+      - feat/phase1-foundation-20261105
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'tests/**'
+      - 'db/**'
+      - 'package.json'
+      - 'tsconfig.json'
+      - '.github/workflows/offline-contracts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: offline-contracts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Node.js and disposable PostgreSQL contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: mnebyvpn_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d mnebyvpn_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Install test-only dependencies
+        run: npm install --no-audit --no-fund --ignore-scripts
+      - name: Check TypeScript and unit contracts
+        run: |
+          npm run typecheck
+          npm test
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -qq -y postgresql-client
+      - name: Run schema and SQL contract tests (rollback fixtures)
+        env:
+          PGPASSWORD: test
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: test
+          PGDATABASE: mnebyvpn_test
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0001_initial.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0002_billing_and_reconcile.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0003_permanent_ipv6_claims.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0004_catalog_and_orders.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0005_outbox_retries.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0006_referral_invites.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0007_trials_and_throttle.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0008_pricing_drafts.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0009_trial_activation_on_provision.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0010_late_payment_capture.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0011_telegram_invoice_dispatch.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/tests/0002_billing_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0003_ipv6_claims_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0005_outbox_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0007_trials_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0008_pricing_drafts_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0009_trial_activation_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0011_invoice_dispatch_contract.sql
+      - name: Payment integration with disposable PostgreSQL
+        env:
+          PGPASSWORD: test
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: test
+          PGDATABASE: mnebyvpn_test
+        run: npm run test:integration

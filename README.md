@@ -1,6 +1,6 @@
 # Мне бы VPN — MNEBYVPN
 
-**Статус на 2026-11-05: архитектурная спецификация v2; код сервиса, DNS-узлы и автоматизация ещё не развёрнуты.**
+**Статус на 2026-11-05: архитектура v2 и первая версия бизнес-домена, SQL-схемы и локальной диагностики. Реальный VPN/DNS, платежи и сетевое применение квот ещё НЕ реализованы и НЕ развёрнуты.**
 
 Независимая платформа подключения к интернету с **двумя способами**:
 1. **VPN**: сторонние совместимые приложения (Happ, INCY, OneXray, Karing, v2rayNG и др. только по результатам теста), серверы Xray-core под управлением Remnawave.
@@ -27,6 +27,10 @@
 - [Безопасность и лицензии](docs/security.md)
 - [Особые узлы / ограниченные сети](docs/special-nodes.md)
 - [Этапы и приёмка](docs/implementation-plan.md)
+- [Начало реализации: фундамент и незакрытые проверки](docs/phase1-status.md)
+- [Этап 2: биллинг и сверка прав без VPS](docs/phase2-status.md)
+- [Этап 3: платёжные адаптеры Продамус + Telegram Stars](docs/phase3-payments.md)
+- [Этап 4: PostgreSQL-заказы, webhook и Telegram 10.3 Rich Messages](docs/phase4-payment-handlers.md)
 - [Итоги ревью и исправления P0/P1](docs/review-remediation.md)
 - [ADR-0001: Универсальные клиенты](docs/decisions/0001-universal-client-architecture.md)
 - [ADR-0002: Два VPS](docs/decisions/0002-two-vps-special-nodes.md)
@@ -51,6 +55,29 @@
 
 Одна подписка = один оплаченный пакет байтов на **любом количестве устройств** (можно пользоваться совместно). Ограничение выполняется на SNI ingress по суммарному трафику, не по числу DNS-запросов. Техническая привязка потока к пакету пока не испытана: [ADR-0005](docs/decisions/0005-shared-dns-quota.md).
 
+
+**Review update:** см. [исправления 5 замечаний](docs/review-20261105-followup.md). Продамус и Telegram Stars сохранены как два выбранных владельцем канала оплаты; сеть и VPS не менялись.
+
+
+**CI-проверка (05.11.2026):** [GitHub Actions run 42109968701](https://github.com/grunvald91/Mnebyvpn/actions/runs/42109968701) — `success`: TypeScript typecheck, **25/25 unit-тестов**, миграции PostgreSQL 0001–0003 и SQL contract tests на disposable PostgreSQL 17.6. Это не тесты конкурентных клиентов, реального Prodamus/Telegram API, CoreDNS/SNI ingress или действующих VPS; эти gates **UNVERIFIED**.
+
+- [Этап 5: подтверждённые возвраты, PostgreSQL outbox worker и HTMLBubble-модель](docs/phase5-refunds-outbox-bubbles.md)
+
+- [Telegram Bot API 10.4: HTMLBubbles MNEBYVPN](docs/phase6-telegram-widgets.md)
+
+- [Ревью кода HTMLBubbles и реферальных покупок](docs/review-referrals-20261106.md)
+- [Этап 7: пересылаемые реферальные HTMLBubbles](docs/phase7-referral-bubbles.md)
+
+- [Этап 8: кнопки, сроки тарифов и пробные 24 часа](docs/phase8-buttons-tariffs-trial.md)
+
+- [Этап 9: активация trial, поздние платежи и ревью](docs/phase9-completion-and-review.md)
+
 ## Одновременная работа VPN + Smart DNS (решение 06.11.2026)
 
 Целевое поведение: на Android системный **Private DNS (DoT)** настраивается один раз; включение/выключение **нашего VPN** не должно требовать ручной перенастройки DNS **на подтверждённых сочетаниях ОС/клиентов**. Одно физическое размещение DNS и VPN не гарантирует такую совместимость. Сбалансировать: приватность, отсутствие DNS/IP утечек, скорость без двойного проксирования и выбор зарубежного egress там, где сервис ограничивает доступ по стране IP. **Private DNS сам не скрывает IP/страну и не шифрует всё интернет-соединение.** Не обещать гарантированного обхода геоограничений, всегда проводить E2E-тесты. Реализация: **UNVERIFIED**. [Полный контракт](docs/decisions/0006-private-dns-vpn-privacy-performance-egress.md).
+
+- [Финальное offline-ревью: найденные проблемы, закрытые P1 и блокеры релиза](docs/review-20261106-final.md)
+
+- [Этап 10: не дублировать Stars-счета, честный статус trial, offline-модель отзыва доступа](docs/phase10-invoice-offline-node.md)
+
+- [Ревью этапа 10: повторные счета, пробный день, модель отключения узла](docs/review-20261106-phase10.md)
