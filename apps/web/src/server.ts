@@ -63,6 +63,13 @@ const trialEnabled = loginEnabled && networkVerified &&
   process.env.WEB_TRIAL_ENABLED === 'yes';
 const meteringVerified = networkVerified && process.env.WEB_DNS_METERING_VERIFIED === 'yes';
 const pool = new Pool({ connectionString: required('DATABASE_URL'), max: 5, connectionTimeoutMillis: 3000 });
+// The public account database is intentionally distinct from Telegram billing.
+// Read subscription hashes and node-ACKed entitlements from the bot's DB using
+// a dedicated SELECT-only PostgreSQL role. Never replace the public DB URL.
+const subscriptionDbUrl=process.env.VPN_SUBSCRIPTION_DATABASE_URL;
+const subscriptionPool=subscriptionDbUrl
+  ?new Pool({connectionString:subscriptionDbUrl,max:3,connectionTimeoutMillis:3000})
+  :offline?pool:null;
 const store = new PgBillingStore(pool);
 let payform: ProdamusConfig | undefined;
 if (webhookEnabled) {
@@ -309,7 +316,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   const subMatch=/^\/sub\/([A-Za-z0-9_-]{43})$/.exec(url.pathname);
   if(req.method==='GET'&&subMatch){
-    const owner=await subscriptionOwner(pool,subMatch[1]);
+    if(!subscriptionPool){json(res,503,{code:'SUBSCRIPTION_DATABASE_NOT_CONFIGURED'});return;}
+    const owner=await subscriptionOwner(subscriptionPool,subMatch[1]);
     if(!owner){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
     try{
       const profile=await liveVpnProfile(owner);
@@ -328,7 +336,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   const installMatch=/^\/install\/([A-Za-z0-9_-]{43})$/.exec(url.pathname);
   if(req.method==='GET'&&installMatch){
-    const owner=await subscriptionOwner(pool,installMatch[1]);
+    if(!subscriptionPool){json(res,503,{code:'SUBSCRIPTION_DATABASE_NOT_CONFIGURED'});return;}
+    const owner=await subscriptionOwner(subscriptionPool,installMatch[1]);
     if(!owner){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
     const client=url.searchParams.get('client');
     if(client!=='incy'&&client!=='karing'){
