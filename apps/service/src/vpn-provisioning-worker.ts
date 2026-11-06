@@ -9,7 +9,7 @@ import {createServer} from 'node:http';
 import {pathToFileURL} from 'node:url';
 import {Pool} from 'pg';
 import {RemnawaveApi} from '../../../packages/provisioning/src/remnawave-api.ts';
-import {RemnawaveProvisioningAdapter,type HardExpiryEvidence}
+import {RemnawaveProvisioningAdapter}
   from '../../../packages/provisioning/src/remnawave-adapter.ts';
 import {PgOutboxDispatcher,type Product} from '../../../packages/provisioning/src/pg-worker.ts';
 
