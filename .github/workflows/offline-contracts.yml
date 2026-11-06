@@ -8,6 +8,7 @@ on:
       - feat/phase1-foundation-20261105
       - feat/web-cabinet-20261106
       - feat/site-domain-telegram-20261106
+      - feat/public-telegram-webhook-20261106
     paths:
       - 'apps/**'
       - 'packages/**'
