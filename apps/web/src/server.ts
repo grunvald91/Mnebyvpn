@@ -38,9 +38,12 @@ if (base.pathname !== '/' || base.search || base.hash || base.username || base.p
 const publicOrigin = base.origin;
 const sessionSecret = required('WEB_SESSION_SECRET');
 if (sessionSecret.length < 32) throw new Error('WEB_SESSION_SECRET too short');
-const clientId = required('TELEGRAM_OIDC_CLIENT_ID');
-const clientSecret = required('TELEGRAM_OIDC_CLIENT_SECRET');
-if (!/^[0-9]{5,20}$/.test(clientId) || clientSecret.length < 16)
+// A public informational site can be deployed before BotFather issues OIDC
+// credentials. Login is unavailable until explicitly enabled with real keys.
+const loginEnabled = process.env.WEB_TELEGRAM_OIDC_ENABLED === 'yes';
+const clientId = process.env.TELEGRAM_OIDC_CLIENT_ID ?? '';
+const clientSecret = process.env.TELEGRAM_OIDC_CLIENT_SECRET ?? '';
+if (loginEnabled && (!/^[0-9]{5,20}$/.test(clientId) || clientSecret.length < 16))
   throw new Error('Invalid Telegram OIDC client configuration');
 
 const tls = base.protocol === 'https:';
@@ -51,10 +54,11 @@ const networkVerified = process.env.WEB_NETWORK_PROVISIONING_VERIFIED === 'yes';
 // because new sales were disabled. Both flags default to fail-closed.
 const webhookEnabled = process.env.WEB_PRODAMUS_WEBHOOK_ENABLED === 'yes' &&
   process.env.WEB_PAYMENT_PROVIDER_TESTED === 'yes';
-const checkoutEnabled = webhookEnabled && networkVerified &&
+const checkoutEnabled = loginEnabled && webhookEnabled && networkVerified &&
   process.env.WEB_CHECKOUT_ENABLED === '1' &&
   process.env.WEB_LEGAL_PAGES_PUBLISHED === 'yes';
-const trialEnabled = networkVerified && process.env.WEB_TRIAL_ENABLED === 'yes';
+const trialEnabled = loginEnabled && networkVerified &&
+  process.env.WEB_TRIAL_ENABLED === 'yes';
 const meteringVerified = networkVerified && process.env.WEB_DNS_METERING_VERIFIED === 'yes';
 const pool = new Pool({ connectionString: required('DATABASE_URL'), max: 5, connectionTimeoutMillis: 3000 });
 const store = new PgBillingStore(pool);
@@ -259,9 +263,11 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     ] }); return;
   }
   if (req.method === 'GET' && url.pathname === '/auth/login') {
+    if (!loginEnabled) { json(res,503,{code:'TELEGRAM_LOGIN_NOT_READY'});return; }
     await login(req,res); return;
   }
   if (req.method === 'GET' && url.pathname === '/auth/callback') {
+    if (!loginEnabled) { json(res,503,{code:'TELEGRAM_LOGIN_NOT_READY'});return; }
     await callback(req,res,url); return;
   }
   // Prodamus's server-to-server POST is the ONLY payment proof, never /success.
@@ -289,7 +295,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const trialOffers = trialEnabled
       ? (await pool.query('SELECT product FROM trial_offers WHERE enabled=true')).rows.map(r=>r.product as string)
       : [];
-    json(res,200,{ checkoutEnabled, trialOffers, plans: plans.map(p => ({
+    json(res,200,{ loginEnabled, checkoutEnabled, trialOffers, plans: plans.map(p => ({
       id: p.planId, title: p.title, product: p.product,
       durationDays: p.durationSeconds / 86400, rubMinor: p.rubMinor,
       dnsQuotaBytes: p.dnsQuotaBytes?.toString() ?? null,

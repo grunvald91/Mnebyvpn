@@ -22,8 +22,9 @@
         <a href="#features">Возможности</a>
         <a href="#plans">Тарифы</a>
         <a href="#account">Мой доступ</a>
+        <a href="https://t.me/MnebyVPN_bot" target="_blank" rel="noopener noreferrer">Telegram-бот</a>
       </nav>
-      <a class="button button-small button-outline" href="/auth/login" id="auth-link">Войти <span aria-hidden="true">↗</span></a>
+      <a class="button button-small button-outline" href="https://t.me/MnebyVPN_bot" id="auth-link">Telegram-бот <span aria-hidden="true">↗</span></a>
     </div>
   </header>
 
@@ -36,6 +37,7 @@
         <div class="hero-actions">
           <a class="button button-primary" href="#plans">Выбрать доступ <span aria-hidden="true">↗</span></a>
           <a class="button button-secondary" href="#account">Мой кабинет <span aria-hidden="true">→</span></a>
+          <a class="button button-outline telegram-hero-link" href="https://t.me/MnebyVPN_bot" target="_blank" rel="noopener noreferrer">Наш бот · @MnebyVPN_bot <span aria-hidden="true">↗</span></a>
         </div>
         <div class="hero-notes"><span><b class="note-dot"></b> Прозрачные сроки</span><span><b class="note-dot"></b> Один аккаунт</span></div>
       </div>
@@ -112,7 +114,7 @@
       <div class="account-panel">
         <div class="account-toolbar"><div class="account-heading"><span class="avatar">M</span><div><strong id="account-name">Личный кабинет</strong><p id="account-subtitle">Войдите, чтобы увидеть данные</p></div></div><button id="logout-button" type="button" class="text-button hidden">Выйти</button></div>
         <div id="login-prompt" class="login-prompt">
-          <div class="prompt-symbol" aria-hidden="true">↗</div><h3>Ваш доступ — под рукой</h3><p>Войдите через Telegram, чтобы видеть свои подписки, оставшиеся дни и DNS-квоту.</p><a href="/auth/login" class="button button-primary">Войти через Telegram</a>
+          <div class="prompt-symbol" aria-hidden="true">↗</div><h3>Ваш доступ — под рукой</h3><p id="login-prompt-copy">Вход в кабинет пока подключается. Связаться с проектом можно через Telegram-бота.</p><a href="https://t.me/MnebyVPN_bot" class="button button-primary" id="cabinet-login-link">Открыть Telegram-бота</a>
         </div>
         <div id="account-content" class="hidden">
           <div class="metric-cards">
@@ -125,7 +127,7 @@
       </div>
     </section>
   </main>
-  <footer class="footer"><div class="shell footer-inner"><div class="brand footer-brand"><span class="symbol"><span class="symbol-opening"></span></span><span class="brand-text">MNEBY<span>VPN</span></span></div><p>VPN и Smart DNS — разные режимы доступа. Доступность зависит от сети, устройства и выбранной конфигурации.</p><a href="https://github.com/grunvald91/Mnebyvpn" rel="noopener noreferrer" target="_blank">О проекте ↗</a></div></footer>
+  <footer class="footer"><div class="shell footer-inner"><div class="brand footer-brand"><span class="symbol"><span class="symbol-opening"></span></span><span class="brand-text">MNEBY<span>VPN</span></span></div><p>VPN и Smart DNS — разные режимы доступа. Доступность зависит от сети, устройства и выбранной конфигурации.</p><div class="footer-links"><a href="https://t.me/MnebyVPN_bot" target="_blank" rel="noopener noreferrer" aria-label="Telegram-бот MNEBYVPN">@MnebyVPN_bot</a><a href="https://github.com/grunvald91/Mnebyvpn" rel="noopener noreferrer" target="_blank">О проекте ↗</a></div></div></footer>
   <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
