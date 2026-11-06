@@ -24,12 +24,12 @@ test('node endpoint and HMAC are exact, never unencrypted public control',async(
   assert.ok(Math.abs(Date.now()/1000-request.ts)<5);
   assert.equal(request.id,entitlement);
   calls++;
-  if(request.op==='inspect')return Response.json(state);
+  if(request.op==='inspect')return Response.json(state,{headers:{Date:new Date().toUTCString()}});
   assert.equal(request.op,'apply');
   state={revision:request.revision,enabled:request.enabled,
    expiresAt:request.enabled?request.expiresAt:null,
    credential:request.enabled?credential:null};
-  return Response.json({status:'applied',revision:request.revision});
+  return Response.json({status:'applied',revision:request.revision},{headers:{Date:new Date().toUTCString()}});
  };
  const node=new SignedXrayNodeApi(key,mock);
  assert.equal(node.enforcesHardExpiry,true);
@@ -56,13 +56,13 @@ test('unsafe or inconsistent remote state fails closed',async()=>{
  assert.throws(()=>parseNodeRecord({revision:2,enabled:true,expiresAt:expiry.toISOString()}));
  assert.throws(()=>parseNodeRecord({revision:2,enabled:true,expiresAt:'bad',credential}));
  assert.throws(()=>parseNodeRecord({revision:-1,enabled:false,expiresAt:null}));
- const stale:typeof fetch=async()=>Response.json({status:'stale',revision:99});
+ const stale:typeof fetch=async()=>Response.json({status:'stale',revision:99},{headers:{Date:new Date().toUTCString()}});
  const api=new SignedXrayNodeApi(key,stale);
  assert.equal(await api.apply({entitlementId:entitlement,revision:2,
    enabled:false,expiresAt:null},entitlement+':2:disable'),'unknown');
  await assert.rejects(api.apply({entitlementId:entitlement,revision:2,
    enabled:false,expiresAt:null},entitlement+':1:enable'));
- const fail:typeof fetch=async()=>new Response('{}',{status:503});
+ const fail:typeof fetch=async()=>new Response('{}',{status:503,headers:{Date:new Date().toUTCString()}});
  await assert.rejects(new SignedXrayNodeApi(key,fail).inspect(entitlement),
    /HTTP 503/);
 });
