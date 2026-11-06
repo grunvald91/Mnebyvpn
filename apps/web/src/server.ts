@@ -8,8 +8,10 @@ import { readFile } from 'node:fs/promises';
 import { createHash,randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
-import {subscriptionOwner,subscriptionLink}
+import {subscriptionOwner,subscriptionLink,subscriptionForClient}
   from '../../../packages/provisioning/src/subscription-links.ts';
+import {incyMetadata,expiredIncyBody}
+  from '../../../packages/provisioning/src/incy-metadata.ts';
 import {
   prepareWebsiteProdamusCheckout, type PayformLinkTransport,
 } from '../../../packages/billing/src/website-checkout.ts';
@@ -343,16 +345,22 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   const subMatch=/^\/sub\/([A-Za-z0-9_-]{43})$/.exec(url.pathname);
   if(req.method==='GET'&&subMatch){
     if(!subscriptionPool){json(res,503,{code:'SUBSCRIPTION_BACKEND_UNAVAILABLE'});return;}
-    const owner=await subscriptionOwner(subscriptionPool,subMatch[1]);
-    if(!owner){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
+    const entry=await subscriptionForClient(subscriptionPool,subMatch[1]);
+    if(!entry){json(res,404,{code:'SUBSCRIPTION_NOT_FOUND_OR_REVOKED'});return;}
+    if(!entry.owner){
+      // Keep the SAME subscription URL after time-based expiry; no live VLESS
+      // credential can be retrieved from this response.
+      for(const [name,value] of Object.entries(incyMetadata(entry.expiresAt)))
+        res.setHeader(name,value);
+      send(res,200,expiredIncyBody(),'text/plain; charset=utf-8');
+      return;
+    }
     try{
-      const profile=await liveVpnProfile(owner);
-      // Standard V2Ray base64 subscription: clients repeatedly fetch this URL.
-      // Network revocation is enforced both in DB and by the real Xray node.
-      res.setHeader('subscription-userinfo',
-        'upload=0; download=0; total=0; expire='+
-        Math.floor(owner.expiresAt.getTime()/1000));
-      res.setHeader('profile-title','base64:'+Buffer.from('Мне бы VPN').toString('base64'));
+      const profile=await liveVpnProfile(entry.owner);
+      for(const [name,value] of Object.entries(incyMetadata(entry.expiresAt)))
+        res.setHeader(name,value);
+      // Standard V2Ray base64 subscription. Real traffic expiry is enforced
+      // by the node, not by client metadata or this HTTP subscription page.
       send(res,200,Buffer.from(profile+'\n','utf8').toString('base64')+'\n',
         'text/plain; charset=utf-8');
     }catch{
