@@ -8,7 +8,7 @@
  * User identity is derived solely from verified Telegram webhook updates.
  */
 import {createServer,type IncomingMessage,type ServerResponse} from 'node:http';
-import {createHash,timingSafeEqual} from 'node:crypto';
+import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {Pool} from 'pg';
 import {operatorReplyTarget,supportConfig,supportLimiter,telegramSupportSend,validSupportText}
   from '../../../packages/support/src/telegram-relay.ts';
@@ -219,10 +219,37 @@ async function handleOperatorReply(update:any){
     // private message cannot be sent to an unknown email or @username.
     const quoted=m.reply_to_message?.from?.is_bot===true
       ?m.reply_to_message?.text:'';
-    if(typeof quoted==='string'&&
-       quoted.startsWith('✉️ MNEBYVPN — обращение с сайта')){
-      return {method:'sendMessage',chat_id:support.operatorId,
-        text:'Это обращение с сайта. Для ответа используйте контакт, указанный в уведомлении: посетитель мог не запускать бота.'};
+    const siteTicket=typeof quoted==='string'
+      ?/^✉️ MNEBYVPN — обращение с сайта\nЗаявка: ([0-9a-f-]{36})\n/.exec(quoted)
+      :null;
+    if(siteTicket){
+      const answer=typeof m.text==='string'?m.text.trim():'';
+      if(!validSupportText(answer,1,1500)){
+        return {method:'sendMessage',chat_id:support.operatorId,
+          text:'Для ответа посетителю сайта напишите текст до 1500 символов в ответ на уведомление.'};
+      }
+      const webPort=Number(process.env.WEB_PORT??'8791');
+      if(!Number.isSafeInteger(webPort)||webPort<1||webPort>65535)
+        return {method:'sendMessage',chat_id:support.operatorId,
+          text:'Не настроен внутренний канал ответов на сайт.'};
+      const ticketId=siteTicket[1],payload=JSON.stringify({ticketId,message:answer});
+      const signature=createHmac('sha256',support.botToken)
+        .update('MNEBYVPN-support\n'+ticketId+'\n'+answer).digest('hex');
+      try{
+        const response=await fetch('http://127.0.0.1:'+webPort+
+          '/api/support/operator-reply',{
+          method:'POST',redirect:'error',signal:AbortSignal.timeout(6000),
+          headers:{'Content-Type':'application/json',
+            'X-MNEBYVPN-Support-Signature':signature},
+          body:payload,
+        });
+        if(!response.ok)throw Error('Website ticket reply not saved');
+        return {method:'sendMessage',chat_id:support.operatorId,
+          text:'✅ Ответ сохранён в обращении. Посетитель увидит его на сайте.'};
+      }catch{
+        return {method:'sendMessage',chat_id:support.operatorId,
+          text:'⚠️ Сайт не подтвердил сохранение ответа. Повторите попытку.'};
+      }
     }
     if(typeof quoted==='string'&&
        quoted.startsWith('✉️ MNEBYVPN — обращение из бота')){
