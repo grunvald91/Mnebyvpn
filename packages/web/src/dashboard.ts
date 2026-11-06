@@ -37,8 +37,7 @@ export async function loadDashboard(
       e.quota_limit_bytes,e.quota_used_bytes,e.quota_state
       FROM entitlements e JOIN accounts a ON a.id=e.account_id
       WHERE a.telegram_user_id=$1
-      ORDER BY e.created_at DESC NULLS LAST, e.id DESC LIMIT 40`.replace(
-        'e.created_at DESC NULLS LAST, ', ''), [String(telegramId)]),
+      ORDER BY e.expires_at DESC NULLS LAST, e.id DESC LIMIT 40`, [String(telegramId)]),
     pool.query(`SELECT o.id,o.product,o.state,o.amount_minor,o.currency,o.created_at,
       t.plan_title FROM orders o JOIN accounts a ON a.id=o.account_id
       LEFT JOIN order_terms t ON t.order_id=o.id
