@@ -1,4 +1,4 @@
-name: MNEBYVPN signed Telegram webhook end-to-end via foreign 8443
+name: MNEBYVPN Telegram-first signed end-to-end through foreign 8443
 on:
   push:
     paths: ['.github/workflows/telegram-webhook-signed-e2e.yml']
@@ -8,11 +8,11 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 5
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN_BOT || secrets.TELEGRAM_BOT_TOKEN }}
     steps:
-      - name: Verify signed Telegram message response through foreign TLS and WireGuard
+      - name: Test /start, VPN, subscriptions, unsigned rejection and unchanged foreign route
         shell: bash
         run: |
           set -euo pipefail
@@ -22,35 +22,53 @@ jobs:
           token=os.environ['TELEGRAM_BOT_TOKEN']
           secret=hmac.new(token.encode(),b'mnebyvpn.webhook.v1',hashlib.sha256).hexdigest()
           url='https://cdn.servgo.ru:8443/mnebyvpn-telegram/webhook'
-          chat_id=98765432100 # synthetic: no real user, no Telegram sendMessage call
-          body=json.dumps({'update_id':987654321,'message':{
-            'chat':{'type':'private','id':chat_id},
-            'from':{'id':chat_id},
-            'text':'/start'
-          }}).encode()
-          request=urllib.request.Request(url,method='POST',data=body,headers={
-            'Content-Type':'application/json',
-            'X-Telegram-Bot-Api-Secret-Token':secret
-          })
-          with urllib.request.urlopen(request,timeout=12) as response:
-            assert response.status==200
-            reply=json.load(response)
-          assert reply.get('method')=='sendMessage',reply.get('method')
-          assert reply.get('chat_id')==chat_id
-          assert 'Мне бы VPN' in reply.get('text','')
-          assert 'https://mnebyvpn.site'==reply['reply_markup']['inline_keyboard'][0][0]['url']
-          assert 'токен' not in reply.get('text','').lower()
-          print('foreign_tls_8443=success')
-          print('wireguard_to_ru_bot=signed_verified')
-          print('telegram_start_response=sendMessage')
-          print('telegram_start_buttons=present')
-          print('real_user_chat_not_contacted=true')
-          unsigned=urllib.request.Request(url,method='POST',data=body,
-            headers={'Content-Type':'application/json'})
+          who=917000000123 # Synthetic, no Telegram messages sent or DB writes
+          def signed(update):
+            request=urllib.request.Request(url,method='POST',
+              data=json.dumps(update).encode(),headers={
+                'Content-Type':'application/json',
+                'X-Telegram-Bot-Api-Secret-Token':secret})
+            with urllib.request.urlopen(request,timeout=13) as response:
+              assert response.status==200
+              return json.load(response)
+          def callback(key,index):
+            return signed({'update_id':900000+index,'callback_query':{
+              'id':'synthetic-'+str(index),
+              'from':{'id':who},
+              'message':{'chat':{'type':'private','id':who},'message_id':12345},
+              'data':key}})
+          start=signed({'update_id':899999,'message':{
+            'chat':{'type':'private','id':who},'from':{'id':who},'text':'/start'}})
+          assert start['method']=='sendMessage'
+          assert start['chat_id']==who
+          keys=[button.get('callback_data')
+            for row in start['reply_markup']['inline_keyboard'] for button in row]
+          assert {'nav:vpn','nav:trial','nav:status','nav:renew','nav:share'}<=set(keys)
+          assert '24 часа' in start['text']
+          print('telegram_primary_home=ok')
+          vpn=callback('nav:vpn',1)
+          assert vpn['method']=='editMessageText'
+          assert vpn['chat_id']==who
+          assert vpn['message_id']==12345
+          assert vpn['text'].startswith('🌐 VPN')
+          assert '15 дней' in vpn['text'] and '90 дней' in vpn['text']
+          assert not any('url' in button for row in vpn['reply_markup']['inline_keyboard']
+                         for button in row)
+          print('telegram_vpn_inside_bot=ok')
+          mine=callback('nav:status',2)
+          assert mine['method']=='editMessageText'
+          assert 'Мои подключения' in mine['text']
+          print('telegram_subscription_lookup=ok')
+          help_page=callback('nav:help',3)
+          assert 'Интернет при ограничениях' in help_page['text']
+          print('telegram_help_inside_bot=ok')
+          unsigned=urllib.request.Request(url,method='POST',
+            data=b'{"update_id":100}',headers={'Content-Type':'application/json'})
           try:
             urllib.request.urlopen(unsigned,timeout=10)
-            raise ValueError('Missing Telegram secret was accepted')
-          except urllib.error.HTTPError as exc:
-            assert exc.code==401,exc.code
-          print('unsigned_webhook_rejected=true')
+            raise ValueError('Unsigned update was accepted')
+          except urllib.error.HTTPError as e:
+            assert e.code==401,e.code
+          print('unsigned_update_rejected=true')
+          print('synthetic_updates_do_not_contact_users=true')
           PY
