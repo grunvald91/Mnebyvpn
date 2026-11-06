@@ -102,6 +102,11 @@ test('production cabinet: Stars invoice, checked payment, durable settlement and
     assert.equal(after.rows[0].n,1);
   }finally{
     child.kill('SIGTERM');
+    // The shared disposable CI database is reused by later integration files.
+    // An extra published plan would consume a catalog LIMIT slot and break
+    // unrelated pricing tests. Retain its immutable order terms but unpublish.
+    await pool.query('UPDATE billing_plans SET enabled=false WHERE id=$1',[planId])
+      .catch(()=>{});
     await pool.end();
   }
 });
