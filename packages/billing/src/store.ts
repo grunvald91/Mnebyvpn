@@ -192,6 +192,8 @@ export class PgBillingStore {
         // trial reservations without a real activation deadline cannot renew.
         const renewal=await c.query(`SELECT e.id FROM entitlements e
           WHERE e.id=$1 AND e.account_id=$2 AND e.product=$3
+            AND e.state IN ('ACTIVE','EXPIRED','SUSPENDED',
+                            'PAID_PENDING_PROVISIONING','PROVISIONING_FAILED')
             AND e.starts_at IS NOT NULL AND e.expires_at IS NOT NULL
           FOR UPDATE OF e`,[renewalTargetId,accountId,p.product]);
         if(renewal.rowCount!==1)throw new Error('Renewal target not owned or not active yet');
