@@ -30,11 +30,12 @@ function setup() {
     requestReconcile: async (_id, reason) => { pending.push(reason); },
   };
   const adapter: ProvisioningAdapter = {
+    enforcesHardExpiry:true,
     inspect: async () => ({ ...observed }),
     apply: async d => {
       actions.push([d.revision, d.enabled].join(':'));
       if (customApply) return customApply(d);
-      observed = { revision: d.revision, enabled: d.enabled };
+      observed = { revision: d.revision, enabled: d.enabled, expiresAt:d.enabled ? d.expiresAt : null };
       return 'applied';
     },
   };
@@ -63,10 +64,10 @@ test('late ENABLE rev 1 after refund rev 2 gets compensating DISABLE before ack'
   const s = setup();
   s.apply = async d => {
     if (d.enabled) {
-      s.observed = { revision: d.revision, enabled: true };
+      s.observed = { revision: d.revision, enabled: true, expiresAt:d.expiresAt };
       s.desired = { ...s.desired, revision: 2, enabled: false };
     } else {
-      s.observed = { revision: d.revision, enabled: false };
+      s.observed = { revision: d.revision, enabled: false, expiresAt:null };
     }
     return 'applied';
   };
@@ -95,7 +96,7 @@ test('exception from adapter also treated as unknown outcome', async () => {
 test('lost fencing token prevents stale acknowledgement', async () => {
   const s = setup();
   s.apply = async d => {
-    s.observed = { revision: d.revision, enabled: d.enabled };
+    s.observed = { revision: d.revision, enabled: d.enabled, expiresAt:d.enabled?d.expiresAt:null };
     s.fence = 6;
     return 'applied';
   };
@@ -167,4 +168,22 @@ test('trial needs node-observed hard deadline, not only revision+enabled',async(
  observed={revision:1,enabled:true,expiresAt:new Date(moment.getTime()+24*3600000)};
  assert.deepEqual(await reconcileEntitlement('trial-1',store,adapter,()=>moment),
   {status:'retry_required',reason:'verification_failed'});
+});
+
+test('paid access cannot sync if the node omits or misreports hard expiry',async()=>{
+  const s=setup();
+  s.observed={revision:1,enabled:true,expiresAt:null};
+  s.apply=async()=> 'applied';
+  assert.deepEqual(await run(s),{status:'retry_required',reason:'verification_failed'});
+  assert.deepEqual(s.acknowledgements,[]);
+  s.observed={revision:1,enabled:true,expiresAt:new Date(future.getTime()+86400_000)};
+  assert.deepEqual(await run(s),{status:'retry_required',reason:'verification_failed'});
+  s.observed={revision:1,enabled:true,expiresAt:future};
+  assert.deepEqual(await run(s),{status:'synced',revision:1});
+});
+test('paid enable requires an adapter that guarantees hard node expiry',async()=>{
+  const s=setup();
+  delete s.adapter.enforcesHardExpiry;
+  assert.deepEqual(await run(s),{status:'retry_required',reason:'expiry_enforcement_unverified'});
+  assert.deepEqual(s.actions,[]);
 });

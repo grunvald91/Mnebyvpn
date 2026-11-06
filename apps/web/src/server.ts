@@ -17,6 +17,8 @@ import {
   issueSession, readSession, verifyTelegramIdToken, type Jwks,
 } from '../../../packages/web/src/security.ts';
 import { loadDashboard } from '../../../packages/web/src/dashboard.ts';
+import { parseProdamusFormData } from '../../../packages/billing/src/multipart.ts';
+import { handleProdamusDelivery } from '../../../packages/billing/src/handlers.ts';
 
 const required = (name: string): string => {
   const v = process.env[name];
@@ -61,6 +63,8 @@ if (checkoutEnabled) {
     returnUrl: required('PRODAMUS_RETURN_URL'),
     secret: required('PRODAMUS_SIGN_SECRET'),
   };
+  if (new URL(payform.notificationUrl).toString() !== publicOrigin + '/webhooks/prodamus')
+    throw new Error('Notification URL must target the website signed webhook route');
   const url = new URL(payform.formUrl);
   if (url.protocol !== 'https:' || url.username || url.password ||
       !url.hostname.endsWith('.payform.ru')) throw new Error('Unsafe Prodamus merchant origin');
@@ -131,6 +135,16 @@ function csrfAllowed(req: IncomingMessage, raw: string): boolean {
   return req.headers.origin === publicOrigin &&
     isValidCsrf(req.headers['x-csrf-token'] as string|undefined, raw, sessionSecret) &&
     req.headers['content-type']?.startsWith('application/json') === true;
+}
+async function readPaymentBody(req: IncomingMessage): Promise<Buffer> {
+  const chunks:Buffer[]=[]; let total=0;
+  for await(const chunk of req){
+    const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);
+    total+=part.length;
+    if(total>128*1024)throw new Error('Payment notification too large');
+    chunks.push(part);
+  }
+  return Buffer.concat(chunks);
 }
 async function bodyJson(req: IncomingMessage): Promise<Record<string,unknown>> {
   let total = 0;
@@ -230,6 +244,24 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === 'GET' && url.pathname === '/auth/callback') {
     await callback(req,res,url); return;
+  }
+  // Prodamus's server-to-server POST is the ONLY payment proof, never /success.
+  // The original FormData and Sign header are verified before SQL settlement.
+  if (req.method === 'POST' && url.pathname === '/webhooks/prodamus') {
+    if (!checkoutEnabled || !payform) {send(res,503,'NOT_READY','text/plain; charset=utf-8');return;}
+    const sign=req.headers.sign;
+    const ct=req.headers['content-type'];
+    if (typeof sign!=='string' || !/^[0-9a-f]{64}$/i.test(sign)) {
+      send(res,401,'UNSIGNED','text/plain; charset=utf-8');return;
+    }
+    if (typeof ct!=='string' ||
+        !(ct.startsWith('application/x-www-form-urlencoded') || ct.startsWith('multipart/form-data'))) {
+      send(res,415,'UNSUPPORTED_MEDIA_TYPE','text/plain; charset=utf-8');return;
+    }
+    const fields=await parseProdamusFormData(ct,await readPaymentBody(req));
+    const answer=await handleProdamusDelivery(fields,sign,store,payform);
+    send(res,answer.statusCode,answer.text,'text/plain; charset=utf-8');
+    return;
   }
   if (req.method === 'GET' && url.pathname === '/api/plans') {
     const plans = await store.plans('prodamus');

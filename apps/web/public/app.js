@@ -4,6 +4,7 @@ const text = (id, value) => { byId(id).textContent = String(value); };
 const state = {
   product: 'vpn', days: 15, plans: [], checkoutEnabled: false,
   loggedIn: false, csrf: '', busy: false, requestId: null, trialOffers: [],
+  inviteToken: null, refreshing: false,
 };
 const productNames = { vpn:'VPN', smart_dns:'Smart DNS', bundle:'VPN + Smart DNS' };
 const stateNames = {
@@ -67,7 +68,7 @@ function renderPlan() {
   text('selected-duration',state.days+' дней');
   text('selected-quota',state.product==='vpn'?'Не входит':plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
   text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):'—');
-  text('price-description',plan?'Фиксированный срок доступа. Продление оформляется отдельным заказом.':
+  text('price-description',plan?'Фиксированный срок доступа. Покупка нового пакета не продлевает старый.':
     'Тариф ещё не опубликован. Стоимость и квота появятся после утверждения.');
   const buy=byId('buy-button');
   buy.disabled=!plan||!state.checkoutEnabled||state.busy;
@@ -178,6 +179,8 @@ function renderAccount(payload) {
   renderPlan();
 }
 async function refresh() {
+  if(state.refreshing)return;
+  state.refreshing=true;
   try {
     const data=await api('/api/me');
     renderAccount(data);
@@ -186,7 +189,7 @@ async function refresh() {
       state.loggedIn=false;renderPlan();return;
     }
     toast('Не удалось загрузить кабинет. Попробуйте обновить страницу.');
-  }
+  } finally {state.refreshing=false;}
 }
 async function loadCatalog() {
   try {
@@ -201,18 +204,21 @@ async function loadCatalog() {
 }
 function applyLinkOptions() {
   const url=new URL(location.href);
+  let saved=null;
+  try {saved=JSON.parse(sessionStorage.getItem('mnebyvpn-selection')||'null');}catch{}
+  const referral=url.searchParams.get('ref');
+  // Persist the token across external Telegram OIDC redirects. Never trust it
+  // as identity: server-side checkout still validates matching invitation.
+  const token=/^[A-Za-z0-9_-]{16,24}$/.test(referral||'')?referral:
+    /^[A-Za-z0-9_-]{16,24}$/.test(saved?.inviteToken||'')?saved.inviteToken:null;
+  state.inviteToken=token;
   const product=url.searchParams.get('product');
   const days=Number(url.searchParams.get('days'));
   if(Object.hasOwn(productNames,product)&&[15,30,60,90].includes(days)){
     state.product=product;state.days=days;
-  } else {
-    try {
-      const saved=JSON.parse(sessionStorage.getItem('mnebyvpn-selection')||'null');
-      if(saved && Object.hasOwn(productNames,saved.product) &&
-        [15,30,60,90].includes(saved.days)) {
-        state.product=saved.product;state.days=saved.days;
-      }
-    } catch {}
+  } else if(saved && Object.hasOwn(productNames,saved.product) &&
+    [15,30,60,90].includes(saved.days)) {
+    state.product=saved.product;state.days=saved.days;
   }
   setSelection(state.product,state.days);
   if(url.searchParams.get('login')==='failed')
@@ -224,14 +230,14 @@ async function purchase() {
   const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
   if(!plan||!state.checkoutEnabled||state.busy)return;
   if(!state.loggedIn) {
-    sessionStorage.setItem('mnebyvpn-selection',JSON.stringify({product:state.product,days:state.days}));
+    sessionStorage.setItem('mnebyvpn-selection',JSON.stringify({
+      product:state.product,days:state.days,inviteToken:state.inviteToken,
+    }));
     location.assign('/auth/login');return;
   }
   state.busy=true;state.requestId ||= crypto.randomUUID();renderPlan();
-  const params=new URL(location.href).searchParams;
-  const ref=params.get('ref');
   const payload={planId:plan.id,requestId:state.requestId};
-  if(ref && /^[A-Za-z0-9_-]{16,24}$/.test(ref))payload.inviteToken=ref;
+  if(state.inviteToken)payload.inviteToken=state.inviteToken;
   try {
     const result=await api('/api/checkout',{
       method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
@@ -257,9 +263,8 @@ async function claimTrial() {
     location.assign('/auth/login');return;
   }
   state.busy=true;renderPlan();
-  const ref=new URL(location.href).searchParams.get('ref');
   const payload={product:state.product};
-  if(ref && /^[A-Za-z0-9_-]{16,24}$/.test(ref))payload.inviteToken=ref;
+  if(state.inviteToken)payload.inviteToken=state.inviteToken;
   try {
     const response=await api('/api/trial',{method:'POST',headers:{
       'Content-Type':'application/json','X-CSRF-Token':state.csrf,
@@ -295,3 +300,8 @@ byId('trial-button').addEventListener('click',claimTrial);
 byId('logout-button').addEventListener('click',logout);
 applyLinkOptions();
 Promise.all([loadCatalog(),refresh()]);
+// Payment verification and provisioning can complete after the user returns.
+setInterval(()=>{if(document.visibilityState==='visible' && state.loggedIn)refresh();},15000);
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible')refresh();
+});
