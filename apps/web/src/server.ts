@@ -311,6 +311,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const validTarget=typeof body.renewalTargetId==='string' &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.renewalTargetId);
     if (isRenewal!==validTarget ||
+        typeof body.planId !== 'string' ||
         !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(body.planId) ||
         typeof body.requestId !== 'string' ||
         !/^[0-9a-f]{8}-[0-9a-f-]{27,40}$/i.test(body.requestId) ||
