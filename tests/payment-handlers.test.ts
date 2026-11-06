@@ -79,7 +79,7 @@ test('signed Prodamus webhook repeat after PAID is eligible for SQL idempotency'
   assert.equal(result.statusCode,200);
   assert.equal(f.captures[0].providerTransactionId,'capture1');
   assert.equal(f.captures[0].amount,9900);
-  assert.equal((await handleProdamusDelivery({...body,sum:'1.00'},signProdamus(body,key),f.db,pd)).statusCode,400);
+  assert.equal((await handleProdamusDelivery({...body,sum:'1.00'},signProdamus(body,key),f.db,pd)).statusCode,401);
 });
 test('multipart decoder handles official nested products syntax and rejects ambiguous inputs',async()=>{
   const form=new FormData();
