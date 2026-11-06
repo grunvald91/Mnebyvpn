@@ -1,0 +1,67 @@
+name: MNEBYVPN Telegram webhook digest and activation (token stays in GitHub)
+on:
+  push:
+    paths: ['.github/workflows/telegram-webhook-setup.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN_BOT || secrets.TELEGRAM_BOT_TOKEN }}
+      ACTIVATE_WEBHOOK: 'no'
+    steps:
+      - name: Check BotFather identity and print only SHA256 of webhook secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$TELEGRAM_BOT_TOKEN" || { echo "::error::Missing Bot API token"; exit 2; }
+          python3 - <<'PY'
+          import os,hmac,hashlib,urllib.request,json,sys
+          token=os.environ['TELEGRAM_BOT_TOKEN']
+          secret=hmac.new(token.encode(),b'mnebyvpn.webhook.v1',hashlib.sha256).hexdigest()
+          digest=hashlib.sha256(secret.encode()).hexdigest()
+          print('TELEGRAM_WEBHOOK_SECRET_SHA256='+digest)
+          def call(method,payload=None):
+            body=json.dumps(payload or {}).encode()
+            request=urllib.request.Request('https://api.telegram.org/bot'+token+'/'+method,
+              method='POST',headers={'Content-Type':'application/json'},data=body)
+            with urllib.request.urlopen(request,timeout=12) as response:
+              return json.load(response)
+          try:
+            who=call('getMe')
+            assert who.get('ok') and str((who.get('result') or {}).get('username','')).lower()=='mnebyvpn_bot'
+            info=call('getWebhookInfo')
+            current=(info.get('result') or {}).get('url') or ''
+            if current and current!='https://mnebyvpn.site/webhooks/telegram':
+              raise ValueError('Another Telegram webhook is already configured')
+            print('telegram_bot_verified=true')
+            print('webhook_currently_set='+str(bool(current)).lower())
+            if os.environ['ACTIVATE_WEBHOOK']=='yes':
+              # Check that the endpoint is reachable and requires authentication
+              # before redirecting Telegram traffic to it.
+              request=urllib.request.Request('https://mnebyvpn.site/webhooks/telegram',
+                method='POST',data=b'{}',headers={'Content-Type':'application/json'})
+              try:
+                urllib.request.urlopen(request,timeout=8)
+                raise ValueError('Webhook accepted an unsigned request')
+              except urllib.error.HTTPError as exc:
+                if exc.code!=401:raise ValueError('Webhook not protected by secret')
+              result=call('setWebhook',{
+                'url':'https://mnebyvpn.site/webhooks/telegram',
+                'secret_token':secret,
+                'allowed_updates':['message','callback_query','pre_checkout_query','widget_query','shared_widget_query'],
+                'max_connections':5,
+                'drop_pending_updates':False,
+              })
+              if not result.get('ok') or result.get('result') is not True:
+                raise ValueError('Telegram rejected setWebhook')
+              print('telegram_webhook_activated=true')
+            else:
+              print('telegram_webhook_activated=false')
+          except Exception:
+            print('Telegram webhook identity/activation validation failed; no token printed')
+            sys.exit(1)
+          PY
