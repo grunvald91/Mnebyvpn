@@ -75,17 +75,19 @@ function renderPlan() {
     'Новая покупка создаёт отдельный доступ. Для продления используйте кнопку в кабинете.'):
     'Тариф ещё не опубликован. Стоимость и квота появятся после утверждения.');
   const buy=byId('buy-button');
-  buy.disabled=!plan||!state.checkoutEnabled||state.busy;
-  buy.textContent=state.busy?'Создаём заказ…':!plan?'Тариф пока недоступен':
-    !state.checkoutEnabled?'Покупка пока недоступна':
-    !state.loggedIn?'Войти и купить':state.renewalTargetId?'Оплатить продление':'Купить доступ';
+  const inDevelopment=state.product!=='vpn';
+  buy.disabled=inDevelopment||!plan||!state.checkoutEnabled||state.busy;
+  buy.textContent=inDevelopment?'В разработке':state.busy?'Создаём заказ…':!plan?'Тариф пока недоступен':
+    !state.checkoutEnabled?'Оплата пока недоступна':
+    !state.loggedIn?'Войти для оплаты':state.renewalTargetId?'К оплате продления':'Перейти к оплате →';
   const trial=byId('trial-button');
   const trialAvailable=state.trialOffers.includes(state.product);
   trial.disabled=!trialAvailable||state.busy;
   trial.textContent=trialAvailable?'Попробовать 24 часа бесплатно':'Пробные 24 часа — пока недоступны';
-  text('checkout-hint',!plan?'Неопубликованные тарифы не продаются.':
+  text('checkout-hint',inDevelopment?'Smart DNS и совместный тариф находятся в разработке и пока не продаются.':
+    !plan?'Неопубликованные тарифы не продаются.':
     !state.checkoutEnabled?'Онлайн-оплата включится после проверки платёжного подключения.':
-    'Оплата проходит на защищённой странице Продамус.');
+    'Способ оплаты выбирается на защищённой странице платёжного провайдера.');
 }
 function node(tag, cls, content) {
   const el=document.createElement(tag);
@@ -293,7 +295,7 @@ function applyLinkOptions() {
 }
 async function purchase() {
   const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
-  if(!plan||!state.checkoutEnabled||state.busy)return;
+  if(state.product!=='vpn'||!plan||!state.checkoutEnabled||state.busy)return;
   if(!state.loggedIn) {
     saveSelection();
     location.assign('/auth/login');return;
