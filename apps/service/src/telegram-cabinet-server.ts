@@ -219,10 +219,10 @@ async function handleOperatorReply(update:any){
     :m.chat?.type==='private'&&m.from?.id===support.chatId;
   if(!trusted)return null;
   const raw=typeof m.text==='string'?m.text.trim():'';
-  const command=/^\\/reply(?:@MnebyVPN_bot)?\\s+([0-9]{1,20})\\s+([\\s\\S]+)$/i.exec(raw);
+  const command=/^\/reply(?:@MnebyVPN_bot)?\s+([0-9]{1,20})\s+([\s\S]+)$/i.exec(raw);
   const replyText=typeof m.reply_to_message?.text==='string'
     ?m.reply_to_message.text:'';
-  const tagged=/^✉️ MnebyVPN — обращение из бота\\nID Telegram: ([0-9]{1,20})\\n/.exec(replyText);
+  const tagged=/^✉️ MnebyVPN — обращение из бота\nID Telegram: ([0-9]{1,20})\n/.exec(replyText);
   if(!command&&!tagged)return null;
   const target=Number(command?.[1]??tagged?.[1]);
   const message=command?.[2]?.trim()??raw;
@@ -230,7 +230,7 @@ async function handleOperatorReply(update:any){
     return {method:'sendMessage',chat_id:support.chatId,
       text:'Укажите текст ответа (до 1500 символов). Для команды: /reply ID сообщение'};
   try{
-    await telegramSupportSend(support,'✉️ Поддержка MnebyVPN\\n\\n'+message,target);
+    await telegramSupportSend(support,'✉️ Поддержка MnebyVPN\n\n'+message,target);
     return {method:'sendMessage',chat_id:support.chatId,text:'✅ Ответ доставлен пользователю.'};
   }catch{
     return {method:'sendMessage',chat_id:support.chatId,
@@ -251,8 +251,8 @@ async function sendSupportFromBot(id:number,updateId:number,message:string){
     return oneAction(user,msg('Слишком много обращений. Попробуйте позже.',
       [[{text:'🏠 Главное',callback_data:'nav:home'}]]));
   try{
-    await telegramSupportSend(support,'✉️ MnebyVPN — обращение из бота\\nID Telegram: '+id+
-      '\\n\\nВопрос:\\n'+message.trim());
+    await telegramSupportSend(support,'✉️ MnebyVPN — обращение из бота\nID Telegram: '+id+
+      '\n\nВопрос:\n'+message.trim());
     deliveredUpdates.add(updateId);
     if(deliveredUpdates.size>1000)deliveredUpdates.clear();
     return oneAction(user,msg('✅ Обращение доставлено оператору. Ответ придёт сюда, в Telegram.',
