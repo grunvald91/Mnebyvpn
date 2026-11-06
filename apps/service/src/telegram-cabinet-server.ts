@@ -190,8 +190,12 @@ async function issueStars(id:number,planId:string,updateId:number){
   return {method:'sendInvoice',...invoice};
 }
 async function receiveStars(update:any){
-  if(!store)throw new Error('DB unavailable');
   const pc=update.pre_checkout_query;
+  // Even during a DB outage Telegram must receive a timely decline (<=10s).
+  if(pc&&!store)return {method:'answerPreCheckoutQuery',
+    pre_checkout_query_id:pc.id,ok:false,
+    error_message:'Оплата временно недоступна. Попробуйте позднее.'};
+  if(!store)throw new Error('DB unavailable');
   if(pc){
     const oid=typeof pc.invoice_payload==='string'
       ?parseStarsPayload(pc.invoice_payload,starsSecret):null;
