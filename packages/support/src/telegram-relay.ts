@@ -23,8 +23,10 @@ export function validSupportText(raw:unknown,min=10,max=1500):raw is string {
     !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(raw);
 }
 export function validSupportContact(raw:unknown):raw is string {
-  return typeof raw==='string'&&raw.trim().length>=3&&raw.trim().length<=120&&
-    !/[\u0000-\u001F\u007F]/.test(raw);
+  if(typeof raw!=='string'||raw.length>120)return false;
+  const value=raw.trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)||
+    /^@[A-Za-z0-9_]{5,32}$/.test(value);
 }
 export async function telegramSupportSend(
   config:SupportConfig,text:string,to:number=config.chatId,
