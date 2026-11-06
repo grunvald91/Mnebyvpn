@@ -61,7 +61,7 @@ test('signed Telegram connect reveals a profile only to the confirmed owner',asy
       BOT_PORT:String(port),DATABASE_URL:url,
       TELEGRAM_WEBHOOK_SECRET_SHA256:digest,
       REMNAWAVE_API_URL:'http://127.0.0.1:'+panelAddress.port+'/',
-      REMNAWAVE_API_TOKEN:apiToken,
+      REMNAWAVE_READ_API_TOKEN:apiToken,
       VPN_SUBSCRIPTION_ORIGIN:'https://subs.example.test/',
       REMNAWAVE_SQUAD_UUIDS:'123e4567-e89b-42d3-a456-426614174000'}
   });

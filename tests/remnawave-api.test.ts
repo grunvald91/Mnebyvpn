@@ -17,6 +17,7 @@ test('username is deterministic and cannot be injected into API route',()=>{
 });
 test('verified panel profile may be shown only for exact expiry and HTTPS host',async()=>{
  let current:any=null;
+ let autoExpireAfterDisable=false;
  const calls:{url:string;method:string;headers:HeadersInit|undefined}[]=[];
  const mock:typeof fetch=async(input,opts)=>{
   const u=new URL(String(input));
@@ -32,7 +33,8 @@ test('verified panel profile may be shown only for exact expiry and HTTPS host',
    assert.equal(payload.status,'ACTIVE');
   }
   current={
-   ...current,username:payload.username,status:payload.status,
+   ...current,username:payload.username,
+   status:autoExpireAfterDisable&&payload.status==='DISABLED'?'EXPIRED':payload.status,
    expireAt:payload.expireAt,description:payload.description,
    subscriptionUrl:'https://subs.example.test/profile/secret-token',
   };
@@ -53,6 +55,18 @@ test('verified panel profile may be shown only for exact expiry and HTTPS host',
  current.subscriptionUrl='https://subs.example.test/profile/secret-token';
  current.status='DISABLED';
  assert.equal(await api.subscriptionFor(entitlement,expiry,1),null);
+ const writes=()=>calls.filter(x=>x.method==='PATCH'||x.method==='POST').length;
+ const originalWrites=writes();
+ current.description='managed-by-another-application';
+ await assert.rejects(api.applyPanelChange(entitlement,3,false,null),/not owned/);
+ assert.equal(writes(),originalWrites,'must never overwrite a colliding username');
+ current.description='mnebyvpn:'+entitlement+':rev:9';
+ await assert.rejects(api.applyPanelChange(entitlement,2,false,null),/newer/);
+ assert.equal(writes(),originalWrites,'must never downgrade a newer panel revision');
+ autoExpireAfterDisable=true;
+ current.description='mnebyvpn:'+entitlement+':rev:1';
+ await api.applyPanelChange(entitlement,2,false,expiry);
+ assert.equal(current.status,'EXPIRED');
  assert.ok(calls.some(x=>x.method==='POST'));
 });
 test('no active URL from panel if it cannot be read back',async()=>{

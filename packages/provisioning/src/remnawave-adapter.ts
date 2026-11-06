@@ -29,7 +29,7 @@ export function validateHardExpiryEvidence(input:HardExpiryEvidence):void {
 export function parseRemnawaveObservation(
   id:string,record:RemnawaveUser|null,
 ):ObservedAccess {
-  if(!record)return {revision:0,enabled:false,expiresAt:null};
+  if(!record)return {revision:0,enabled:false,expiresAt:null,absent:true};
   if(record.username!==remnawaveUsername(id))
     throw Error('Foreign Remnawave user identity');
   const prefix='mnebyvpn:'+id.toLowerCase()+':rev:';
@@ -52,11 +52,14 @@ export function parseRemnawaveObservation(
  * does not replace this test and must never self-approve a release gate.
  */
 export class RemnawaveProvisioningAdapter implements ProvisioningAdapter {
-  readonly enforcesHardExpiry=true as const;
+  // P0: Panel state/expireAt is NOT node-side proof. Without an independent
+  // Node enforcement implementation this adapter may REVOKE, but cannot
+  // acknowledge a new ENABLE or start a customer's 24-hour trial.
+  // Do not set enforcesHardExpiry=true based on a report SHA or version string.
   readonly panel:RemnawaveControl;
-  readonly evidence:HardExpiryEvidence;
-  constructor(panel:RemnawaveControl,evidence:HardExpiryEvidence){
-    validateHardExpiryEvidence(evidence);
+  readonly evidence?:HardExpiryEvidence;
+  constructor(panel:RemnawaveControl,evidence?:HardExpiryEvidence){
+    if(evidence)validateHardExpiryEvidence(evidence);
     this.panel=panel;
     this.evidence=evidence;
   }

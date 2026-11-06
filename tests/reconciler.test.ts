@@ -187,3 +187,12 @@ test('paid enable requires an adapter that guarantees hard node expiry',async()=
   assert.deepEqual(await run(s),{status:'retry_required',reason:'expiry_enforcement_unverified'});
   assert.deepEqual(s.actions,[]);
 });
+
+test('confirmed absent remote profile can acknowledge disable without creating a user',async()=>{
+  const state=setup();
+  state.desired={...state.desired,revision:9,enabled:false,expiresAt:null};
+  state.observed={revision:0,enabled:false,absent:true,expiresAt:null};
+  assert.deepEqual(await run(state),{status:'synced',revision:9});
+  assert.deepEqual(state.actions,[],'no API writes needed to revoke a nonexistent profile');
+  assert.deepEqual(state.acknowledgements,[9]);
+});

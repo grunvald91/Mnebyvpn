@@ -163,18 +163,21 @@ export class PgOutboxDispatcher {
              last_error_code=$2
         WHERE id=$1 AND handled_at IS NULL`,[signal.id,code]);
   }
-  async scheduleDriftScan(limit=100):Promise<number> {
+  async scheduleDriftScan(limit=100,products?:Product[]):Promise<number> {
     if(!Number.isSafeInteger(limit)||limit<1||limit>500)throw new Error('Invalid limit');
+    if(products&&(!products.length||products.some(x=>x!=='vpn'&&x!=='smart_dns')))
+      throw Error('Invalid product filter');
     const result=await this.store.pool.query(
       `INSERT INTO reconcile_outbox(entitlement_id,desired_revision)
          SELECT e.id,e.revision FROM entitlements e
          LEFT JOIN provisioning_state p ON p.entitlement_id=e.id AND p.adapter=e.product
-         WHERE p.applied_revision IS DISTINCT FROM e.revision
-            OR p.last_observed_at IS NULL
-            OR p.last_observed_at<clock_timestamp()-interval '1 hour'
+         WHERE ($2::text[] IS NULL OR e.product=ANY($2::text[]))
+           AND (p.applied_revision IS DISTINCT FROM e.revision
+             OR p.last_observed_at IS NULL
+             OR p.last_observed_at<clock_timestamp()-interval '1 hour')
          ORDER BY e.id LIMIT $1
          ON CONFLICT(entitlement_id,desired_revision) DO UPDATE SET
-           handled_at=NULL,next_attempt_at=clock_timestamp()`,[limit]);
+           handled_at=NULL,next_attempt_at=clock_timestamp()`,[limit,products??null]);
     return result.rowCount??0;
   }
 }

@@ -6,10 +6,15 @@ umask 077
 
 : "${DEPLOY_SHA:?Expected immutable main commit}"
 : "${BOT_PORT:=8793}"
+: "${WORKER_HEALTH_PORT:=8794}"
 [[ "$DEPLOY_SHA" =~ ^[a-f0-9]{40}$ ]] || { echo "Invalid release SHA" >&2; exit 2; }
 [[ "$BOT_PORT" =~ ^[0-9]{1,5}$ ]] && (( BOT_PORT>0 && BOT_PORT<65536 )) || {
   echo "Invalid BOT_PORT" >&2; exit 2;
 }
+
+[[ "$WORKER_HEALTH_PORT" =~ ^[0-9]{1,5}$ ]] &&
+  (( WORKER_HEALTH_PORT>0 && WORKER_HEALTH_PORT<65536 )) ||
+  { echo "Invalid WORKER_HEALTH_PORT" >&2; exit 2; }
 
 root="$HOME/mnebyvpn"
 archive="$root/inbox/$DEPLOY_SHA.tgz"
@@ -25,7 +30,6 @@ if [[ -e "$current" && ! -L "$current" ]]; then
   exit 3
 fi
 command -v node >/dev/null
-command -v npm >/dev/null
 command -v systemctl >/dev/null
 command -v curl >/dev/null
 node -e 'const [major,minor]=process.versions.node.split(".").map(Number);if(major<22||(major===22&&minor<16))process.exit(1)' || {
@@ -42,7 +46,10 @@ tar -xzf "$archive" -C "$release" --no-same-owner
   test -f package.json
   test -f apps/service/src/telegram-cabinet-server.ts
   test -f apps/service/src/vpn-provisioning-worker.ts
-  npm install --omit=dev --ignore-scripts --no-audit --no-fund --silent
+  test -f node_modules/pg/package.json
+  # The contents were built and tested in the corresponding green main run.
+  # Never resolve/install a different dependency set on the production VPS.
+  node -e "require('pg')"
 )
 old=""
 if [[ -L "$current" ]]; then
@@ -79,7 +86,9 @@ for (( i=0; i<12; i++ )); do
   if systemctl --user is-active --quiet mnebyvpn-telegram.service &&
      systemctl --user is-active --quiet mnebyvpn-vpn-worker.service &&
      curl --noproxy '*' --fail --silent --max-time 3 \
-       "http://127.0.0.1:$BOT_PORT/readyz" >/dev/null; then
+       "http://127.0.0.1:$BOT_PORT/readyz" >/dev/null &&
+     curl --noproxy '*' --fail --silent --max-time 3 \
+       "http://127.0.0.1:$WORKER_HEALTH_PORT/readyz" >/dev/null; then
     ready=1
     break
   fi

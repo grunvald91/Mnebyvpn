@@ -102,6 +102,18 @@ export class RemnawaveApi {
       throw Error('Invalid access revision or expiry');
     const desc=description(id,revision);
     const current=await this.getByEntitlement(id);
+    // Deterministic username alone is not proof of ownership. Another system
+    // could have created the same name: never overwrite or recycle its account.
+    if(current){
+      const prefix='mnebyvpn:'+id.toLowerCase()+':rev:';
+      const marker=current.description?.startsWith(prefix)
+        ?current.description.slice(prefix.length):null;
+      if(marker===null||!/^(0|[1-9][0-9]*)$/.test(marker)||
+         !Number.isSafeInteger(Number(marker)))
+        throw Error('Remnawave user is not owned by this service');
+      if(Number(marker)>revision)
+        throw Error('Remote access revision is newer than requested');
+    }
     const effectiveExpiry=expiresAt??(current?new Date(current.expireAt):null);
     if(!effectiveExpiry||!Number.isFinite(effectiveExpiry.getTime()))
       throw Error('Cannot set expiry for absent user');
@@ -120,7 +132,8 @@ export class RemnawaveApi {
       });
     }
     const after=await this.getByEntitlement(id);
-    if(!after||after.status!==(enabled?'ACTIVE':'DISABLED')||
+    if(!after||(enabled?after.status!=='ACTIVE':
+       !['DISABLED','EXPIRED'].includes(after.status))||
        Math.abs(Date.parse(after.expireAt)-effectiveExpiry.getTime())>1000||
        after.description!==desc)
       throw Error('Remnawave panel read-back mismatch');
