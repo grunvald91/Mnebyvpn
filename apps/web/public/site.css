@@ -13,3 +13,12 @@
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 
 .trial-button{margin-top:12px;min-height:43px;font-size:13px}.renew-button{font-size:12px;min-height:37px;padding:7px 13px;margin-top:15px}
+
+/* Compact verified-by-owner Telegram channel reference. External URL only. */
+.telegram-hero-link{font-size:13px;gap:10px;min-height:52px}
+.footer-links{display:flex;align-items:center;justify-content:flex-end;gap:18px;flex-wrap:wrap}
+.footer-links a{font-size:12px;color:#b7c7d8}
+.footer-links a:hover{color:var(--teal)}
+@media(max-width:900px){.footer-links{grid-column:2;justify-content:flex-start}}
+@media(max-width:680px){.footer-links{grid-column:1;justify-content:flex-start;margin-top:8px}}
+@media(max-width:360px){.telegram-hero-link{width:100%}}
