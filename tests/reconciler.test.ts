@@ -30,11 +30,13 @@ function setup() {
     requestReconcile: async (_id, reason) => { pending.push(reason); },
   };
   const adapter: ProvisioningAdapter = {
+    enforcesHardExpiry:true,
     inspect: async () => ({ ...observed }),
     apply: async d => {
       actions.push([d.revision, d.enabled].join(':'));
       if (customApply) return customApply(d);
-      observed = { revision: d.revision, enabled: d.enabled };
+      observed = { revision: d.revision, enabled: d.enabled,
+        ...(d.enabled?{expiresAt:d.expiresAt}:{}) };
       return 'applied';
     },
   };
@@ -63,7 +65,7 @@ test('late ENABLE rev 1 after refund rev 2 gets compensating DISABLE before ack'
   const s = setup();
   s.apply = async d => {
     if (d.enabled) {
-      s.observed = { revision: d.revision, enabled: true };
+      s.observed = { revision: d.revision, enabled: true,expiresAt:d.expiresAt };
       s.desired = { ...s.desired, revision: 2, enabled: false };
     } else {
       s.observed = { revision: d.revision, enabled: false };
@@ -95,7 +97,8 @@ test('exception from adapter also treated as unknown outcome', async () => {
 test('lost fencing token prevents stale acknowledgement', async () => {
   const s = setup();
   s.apply = async d => {
-    s.observed = { revision: d.revision, enabled: d.enabled };
+    s.observed = { revision: d.revision, enabled: d.enabled,
+      ...(d.enabled?{expiresAt:d.expiresAt}:{}) };
     s.fence = 6;
     return 'applied';
   };
@@ -123,7 +126,8 @@ test('post-apply inspect failing does not acknowledge', async () => {
 test('repeated concurrent entitlement changes bound correction attempts', async () => {
   const s = setup();
   s.apply = async d => {
-    s.observed = { revision: d.revision, enabled: d.enabled };
+    s.observed = { revision: d.revision, enabled: d.enabled,
+      ...(d.enabled?{expiresAt:d.expiresAt}:{}) };
     s.desired = { ...s.desired, revision: d.revision + 1, enabled: !d.enabled };
     return 'applied';
   };
