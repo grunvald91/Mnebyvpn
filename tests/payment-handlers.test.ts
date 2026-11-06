@@ -118,6 +118,6 @@ test('Prodamus ALL events: signed denied and cancelled callbacks return 200 with
   assert.equal((await handleProdamusDelivery(invalid,signProdamus(invalid,key),f.db,pd)).statusCode,400);
   assert.equal((await handleProdamusDelivery(base,'0'.repeat(64),f.db,pd)).statusCode,401);
   const truncated={...base,payment_status:''};
-  assert.equal((await handleProdamusDelivery(truncated,signProdamus(truncated,key),f.db,pd)).statusCode,200);
+  assert.equal((await handleProdamusDelivery(truncated,signProdamus(truncated,key),f.db,pd)).statusCode,400);
   assert.equal(f.captures.length,0);
 });
