@@ -76,6 +76,7 @@ test('forwardable card includes 15/30/60/90-day VPN and DNS terms and RUB/Stars 
  assert.equal(state.o[1][6],1);
  assert.doesNotMatch(card.html,/199,00|G6D4qU7Sxw3_A9pB|MnebyvpnTestBot/);
  assert.throws(()=>referralPublicData(offers,'invalid_bot_name'));
+ assert.throws(()=>referralPublicData([{...offer,durationSeconds:undefined as unknown as number}],'MnebyvpnTestBot'),/Invalid public offer/);
 });
 test('share reply button sends forwardable widget, no slash command required',async()=>{
  const f=fake();

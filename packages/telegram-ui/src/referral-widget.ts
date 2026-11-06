@@ -8,7 +8,7 @@ export interface PublicReferralOffer {
   planId:string;title:string;
   product:'vpn'|'smart_dns'|'bundle';
   stars:number;rubMinor:number|null;token:string;
-  durationSeconds?:number;dnsQuotaBytes?:bigint|null;trialAvailable?:boolean;
+  durationSeconds:number;dnsQuotaBytes?:bigint|null;trialAvailable?:boolean;
 }
 const TOKEN=/^[A-Za-z0-9_-]{16,24}$/;
 const BOT=/^[A-Za-z][A-Za-z0-9_]{4,31}$/;
@@ -16,7 +16,7 @@ const DAY=86400;
 const MAX_ITEMS=16;
 type Row=[number,number,number,number,string,string,number,number];
 function item(o:PublicReferralOffer):Row {
-  const duration=o.durationSeconds??2592000; // legacy 30d fixture only; real DB supplies duration
+  const duration=o.durationSeconds;
   if(!TOKEN.test(o.token)||!Number.isSafeInteger(duration)||duration<=0||
     duration%DAY!==0||!Number.isSafeInteger(o.stars)||o.stars<=0||
     (o.rubMinor!==null&&(!Number.isSafeInteger(o.rubMinor)||o.rubMinor<=0))) {
