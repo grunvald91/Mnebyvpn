@@ -371,12 +371,22 @@ async function callback(req: IncomingMessage,res: ServerResponse,
       if(updated.rowCount!==1)throw Error('Provider already linked to another account');
       accountId=linkAccountId;
     }else{
-      const col=provider==='telegram'?'telegram_user_id':'yandex_user_id';
-      const account=await pool.query(
-        `INSERT INTO accounts(id,${col}) VALUES(gen_random_uuid(),$1)
-          ON CONFLICT(${col}) DO UPDATE SET ${col}=EXCLUDED.${col} RETURNING id`,
-        [subject]);
-      accountId=account.rows[0].id as string;
+      if(provider==='telegram'){
+        // A first-time visitor verifies email and explicitly links Telegram.
+        // Existing Telegram-bot accounts retain direct Telegram sign-in.
+        const account=await pool.query(
+          'SELECT id FROM accounts WHERE telegram_user_id=$1',[subject]);
+        if(account.rowCount!==1){
+          redirect(res,'/?login=email-first#account');return;
+        }
+        accountId=account.rows[0].id as string;
+      }else{
+        // Retained only for historic Yandex migrations; the public provider is disabled.
+        const account=await pool.query(
+          'SELECT id FROM accounts WHERE yandex_user_id=$1',[subject]);
+        if(account.rowCount!==1)throw Error('Unregistered provider account');
+        accountId=account.rows[0].id as string;
+      }
     }
     const now=Date.now();
     const raw=issueAccountSession(accountId,sessionSecret,now);
