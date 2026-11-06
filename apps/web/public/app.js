@@ -199,6 +199,9 @@ function syncLoginLinks() {
   const cabinet=byId('cabinet-login-link');
   cabinet.textContent=state.loginEnabled?'Войти через Telegram':'Открыть Telegram-бота';
   cabinet.href=target;
+  text('login-prompt-copy',state.loginEnabled?
+    'Войдите через Telegram, чтобы видеть свои подписки, оставшиеся дни и DNS-квоту.':
+    'Вход в кабинет пока подключается. Связаться с проектом можно через Telegram-бота.');
   text('account-subtitle',state.loginEnabled?
     'Войдите, чтобы увидеть данные':'Вход в кабинет пока подключается');
 }
