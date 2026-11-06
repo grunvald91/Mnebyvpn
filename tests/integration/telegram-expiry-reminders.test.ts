@@ -21,11 +21,15 @@ test('PostgreSQL: exactly one 3d and 1d notice per active confirmed deadline, re
     await pool.query('INSERT INTO accounts(id,telegram_user_id) VALUES($1,$2)',[account,userId]);
     await pool.query(
       "INSERT INTO orders(id,account_id,product,provider,amount_minor,currency,state) "+
-      "VALUES($1,$2,'vpn','internal_trial',0,'XTR','TRIAL')",[order,account]);
+      "VALUES($1,$2,'vpn','prodamus',9900,'RUB','PAID')",[order,account]);
     await pool.query(
       "INSERT INTO entitlements(id,account_id,source_order_id,product,state,revision,starts_at,expires_at) "+
       "VALUES($1,$2,$3,'vpn','ACTIVE',2,clock_timestamp()-interval '1 hour',clock_timestamp()+interval '69 hours')",
       [entitlement,account,order]);
+    await pool.query(
+      "INSERT INTO entitlement_credits(entitlement_id,order_id,credit_sequence,starts_at,ends_at,duration_seconds) "+
+      "SELECT id,$2,0,starts_at,expires_at,EXTRACT(EPOCH FROM expires_at-starts_at)::bigint "+
+      "FROM entitlements WHERE id=$1",[entitlement,order]);
     await pool.query(
       "INSERT INTO provisioning_state(entitlement_id,adapter,applied_revision,last_observed_at) "+
       "VALUES($1,'vpn',2,clock_timestamp())",[entitlement]);
@@ -88,11 +92,15 @@ test('PostgreSQL: Telegram outage is retried, permanent block is not retried',as
       [account,'923743337']);
     await pool.query(
       "INSERT INTO orders(id,account_id,product,provider,amount_minor,currency,state) "+
-      "VALUES($1,$2,'vpn','internal_trial',0,'XTR','TRIAL')",[order,account]);
+      "VALUES($1,$2,'vpn','prodamus',9900,'RUB','PAID')",[order,account]);
     await pool.query(
       "INSERT INTO entitlements(id,account_id,source_order_id,product,state,revision,starts_at,expires_at) "+
       "VALUES($1,$2,$3,'vpn','ACTIVE',2,clock_timestamp()-interval '1 hour',clock_timestamp()+interval '23 hours')",
       [entitlement,account,order]);
+    await pool.query(
+      "INSERT INTO entitlement_credits(entitlement_id,order_id,credit_sequence,starts_at,ends_at,duration_seconds) "+
+      "SELECT id,$2,0,starts_at,expires_at,EXTRACT(EPOCH FROM expires_at-starts_at)::bigint "+
+      "FROM entitlements WHERE id=$1",[entitlement,order]);
     await pool.query(
       "INSERT INTO provisioning_state(entitlement_id,adapter,applied_revision,last_observed_at) "+
       "VALUES($1,'vpn',2,clock_timestamp())",[entitlement]);
@@ -117,6 +125,42 @@ test('PostgreSQL: Telegram outage is retried, permanent block is not retried',as
       'SELECT status,attempts FROM vpn_expiry_reminders WHERE entitlement_id=$1',
       [entitlement]);
     assert.deepEqual([last.rows[0].status,last.rows[0].attempts],['FAILED',2]);
+  }finally{
+    await pool.query('DELETE FROM vpn_expiry_reminders WHERE entitlement_id=$1',[entitlement]).catch(()=>{});
+    await pool.query('DELETE FROM reconcile_outbox WHERE entitlement_id=$1',[entitlement]).catch(()=>{});
+    await pool.query('DELETE FROM provisioning_state WHERE entitlement_id=$1',[entitlement]).catch(()=>{});
+    await pool.query('DELETE FROM entitlements WHERE id=$1',[entitlement]).catch(()=>{});
+    await pool.query('DELETE FROM orders WHERE id=$1',[order]).catch(()=>{});
+    await pool.query('DELETE FROM accounts WHERE id=$1',[account]).catch(()=>{});
+    await pool.end();
+  }
+});
+
+test('24-hour free trial is not sent a paid-subscription expiry reminder at activation',async()=>{
+  const pool=new Pool({...pg,max:3});
+  const account=randomUUID(),order=randomUUID(),entitlement=randomUUID();
+  const queue=new PgVpnExpiryReminderQueue(pool);
+  try{
+    await pool.query('INSERT INTO accounts(id,telegram_user_id) VALUES($1,$2)',[account,'943112300']);
+    await pool.query(
+      "INSERT INTO orders(id,account_id,product,provider,amount_minor,currency,state) "+
+      "VALUES($1,$2,'vpn','internal_trial',0,'XTR','TRIAL')",[order,account]);
+    await pool.query(
+      "INSERT INTO entitlements(id,account_id,source_order_id,product,state,revision,starts_at,expires_at) "+
+      "VALUES($1,$2,$3,'vpn','ACTIVE',2,clock_timestamp(),clock_timestamp()+interval '24 hours')",
+      [entitlement,account,order]);
+    await pool.query(
+      "INSERT INTO provisioning_state(entitlement_id,adapter,applied_revision,last_observed_at) "+
+      "VALUES($1,'vpn',2,clock_timestamp())",[entitlement]);
+    const delivered:VpnExpiryReminder[]=[];
+    const sender:ReminderSender={async send(job){delivered.push(job);return {status:'sent'};}};
+    const result=await processVpnExpiryReminders(queue,sender);
+    assert.equal(result.sent,0);
+    assert.equal(delivered.length,0);
+    const saved=await pool.query(
+      'SELECT count(*)::int AS n FROM vpn_expiry_reminders WHERE entitlement_id=$1',
+      [entitlement]);
+    assert.equal(saved.rows[0].n,0);
   }finally{
     await pool.query('DELETE FROM vpn_expiry_reminders WHERE entitlement_id=$1',[entitlement]).catch(()=>{});
     await pool.query('DELETE FROM reconcile_outbox WHERE entitlement_id=$1',[entitlement]).catch(()=>{});
