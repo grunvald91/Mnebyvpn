@@ -163,8 +163,10 @@ export class PgOutboxDispatcher {
              last_error_code=$2
         WHERE id=$1 AND handled_at IS NULL`,[signal.id,code]);
   }
-  async scheduleDriftScan(limit=100):Promise<number> {
+  async scheduleDriftScan(limit=100,products?:Product[]):Promise<number> {
     if(!Number.isSafeInteger(limit)||limit<1||limit>500)throw new Error('Invalid limit');
+    if(products&&(!products.length||products.some(x=>x!=='vpn'&&x!=='smart_dns')))
+      throw Error('Invalid product filter');
     const result=await this.store.pool.query(
       `INSERT INTO reconcile_outbox(entitlement_id,desired_revision)
          SELECT e.id,e.revision FROM entitlements e
