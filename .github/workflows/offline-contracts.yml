@@ -110,3 +110,24 @@ jobs:
           PGUSER: test
           PGDATABASE: mnebyvpn_test
         run: npm run test:integration
+      # The SAME runtime dependencies that passed CI are shipped to the VPS.
+      # Remote npm install after tests would resolve a different dependency graph.
+      - name: Pack tested runtime without dev dependencies
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm prune --omit=dev --ignore-scripts --no-audit --no-fund
+          test -f node_modules/pg/package.json
+          mkdir -p release
+          tar -czf release/release.tgz apps packages package.json node_modules
+          sha256sum release/release.tgz > release/release.tgz.sha256
+          printf '%s\n' "$GITHUB_SHA" > release/commit.sha
+      - name: Publish tested runtime for gated deployment
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnebyvpn-tested-runtime
+          path: release/
+          retention-days: 2
+          if-no-files-found: error
