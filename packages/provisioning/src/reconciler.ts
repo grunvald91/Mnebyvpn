@@ -42,7 +42,7 @@ export interface ProvisioningAdapter {
 
 export type ReconcileResult =
   | { status: 'synced'; revision: number }
-  | { status: 'retry_required'; reason: 'unknown_outcome' | 'verification_failed' | 'revision_race' | 'fence_lost' | 'expiry_enforcement_unverified' };
+  | { status: 'retry_required'; reason: 'unknown_outcome' | 'verification_failed' | 'revision_race' | 'fence_lost' | 'expiry_enforcement_unverified' | 'node_unverified' };
 
 const MAX_CORRECTIONS = 4;
 
@@ -113,6 +113,13 @@ export async function reconcileEntitlement(
       if (!matches(observed, latest,now())) {
         await store.requestReconcile(entitlementId, 'verification_failed');
         return { status: 'retry_required', reason: 'verification_failed' };
+      }
+      // Panel read-back cannot prove that Xray Node has actually revoked a
+      // credential, including after a 404 or EXPIRED status on the panel.
+      // Only an independently verified node enforcement adapter can ACK.
+      if(adapter.enforcesHardExpiry!==true){
+        await store.requestReconcile(entitlementId,'node_unverified');
+        return {status:'retry_required',reason:'node_unverified'};
       }
       if (await store.acknowledge(entitlementId, latest.revision, fence, observed.enabled)) {
         return { status: 'synced', revision: latest.revision };
