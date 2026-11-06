@@ -9,6 +9,7 @@ on:
       - feat/web-cabinet-20261106
       - feat/site-domain-telegram-20261106
       - feat/public-telegram-webhook-20261106
+      - feat/telegram-primary-cabinet-20261106
     paths:
       - 'apps/**'
       - 'packages/**'
