@@ -29,7 +29,8 @@ const pool=process.env.DATABASE_URL ? new Pool({
   max:3,connectionTimeoutMillis:3000,idleTimeoutMillis:12000,
 }) : null;
 const store=pool?new PgBillingStore(pool):null;
-const vpnReadToken=process.env.REMNAWAVE_READ_API_TOKEN??process.env.REMNAWAVE_API_TOKEN;
+// A bot must never silently inherit the provisioning worker's write token.
+const vpnReadToken=process.env.REMNAWAVE_READ_API_TOKEN;
 const vpnApi=(process.env.REMNAWAVE_API_URL&&vpnReadToken&&
   process.env.VPN_SUBSCRIPTION_ORIGIN&&process.env.REMNAWAVE_SQUAD_UUIDS)
   ?new RemnawaveApi({
