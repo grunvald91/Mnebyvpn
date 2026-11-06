@@ -30,6 +30,7 @@ jobs:
       VPN_USER: ${{ secrets.MNEBYVPN_DEPLOY_USER }}
       VPN_PORT: ${{ vars.MNEBYVPN_DEPLOY_SSH_PORT }}
       VPN_BOT_PORT: ${{ vars.MNEBYVPN_BOT_PORT }}
+      VPN_WORKER_PORT: ${{ vars.MNEBYVPN_WORKER_HEALTH_PORT }}
       VPN_SSH_KEY: ${{ secrets.MNEBYVPN_DEPLOY_SSH_KEY }}
       VPN_KNOWN_HOSTS: ${{ secrets.MNEBYVPN_DEPLOY_KNOWN_HOSTS }}
     steps:
@@ -64,7 +65,10 @@ jobs:
           port="${VPN_PORT:-22}"
           [[ "$port" =~ ^[0-9]{1,5}$ ]] && (( port>0 && port<65536 ))
           bot_port="${VPN_BOT_PORT:-8793}"
+          worker_port="${VPN_WORKER_PORT:-8794}"
           [[ "$bot_port" =~ ^[0-9]{1,5}$ ]] && (( bot_port>0 && bot_port<65536 ))
+          worker_port="${VPN_WORKER_PORT:-8794}"
+          [[ "$worker_port" =~ ^[0-9]{1,5}$ ]] && (( worker_port>0 && worker_port<65536 ))
           bash -n ops/deploy-user-release.sh
       - name: Upload immutable release and restart only two dedicated user services
         shell: bash
@@ -90,4 +94,4 @@ jobs:
           scp "${ssh_opts[@]}" -P "$ssh_port" \
             "$tmp/release.tgz" "$target:mnebyvpn/inbox/$DEPLOY_SHA.tgz"
           ssh "${ssh_opts[@]}" -p "$ssh_port" "$target" \
-            "DEPLOY_SHA=$DEPLOY_SHA BOT_PORT=$bot_port bash -se" < ops/deploy-user-release.sh
+            "DEPLOY_SHA=$DEPLOY_SHA BOT_PORT=$bot_port WORKER_HEALTH_PORT=$worker_port bash -se" < ops/deploy-user-release.sh
