@@ -85,6 +85,12 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.equal(response.status,200);
    assert.match(response.headers.get('content-type')??'',/text\/plain/);
    assert.equal(response.headers.get('cache-control'),'no-store');
+   assert.equal(response.headers.get('profile-title'),'MNEBYVPN');
+   assert.equal(response.headers.get('profile-web-page-url'),'https://mnebyvpn.site/');
+   assert.equal(response.headers.get('premium-url'),'https://mnebyvpn.site/#account');
+   assert.equal(response.headers.get('support-url'),'https://t.me/MnebyVPN_bot');
+   assert.equal(response.headers.get('profile-update-interval'),'1');
+   assert.match(response.headers.get('subscription-userinfo')??'',/expire=\\d+/);
    const decoded=Buffer.from((await response.text()).trim(),'base64').toString('utf8').trim();
    assert.equal(decoded,profile);
    assert.equal((await fetch(root+'/sub/'+'B'.repeat(43))).status,404);
@@ -100,9 +106,26 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const installerJs=await script.text();
    assert.match(installerJs,/incy:\/\/import\//);
    assert.ok(installerJs.includes('window.location.assign(target)'));
-   await pool.query("UPDATE entitlements SET state='EXPIRED' WHERE id=$1",[entitlement]);
-   assert.equal((await fetch(root+'/sub/'+issued!.token)).status,404);
+   await pool.query("UPDATE entitlements SET state='EXPIRED', expires_at=now()-interval '1 second' WHERE id=$1",[entitlement]);
+   const expiredResponse=await fetch(root+'/sub/'+issued!.token);
+   assert.equal(expiredResponse.status,200);
+   assert.equal(expiredResponse.headers.get('profile-title'),'MNEBYVPN');
+   assert.equal(expiredResponse.headers.get('premium-url'),'https://mnebyvpn.site/#account');
+   const announcement=expiredResponse.headers.get('announce');
+   assert.ok(announcement?.startsWith('base64:'));
+   assert.match(Buffer.from(announcement!.slice(7),'base64').toString('utf8'),/истёк/);
+   const expiredBody=Buffer.from((await expiredResponse.text()).trim(),'base64').toString('utf8');
+   assert.ok(expiredBody.includes('#profile-web-page-url: https://mnebyvpn.site/'));
+   assert.doesNotMatch(expiredBody,/vless:\/\//);
    assert.equal((await fetch(root+'/install/'+issued!.token+'?client=incy')).status,404);
+   // The same bearer URL can be refreshed after a confirmed renewal and node ACK.
+   await pool.query("UPDATE entitlements SET state='ACTIVE', expires_at=now()+interval '1 day' WHERE id=$1",[entitlement]);
+   const restored=await fetch(root+'/sub/'+issued!.token);
+   assert.equal(restored.status,200);
+   assert.equal(Buffer.from((await restored.text()).trim(),'base64').toString('utf8').trim(),profile);
+   // Revocation is not the same as expiry; it must remain unavailable.
+   await pool.query('UPDATE vpn_subscription_links SET revoked_at=now() WHERE entitlement_id=$1',[entitlement]);
+   assert.equal((await fetch(root+'/sub/'+issued!.token)).status,404);
  } finally {
    child?.kill('SIGTERM');
    await new Promise<void>(resolve=>worker.close(()=>resolve()));
