@@ -116,11 +116,14 @@ test('refunded original after its period has passed does not shorten later paid 
 test('DNS refund preserves consumed byte ledger; a new renewal grants a fresh real quota',async()=>{
   const f=await newSubscription('smart_dns');
   const renewal=await renew(f);
-  await pool.query('UPDATE entitlements SET quota_used_bytes=$2 WHERE id=$1',
-    [f.entitlementId,524288]);
+  await pool.query("UPDATE entitlements SET state='ACTIVE' WHERE id=$1",
+    [f.entitlementId]);
+  const usage=await pool.query('SELECT debit_smart_dns_quota($1,$2,$3) AS result',
+    [f.entitlementId,'dns-usage-'+unique(),524288]);
+  assert.equal(usage.rows[0].result,'ACCEPTED');
   assert.equal(await refund(f.first.id,f.txn,f.amount),'APPLIED');
   let e=await entitlement(f.entitlementId);
-  assert.equal(e.quota_limit_bytes,String(f.quota));
+  assert.equal(e.quota_limit_bytes,String(f.quota+524288));
   assert.equal(e.quota_used_bytes,'524288');
   assert.equal(e.quota_state,'AVAILABLE');
   assert.equal(await refund(renewal.order.id,renewal.txn,f.amount),'APPLIED');
