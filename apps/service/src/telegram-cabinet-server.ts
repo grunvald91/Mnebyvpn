@@ -11,6 +11,7 @@ import {createServer,type IncomingMessage,type ServerResponse} from 'node:http';
 import {createHash,timingSafeEqual} from 'node:crypto';
 import {Pool} from 'pg';
 import {PgBillingStore} from '../../../packages/billing/src/store.ts';
+import {RemnawaveApi} from '../../../packages/provisioning/src/remnawave-api.ts';
 import {formatDuration,formatRoubles} from '../../../packages/telegram-ui/src/menu.ts';
 import {effectiveAccessState,formatRemainingTime,formatRemainingQuota} from '../../../packages/telegram-ui/src/access-format.ts';
 
@@ -28,6 +29,14 @@ const pool=process.env.DATABASE_URL ? new Pool({
   max:3,connectionTimeoutMillis:3000,idleTimeoutMillis:12000,
 }) : null;
 const store=pool?new PgBillingStore(pool):null;
+const vpnApi=(process.env.REMNAWAVE_API_URL&&process.env.REMNAWAVE_API_TOKEN&&
+  process.env.VPN_SUBSCRIPTION_ORIGIN&&process.env.REMNAWAVE_SQUAD_UUIDS)
+  ?new RemnawaveApi({
+    panelUrl:process.env.REMNAWAVE_API_URL,
+    apiToken:process.env.REMNAWAVE_API_TOKEN,
+    subscriptionOrigin:process.env.VPN_SUBSCRIPTION_ORIGIN,
+    squadUuids:process.env.REMNAWAVE_SQUAD_UUIDS.split(',').map(x=>x.trim()),
+  }):null;
 type Button={text:string;callback_data?:string;url?:string};
 const homeButton:Button={text:'🏠 Главное',callback_data:'nav:home'};
 const siteButton:Button={text:'🌍 Сайт (резервный)',url:'https://mnebyvpn.site'};
@@ -41,7 +50,8 @@ const main=()=>msg(
   [
     [{text:'🌐 VPN и тарифы',callback_data:'nav:vpn'}],
     [{text:'🎁 Бесплатные 24 часа',callback_data:'nav:trial'}],
-    [{text:'🔐 Мои подключения',callback_data:'nav:status'}],
+    [{text:'🔐 Мои подключения',callback_data:'nav:status'},
+     {text:'🔌 Подключить',callback_data:'nav:connect'}],
     [{text:'🔁 Продление',callback_data:'nav:renew'},
      {text:'🎁 Пригласить друга',callback_data:'nav:share'}],
     [{text:'🧭 Smart DNS — в разработке',callback_data:'nav:dns'}],
@@ -116,8 +126,28 @@ async function packages(id:number){
   });
   return msg('🔐 Мои подключения\n\n'+items.join('\n\n')+
     '\n\nСрок пробного VPN не расходуется, пока узел не подтвердит выдачу.',
-    [[{text:'🔁 Обновить',callback_data:'nav:status'}],
+    [[{text:'🔁 Обновить',callback_data:'nav:status'},
+      {text:'🔌 Подключить VPN',callback_data:'nav:connect'}],
      [{text:'🌐 Тарифы VPN',callback_data:'nav:vpn'}],[homeButton]]);
+}
+async function connectVpn(id:number){
+  if(!store)throw new Error('DB unavailable');
+  const candidate=await store.confirmedVpnProfile(id);
+  if(!candidate)return msg(
+    '🔌 Подключение VPN\n\nПока нет действующего VPN-доступа, полностью подтверждённого узлом. Если вы запросили пробные сутки, проверьте статус.',
+    [[{text:'🔐 Мои подключения',callback_data:'nav:status'}],[homeButton]]);
+  if(!vpnApi)return msg(
+    '🔌 Подключение VPN\n\nДоступ подтверждён в кабинете, но серверная выдача конфигураций ещё не настроена. Данные не изменены.',
+    [[{text:'🔁 Проверить снова',callback_data:'nav:connect'}],[homeButton]]);
+  let url:string|null=null;
+  try {url=await vpnApi.subscriptionFor(candidate.entitlementId,candidate.expiresAt);}
+  catch { /* Credentials, remote paths and provider payloads must never be logged. */ }
+  if(!url)return msg(
+    '🔌 Подключение VPN\n\nСсылка ещё не подтверждена сервером. Попробуйте снова позже.',
+    [[{text:'🔁 Повторить',callback_data:'nav:connect'}],[homeButton]]);
+  return msg('🔌 Ваш VPN готов\n\nОткройте персональную ссылку и импортируйте профиль в поддерживаемое VPN-приложение. Не пересылайте ссылку другим людям.',
+    [[{text:'🔗 Получить VPN-конфигурацию',url}],
+     [{text:'🔐 Мои подключения',callback_data:'nav:status'}],[homeButton]]);
 }
 async function vpnPlans(){
   if(!pool)throw new Error('DB unavailable');
@@ -171,6 +201,7 @@ async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
     data==='nav:catalog'||data==='nav:plans')return vpnPlans();
   if(data==='nav:status'||data==='nav:renew'||data==='nav:manage')return packages(id);
   if(data==='nav:trial'||data==='trial:vpn')return trial(id);
+  if(data==='nav:connect')return connectVpn(id);
   return info(data);
 }
 function oneAction(actor:{id:number;messageId?:number;callbackId?:string},view:ReturnType<typeof msg>){
@@ -198,6 +229,7 @@ async function processUpdate(update:any){
     if(text==='/trial'||text==='🆓 Пробный день')action='trial:vpn';
     else if(text==='/my'||text==='/status'||text==='🔐 Мои подписки')action='nav:status';
     else if(text==='/plans'||text==='🌐 Выбрать доступ')action='nav:vpn';
+    else if(text==='/connect')action='nav:connect';
     else if(text==='/share')action='nav:share';
     else if(text==='/help'||text==='/support')action='nav:help';
   }
