@@ -177,7 +177,9 @@ test('trial is behind verified Telegram/Yandex OAuth, never a guest cookie',asyn
   assert.match(backend,/grantTrial\(auth.accountId/);
   assert.match(backend,/issueAccountSession\(/);
   assert.match(backend,/issueSubscriptionLinkForAccount\(/);
-  assert.match(backend,/https:\/\/login.yandex.ru\/info/);
+  assert.match(backend,/https:\/\/servgo.ru\/api\/auth\/yandex\/mnebyvpn\/start/);
+  assert.match(backend,/https:\/\/servgo.ru\/api\/auth\/yandex\/mnebyvpn\/exchange/);
+  assert.doesNotMatch(backend,/process\.env\.YANDEX_OAUTH_CLIENT_SECRET/);
   assert.doesNotMatch(ui,/api\/guest\/trial/);
   assert.doesNotMatch(ui,/api\/guest\/status/);
   assert.match(ui,/api\/vpn\/subscription/);
