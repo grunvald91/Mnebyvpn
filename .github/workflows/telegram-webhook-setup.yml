@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 4
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN_BOT || secrets.TELEGRAM_BOT_TOKEN }}
-      ACTIVATE_WEBHOOK: 'no'
+      ACTIVATE_WEBHOOK: 'yes'
     steps:
       - name: Check BotFather identity and print only SHA256 of webhook secret
         shell: bash
@@ -35,7 +35,7 @@ jobs:
             assert who.get('ok') and str((who.get('result') or {}).get('username','')).lower()=='mnebyvpn_bot'
             info=call('getWebhookInfo')
             current=(info.get('result') or {}).get('url') or ''
-            if current and current!='https://mnebyvpn.site/webhooks/telegram':
+            if current and current not in ('https://mnebyvpn.site/webhooks/telegram','https://cdn.servgo.ru/mnebyvpn-telegram/webhook'):
               raise ValueError('Another Telegram webhook is already configured')
             print('telegram_bot_verified=true')
             print('webhook_currently_set='+str(bool(current)).lower())
@@ -45,7 +45,7 @@ jobs:
               # Source: infra GitHub Actions run 42209151934. Telegram then
               # independently calls this URL using its own network.
               result=call('setWebhook',{
-                'url':'https://mnebyvpn.site/webhooks/telegram',
+                'url':'https://cdn.servgo.ru/mnebyvpn-telegram/webhook',
                 'secret_token':secret,
                 'allowed_updates':['message','callback_query','pre_checkout_query'],
                 'max_connections':5,
@@ -54,7 +54,7 @@ jobs:
               if not result.get('ok') or result.get('result') is not True:
                 raise ValueError('Telegram rejected setWebhook')
               checked=call('getWebhookInfo').get('result') or {}
-              if checked.get('url')!='https://mnebyvpn.site/webhooks/telegram':
+              if checked.get('url')!='https://cdn.servgo.ru/mnebyvpn-telegram/webhook':
                 raise ValueError('Telegram did not persist the intended webhook')
               print('telegram_webhook_activated=true')
               print('telegram_webhook_url_verified=true')
