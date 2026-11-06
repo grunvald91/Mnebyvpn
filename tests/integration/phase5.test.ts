@@ -35,10 +35,11 @@ test('worker cannot grant with missing adapter; mock grant then full refund revo
 
   const observed=new Map<string,ObservedAccess>(),calls:string[]=[];
   const mock:AdapterMap={vpn:{
+    enforcesHardExpiry:true,
     inspect:async(id)=>observed.get(id)??{revision:0,enabled:false},
     apply:async(d:DesiredAccess,operationId)=>{
       calls.push(operationId);
-      observed.set(d.entitlementId,{revision:d.revision,enabled:d.enabled});
+      observed.set(d.entitlementId,{revision:d.revision,enabled:d.enabled,expiresAt:d.expiresAt});
       return 'applied';
     },
   }};
