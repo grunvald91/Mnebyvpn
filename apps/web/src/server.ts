@@ -47,15 +47,19 @@ const tls = base.protocol === 'https:';
 const sessionCookie = tls ? '__Host-mnebyvpn_session' : 'mnebyvpn_session';
 const challengeCookie = tls ? '__Host-mnebyvpn_oidc' : 'mnebyvpn_oidc';
 const networkVerified = process.env.WEB_NETWORK_PROVISIONING_VERIFIED === 'yes';
-const checkoutEnabled = networkVerified && process.env.WEB_CHECKOUT_ENABLED === '1' &&
-  process.env.WEB_PAYMENT_PROVIDER_TESTED === 'yes' &&
+// Never stop receiving previously-created payment notifications merely
+// because new sales were disabled. Both flags default to fail-closed.
+const webhookEnabled = process.env.WEB_PRODAMUS_WEBHOOK_ENABLED === 'yes' &&
+  process.env.WEB_PAYMENT_PROVIDER_TESTED === 'yes';
+const checkoutEnabled = webhookEnabled && networkVerified &&
+  process.env.WEB_CHECKOUT_ENABLED === '1' &&
   process.env.WEB_LEGAL_PAGES_PUBLISHED === 'yes';
 const trialEnabled = networkVerified && process.env.WEB_TRIAL_ENABLED === 'yes';
 const meteringVerified = networkVerified && process.env.WEB_DNS_METERING_VERIFIED === 'yes';
 const pool = new Pool({ connectionString: required('DATABASE_URL'), max: 5, connectionTimeoutMillis: 3000 });
 const store = new PgBillingStore(pool);
 let payform: ProdamusConfig | undefined;
-if (checkoutEnabled) {
+if (webhookEnabled) {
   payform = {
     formUrl: required('PRODAMUS_FORM_URL'),
     notificationUrl: required('PRODAMUS_NOTIFICATION_URL'),
@@ -248,7 +252,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   // Prodamus's server-to-server POST is the ONLY payment proof, never /success.
   // The original FormData and Sign header are verified before SQL settlement.
   if (req.method === 'POST' && url.pathname === '/webhooks/prodamus') {
-    if (!checkoutEnabled || !payform) {send(res,503,'NOT_READY','text/plain; charset=utf-8');return;}
+    if (!webhookEnabled || !payform) {send(res,503,'NOT_READY','text/plain; charset=utf-8');return;}
     const sign=req.headers.sign;
     const ct=req.headers['content-type'];
     if (typeof sign!=='string' || !/^[0-9a-f]{64}$/i.test(sign)) {
