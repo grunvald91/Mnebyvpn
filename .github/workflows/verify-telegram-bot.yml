@@ -1,5 +1,8 @@
 name: Verify MNEBYVPN Telegram bot identity (secret-safe)
 on:
+  push:
+    paths:
+      - '.github/workflows/verify-telegram-bot.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -8,14 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     env:
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN_BOT || secrets.TELEGRAM_BOT_TOKEN }}
     steps:
       - name: Verify Bot API identity without exposing the token
         shell: bash
         run: |
           set -euo pipefail
           if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
-            echo "::error::Add TELEGRAM_BOT_TOKEN in this repository's Actions secrets"
+            echo "::error::Add TELEGRAM_TOKEN_BOT (or TELEGRAM_BOT_TOKEN) in Mnebyvpn Actions secrets"
             exit 2
           fi
           python3 - <<'PY'
@@ -34,6 +37,14 @@ jobs:
           except Exception:
             print('Bot API getMe validation failed. Check token and exact username. Token was not printed.')
             sys.exit(1)
+          request=urllib.request.Request('https://api.telegram.org/bot'+token+'/getWebhookInfo',method='POST',data=b'')
+          try:
+            with urllib.request.urlopen(request,timeout=12) as response:
+              status=json.loads(response.read(8192))
+            webhook=(status.get('result') or {}).get('url') or ''
+            print('bot_has_existing_webhook='+str(bool(webhook)).lower())
+          except Exception:
+            print('bot_webhook_status=unverified')
           print('bot_identity_verified=true')
           print('bot_username=@MnebyVPN_bot')
           print('secret_exposed=false')
