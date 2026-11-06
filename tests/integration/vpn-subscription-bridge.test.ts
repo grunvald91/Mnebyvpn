@@ -90,7 +90,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.equal(response.headers.get('premium-url'),'https://mnebyvpn.site/#account');
    assert.equal(response.headers.get('support-url'),'https://t.me/MnebyVPN_bot');
    assert.equal(response.headers.get('profile-update-interval'),'1');
-   assert.match(response.headers.get('subscription-userinfo')??'',/expire=\\d+/);
+   assert.match(response.headers.get('subscription-userinfo')??'',/expire=\d+/);
    const decoded=Buffer.from((await response.text()).trim(),'base64').toString('utf8').trim();
    assert.equal(decoded,profile);
    assert.equal((await fetch(root+'/sub/'+'B'.repeat(43))).status,404);
