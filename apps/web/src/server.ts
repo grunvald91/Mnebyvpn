@@ -19,7 +19,7 @@ import {
   issueAccountSession, readAccountSession, verifyEnvelope, verifyTelegramIdToken, type Jwks,
 } from '../../../packages/web/src/security.ts';
 import { loadDashboard } from '../../../packages/web/src/dashboard.ts';
-import {normalizeLoginEmail,privateDigest} from '../../../packages/web/src/email-otp.ts';
+import {normalizeLoginEmail} from '../../../packages/web/src/email-otp.ts';
 import {beginEmailCode,verifyEmailCode} from '../../../packages/web/src/email-auth-service.ts';
 import { parseProdamusFormData } from '../../../packages/billing/src/multipart.ts';
 import { handleProdamusDelivery } from '../../../packages/billing/src/handlers.ts';
@@ -597,7 +597,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     }
     const result = await store.grantTrial(auth.accountId,
       body.product as 'vpn'|'smart_dns'|'bundle',body.inviteToken as string|undefined,
-      privateDigest('trial-device-v1',device,sessionSecret));
+      createHash('sha256').update('trial-device-v1:').update(device).digest('hex'));
     json(res,200,{status:result.status,expiresAt:result.expiresAt?.toISOString()??null});
     return;
   }
