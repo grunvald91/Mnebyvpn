@@ -14,7 +14,7 @@ import {PgOutboxDispatcher,type Product} from '../../../packages/provisioning/sr
 
 export interface VpnDispatcher {
   expireDue():Promise<number>;
-  scheduleDriftScan(limit:number):Promise<number>;
+  scheduleDriftScan(limit:number,products?:Product[]):Promise<number>;
   processOnce(products?:Product[]):Promise<{status:'empty'|'synced'|'retry';reason?:string}>;
 }
 export interface VpnWorkerResult {
