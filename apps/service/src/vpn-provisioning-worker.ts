@@ -126,11 +126,20 @@ async function main():Promise<void>{
           }
           const input:unknown=JSON.parse(raw);
           const userId=(input as {telegramUserId?:unknown})?.telegramUserId;
+          const requestedId=(input as {entitlementId?:unknown})?.entitlementId;
           if(typeof userId!=='number'||!Number.isSafeInteger(userId)||userId<=0)
             throw Error('Invalid Telegram actor');
+          if(requestedId!==undefined&&
+            (typeof requestedId!=='string'||
+             !/^[0-9a-f]{8}-[0-9a-f-]{27,40}$/i.test(requestedId)))
+            throw Error('Invalid requested entitlement');
           const allowed=await billing.confirmedVpnProfile(userId);
-          const profile=allowed?await node.profileFor(
-            allowed.entitlementId,allowed.revision,allowed.expiresAt):null;
+          // A previously shared subscription URL must not accidentally reveal
+          // another entitlement belonging to the same Telegram account.
+          const profile=allowed&&
+            (requestedId===undefined||allowed.entitlementId===requestedId)
+            ?await node.profileFor(
+              allowed.entitlementId,allowed.revision,allowed.expiresAt):null;
           res.writeHead(200).end(JSON.stringify({profile}));return;
         }catch{
           res.writeHead(503).end('{"code":"RETRY_LATER"}');return;
