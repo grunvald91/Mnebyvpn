@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0a1122">
-  <meta name="description" content="MNEBY VPN — VPN и Smart DNS, подписки и управление доступом в одном кабинете.">
+  <meta name="description" content="Мне бы VPN — выбор срока VPN-подписки и управление доступом. Smart DNS и совместный тариф — в разработке.">
   <title>MNEBY VPN — доступ и подписки</title>
   <link rel="stylesheet" href="/site.css">
   <script src="/app.js" defer></script>
@@ -32,8 +32,8 @@
     <section class="hero shell">
       <div class="hero-copy">
         <p class="eyebrow"><span class="eyebrow-line"></span> ПРОСТО. ПОНЯТНО. ПОД КОНТРОЛЕМ.</p>
-        <h1>Открой<span> новые горизонты</span> интернета.</h1>
-        <p class="hero-lead">VPN и Smart DNS — в одном личном кабинете. Управляйте доступом, продлевайте подписку и следите за её сроком и квотой.</p>
+        <h1>Ваш VPN.<span> Без лишних шагов.</span></h1>
+        <p class="hero-lead">Выберите срок, проверьте стоимость и перейдите к оплате. Подписка и продление — в личном кабинете.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="#plans">Выбрать доступ <span aria-hidden="true">↗</span></a>
           <a class="button button-secondary" href="#account">Мой кабинет <span aria-hidden="true">→</span></a>
@@ -51,27 +51,27 @@
 
     <section class="features shell" id="features">
       <div class="section-head">
-        <div><p class="eyebrow">ВОЗМОЖНОСТИ</p><h2>Один сервис. Два способа подключения.</h2></div>
+        <div><p class="eyebrow">ВОЗМОЖНОСТИ</p><h2>VPN сейчас. Больше возможностей — позже.</h2></div>
         <p class="section-desc">Выбирайте подходящий вариант и отслеживайте всё в своём кабинете.</p>
       </div>
       <div class="feature-grid">
         <article class="feature-card"><span class="feature-icon">◈</span><h3>VPN</h3><p>Защищённый туннель для интернет-соединений через совместимый VPN-клиент.</p><span class="feature-meta">Отдельный VPN-доступ</span></article>
-        <article class="feature-card"><span class="feature-icon">◎</span><h3>Smart DNS</h3><p>Шифрованные DNS-запросы и выборочная маршрутизация поддерживаемых сервисов. Не заменяет VPN.</p><span class="feature-meta">Общая квота на пакет</span></article>
-        <article class="feature-card"><span class="feature-icon">⌘</span><h3>Вместе</h3><p>Один аккаунт для VPN и Smart DNS. Совместная работа на устройствах проходит проверку.</p><span class="feature-meta">Единый кабинет</span></article>
+        <article class="feature-card"><span class="feature-icon">◎</span><h3>Smart DNS</h3><p>Отдельный способ настройки DNS. Функция ещё разрабатывается и не продаётся.</p><span class="feature-meta">В разработке</span></article>
+        <article class="feature-card"><span class="feature-icon">⌘</span><h3>VPN + DNS</h3><p>Совместный вариант планируется после проверки совместимости.</p><span class="feature-meta">В разработке</span></article>
       </div>
     </section>
 
     <section class="plans-section" id="plans">
       <div class="shell">
         <div class="section-head">
-          <div><p class="eyebrow">ПОДПИСКИ</p><h2>Выберите свой доступ</h2></div>
-          <p class="section-desc">Стоимость и квоты показываются только из опубликованных тарифов.</p>
+          <div><p class="eyebrow">ПОДПИСКИ</p><h2>Выберите тариф VPN</h2></div>
+          <p class="section-desc">1. Выберите срок. 2. Перейдите к оплате. Цены — только из опубликованных тарифов.</p>
         </div>
         <div class="plan-controls">
           <div class="tabs" role="group" aria-label="Тип доступа">
             <button class="tab selected" data-product="vpn" type="button" aria-pressed="true">VPN</button>
-            <button class="tab" data-product="smart_dns" type="button" aria-pressed="false">Smart DNS</button>
-            <button class="tab" data-product="bundle" type="button" aria-pressed="false">Вместе</button>
+            <button class="tab tab-soon" data-product="smart_dns" type="button" aria-pressed="false" disabled aria-disabled="true">DNS · скоро</button>
+            <button class="tab tab-soon" data-product="bundle" type="button" aria-pressed="false" disabled aria-disabled="true">VPN + DNS · скоро</button>
           </div>
           <div class="days-tabs" role="group" aria-label="Срок тарифа">
             <button class="days-tab selected" data-days="15" type="button" aria-pressed="true">15 дней</button>
@@ -94,7 +94,7 @@
               <div><span>Продление</span><strong>Из личного кабинета</strong></div>
             </div>
             <button type="button" class="button button-primary button-block" id="buy-button" disabled>Загрузка тарифов…</button>
-            <p class="small-print" id="checkout-hint" role="status">Покупка откроется после проверки платёжного подключения.</p>
+            <p class="small-print" id="checkout-hint" role="status">Оплата станет доступна после проверки платёжного подключения. Способ оплаты выбирается на странице провайдера.</p>
             <button type="button" class="button button-secondary button-block trial-button" id="trial-button" disabled>Пробные 24 часа — пока недоступны</button>
           </article>
           <aside class="benefits">
@@ -103,6 +103,12 @@
             <div class="benefit"><span class="benefit-number">03</span><div><h3>Данные без догадок</h3><p>Если сервер ещё не подтвердил расход DNS, цифры не подменяются условными значениями.</p></div></div>
           </aside>
         </div>
+        <section class="coming-soon" aria-label="Что появится позже">
+          <h3>В разработке</h3>
+          <div class="coming-item"><span class="coming-icon" aria-hidden="true">◉</span><p><strong>Обычный интернет при ограничениях мобильной сети</strong><span>Готовим режим для случаев, когда привычные сайты и приложения становятся недоступны из-за ограничений оператора. Работоспособность зависит от сети и устройства.</span></p></div>
+          <div class="coming-item"><span class="coming-icon" aria-hidden="true">◇</span><p><strong>Smart DNS</strong><span>Отдельный DNS-доступ. Пока не подключается и не продаётся.</span></p></div>
+          <div class="coming-item"><span class="coming-icon" aria-hidden="true">⌘</span><p><strong>Совместный тариф VPN + DNS</strong><span>Появится после проверки совместной работы.</span></p></div>
+        </section>
       </div>
     </section>
 
