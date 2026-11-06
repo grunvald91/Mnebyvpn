@@ -53,11 +53,12 @@ export function parseRemnawaveObservation(
  */
 export class RemnawaveProvisioningAdapter implements ProvisioningAdapter {
   readonly enforcesHardExpiry=true as const;
-  constructor(
-    readonly panel:RemnawaveControl,
-    readonly evidence:HardExpiryEvidence,
-  ){
+  readonly panel:RemnawaveControl;
+  readonly evidence:HardExpiryEvidence;
+  constructor(panel:RemnawaveControl,evidence:HardExpiryEvidence){
     validateHardExpiryEvidence(evidence);
+    this.panel=panel;
+    this.evidence=evidence;
   }
   async inspect(entitlementId:string):Promise<ObservedAccess> {
     return parseRemnawaveObservation(entitlementId,
