@@ -82,7 +82,9 @@ test('public website references the configured Telegram bot in navigation, hero 
   const {readFileSync}=await import('node:fs');
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
   const links=html.match(/https:\/\/t\.me\/MnebyVPN_bot/g)||[];
-  assert.equal(links.length,5);
+  assert.equal(links.length,4);
+  assert.match(html,/id="trial-hero-button"/);
+  assert.match(html,/id="guest-trial-card"/);
   assert.match(html,/@MnebyVPN_bot/);
   assert.match(html,/rel="noopener noreferrer"/);
 });
