@@ -6,8 +6,12 @@
  */
 import {setTimeout as sleep} from 'node:timers/promises';
 import {createServer} from 'node:http';
+import {timingSafeEqual} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 import {Pool} from 'pg';
+import {PgBillingStore} from '../../../packages/billing/src/store.ts';
+import {SignedXrayNodeApi} from '../../../packages/provisioning/src/xray-node.ts';
 import {RemnawaveApi} from '../../../packages/provisioning/src/remnawave-api.ts';
 import {RemnawaveProvisioningAdapter}
   from '../../../packages/provisioning/src/remnawave-adapter.ts';
@@ -72,15 +76,21 @@ async function main():Promise<void>{
   if(process.env.MNEBYVPN_ENV!=='production'||
      process.env.MNEBYVPN_PROVISIONING_WORKER!=='enabled')
     throw Error('VPN provisioning worker must be explicitly enabled');
-  // Panel-only mode can perform verified revokes, but cannot approve ENABLE.
-  // Do not accept arbitrary report hashes as node-enforcement proof.
-  const api=new RemnawaveApi({
+  const actualNode=process.env.MNEBYVPN_NODE_WORKER==='enabled';
+  // Real WireGuard-only Xray node enforces expiry in its own process.
+  // Panel-only Remnawave stays fail-closed as a fallback.
+  const node=actualNode
+    ?new SignedXrayNodeApi(readFileSync(configured('VPN_NODE_KEY_FILE'),'utf8').trim())
+    :null;
+  const adapter=node??new RemnawaveProvisioningAdapter(new RemnawaveApi({
     panelUrl:configured('REMNAWAVE_API_URL'),
     apiToken:configured('REMNAWAVE_API_TOKEN'),
     subscriptionOrigin:configured('VPN_SUBSCRIPTION_ORIGIN'),
     squadUuids:configured('REMNAWAVE_SQUAD_UUIDS').split(',').map(x=>x.trim()),
-  });
-  const adapter=new RemnawaveProvisioningAdapter(api);
+  }));
+  const profileToken=process.env.VPN_WORKER_PROFILE_TOKEN??'';
+  if(node&&!/^[a-f0-9]{64}$/i.test(profileToken))
+    throw Error('VPN_WORKER_PROFILE_TOKEN is required in node mode');
   const healthPort=Number(process.env.VPN_WORKER_HEALTH_PORT??'8794');
   if(!Number.isSafeInteger(healthPort)||healthPort<1||healthPort>65535)
     throw Error('Invalid VPN_WORKER_HEALTH_PORT');
@@ -95,9 +105,37 @@ async function main():Promise<void>{
   try{
     await pool.query('SELECT 1');
     let lastCycleSuccess=0;
+    const billing=new PgBillingStore(pool);
     const health=createServer(async(req,res)=>{
       res.setHeader('Cache-Control','no-store');
       res.setHeader('Content-Type','application/json');
+      if(req.url==='/profile'&&req.method==='POST'&&node){
+        const authorization=req.headers.authorization;
+        const supplied=typeof authorization==='string'&&
+          authorization.startsWith('Bearer ')?authorization.slice(7):'';
+        const expected=Buffer.from(profileToken,'utf8');
+        const actual=Buffer.from(supplied,'utf8');
+        if(actual.length!==expected.length||!timingSafeEqual(actual,expected)){
+          res.writeHead(401).end('{"code":"UNAUTHORIZED"}');return;
+        }
+        try{
+          let raw='';
+          for await(const chunk of req){
+            raw+=String(chunk);
+            if(raw.length>512)throw Error('Oversized profile request');
+          }
+          const input:unknown=JSON.parse(raw);
+          const userId=(input as {telegramUserId?:unknown})?.telegramUserId;
+          if(typeof userId!=='number'||!Number.isSafeInteger(userId)||userId<=0)
+            throw Error('Invalid Telegram actor');
+          const allowed=await billing.confirmedVpnProfile(userId);
+          const profile=allowed?await node.profileFor(
+            allowed.entitlementId,allowed.revision,allowed.expiresAt):null;
+          res.writeHead(200).end(JSON.stringify({profile}));return;
+        }catch{
+          res.writeHead(503).end('{"code":"RETRY_LATER"}');return;
+        }
+      }
       if(req.url!=='/readyz'||req.method!=='GET'){
         res.writeHead(404).end('{"ready":false}');
         return;
