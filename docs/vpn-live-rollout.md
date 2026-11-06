@@ -31,7 +31,7 @@
 
 Workflow: .github/workflows/deploy-production.yml.
 
-Условия: успешный push-CI ветки main, соответствие проверенному SHA текущей вершине main и переменная GitHub Actions MNEBYVPN_DEPLOY_ENABLED=true. До этого автоматическое развёртывание отключено.
+Условия после разрешения владельца 06.11.2026: успешный push-CI ветки main и соответствие проверенному SHA текущей вершине main. Деплой запускается по умолчанию; аварийный выключатель `MNEBYVPN_DEPLOY_ENABLED=false` в GitHub Actions Variables предотвращает выпуск. При отсутствии SSH-секретов, подготовленных пользовательских systemd-сервисов или готовности обоих backend процесс прерывается с отказом/откатом; секреты не подставляются автоматически. Коммерческие платежи не разрешаются этим workflow.
 
 Необходимые GitHub Actions secrets:
 - MNEBYVPN_DEPLOY_HOST

@@ -1,4 +1,4 @@
-name: MNEBYVPN deploy after green main CI (opt-in)
+name: MNEBYVPN deploy after green main CI
 
 on:
   workflow_run:
@@ -22,7 +22,7 @@ jobs:
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       github.event.workflow_run.conclusion == 'success' &&
-      vars.MNEBYVPN_DEPLOY_ENABLED == 'true'
+      vars.MNEBYVPN_DEPLOY_ENABLED != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     environment: mnebyvpn-production

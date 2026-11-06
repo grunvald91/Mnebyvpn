@@ -185,8 +185,14 @@ async function issueStars(id:number,planId:string,updateId:number){
   const order=await store.createTelegramOrder(id,planId,'cabinet-stars:'+updateId);
   const invoice=buildStarsInvoice(starsOrderFromDB(order),
     pricedPlanForOrder(order),starsSecret);
-  // Telegram performs sendInvoice from this authenticated webhook response.
-  // A repeated delivery reuses the same order; pre-checkout validates its state.
+  // Telegram may redeliver a callback when its first response was lost.
+  // Reserve exactly once before exposing sendInvoice through the webhook reply.
+  // This transport offers no reliable acknowledgement of execution, so record
+  // the attempt as UNKNOWN rather than falsely claiming a sent invoice.
+  const reserved=await store.reserveStarsInvoice(order.id,id);
+  if(!reserved)return {method:'sendMessage',chat_id:id,
+    text:'Этот счёт уже запрашивался. Если он не появился, выберите тариф ещё раз.'};
+  await store.finishStarsInvoice(order.id,'UNKNOWN');
   return {method:'sendInvoice',...invoice};
 }
 async function receiveStars(update:any){
@@ -197,13 +203,31 @@ async function receiveStars(update:any){
     error_message:'Оплата временно недоступна. Попробуйте позднее.'};
   if(!store)throw new Error('DB unavailable');
   if(pc){
-    const oid=typeof pc.invoice_payload==='string'
-      ?parseStarsPayload(pc.invoice_payload,starsSecret):null;
-    const order=oid?await store.order(oid):null;
-    const checked=validateStarsPreCheckout(pc,
-      order?.provider==='telegram_stars'?starsOrderFromDB(order):null,starsSecret);
-    return {method:'answerPreCheckoutQuery',pre_checkout_query_id:pc.id,
-      ok:checked.ok,...(checked.ok?{}:{error_message:checked.error_message})};
+    // Telegram cancels charges when pre-checkout is not answered within 10s.
+    // Never approve when PostgreSQL is slow or throws; respond fail-closed.
+    const declined={method:'answerPreCheckoutQuery',pre_checkout_query_id:pc.id,
+      ok:false,error_message:'Не удалось проверить заказ. Попробуйте позднее.'};
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    try{
+      const checked=await Promise.race([
+        (async()=>{
+          const oid=typeof pc.invoice_payload==='string'
+            ?parseStarsPayload(pc.invoice_payload,starsSecret):null;
+          const order=oid?await store.order(oid):null;
+          return validateStarsPreCheckout(pc,
+            order?.provider==='telegram_stars'?starsOrderFromDB(order):null,starsSecret);
+        })(),
+        new Promise<{ok:false;error_message:string}>(resolve=>{
+          timer=setTimeout(()=>resolve({ok:false,error_message:declined.error_message}),3000);
+        }),
+      ]);
+      return {method:'answerPreCheckoutQuery',pre_checkout_query_id:pc.id,
+        ok:checked.ok,...(checked.ok?{}:{error_message:checked.error_message})};
+    }catch{
+      return declined;
+    }finally{
+      if(timer)clearTimeout(timer);
+    }
   }
   const m=update.message;
   if(!validId(m?.from?.id)||m.chat?.type!=='private'||m.chat.id!==m.from.id)
