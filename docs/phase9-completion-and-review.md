@@ -38,3 +38,11 @@
 - https://help.prodamus.ru/payform/integracii/rest-api/instrukcii-dlya-samostoyatelnaya-integracii-servisov
 - https://github.com/TelegramMessenger/widget-sandbox/blob/main/docs/tgw-format.md
 - https://github.com/grunvald91/Mnebyvpn/pull/1
+
+## Фактический результат CI
+
+[GitHub Actions run 42174724473](https://github.com/grunvald91/Mnebyvpn/actions/runs/42174724473) — SUCCESS на исходниках 2c5f6234016822e8a68850afc421cf6ba19f7767. **58/58 Node.js unit tests, 16/16 PostgreSQL integration tests**, TypeScript typecheck, миграции 0001–0010 и SQL-контракты. Выполнение на временной базе не подтверждает реальных оплат, работы VPN/DNS-узлов или поведения при сетевых разделениях.
+
+## Интеграция с main
+
+В Draft PR включены изменения из main (ADR-0006 и ссылки в README, архитектуре, клиентской матрице и безопасности). Они добавлены без изменения существующих технических реализаций. Исходный main не модифицирован; интеграция призвана устранить расхождение истории и сохранить требования к Private DNS + VPN.
