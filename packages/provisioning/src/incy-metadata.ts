@@ -30,6 +30,12 @@ export function incyMetadata(expiresAt:Date,now=Date.now()):Record<string,string
   if(expires-now<=THREE_DAYS){
     metadata.announce=b64(expires<=now?EXPIRED_MESSAGE:EXPIRING_MESSAGE);
     metadata['announce-url']=INCY_RENEW_URL;
+  }else{
+    // Ordinary renewal banner for an active subscription; INCY Premium only.
+    // Omit it near expiry so the purpose-built expiry banner takes priority.
+    metadata['banner-text']=b64('Продлить или оплатить VPN можно на сайте MNEBYVPN.');
+    metadata['banner-button-text']=b64('Оплатить');
+    metadata['banner-button-url']=INCY_RENEW_URL;
   }
   return metadata;
 }
