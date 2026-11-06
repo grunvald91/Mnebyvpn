@@ -9,6 +9,8 @@ export interface DesiredAccess {
   revision: number;
   enabled: boolean;
   expiresAt: Date | null;
+  /** Unstarted free trial; apply only through an adapter with hard expiry. */
+  trialPendingActivation?: boolean;
 }
 
 export interface ObservedAccess {
@@ -26,6 +28,8 @@ export interface ReconcileStore {
 }
 
 export interface ProvisioningAdapter {
+  /** Must enforce expiring access at the data plane, even while panel is offline. */
+  enforcesHardExpiry?: true;
   inspect(entitlementId: string): Promise<ObservedAccess>;
   /** Must be idempotent for (entitlementId, revision, enabled). */
   apply(desired: DesiredAccess, operationId: string): Promise<'applied' | 'unknown'>;
@@ -33,7 +37,7 @@ export interface ProvisioningAdapter {
 
 export type ReconcileResult =
   | { status: 'synced'; revision: number }
-  | { status: 'retry_required'; reason: 'unknown_outcome' | 'verification_failed' | 'revision_race' | 'fence_lost' };
+  | { status: 'retry_required'; reason: 'unknown_outcome' | 'verification_failed' | 'revision_race' | 'fence_lost' | 'expiry_enforcement_unverified' };
 
 const MAX_CORRECTIONS = 4;
 
@@ -60,6 +64,10 @@ export async function reconcileEntitlement(
   return store.withLock(entitlementId, async fence => {
     for (let round = 0; round < MAX_CORRECTIONS; round++) {
       const desired = effectiveDesired(await store.readDesired(entitlementId), now());
+      if(desired.trialPendingActivation && adapter.enforcesHardExpiry!==true){
+        await store.requestReconcile(entitlementId,'expiry_enforcement_unverified');
+        return {status:'retry_required',reason:'expiry_enforcement_unverified'};
+      }
       const before = await adapter.inspect(entitlementId);
       if (!matches(before, desired)) {
         const operationId = [entitlementId, desired.revision, desired.enabled ? 'enable' : 'disable'].join(':');

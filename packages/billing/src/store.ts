@@ -98,9 +98,12 @@ export class PgBillingStore {
    * This method is for an independently authenticated WEBSITE session only.
    * Do not publish a route that accepts arbitrary accountId as proof of login.
    */
-  async createWebsiteOrder(accountId: string, planId: string, requestId: string): Promise<OrderRecord> {
+  async createWebsiteOrder(accountId: string, planId: string, requestId: string,
+    inviteToken?:string): Promise<OrderRecord> {
     if (!uuid.test(accountId)) throw new Error('Invalid authenticated account');
-    return this.createOrder('prodamus', { accountId }, planId, requestId);
+    // This MUST be called only by a website backend after its session check.
+    // An arbitrary accountId supplied by a browser is NOT authentication.
+    return this.createOrder('prodamus', { accountId }, planId, requestId,inviteToken);
   }
   private async createOrder(
     provider: PaymentProvider,
@@ -163,7 +166,8 @@ export class PgBillingStore {
       if(cap.rows[0].total>=3)throw new Error('PENDING_CHECKOUT_RATE_LIMIT');
       let referralOwner: string | null=null;
       if(inviteToken!==undefined){
-        if(provider!=='telegram_stars')throw new Error('Referral requires authenticated Telegram checkout');
+        if(provider!=='telegram_stars' && !(provider==='prodamus' && 'accountId' in who))
+          throw new Error('Referral requires authenticated checkout');
         const invite=await c.query(
           'SELECT referrer_account_id FROM referral_invites WHERE token=$1 AND plan_id=$2',
           [inviteToken,planId]);
@@ -395,7 +399,7 @@ export class PgBillingStore {
         if(!referral.rowCount || referral.rows[0].referrer_account_id===accountId)
           throw new Error('Invalid or self-owned trial referral');
       }
-      const id=randomUUID(),now=new Date();
+      const id=randomUUID();
       await c.query(
         `INSERT INTO orders(id,account_id,product,provider,amount_minor,currency,state)
          VALUES($1,$2,$3,'internal_trial',0,'XTR','TRIAL')`,
@@ -407,19 +411,18 @@ export class PgBillingStore {
       const products=product==='bundle'?['vpn','smart_dns']:[product];
       for(const subproduct of products) {
         const entitlementId=randomUUID();
-        const expiry=new Date(now.getTime()+86400000);
         await c.query(
           `INSERT INTO entitlements(
             id,account_id,source_order_id,product,state,revision,
             starts_at,expires_at,quota_limit_bytes)
-           VALUES($1,$2,$3,$4,'PAID_PENDING_PROVISIONING',1,$5,$6,$7)`,
-           [entitlementId,accountId,id,subproduct,now,expiry,
+           VALUES($1,$2,$3,$4,'PAID_PENDING_PROVISIONING',1,NULL,NULL,$5)`,
+           [entitlementId,accountId,id,subproduct,
             subproduct==='smart_dns'?offer.rows[0].dns_quota_bytes:null]);
         await c.query('INSERT INTO reconcile_outbox(entitlement_id,desired_revision) VALUES($1,1)',
           [entitlementId]);
       }
       await c.query('COMMIT');
-      return {status:'GRANTED',orderId:id,expiresAt:new Date(now.getTime()+86400000)};
+      return {status:'GRANTED',orderId:id};
     } catch(error){await c.query('ROLLBACK');throw error;}
     finally{c.release();}
   }

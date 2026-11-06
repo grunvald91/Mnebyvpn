@@ -36,7 +36,8 @@ test('one free 24h trial per Telegram account even under concurrent calls',async
  assert.equal(rows[0].state,'TRIAL');
  assert.equal(Number(rows[0].amount_minor),0);
  assert.equal(rows[0].entitlement_state,'PAID_PENDING_PROVISIONING');
- assert.equal(Number(rows[0].duration),86400);
+ assert.equal(rows[0].duration,null,
+  '24h must not start while a node has not confirmed activation');
  const {rows:captures}=await pool.query('SELECT count(*)::int AS n FROM provider_captures WHERE order_id=$1',[granted.orderId]);
  assert.equal(captures[0].n,0);
  assert.equal(await db.pendingOutboxForOrder(granted.orderId!),1);

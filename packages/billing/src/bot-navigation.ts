@@ -114,8 +114,8 @@ export async function startTrial(
 ):Promise<void> {
   const outcome=await db.grantTrial(id,product,inviteToken);
   const text=outcome.status==='GRANTED'
-    ? '🎁 Пробный доступ на 24 часа зарезервирован. '+categoryLabel(product)+
-      '. Выдача настроек начнётся после подтверждения работы серверного адаптера.'
+    ? '🎁 Заявка на пробный доступ принята: '+categoryLabel(product)+
+      '. Отсчёт 24 часов начнётся только после подтверждённой активации на узле.'
     : outcome.status==='ALREADY_USED'
       ? 'Пробный день уже использован этим Telegram-аккаунтом. Можно выбрать обычный тариф.'
       : 'Пробный доступ для этой услуги пока не включён.';

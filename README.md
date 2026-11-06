@@ -68,3 +68,5 @@
 - [Этап 7: пересылаемые реферальные HTMLBubbles](docs/phase7-referral-bubbles.md)
 
 - [Этап 8: кнопки, сроки тарифов и пробные 24 часа](docs/phase8-buttons-tariffs-trial.md)
+
+- [Этап 9: активация trial, поздние платежи и ревью](docs/phase9-completion-and-review.md)

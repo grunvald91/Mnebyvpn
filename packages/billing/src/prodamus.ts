@@ -117,7 +117,7 @@ export function verifyProdamusPayment(
   if (data.payment_status !== 'success') return { ok: false, reason: 'NOT_PAID' };
   if (data.payment_init === 'auto') return { ok: false, reason: 'RECURRING_NOT_IMPLEMENTED' };
   const transactionId = data.order_id;
-  if (!order || !['PENDING', 'PAID', 'REFUNDED'].includes(order.state) || order.provider !== 'prodamus'
+  if (!order || !['PENDING', 'PAID', 'REFUNDED', 'CANCELLED'].includes(order.state) || order.provider !== 'prodamus'
       || order.currency !== 'RUB' || data.order_num !== order.id
       || data.domain !== httpsUrl(cfg.formUrl).hostname
       || typeof transactionId !== 'string' || transactionId.length === 0

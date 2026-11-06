@@ -188,3 +188,7 @@ GitHub Actions для документации не нужны. Без отде�
 ## R. Этап 8 — UX без ручных команд, сроки, пробный день
 
 См. [подробную спецификацию этапа 8](phase8-buttons-tariffs-trial.md). Код и тесты подготовлены; актуальный CI на новой ветке проверяется отдельно.
+
+## S. Этап 9 — исправление trial timing, late provider capture, website-only Prodamus
+
+См. [отчёт](phase9-completion-and-review.md). Тесты выполняются на disposable PostgreSQL; это не выпуск в прод.

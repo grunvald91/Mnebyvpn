@@ -43,15 +43,25 @@ export class PgReconcileStore implements ReconcileStore {
   }
   async readDesired(id:string):Promise<DesiredAccess> {
     const {rows}=await this.pool.query(
-      `SELECT id,revision,state,expires_at,quota_limit_bytes,quota_used_bytes
-        FROM entitlements WHERE id=$1`,[id]);
+      `SELECT e.id,e.revision,e.state,e.expires_at,e.starts_at,
+          e.quota_limit_bytes,e.quota_used_bytes,e.quota_state,
+          t.order_id AS trial_order_id,t.activated_at
+         FROM entitlements e
+         LEFT JOIN trial_grants t ON t.order_id=e.source_order_id
+        WHERE e.id=$1`,[id]);
     if (!rows.length) throw new Error('Unknown entitlement');
     const r=rows[0];
-    const quotaOK=r.quota_limit_bytes===null ||
-      BigInt(r.quota_used_bytes)<BigInt(r.quota_limit_bytes);
+    const quotaOK=r.quota_state==='AVAILABLE' &&
+      (r.quota_limit_bytes===null ||
+        BigInt(r.quota_used_bytes)<BigInt(r.quota_limit_bytes));
+    const pendingTrial=Boolean(r.trial_order_id) &&
+      r.activated_at===null && r.starts_at===null && r.expires_at===null;
+    // Provisional, hard-enforced 5-minute node expiry. NEVER return NULL to
+    // a trial adapter as that would create permanent pre-activation access.
+    const expiry=pendingTrial?new Date(Date.now()+5*60*1000):r.expires_at;
     return {entitlementId:r.id,revision:asInt(r.revision),
       enabled:quotaOK && ['ACTIVE','PAID_PENDING_PROVISIONING','PROVISIONING_FAILED'].includes(r.state),
-      expiresAt:r.expires_at};
+      expiresAt:expiry,trialPendingActivation:pendingTrial};
   }
   async acknowledge(id:string,revision:number,fence:number,observedEnabled:boolean):Promise<boolean> {
     const {rows}=await this.pool.query(
@@ -122,7 +132,7 @@ export class PgOutboxDispatcher {
           FROM entitlements e JOIN provisioning_state p
             ON p.entitlement_id=e.id AND p.adapter=e.product
           WHERE b.id=$1 AND b.entitlement_id=e.id
-            AND p.applied_revision=e.revision AND b.desired_revision<=e.revision`,
+            AND p.applied_revision>=b.desired_revision`,
         [signal.id]);
       if(!r.rowCount) {
         await this.retry(signal,'revision_race');

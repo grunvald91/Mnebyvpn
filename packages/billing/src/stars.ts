@@ -121,7 +121,7 @@ export function validateStarsSuccess(
   }
   // An actual successful_payment may arrive after the pre-checkout deadline.
   // Do not discard a charge solely because the reservation timestamp elapsed.
-  if (!orderId || !order || order.id !== orderId || !['PENDING','PAID','REFUNDED'].includes(order.state)
+  if (!orderId || !order || order.id !== orderId || !['PENDING','PAID','REFUNDED','CANCELLED'].includes(order.state)
       || order.currency !== 'XTR'
       || order.provider !== 'telegram_stars' || payment.currency !== 'XTR'
       || !Number.isSafeInteger(payment.total_amount) || payment.total_amount <= 0
