@@ -412,7 +412,7 @@ function renderVpnSetup(data){
   const parsed=(()=>{try{return new URL(url);}catch{return null;}})();
   if(!parsed||parsed.protocol!=='https:'||
       !(['cdn.servgo.ru','mnebyvpn.site'].includes(parsed.hostname))||
-      !/^\\/sub\\/[A-Za-z0-9_-]{43}$/.test(parsed.pathname)){
+      !/^\/sub\/[A-Za-z0-9_-]{43}$/.test(parsed.pathname)){
     throw Error('UNSAFE_SUBSCRIPTION_URL');
   }
   const token=parsed.pathname.slice('/sub/'.length);
