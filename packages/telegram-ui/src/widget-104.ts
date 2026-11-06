@@ -85,7 +85,7 @@ button[aria-selected=true],.buy{color:var(--tg-theme-button-text-color);backgrou
 .buy{padding:7px;font-size:12px}.actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}
 #info,#notice{font-size:11px;color:var(--tg-theme-hint-color)}
 </style></head><body>
-<header><div class="mark">M</div><div><h2>Мне бы VPN</h2><small>Подписки · трафик · тарифы</small></div></header>
+<header><div class="mark">M</div><div><h2>MnebyVPN</h2><small>Подписки · трафик · тарифы</small></div></header>
 <div class="tabs"><button type="button" id="tabstatus">Мои пакеты</button><button type="button" id="tabplans">Тарифы</button></div>
 <main>
 <article class="card" id="c0" hidden><div class="top"><span class="name" id="n0"></span><button class="buy" id="b0" type="button">Купить ⭐</button></div><p class="detail" id="d0"></p><div class="bar"><i class="fill" id="f0"></i></div></article>
