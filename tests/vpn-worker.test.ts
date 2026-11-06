@@ -7,7 +7,10 @@ test('provisioning cycle only claims VPN signals and processes bounded batches',
  let calls=0,drift=0;
  const d:VpnDispatcher={
    expireDue:async()=>2,
-   scheduleDriftScan:async(limit)=>{assert.equal(limit,100);drift++;return 3;},
+   scheduleDriftScan:async(limit,products)=>{
+     assert.equal(limit,100);
+     assert.deepEqual(products,['vpn']);drift++;return 3;
+   },
    processOnce:async(products)=>{
      assert.deepEqual(products,['vpn']);
      calls++;
