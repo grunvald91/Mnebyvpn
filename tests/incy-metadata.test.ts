@@ -19,6 +19,8 @@ test('INCY publishes a subscription homepage, bot support and self-service renew
   assert.equal(headers['subscription-userinfo'].split('expire=')[1],
     String(Math.floor(expiry.getTime()/1000)));
   assert.equal(headers.announce,undefined);
+  assert.equal(headers['banner-button-url'],INCY_RENEW_URL);
+  assert.match(fromB64(headers['banner-text']),/оплатить VPN/);
 });
 
 test('INCY announces imminent expiry and directs clients to website',()=>{
