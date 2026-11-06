@@ -1,22 +1,21 @@
 /**
- * Operator-facing MnebyVPN support relay.
- * Secrets come only from the runtime environment; no customer text in logs.
- * A successful sendMessage response is required before confirming delivery.
+ * Operator-facing MNEBYVPN support relay: the same Telegram bot handles
+ * subscriptions, user support requests and private operator replies.
+ * The destination of operator notifications is their Telegram user ID,
+ * NOT a separately configured support group or chat.
  */
-export type SupportConfig={botToken:string;chatId:number;operatorId:number|null};
+export type SupportConfig={botToken:string;operatorId:number};
 export function supportConfig(env:NodeJS.ProcessEnv=process.env):SupportConfig|null {
-  const botToken=env.SUPPORT_TELEGRAM_BOT_TOKEN??'';
-  const chat=env.SUPPORT_TELEGRAM_CHAT_ID??'';
-  if(!botToken&&!chat)return null;
-  if(!/^[0-9]{5,20}:[A-Za-z0-9_-]{25,}$/.test(botToken)||
-     !/^-?[0-9]{1,20}$/.test(chat)||
-     !Number.isSafeInteger(Number(chat))||Number(chat)===0)
-    throw Error('Invalid support Telegram configuration');
+  // Reuse the primary bot token (GitHub secret TELEGRAM_TOKEN_BOT).
+  // Its addition to the private backend environment must be audited.
+  const botToken=env.TELEGRAM_TOKEN_BOT??'';
   const operator=env.SUPPORT_TELEGRAM_OPERATOR_ID??'';
-  if(operator&&(!/^[0-9]{1,20}$/.test(operator)||
-      !Number.isSafeInteger(Number(operator))||Number(operator)<1))
-    throw Error('Invalid support Telegram operator ID');
-  return {botToken,chatId:Number(chat),operatorId:operator?Number(operator):null};
+  if(!botToken&&!operator)return null;
+  if(!/^[0-9]{5,20}:[A-Za-z0-9_-]{25,}$/.test(botToken)||
+     !/^[1-9][0-9]{0,15}$/.test(operator)||
+     !Number.isSafeInteger(Number(operator)))
+    throw Error('Invalid MNEBYVPN support operator configuration');
+  return {botToken,operatorId:Number(operator)};
 }
 export function validSupportText(raw:unknown,min=10,max=1500):raw is string {
   return typeof raw==='string'&&raw.trim().length>=min&&raw.trim().length<=max&&
@@ -29,7 +28,7 @@ export function validSupportContact(raw:unknown):raw is string {
     /^@[A-Za-z0-9_]{5,32}$/.test(value);
 }
 export async function telegramSupportSend(
-  config:SupportConfig,text:string,to:number=config.chatId,
+  config:SupportConfig,text:string,to:number=config.operatorId,
 ):Promise<void>{
   if(!text||text.length>3800)throw Error('Support message too long');
   const response=await fetch('https://api.telegram.org/bot'+config.botToken+'/sendMessage',{
