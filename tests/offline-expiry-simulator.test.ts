@@ -46,7 +46,8 @@ test('control-plane partition does NOT guarantee immediate refund revocation',as
  time=new Date(time.getTime()+600001);
  assert.equal(adapter.transfer(session!),false);
  adapter.setControlLink(true);
- await assert.rejects(()=>adapter.apply({...pending,revision:0},'stale'),
+ await assert.rejects(()=>adapter.apply({...pending,revision:0,
+  expiresAt:new Date(time.getTime()+600000)},'stale'),
   /Stale revision/);
 });
 test('simulator fails closed if adapter attempts unbounded enabled credential',async()=>{
