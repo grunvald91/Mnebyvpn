@@ -11,6 +11,8 @@ import {createServer,type IncomingMessage,type ServerResponse} from 'node:http';
 import {createHash,timingSafeEqual} from 'node:crypto';
 import {Pool} from 'pg';
 import {PgBillingStore} from '../../../packages/billing/src/store.ts';
+import {activationView,awaitActivation,deviceView,manualView}
+  from './vpn-onboarding.ts';
 import {RemnawaveApi} from '../../../packages/provisioning/src/remnawave-api.ts';
 import {formatDuration,formatRoubles} from '../../../packages/telegram-ui/src/menu.ts';
 import {effectiveAccessState,formatRemainingTime,formatRemainingQuota} from '../../../packages/telegram-ui/src/access-format.ts';
@@ -40,7 +42,7 @@ const vpnApi=(process.env.REMNAWAVE_API_URL&&vpnReadToken&&
     subscriptionOrigin:process.env.VPN_SUBSCRIPTION_ORIGIN,
     squadUuids:process.env.REMNAWAVE_SQUAD_UUIDS.split(',').map(x=>x.trim()),
   }):null;
-type Button={text:string;callback_data?:string;url?:string};
+type Button={text:string;callback_data?:string;url?:string;copy_text?:{text:string}};
 const homeButton:Button={text:'🏠 Главное',callback_data:'nav:home'};
 const siteButton:Button={text:'🌍 Сайт (резервный)',url:'https://mnebyvpn.site'};
 const label=(p:string)=>p==='vpn'?'🌐 VPN':p==='smart_dns'?'🧭 Smart DNS':'🔐 VPN + DNS';
@@ -196,6 +198,11 @@ async function vpnPlans(){
 async function trial(id:number){
   if(!store)throw new Error('DB unavailable');
   const r=await store.grantTrial(id,'vpn');
+  if(pool&&(r.status==='GRANTED'||r.status==='PENDING'||r.status==='ALREADY_USED')){
+    const ready=r.status==='ALREADY_USED'?await activationView(pool,id,true)
+      :await awaitActivation(pool,id);
+    if(ready)return ready;
+  }
   const text=r.status==='GRANTED'
     ? '🎁 Пробные 24 часа VPN\n\nЗаявка записана. Выдача VPN-профиля поставлена в очередь. Время начнётся только после подтверждения активации на узле.'
     :r.status==='PENDING'
@@ -225,7 +232,10 @@ async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
     data==='nav:catalog'||data==='nav:plans')return vpnPlans();
   if(data==='nav:status'||data==='nav:renew'||data==='nav:manage')return packages(id);
   if(data==='nav:trial'||data==='trial:vpn')return trial(id);
-  if(data==='nav:connect')return connectVpn(id);
+  if(data==='nav:connect')return pool?await activationView(pool,id)??dbUnavailable():dbUnavailable();
+  if(data==='nav:manual')return pool?manualView(pool,id):dbUnavailable();
+  if(data.startsWith('nav:device:'))
+    return pool?deviceView(pool,id,data.slice('nav:device:'.length)):dbUnavailable();
   return info(data);
 }
 function oneAction(actor:{id:number;messageId?:number;callbackId?:string},view:ReturnType<typeof msg>){
