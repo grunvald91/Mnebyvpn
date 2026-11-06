@@ -247,3 +247,19 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .setup-steps b{color:#f5f8ff}
 .setup-steps span{color:#acbfdc}
 .guest-trial-apps a{min-height:40px}
+
+/* Compact passwordless MNEBYVPN email sign-in, shared with Telegram linking. */
+.email-auth-panel{margin:14px 0;padding:16px;border:1px solid rgba(69,203,235,.28);
+  background:linear-gradient(135deg,rgba(8,37,65,.62),rgba(31,24,70,.52));
+  border-radius:18px}
+.email-auth-panel label{display:block;font-size:13px;font-weight:650;
+  color:#cfeaff;margin-bottom:7px}
+.email-fields{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap}
+.email-fields input{flex:1 1 165px;min-width:0;height:47px;padding:0 13px;
+  font-size:16px;color:#f9fbff;background:rgba(8,21,50,.68);
+  border:1px solid rgba(121,205,238,.35);border-radius:12px}
+.email-fields input:focus-visible{outline:2px solid #42d8f4;outline-offset:1px}
+.email-fields .button{flex:0 1 auto;min-height:46px}
+#email-verify-form{margin-top:14px}
+#email-status{margin:10px 0 0}
+@media(max-width:420px){.email-auth-panel{padding:12px}.email-fields .button{flex:1 1 100%}}
