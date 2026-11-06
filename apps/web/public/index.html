@@ -169,8 +169,12 @@
         <textarea id="support-message" name="message" required minlength="10" maxlength="1500" rows="4" placeholder="Что произошло? На каком устройстве?"></textarea>
         <div class="support-trap" aria-hidden="true"><label for="support-website">Сайт</label><input id="support-website" name="website" tabindex="-1" autocomplete="off"></div>
         <button id="support-send" class="button button-primary" type="submit" disabled>Проверяем доступность поддержки…</button>
-        <p class="contact-support-note">Контакт и текст сообщения будут переданы оператору через Telegram для ответа.</p>
+        <p class="contact-support-note">Контакт и текст сообщения получит оператор в Telegram. Ответ также появится на этой странице.</p>
         <p id="support-result" class="support-result" role="status" aria-live="polite"></p>
+        <div id="support-thread" class="support-thread hidden" aria-live="polite">
+          <strong>Ответ поддержки</strong>
+          <p id="support-reply">Обращение отправлено. Ответ появится здесь, в этом браузере.</p>
+        </div>
       </form>
     </section>
 
