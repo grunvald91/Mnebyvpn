@@ -6,7 +6,8 @@ import {formatVpnExpiryReminder,TelegramBotReminderSender,
 const job:VpnExpiryReminder={
   entitlementId:'aaabbbcc-1111-4111-8111-aaaaaaaaaaaa',
   telegramUserId:'123123123',daysBefore:3,
-  expiresAt:new Date('2026-11-10T12:15:00.000Z'),attempt:1,
+  expiresAt:new Date('2026-11-10T12:15:00.000Z'),
+  expiresAtExact:'2026-11-10 12:15:00+00',attempt:1,
 };
 test('both reminders show MNEBYVPN and actual Moscow deadline, with renewal CTA',async()=>{
   assert.match(formatVpnExpiryReminder(job),/около 3 дней/);
