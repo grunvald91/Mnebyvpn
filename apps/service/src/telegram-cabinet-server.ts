@@ -12,6 +12,7 @@ import {createHash,timingSafeEqual} from 'node:crypto';
 import {Pool} from 'pg';
 import {PgBillingStore} from '../../../packages/billing/src/store.ts';
 import {formatDuration,formatRoubles} from '../../../packages/telegram-ui/src/menu.ts';
+import {effectiveAccessState,formatRemainingTime,formatRemainingQuota} from '../../../packages/telegram-ui/src/access-format.ts';
 
 const digest=process.env.TELEGRAM_WEBHOOK_SECRET_SHA256??'';
 if(!/^[a-f0-9]{64}$/.test(digest))
@@ -99,20 +100,19 @@ async function packages(id:number){
     [[{text:'🎁 Бесплатные 24 часа',callback_data:'trial:vpn'}],
      [{text:'🌐 Выбрать VPN',callback_data:'nav:vpn'}],[homeButton]]);
   const items=rows.map((row,index)=>{
-    const state=row.state==='ACTIVE'?'Активен':
-      row.state==='PAID_PENDING_PROVISIONING'?'Ожидает выдачи доступа':
-      row.state==='PROVISIONING_FAILED'?'Ошибка подключения, повторяем выдачу':
-      row.state==='EXPIRED'?'Истёк':row.state==='SUSPENDED'?'Приостановлен':
-      row.state==='REFUNDED'?'Отозван':'Статус: '+row.state;
-    const expiry=row.expiresAt instanceof Date
-      ? ' до '+row.expiresAt.toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})
-      : '';
-    let quota='';
-    if(row.quotaLimitBytes!==null){
-      const left=row.quotaLimitBytes-row.quotaUsedBytes;
-      quota='\nОсталось: '+(left>0n?left:0n).toString()+' байт';
-    }
-    return (index+1)+'. '+label(row.product)+' — '+state+expiry+quota;
+    const expiresAt=row.expiresAt instanceof Date?row.expiresAt:null;
+    const effective=effectiveAccessState(row.state,expiresAt);
+    const state=effective==='ACTIVE'?'Активен':
+      effective==='PAID_PENDING_PROVISIONING'?'Ожидает выдачи доступа':
+      effective==='PROVISIONING_FAILED'?'Ошибка подключения, повторяем выдачу':
+      effective==='EXPIRED'?'Истёк':effective==='SUSPENDED'?'Приостановлен':
+      effective==='REFUNDED'?'Отозван':'Статус: '+effective;
+    const expiry=expiresAt?' · '+(effective==='EXPIRED'?'Истёк ':'До ')+
+      expiresAt.toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'';
+    const remaining=effective==='EXPIRED'?null:formatRemainingTime(expiresAt);
+    const quota=formatRemainingQuota(row.quotaLimitBytes,row.quotaUsedBytes);
+    return (index+1)+'. '+label(row.product)+' — '+state+expiry+
+      (remaining?' · '+remaining:'')+(quota?'\n'+quota:'');
   });
   return msg('🔐 Мои подключения\n\n'+items.join('\n\n')+
     '\n\nСрок пробного VPN не расходуется, пока узел не подтвердит выдачу.',

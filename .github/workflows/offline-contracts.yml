@@ -1,15 +1,21 @@
 name: Offline code and database contracts
 
 on:
-  # One short offline run per actual code push, not duplicate PR + push runs.
+  # Run once on each PR and once after merging into main.
   push:
     branches:
       - main
-      - feat/phase1-foundation-20261105
-      - feat/web-cabinet-20261106
-      - feat/site-domain-telegram-20261106
-      - feat/public-telegram-webhook-20261106
-      - feat/telegram-primary-cabinet-20261106
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'tests/**'
+      - 'db/**'
+      - 'package.json'
+      - 'tsconfig.json'
+      - '.github/workflows/offline-contracts.yml'
+  pull_request:
+    branches:
+      - main
     paths:
       - 'apps/**'
       - 'packages/**'
