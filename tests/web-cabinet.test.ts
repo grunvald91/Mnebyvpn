@@ -7,6 +7,7 @@ import {
   csrfForSession, isValidCsrf, verifyTelegramIdToken,
 } from '../packages/web/src/security.ts';
 import { publicEntitlement } from '../packages/web/src/dashboard.ts';
+import {normalizeLoginEmail,otpHash,otpMatches,deliverEmailOtp} from '../packages/web/src/email-otp.ts';
 
 const secret = 'offline-web-session-secret-with-over-32-characters';
 const now = Date.UTC(2026,10,6,9,0,0);
@@ -183,4 +184,55 @@ test('trial is behind verified Telegram/Yandex OAuth, never a guest cookie',asyn
   assert.doesNotMatch(ui,/api\/guest\/trial/);
   assert.doesNotMatch(ui,/api\/guest\/status/);
   assert.match(ui,/api\/vpn\/subscription/);
+});
+
+
+test('email OTP is normalized, constant-time-checked and delivered only via signed ServGo HTTPS gateway',async()=>{
+  assert.equal(normalizeLoginEmail('  User+trial@Example.COM  '),'user+trial@example.com');
+  for(const invalid of ['not-an-email','bad\r\nBcc:fake@example.org','a@b','a@@example.org',null]){
+    assert.equal(normalizeLoginEmail(invalid),null);
+  }
+  const email='user@example.org',code='003021';
+  const hashed=otpHash(email,code,secret);
+  assert.match(hashed,/^[a-f0-9]{64}$/);
+  assert.equal(otpMatches(hashed,email,code,secret),true);
+  assert.equal(otpMatches(hashed,email,'003022',secret),false);
+  assert.equal(otpMatches(hashed,email,'003021','wrong-secret'),false);
+  let dispatched=false;
+  const fake=async(url:unknown,opts?:RequestInit)=>{
+    assert.equal(url,'https://servgo.ru/api/auth/mnebyvpn/email-code');
+    assert.equal(opts?.method,'POST');
+    assert.equal(opts?.redirect,'error');
+    const headers=opts?.headers as Record<string,string>;
+    const payload=JSON.parse(opts?.body as string);
+    assert.deepEqual(payload,{email,code});
+    assert.match(headers['X-Mnebyvpn-Signature'],/^[a-f0-9]{64}$/);
+    assert.equal(headers['Content-Type'],'application/json');
+    dispatched=true;
+    return {status:200} as Response;
+  };
+  assert.equal(await deliverEmailOtp(email,code,secret,fake as typeof fetch),true);
+  assert.equal(dispatched,true);
+  await assert.rejects(deliverEmailOtp('bad@example.org\r\nBcc:malicious',code,secret,
+    fake as typeof fetch));
+});
+test('website requires email sign-in, explicit Telegram link, and a per-browser trial claim',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const backend=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
+  const ui=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
+  const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
+  const billing=readFileSync(new URL('../packages/billing/src/store.ts',import.meta.url),'utf8');
+  assert.match(html,/mnebyvpn@servgo\.ru/);
+  assert.match(html,/id="email-start-form"/);
+  assert.match(html,/id="email-verify-form"/);
+  assert.match(html,/id="link-telegram"/);
+  assert.doesNotMatch(html,/id="yandex-login-link"/);
+  assert.match(backend,/WEB_EMAIL_LOGIN_ENABLED/);
+  assert.match(backend,/\/api\/auth\/email\/start/);
+  assert.match(backend,/\/api\/auth\/email\/verify/);
+  assert.match(backend,/BROWSER_VERIFICATION_REQUIRED/);
+  assert.match(backend,/privateDigest\('trial-device-v1'/);
+  assert.match(backend,/SELECT id FROM accounts WHERE telegram_user_id=\$1/);
+  assert.match(billing,/DEVICE_ALREADY_USED/);
+  assert.match(ui,/EMAIL_RATE_LIMIT/);
 });
