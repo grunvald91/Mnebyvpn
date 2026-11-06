@@ -222,7 +222,9 @@ async function handleOperatorReply(update:any){
   const command=/^\/reply(?:@MnebyVPN_bot)?\s+([0-9]{1,20})\s+([\s\S]+)$/i.exec(raw);
   const replyText=typeof m.reply_to_message?.text==='string'
     ?m.reply_to_message.text:'';
-  const tagged=/^✉️ MnebyVPN — обращение из бота\nID Telegram: ([0-9]{1,20})\n/.exec(replyText);
+  const tagged=m.reply_to_message?.from?.is_bot===true
+    ?/^✉️ MnebyVPN — обращение из бота\nID Telegram: ([0-9]{1,20})\n/.exec(replyText)
+    :null;
   if(!command&&!tagged)return null;
   const target=Number(command?.[1]??tagged?.[1]);
   const message=command?.[2]?.trim()??raw;
@@ -255,10 +257,10 @@ async function sendSupportFromBot(id:number,updateId:number,message:string){
       '\n\nВопрос:\n'+message.trim());
     deliveredUpdates.add(updateId);
     if(deliveredUpdates.size>1000)deliveredUpdates.clear();
-    return oneAction(user,msg('✅ Обращение доставлено оператору. Ответ придёт сюда, в Telegram.',
+    return oneAction(user,msg('✅ Обращение отправлено в чат поддержки. Ответ придёт сюда, в Telegram.',
       [[{text:'🏠 Главное',callback_data:'nav:home'}]]));
   }catch{
-    return oneAction(user,msg('⚠️ Не получилось отправить обращение. Сообщение не доставлено — попробуйте позже.',
+    return oneAction(user,msg('⚠️ Не удалось подтвердить отправку обращения. Попробуйте позже.',
       [[{text:'✉️ Повторить',callback_data:'nav:support'}],[homeButton]]));
   }
 }
@@ -274,6 +276,7 @@ async function processUpdate(update:any){
   };
   const adminReply=await handleOperatorReply(update);
   if(adminReply)return adminReply;
+  if(support&&update.message?.chat?.id===support.chatId)return null;
   const actor=privateActor(update);
   if(!actor)return null;
   const text=actor.text?.trim()??'';
