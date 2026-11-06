@@ -115,6 +115,9 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
   assert.match(server,/url\.pathname === '\/neo\.css'/);
   assert.match(neoCss,/\.portal-art/);
   assert.match(neoCss,/@media\(max-width:680px\)/);
+  assert.match(html,/<h1>VPN без<span> лишних шагов<\/span><\/h1>/);
+  assert.doesNotMatch(html,/<p class="hero-lead">/);
+  assert.match(neoCss,/\.hero\{display:block;position:relative;min-height:116px;padding:14px 0 7px/);
   assert.match(html,/В тариф входит/);
   assert.match(html,/VPN-подключение<\/span><strong id="selected-quota">Входит/);
   assert.doesNotMatch(html,/Не входит|↗|→/);
