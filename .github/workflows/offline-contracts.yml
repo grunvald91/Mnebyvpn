@@ -66,6 +66,8 @@ jobs:
       - name: Check TypeScript and unit contracts
         run: |
           npm run typecheck
+          node --check apps/web/public/app.js
+          node --check apps/web/public/vpn-install.js
           npm test
       - name: Validate unprivileged deployment shell
         run: bash -n ops/deploy-user-release.sh
@@ -105,6 +107,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/tests/0008_pricing_drafts_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0009_trial_activation_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0011_invoice_dispatch_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0018_site_auth_trials_contract.sql
       - name: Payment integration with disposable PostgreSQL
         env:
           PGPASSWORD: test
