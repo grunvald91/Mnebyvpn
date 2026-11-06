@@ -228,6 +228,13 @@ function applyLinkOptions() {
     state.product=saved.product;state.days=saved.days;
   }
   setSelection(state.product,state.days);
+  // Persist on page entry too: header and cabinet Login links bypass the
+  // purchase/trial handlers and would otherwise drop the referral in OIDC.
+  try {
+    sessionStorage.setItem('mnebyvpn-selection',JSON.stringify({
+      product:state.product,days:state.days,inviteToken:state.inviteToken,
+    }));
+  } catch { /* Storage may be disabled; explicit checkout still verifies server-side. */ }
   if(url.searchParams.get('login')==='failed')
     toast('Авторизация не завершена. Проверьте вход через Telegram.');
   if(url.searchParams.get('payment')==='returned')
