@@ -97,13 +97,13 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
   .brand-text span{letter-spacing:-.45px;margin-left:3px}
   .symbol{width:30px;height:30px}
   .header .button-small{font-size:11px;min-height:35px;border:1px solid rgba(94,212,255,.65);padding:6px 11px;border-radius:12px;box-shadow:0 0 11px rgba(88,90,251,.18)}
-  .hero{display:block;position:relative;min-height:116px;padding:14px 0 7px;overflow:hidden}
+  .hero{display:block;position:relative;min-height:82px;padding:10px 0 5px;overflow:hidden}
   .hero-copy{width:72%;max-width:290px}
   .hero .eyebrow,.hero .hero-notes,.hero-actions{display:none}
-  .hero h1{font-size:clamp(29px,7.8vw,39px);font-weight:850;line-height:1.03;letter-spacing:-1px;margin:3px 0 0}
+  .hero h1{font-size:clamp(26px,7.1vw,35px);font-weight:850;line-height:1.03;letter-spacing:-.9px;margin:0}
   .hero h1 span{display:block}
   .hero-lead{font-size:11px;line-height:1.48;max-width:240px;margin:0;color:#c8cce8}
-  .portal-art{position:absolute;z-index:1;right:-36px;top:-22px;width:185px;height:160px;filter:drop-shadow(0 0 14px rgba(80,38,191,.4))}
+  .portal-art{position:absolute;z-index:1;right:-12px;top:-5px;width:128px;height:100px;filter:drop-shadow(0 0 12px rgba(80,38,191,.42))}
   .portal-core{inset:21% 30%;border-radius:27%}
   .portal-orbit{top:43%;height:26%;left:8%;width:86%}
   .plans-section{padding:0}
@@ -160,10 +160,29 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 @media(max-width:360px){
  .hero h1{font-size:27px}
  .hero-copy{width:73%}
- .portal-art{right:-49px;top:-17px;width:173px;height:151px}
+ .portal-art{right:-10px;top:-4px;width:116px;height:94px}
  .plans-section>.shell{width:calc(100% - 20px);padding:13px 10px}
  .days-tab{font-size:11px}
  .coming-item{padding:11px!important}
  .coming-item strong{font-size:11px}
 }
 @media(prefers-reduced-motion:reduce){.portal-orbit{animation:none}}
+
+/* The real Telegram avatar anchors the identity; no added hero height. */
+.brand-avatar{width:34px;height:34px;flex:none;border-radius:50%;object-fit:cover;box-shadow:0 0 0 1px rgba(85,237,255,.62),0 0 14px rgba(68,213,255,.26),0 0 12px rgba(182,70,250,.16)}
+.portal-avatar{position:absolute;z-index:2;top:12%;left:24%;width:52%;aspect-ratio:1;object-fit:cover;border-radius:50%;box-shadow:0 0 0 2px rgba(56,234,252,.65),0 0 30px rgba(21,205,255,.37),0 0 42px rgba(179,58,255,.28);filter:saturate(1.06)}
+.portal-art .portal-orbit{z-index:3;pointer-events:none;opacity:.7}
+@media(max-width:680px){
+ .brand-avatar{width:30px;height:30px}
+ .hero-copy{width:74%;max-width:290px}
+ .hero h1 span{white-space:nowrap;font-size:.95em}
+ .portal-avatar{width:80px;height:80px;left:29px;top:1px}
+ .portal-flare{inset:1% 9%;filter:blur(13px)}
+ .portal-art .portal-orbit{top:30px;left:11px;width:109px;height:38px;border-width:1.5px;transform:rotate(-21deg);opacity:.73;animation:none}
+}
+@media(max-width:360px){
+ .hero-copy{width:75%}
+ .hero h1{font-size:25px}
+ .portal-avatar{width:74px;height:74px;left:28px;top:1px}
+ .portal-art .portal-orbit{top:26px;left:9px;width:98px;height:36px}
+}
