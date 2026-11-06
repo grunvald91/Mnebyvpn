@@ -124,6 +124,10 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
   assert.match(html,/rel="icon" type="image\/webp" href="\/brand-avatar\.webp"/);
   assert.match(server,/url\.pathname === '\/brand-avatar\.webp'/);
   assert.match(server,/brandAvatar, 'image\/webp'/);
+  const avatar=readFileSync(new URL('../apps/web/public/brand-avatar.webp',import.meta.url));
+  assert.equal(avatar.subarray(0,4).toString('ascii'),'RIFF');
+  assert.equal(avatar.subarray(8,12).toString('ascii'),'WEBP');
+  assert.ok(avatar.byteLength > 1000 && avatar.byteLength < 20000);
   assert.match(html,/В тариф входит/);
   assert.match(html,/VPN-подключение<\/span><strong id="selected-quota">Входит/);
   assert.doesNotMatch(html,/Не входит|↗|→/);
