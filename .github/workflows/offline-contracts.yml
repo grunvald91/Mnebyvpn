@@ -113,7 +113,6 @@ jobs:
       # The SAME runtime dependencies that passed CI are shipped to the VPS.
       # Remote npm install after tests would resolve a different dependency graph.
       - name: Pack tested runtime without dev dependencies
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: bash
         run: |
           set -euo pipefail
