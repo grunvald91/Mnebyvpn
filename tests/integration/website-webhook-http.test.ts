@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {spawn,type ChildProcess} from 'node:child_process';
 import {createServer} from 'node:net';
 import {fileURLToPath} from 'node:url';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
+import {issueSession,csrfForSession} from '../../packages/web/src/security.ts';
 import {Pool} from 'pg';
 import {PgBillingStore} from '../../packages/billing/src/store.ts';
 import {signProdamus,type Fields} from '../../packages/billing/src/prodamus.ts';
@@ -21,6 +22,8 @@ let port=0;
 let website:ChildProcess|null=null;
 let stderr='';
 let payment:{id:string;txn:string;amount:number};
+const accountId=randomUUID();
+const telegramId=901339223;
 before(async()=>{
   const tcp=createServer();
   await new Promise<void>((resolve,reject)=>tcp.once('error',reject).listen(0,'127.0.0.1',()=>resolve()));
@@ -28,8 +31,9 @@ before(async()=>{
   if(!address||typeof address==='string')throw new Error('No ephemeral port');
   port=address.port;
   await new Promise<void>((resolve,reject)=>tcp.close(err=>err?reject(err):resolve()));
-  const accountId=randomUUID(),planId='webhook-'+suffix,amount=11900;
-  await pool.query('INSERT INTO accounts(id) VALUES($1)',[accountId]);
+  const planId='webhook-'+suffix,amount=11900;
+  await pool.query('INSERT INTO accounts(id,telegram_user_id) VALUES($1,$2)',
+    [accountId,String(telegramId)]);
   await pool.query(`INSERT INTO billing_plans(id,product,title,duration_seconds,rub_minor,enabled)
     VALUES($1,'vpn','HTTPS webhook test',86400,$2,true)`,[planId,amount]);
   const order=await billing.createWebsiteOrder(accountId,planId,'webhook-'+suffix);
@@ -125,4 +129,23 @@ test('webhook remains available when new checkout is disabled, and customer APIs
     method:'POST',headers:{Sign:'a'.repeat(64),'Content-Type':'application/json'},body:'{}',
   });
   assert.equal(wrongContent.status,415);
+});
+
+test('signed cookie not in server ledger cannot access account; logout revokes it',async()=>{
+  const key='w'.repeat(64);
+  const raw=issueSession(telegramId,key);
+  const headers={cookie:'mnebyvpn_session='+raw};
+  const base='http://127.0.0.1:'+port;
+  assert.equal((await fetch(base+'/api/me',{headers})).status,401);
+  await pool.query(`INSERT INTO website_sessions(token_sha256,account_id,expires_at)
+    VALUES($1,$2,$3)`,[createHash('sha256').update(raw).digest('hex'),
+      accountId,new Date(Date.now()+3600_000)]);
+  const me=await fetch(base+'/api/me',{headers});
+  assert.equal(me.status,200);
+  assert.equal((await me.json() as {identity:{provider:string}}).identity.provider,'telegram');
+  const logout=await fetch(base+'/api/logout',{method:'POST',
+    headers:{...headers,origin:base,'content-type':'application/json',
+      'x-csrf-token':csrfForSession(raw,key)},body:'{}'});
+  assert.equal(logout.status,200);
+  assert.equal((await fetch(base+'/api/me',{headers})).status,401);
 });

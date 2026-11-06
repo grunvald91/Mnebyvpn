@@ -5,7 +5,7 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
 import {
@@ -130,10 +130,19 @@ function setCookie(res: ServerResponse, name: string, value: string, maxAge: num
     name + '=' + value + '; Path=/; HttpOnly; SameSite=Lax' +
     (tls ? '; Secure' : '') + '; Max-Age=' + maxAge);
 }
-function authorized(req: IncomingMessage): { userId: number; raw: string }|null {
-  const raw = cookie(req, sessionCookie);
-  const userId = readSession(raw, sessionSecret);
-  return userId && raw ? { userId, raw } : null;
+const sessionHash = (raw:string):string =>
+  createHash('sha256').update(raw).digest('hex');
+async function authorized(req:IncomingMessage):Promise<{userId:number;raw:string}|null> {
+  const raw=cookie(req,sessionCookie);
+  const userId=readSession(raw,sessionSecret);
+  if(!userId||!raw)return null;
+  // Statelessly signed cookies alone are NOT enough for logout/revocation.
+  const {rowCount}=await pool.query(`SELECT 1 FROM website_sessions s
+    JOIN accounts a ON a.id=s.account_id
+    WHERE s.token_sha256=$1 AND a.telegram_user_id=$2
+      AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()`,
+    [sessionHash(raw),String(userId)]);
+  return rowCount===1 ? {userId,raw} : null;
 }
 function csrfAllowed(req: IncomingMessage, raw: string): boolean {
   return req.headers.origin === publicOrigin &&
@@ -211,10 +220,16 @@ async function callback(req: IncomingMessage, res: ServerResponse, url: URL) {
     const jwks = await readRemoteJson('https://oauth.telegram.org/.well-known/jwks.json');
     const telegramId = verifyTelegramIdToken(token.id_token, jwks as Jwks, clientId);
     // Link the existing Telegram bot's account, never accept accountId from a browser.
-    await pool.query(`INSERT INTO accounts(id,telegram_user_id) VALUES(gen_random_uuid(),$1)
-      ON CONFLICT(telegram_user_id) DO UPDATE SET telegram_user_id=EXCLUDED.telegram_user_id`,
+    const account=await pool.query(`INSERT INTO accounts(id,telegram_user_id) VALUES(gen_random_uuid(),$1)
+      ON CONFLICT(telegram_user_id) DO UPDATE
+      SET telegram_user_id=EXCLUDED.telegram_user_id RETURNING id`,
       [String(telegramId)]);
-    setCookie(res, sessionCookie, issueSession(telegramId, sessionSecret), 12*60*60);
+    const issuedAt=Date.now();
+    const raw=issueSession(telegramId,sessionSecret,issuedAt);
+    await pool.query(`INSERT INTO website_sessions(token_sha256,account_id,expires_at)
+      VALUES($1,$2,$3)`,
+      [sessionHash(raw),account.rows[0].id,new Date(issuedAt+12*60*60_000)]);
+    setCookie(res, sessionCookie, raw, 12*60*60);
     redirect(res, '/#account');
   } catch {
     // Do not disclose OIDC codes, token claims or provider secrets.
@@ -280,7 +295,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       dnsQuotaBytes: p.dnsQuotaBytes?.toString() ?? null,
     })) }); return;
   }
-  const auth = authorized(req);
+  const auth = await authorized(req);
   if (!auth) { json(res, 401, { code: 'LOGIN_REQUIRED' }); return; }
   if (req.method === 'GET' && url.pathname === '/api/me') {
     const dashboard = await loadDashboard(pool, auth.userId, meteringVerified);
@@ -288,6 +303,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === 'POST' && url.pathname === '/api/logout') {
     if (!csrfAllowed(req,auth.raw)) { json(res,403,{code:'FORBIDDEN'});return; }
+    await pool.query(`UPDATE website_sessions SET revoked_at=clock_timestamp()
+      WHERE token_sha256=$1 AND revoked_at IS NULL`,[sessionHash(auth.raw)]);
     setCookie(res,sessionCookie,'',0);
     json(res,200,{ok:true});return;
   }
