@@ -235,21 +235,27 @@ async function handleOperatorReply(update:any){
       const ticketId=siteTicket[1],payload=JSON.stringify({ticketId,message:answer});
       const signature=createHmac('sha256',support.botToken)
         .update('MNEBYVPN-support\n'+ticketId+'\n'+answer).digest('hex');
-      try{
-        const response=await fetch('http://127.0.0.1:'+webPort+
-          '/api/support/operator-reply',{
-          method:'POST',redirect:'error',signal:AbortSignal.timeout(6000),
-          headers:{'Content-Type':'application/json',
-            'X-MNEBYVPN-Support-Signature':signature},
-          body:payload,
-        });
-        if(!response.ok)throw Error('Website ticket reply not saved');
-        return {method:'sendMessage',chat_id:support.operatorId,
-          text:'✅ Ответ сохранён в обращении. Посетитель увидит его на сайте.'};
-      }catch{
-        return {method:'sendMessage',chat_id:support.operatorId,
-          text:'⚠️ Сайт не подтвердил сохранение ответа. Повторите попытку.'};
+      // Try co-located website first; if site and bot are deployed on
+      // different hosts, use the fixed public HTTPS origin with the same
+      // HMAC authentication. Do not allow an arbitrary destination URL.
+      const origins=['http://127.0.0.1:'+webPort,'https://mnebyvpn.site'];
+      for(const origin of origins){
+        try{
+          const response=await fetch(origin+'/api/support/operator-reply',{
+            method:'POST',redirect:'error',signal:AbortSignal.timeout(6000),
+            headers:{'Content-Type':'application/json',
+              'X-MNEBYVPN-Support-Signature':signature},
+            body:payload,
+          });
+          if(response.ok){
+            return {method:'sendMessage',chat_id:support.operatorId,
+              text:'✅ Ответ сохранён в обращении. Посетитель увидит его на сайте.'};
+          }
+          if(response.status===409)break; // already answered or closed
+        }catch{/* Next known origin, no fabricated success. */}
       }
+      return {method:'sendMessage',chat_id:support.operatorId,
+        text:'⚠️ Сайт не подтвердил сохранение ответа. Проверьте обращение, прежде чем повторять.'};
     }
     if(typeof quoted==='string'&&
        quoted.startsWith('✉️ MNEBYVPN — обращение из бота')){
