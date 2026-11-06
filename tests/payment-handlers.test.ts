@@ -99,3 +99,25 @@ test('multipart decoder handles official nested products syntax and rejects ambi
   const badRaw = new Uint8Array(await bReq.arrayBuffer());
   await assert.rejects(()=>parseProdamusFormData(bReq.headers.get('content-type')!, badRaw));
 });
+
+
+test('Prodamus ALL events: signed denied and cancelled callbacks return 200 without access',async()=>{
+  const f=fakeStore(record('prodamus'));
+  const base:Fields={
+    order_id:'unsuccessful-99',order_num:oid,domain:'merchant.payform.ru',
+    sum:'99.00',payment_status:'order_denied',attempt:'1',
+  };
+  for(const status of ['order_denied','order_canceled','pending']){
+    const event={...base,payment_status:status};
+    const outcome=await handleProdamusDelivery(event,signProdamus(event,key),f.db,pd);
+    assert.equal(outcome.statusCode,200);
+    assert.equal(outcome.text,'EVENT_ACCEPTED_NO_PAYMENT');
+  }
+  assert.equal(f.captures.length,0);
+  const invalid={...base,domain:'other.payform.ru'};
+  assert.equal((await handleProdamusDelivery(invalid,signProdamus(invalid,key),f.db,pd)).statusCode,400);
+  assert.equal((await handleProdamusDelivery(base,'0'.repeat(64),f.db,pd)).statusCode,401);
+  const truncated={...base,payment_status:''};
+  assert.equal((await handleProdamusDelivery(truncated,signProdamus(truncated,key),f.db,pd)).statusCode,200);
+  assert.equal(f.captures.length,0);
+});
