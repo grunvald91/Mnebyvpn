@@ -8,6 +8,7 @@ const token='ReferralToken001';
 function openPage(href:string,stored:Map<string,string>,authenticated=false){
   const elements=new Map<string,any>();
   const posts:Array<{path:string;body:any}>=[];
+  const authState={value:authenticated};
   const location={href,redirect:null as string|null,assign(url:string){this.redirect=url;}};
   const el=(id:string)=>{
     if(!elements.has(id)){
@@ -31,7 +32,7 @@ function openPage(href:string,stored:Map<string,string>,authenticated=false){
         durationDays:30,rubMinor:9900,dnsQuotaBytes:null}],
       checkoutEnabled:true,trialOffers:['vpn'],
     })};
-    if(path==='/api/me')return authenticated
+    if(path==='/api/me')return authState.value
       ?{ok:true,json:async()=>({csrf:'csrf-test',access:[],orders:[]})}
       :{ok:false,status:401,json:async()=>({code:'LOGIN_REQUIRED'})};
     if(path==='/api/trial'){
@@ -49,7 +50,7 @@ function openPage(href:string,stored:Map<string,string>,authenticated=false){
     setInterval:()=>0,setTimeout:()=>0,clearTimeout:()=>{},
   });
   vm.runInContext(script,context,{filename:'app.js'});
-  return {elements,posts,location,context};
+  return {elements,posts,location,context,authState};
 }
 async function settle(){
   await new Promise<void>(resolve=>setImmediate(resolve));
@@ -94,4 +95,38 @@ test('header Login preserves referral without first clicking buy or trial',async
   afterLogin.elements.get('trial-button').handlers.get('click')();
   await settle();
   assert.equal(afterLogin.posts[0].body.inviteToken,token);
+});
+
+test('expired referral from a previous session is not reused',async()=>{
+  const session=new Map<string,string>();
+  session.set('mnebyvpn-selection',JSON.stringify({
+    product:'vpn',days:30,inviteToken:token,savedAt:Date.now()-31*60*1000,
+  }));
+  const client=openPage('https://vpn.example/#account',session,true);
+  await settle();
+  assert.equal(vm.runInContext('state.inviteToken',client.context),null);
+  client.elements.get('trial-button').handlers.get('click')();
+  await settle();
+  assert.equal(client.posts[0].body.inviteToken,undefined);
+});
+test('after a trial is created referral is consumed, not applied to another purchase',async()=>{
+  const session=new Map<string,string>();
+  const client=openPage('https://vpn.example/?ref='+token+'&product=vpn&days=30',session,true);
+  await settle();
+  client.elements.get('trial-button').handlers.get('click')();
+  await settle();
+  assert.equal(client.posts[0].body.inviteToken,token);
+  assert.equal(vm.runInContext('state.inviteToken',client.context),null);
+  assert.equal(JSON.parse(session.get('mnebyvpn-selection')||'{}').inviteToken,null);
+});
+test('401 during auto-refresh clears private DOM and session state',async()=>{
+  const session=new Map<string,string>();
+  const client=openPage('https://vpn.example/#account',session,true);
+  await settle();
+  assert.equal(vm.runInContext('state.loggedIn',client.context),true);
+  client.authState.value=false;
+  await vm.runInContext('refresh()',client.context);
+  assert.equal(vm.runInContext('state.loggedIn',client.context),false);
+  assert.equal(vm.runInContext('state.csrf',client.context),'');
+  assert.equal(client.elements.get('auth-link').href,'/auth/login');
 });
