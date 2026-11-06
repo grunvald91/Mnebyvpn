@@ -11,11 +11,14 @@ export interface DesiredAccess {
   expiresAt: Date | null;
   /** Unstarted free trial; apply only through an adapter with hard expiry. */
   trialPendingActivation?: boolean;
+  isTrial?: boolean;
 }
 
 export interface ObservedAccess {
   revision: number;
   enabled: boolean;
+  /** Read back from the real node, not reconstructed from the desired state. */
+  expiresAt?: Date | null;
 }
 
 export interface ReconcileStore {
@@ -48,8 +51,20 @@ export function effectiveDesired(desired: DesiredAccess, now: Date): DesiredAcce
   };
 }
 
-const matches = (a: ObservedAccess, d: DesiredAccess): boolean =>
-  a.enabled === d.enabled && a.revision === d.revision;
+const matches = (a: ObservedAccess,d: DesiredAccess,clock:Date):boolean => {
+  if(a.enabled!==d.enabled||a.revision!==d.revision)return false;
+  if(!d.enabled||!d.isTrial)return true;
+  const actual=a.expiresAt?.getTime(),target=d.expiresAt?.getTime();
+  if(actual===undefined||target===undefined||
+     !Number.isFinite(actual)||!Number.isFinite(target))return false;
+  if(d.trialPendingActivation){
+    // Never confirm a supposedly enabled provisional credential whose
+    // observed node-side hard deadline is absent, elapsed or too distant.
+    return actual>clock.getTime()&&actual<=target+1000;
+  }
+  // The second trial revision must install the exact final 24h deadline.
+  return Math.abs(actual-target)<=1000;
+};
 
 /**
  * Outbox is a wake-up signal, not an instruction to replay an old ENABLE.
@@ -69,7 +84,7 @@ export async function reconcileEntitlement(
         return {status:'retry_required',reason:'expiry_enforcement_unverified'};
       }
       const before = await adapter.inspect(entitlementId);
-      if (!matches(before, desired)) {
+      if (!matches(before, desired,now())) {
         const operationId = [entitlementId, desired.revision, desired.enabled ? 'enable' : 'disable'].join(':');
         // An exception means unknown upstream state: never blindly replay ENABLE.
         let outcome: 'applied' | 'unknown';
@@ -89,7 +104,7 @@ export async function reconcileEntitlement(
         continue;
       }
       const observed = await adapter.inspect(entitlementId);
-      if (!matches(observed, latest)) {
+      if (!matches(observed, latest,now())) {
         await store.requestReconcile(entitlementId, 'verification_failed');
         return { status: 'retry_required', reason: 'verification_failed' };
       }

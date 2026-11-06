@@ -42,7 +42,8 @@ test('24h free trial starts at observed provisioning, not when reserved',async()
    inspect:async(id)=>state.get(id)??{revision:0,enabled:false},
    apply:async(desired)=>{
      applied.push({...desired});
-     state.set(desired.entitlementId,{revision:desired.revision,enabled:desired.enabled});
+     state.set(desired.entitlementId,{revision:desired.revision,enabled:desired.enabled,
+       expiresAt:desired.expiresAt});
      return 'applied';
    },
  }};
@@ -99,7 +100,8 @@ test('two bundle entitlements share activation deadline from first observed enab
   enforcesHardExpiry:true as const,
   inspect:async(id:string)=>observed.get(id)??{revision:0,enabled:false},
   apply:async(d:DesiredAccess)=>{
-   observed.set(d.entitlementId,{revision:d.revision,enabled:d.enabled});
+   observed.set(d.entitlementId,{revision:d.revision,enabled:d.enabled,
+      expiresAt:d.expiresAt});
    return 'applied' as const;
   },
  });

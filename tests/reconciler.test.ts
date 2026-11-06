@@ -131,3 +131,40 @@ test('repeated concurrent entitlement changes bound correction attempts', async 
   assert.equal(s.actions.length, 4);
   assert.deepEqual(s.pending, ['revision_race']);
 });
+
+
+test('trial needs node-observed hard deadline, not only revision+enabled',async()=>{
+ const moment=new Date('2026-11-06T06:00:00Z');
+ const expiry=new Date(moment.getTime()+300000);
+ const desired:DesiredAccess={
+  entitlementId:'trial-1',revision:1,enabled:true,expiresAt:expiry,
+  trialPendingActivation:true,isTrial:true,
+ };
+ let observed:ObservedAccess={revision:0,enabled:false};
+ const requested:string[]=[];
+ const store:ReconcileStore={
+  withLock:async(_id,fn)=>fn(1),
+  readDesired:async()=>desired,
+  acknowledge:async()=>true,
+  requestReconcile:async(_id,reason)=>{requested.push(reason);},
+ };
+ const adapter:ProvisioningAdapter={
+  enforcesHardExpiry:true,
+  inspect:async()=>observed,
+  apply:async()=>{
+   observed={revision:1,enabled:true}; // falsely omits expiry proof
+   return 'applied';
+  },
+ };
+ const first=await reconcileEntitlement('trial-1',store,adapter,()=>moment);
+ assert.deepEqual(first,{status:'retry_required',reason:'verification_failed'});
+ assert.deepEqual(requested,['verification_failed']);
+ // A valid node observation with a bounded provisional expiration is accepted.
+ observed={revision:1,enabled:true,expiresAt:expiry};
+ assert.deepEqual(await reconcileEntitlement('trial-1',store,adapter,()=>moment),
+  {status:'synced',revision:1});
+ // A node claiming an unbounded or too-far future expiry cannot activate trial.
+ observed={revision:1,enabled:true,expiresAt:new Date(moment.getTime()+24*3600000)};
+ assert.deepEqual(await reconcileEntitlement('trial-1',store,adapter,()=>moment),
+  {status:'retry_required',reason:'verification_failed'});
+});

@@ -61,7 +61,7 @@ export class PgReconcileStore implements ReconcileStore {
     const expiry=pendingTrial?new Date(Date.now()+5*60*1000):r.expires_at;
     return {entitlementId:r.id,revision:asInt(r.revision),
       enabled:quotaOK && ['ACTIVE','PAID_PENDING_PROVISIONING','PROVISIONING_FAILED'].includes(r.state),
-      expiresAt:expiry,trialPendingActivation:pendingTrial};
+      expiresAt:expiry,trialPendingActivation:pendingTrial,isTrial:Boolean(r.trial_order_id)};
   }
   async acknowledge(id:string,revision:number,fence:number,observedEnabled:boolean):Promise<boolean> {
     const {rows}=await this.pool.query(
