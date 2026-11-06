@@ -444,11 +444,13 @@ export class PgBillingStore {
    * PostgreSQL account row lock + trial_grants PK serialize repeated clicks.
    * No live VPN/DNS activation occurs until a data-plane adapter observes it.
    */
-  async grantTrial(telegramUserId:number|string,product:Product,inviteToken?:string):
-  Promise<{status:'GRANTED'|'PENDING'|'ALREADY_USED'|'UNAVAILABLE';orderId?:string;expiresAt?:Date}> {
+  async grantTrial(telegramUserId:number|string,product:Product,inviteToken?:string,deviceHash?:string):
+  Promise<{status:'GRANTED'|'PENDING'|'ALREADY_USED'|'DEVICE_ALREADY_USED'|'UNAVAILABLE';orderId?:string;expiresAt?:Date}> {
     if(!(typeof telegramUserId==='number' && Number.isSafeInteger(telegramUserId) && telegramUserId>0 ||
        typeof telegramUserId==='string' && uuid.test(telegramUserId)) ||
        !['vpn','smart_dns','bundle'].includes(product))throw new Error('Invalid trial request');
+    if(deviceHash!==undefined&&!/^[a-f0-9]{64}$/.test(deviceHash))
+      throw new Error('Invalid hashed browser trial claim');
     if(inviteToken!==undefined&&!/^[A-Za-z0-9_-]{16,24}$/.test(inviteToken))
       throw new Error('Invalid trial invite');
     const c=await this.pool.connect();
@@ -485,6 +487,18 @@ export class PgBillingStore {
           [inviteToken,product]);
         if(!referral.rowCount || referral.rows[0].referrer_account_id===accountId)
           throw new Error('Invalid or self-owned trial referral');
+      }
+      if(deviceHash){
+        // This is a best-effort cookie-based guard. Database uniqueness
+        // serializes concurrent requests from DIFFERENT accounts in one browser.
+        const claim=await c.query(
+          `INSERT INTO trial_device_claims(device_hash,account_id) VALUES($1,$2)
+           ON CONFLICT(device_hash) DO NOTHING RETURNING account_id`,
+          [deviceHash,accountId]);
+        if(claim.rowCount!==1){
+          await c.query('COMMIT');
+          return {status:'DEVICE_ALREADY_USED'};
+        }
       }
       const id=randomUUID();
       await c.query(
