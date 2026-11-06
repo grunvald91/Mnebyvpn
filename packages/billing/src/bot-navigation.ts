@@ -82,7 +82,9 @@ export async function showProductPlans(
     chat_id:id,
     text:categoryLabel(product)+'\n\n'+lines.join('\n')+
       (plans.length>visible.length?'\nОстальные варианты доступны в каталоге.':'')+
-      '\n\nВыберите срок, чтобы сразу получить счёт Stars.',
+      (config?.prodamusTelegramLink?
+        '\n\nВыберите срок и способ оплаты: ⭐ или ₽ через Продамус.':
+        '\n\nВыберите срок, чтобы сразу получить счёт Stars.'),
     reply_markup:{inline_keyboard:keyboard},
   });
 }

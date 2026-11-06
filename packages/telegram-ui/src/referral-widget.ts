@@ -116,7 +116,9 @@ footer{color:var(--tg-theme-hint-color);font-size:10px;line-height:1.4;margin-to
    top.appendChild(b);box.appendChild(top);list.insertBefore(box,list.firstChild);
   }
   if(!rows.length)list.appendChild(mk("p","desc","В этой категории пока нет опубликованных тарифов."));
-  el("footer").textContent="Оплата через Telegram Stars. ₽ — цена для отдельного сайта Продамус. "+
+  el("footer").textContent=(s.r===1?
+   "Выберите ⭐ или ₽. Для ₽ откроется форма Продамус по ссылке из бота. ":
+   "Оплата через Telegram Stars. ₽ — справочная цена для отдельного сайта Продамус. ")+
    "Перед оплатой бот проверит текущую цену."+(s.more?" Ещё тарифы доступны в боте.":"");
  }
  try{

@@ -167,3 +167,12 @@ test('malicious forwarded data cannot open arbitrary external links',()=>{
  view.clicked.find(x=>x.label==='Оплатить ⭐')?.fire();
  assert.deepEqual(view.opens,[]);
 });
+
+test('RUB option in forwarded Bubble is opt-in and opens the referred Payform route',()=>{
+ const withRuble=execBubble(referralPublicData([offer],'MnebyvpnTestBot',true));
+ assert.ok(withRuble.clicked.some(x=>x.label==='Оплатить ₽'));
+ withRuble.clicked.find(x=>x.label==='Оплатить ₽')?.fire();
+ assert.deepEqual(withRuble.opens,['https://t.me/MnebyvpnTestBot?start=p'+token]);
+ const without=execBubble(referralPublicData([offer],'MnebyvpnTestBot',false));
+ assert.equal(without.clicked.some(x=>x.label==='Оплатить ₽'),false);
+});
