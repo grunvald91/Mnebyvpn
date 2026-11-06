@@ -186,3 +186,22 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
  .portal-avatar{width:74px;height:74px;left:28px;top:1px}
  .portal-art .portal-orbit{top:26px;left:9px;width:98px;height:36px}
 }
+
+
+/* Compact free-day onboarding directly inside the existing tariff card. */
+.guest-trial-card{margin-top:12px;padding:17px;border:1px solid rgba(85,225,250,.35);
+  border-radius:18px;background:linear-gradient(130deg,rgba(14,71,98,.42),rgba(34,18,79,.62))}
+.guest-trial-card h3{margin:0 0 8px;font-size:18px;color:#f9fcff}
+.guest-trial-card p{color:#c6def1;font-size:14px;line-height:1.45;margin:7px 0 12px}
+.guest-trial-apps{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin:10px 0}
+.guest-trial-apps a{display:flex;justify-content:center;align-items:center;min-height:43px;padding:9px;
+  border:1px solid rgba(111,221,246,.42);border-radius:12px;background:rgba(15,46,74,.63);
+  color:#e5faff;text-decoration:none;font-size:13px;font-weight:650;text-align:center}
+.guest-trial-apps a:hover{border-color:rgba(152,247,250,.85);background:rgba(32,85,118,.75)}
+.guest-trial-copy{display:flex;gap:8px;margin-top:12px;align-items:center}
+.guest-trial-copy input{flex:1;min-width:0;padding:12px 10px;font-size:13px;border-radius:11px;
+  border:1px solid rgba(150,225,249,.31);color:#e8faff;background:rgba(6,12,36,.65)}
+.guest-trial-copy button{flex-shrink:0;min-height:43px;padding:8px 12px}
+.hero-actions #trial-hero-button{cursor:pointer}
+@media(max-width:520px){.guest-trial-card{padding:12px}.guest-trial-copy{flex-wrap:wrap}
+  .guest-trial-copy button{width:100%}}

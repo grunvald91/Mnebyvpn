@@ -14,7 +14,7 @@ const TOKEN=/^[A-Za-z0-9_-]{43}$/;
 const digest=(token:string)=>createHash('sha256').update(token,'utf8').digest('hex');
 
 export interface SubscriptionOwner {
-  telegramUserId:number;
+  telegramUserId:number|null;
   entitlementId:string;
   expiresAt:Date;
 }
@@ -65,7 +65,9 @@ export async function subscriptionOwner(pool:Pool,token:string):
     "LIMIT 1",[digest(token)]);
   if(!rows.length)return null;
   const actor=Number(rows[0].telegram_user_id);
-  if(!Number.isSafeInteger(actor)||actor<=0)throw Error('Invalid stored actor');
-  return {telegramUserId:actor,entitlementId:String(rows[0].entitlement_id),
+  if(rows[0].telegram_user_id!==null&&
+    (!Number.isSafeInteger(actor)||actor<=0))throw Error('Invalid stored actor');
+  return {telegramUserId:rows[0].telegram_user_id===null?null:actor,
+    entitlementId:String(rows[0].entitlement_id),
     expiresAt:rows[0].expires_at as Date};
 }

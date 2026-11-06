@@ -11,6 +11,8 @@ import {readFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 import {Pool} from 'pg';
 import {PgBillingStore} from '../../../packages/billing/src/store.ts';
+import {claimGuestVpnTrial,guestVpnState,confirmedGuestEntitlement}
+  from '../../../packages/provisioning/src/web-guest-trials.ts';
 import {SignedXrayNodeApi} from '../../../packages/provisioning/src/xray-node.ts';
 import {RemnawaveApi} from '../../../packages/provisioning/src/remnawave-api.ts';
 import {RemnawaveProvisioningAdapter}
@@ -109,6 +111,36 @@ async function main():Promise<void>{
     const health=createServer(async(req,res)=>{
       res.setHeader('Cache-Control','no-store');
       res.setHeader('Content-Type','application/json');
+      if((req.url==='/guest-trial'||req.url==='/guest-status')&&
+         req.method==='POST'&&node){
+        const authorization=req.headers.authorization;
+        const supplied=typeof authorization==='string'&&
+          authorization.startsWith('Bearer ')?authorization.slice(7):'';
+        const expected=Buffer.from(profileToken,'utf8');
+        const actual=Buffer.from(supplied,'utf8');
+        if(actual.length!==expected.length||!timingSafeEqual(actual,expected)){
+          res.writeHead(401).end('{"code":"UNAUTHORIZED"}');return;
+        }
+        try{
+          let raw='';
+          for await(const chunk of req){
+            raw+=String(chunk);
+            if(raw.length>256)throw Error('Oversized website trial request');
+          }
+          const body:unknown=JSON.parse(raw);
+          const token=(body as {guestToken?:unknown})?.guestToken;
+          if(typeof token!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(token))
+            throw Error('Invalid browser trial cookie');
+          if(req.url==='/guest-trial'){
+            const status=await claimGuestVpnTrial(pool,token);
+            res.writeHead(200).end(JSON.stringify({status}));return;
+          }
+          const result=await guestVpnState(pool,token,profileToken);
+          res.writeHead(200).end(JSON.stringify(result));return;
+        }catch{
+          res.writeHead(503).end('{"code":"GUEST_TRIAL_RETRY_LATER"}');return;
+        }
+      }
       if(req.url==='/profile'&&req.method==='POST'&&node){
         const authorization=req.headers.authorization;
         const supplied=typeof authorization==='string'&&
@@ -127,13 +159,18 @@ async function main():Promise<void>{
           const input:unknown=JSON.parse(raw);
           const userId=(input as {telegramUserId?:unknown})?.telegramUserId;
           const requestedId=(input as {entitlementId?:unknown})?.entitlementId;
-          if(typeof userId!=='number'||!Number.isSafeInteger(userId)||userId<=0)
+          const isTelegram=typeof userId==='number'&&Number.isSafeInteger(userId)&&userId>0;
+          if(!isTelegram && userId!==undefined)
             throw Error('Invalid Telegram actor');
+          if(!isTelegram&&requestedId===undefined)
+            throw Error('Guest lookup requires entitlement ID');
           if(requestedId!==undefined&&
             (typeof requestedId!=='string'||
              !/^[0-9a-f]{8}-[0-9a-f-]{27,40}$/i.test(requestedId)))
             throw Error('Invalid requested entitlement');
-          const allowed=await billing.confirmedVpnProfile(userId);
+          const allowed=isTelegram
+            ?await billing.confirmedVpnProfile(userId as number)
+            :await confirmedGuestEntitlement(pool,requestedId as string);
           // A previously shared subscription URL must not accidentally reveal
           // another entitlement belonging to the same Telegram account.
           const profile=allowed&&

@@ -5,7 +5,7 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { createHash,randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
 import {subscriptionOwner,subscriptionLink}
@@ -61,6 +61,8 @@ const checkoutEnabled = loginEnabled && webhookEnabled && networkVerified &&
   process.env.WEB_LEGAL_PAGES_PUBLISHED === 'yes';
 const trialEnabled = loginEnabled && networkVerified &&
   process.env.WEB_TRIAL_ENABLED === 'yes';
+// Website guest trial is independent of Telegram OAuth and paid checkout.
+const guestTrialEnabled=process.env.WEB_GUEST_TRIAL_ENABLED==='yes';
 const meteringVerified = networkVerified && process.env.WEB_DNS_METERING_VERIFIED === 'yes';
 const pool = new Pool({ connectionString: required('DATABASE_URL'), max: 5, connectionTimeoutMillis: 3000 });
 const store = new PgBillingStore(pool);
@@ -111,6 +113,10 @@ const brandAvatar = await readFile(new URL('../public/brand-avatar.webp', import
 const js = await readFile(new URL('../public/app.js', import.meta.url));
 const vpnInstallJs=await readFile(new URL('../public/vpn-install.js',import.meta.url));
 const workerProfileToken=process.env.VPN_WORKER_PROFILE_TOKEN??'';
+if(guestTrialEnabled&&(!/^[a-f0-9]{64}$/i.test(workerProfileToken)||!subscriptionPool))
+  throw Error('Guest VPN trial requires the isolated authenticated node worker');
+const guestCookie=tls?'__Host-mnebyvpn_guest':'mnebyvpn_guest';
+const guestPattern=/^[A-Za-z0-9_-]{43}$/;
 const policy = [
   "default-src 'none'", "script-src 'self'", "style-src 'self'",
   "connect-src 'self'", "img-src 'self' data:", "font-src 'self'",
@@ -255,7 +261,7 @@ async function callback(req: IncomingMessage, res: ServerResponse, url: URL) {
 }
 
 async function liveVpnProfile(owner:{
-  telegramUserId:number;entitlementId:string;
+  telegramUserId:number|null;entitlementId:string;
 }):Promise<string>{
   if(!/^[a-f0-9]{64}$/i.test(workerProfileToken))
     throw Error('Private VPN subscription bridge not deployed');
@@ -263,8 +269,9 @@ async function liveVpnProfile(owner:{
     method:'POST',redirect:'error',signal:AbortSignal.timeout(6500),
     headers:{Authorization:'Bearer '+workerProfileToken,
       'Content-Type':'application/json'},
-    body:JSON.stringify({telegramUserId:owner.telegramUserId,
-      entitlementId:owner.entitlementId}),
+    body:JSON.stringify(owner.telegramUserId===null
+      ?{entitlementId:owner.entitlementId}
+      :{telegramUserId:owner.telegramUserId,entitlementId:owner.entitlementId}),
   });
   if(!response.ok)throw Error('VPN node subscription unavailable');
   const result:unknown=await response.json();
@@ -274,6 +281,25 @@ async function liveVpnProfile(owner:{
     throw Error('Unexpected VPN node configuration');
   return profile;
 }
+async function guestWorker(path:'/guest-trial'|'/guest-status',token:string):
+  Promise<Record<string,unknown>>{
+  if(!guestPattern.test(token)||!/^[a-f0-9]{64}$/i.test(workerProfileToken))
+    throw Error('Guest trial backend not available');
+  const response=await fetch('http://127.0.0.1:8794'+path,{
+    method:'POST',redirect:'error',signal:AbortSignal.timeout(8000),
+    headers:{Authorization:'Bearer '+workerProfileToken,
+      'Content-Type':'application/json'},
+    body:JSON.stringify({guestToken:token}),
+  });
+  if(!response.ok)throw Error('Guest VPN node not ready');
+  const raw=await response.text();
+  if(raw.length>4096)throw Error('Oversized guest response');
+  const data:unknown=JSON.parse(raw);
+  if(!data||typeof data!=='object'||Array.isArray(data))
+    throw Error('Invalid guest response');
+  return data as Record<string,unknown>;
+}
+
 function installHtml(subUrl:string,client:'incy'|'karing'):string {
   // Both URL and client have already passed strict token/enum validation.
   const app=client==='incy'?'INCY':'Karing';
@@ -391,11 +417,54 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const trialOffers = trialEnabled
       ? (await pool.query('SELECT product FROM trial_offers WHERE enabled=true')).rows.map(r=>r.product as string)
       : [];
-    json(res,200,{ loginEnabled, checkoutEnabled, trialOffers, plans: plans.map(p => ({
+    json(res,200,{ loginEnabled, checkoutEnabled, guestTrialEnabled,
+      trialOffers:guestTrialEnabled?Array.from(new Set([...trialOffers,'vpn'])):trialOffers,
+      plans: plans.map(p => ({
       id: p.planId, title: p.title, product: p.product,
       durationDays: p.durationSeconds / 86400, rubMinor: p.rubMinor,
       dnsQuotaBytes: p.dnsQuotaBytes?.toString() ?? null,
     })) }); return;
+  }
+  // Guest website VPN trial: one opaque browser cookie and no Telegram access.
+  // The signed-in OIDC flow below remains unchanged for existing accounts.
+  if(req.method==='POST'&&url.pathname==='/api/guest/trial'){
+    if(!guestTrialEnabled){
+      json(res,503,{code:'TRIAL_NOT_AVAILABLE'});return;
+    }
+    if(req.headers.origin!==publicOrigin||
+       !req.headers['content-type']?.startsWith('application/json')){
+      json(res,403,{code:'INVALID_ORIGIN'});return;
+    }
+    const body=await bodyJson(req);
+    if(Object.keys(body).some(k=>k!=='product') ||
+       body.product!=='vpn'){
+      json(res,400,{code:'INVALID_TRIAL'});return;
+    }
+    let guest=cookie(req,guestCookie);
+    if(!guest||!guestPattern.test(guest)){
+      guest=randomBytes(32).toString('base64url');
+      setCookie(res,guestCookie,guest,365*24*3600);
+    }
+    try{
+      const result=await guestWorker('/guest-trial',guest);
+      if(!['GRANTED','PENDING','ALREADY_USED','UNAVAILABLE'].includes(String(result.status)))
+        throw Error('Unexpected guest trial response');
+      json(res,200,{status:result.status});return;
+    }catch{
+      json(res,503,{code:'GUEST_TRIAL_RETRY_LATER'});return;
+    }
+  }
+  if(req.method==='GET'&&url.pathname==='/api/guest/status'){
+    const guest=cookie(req,guestCookie);
+    if(!guest||!guestPattern.test(guest)){
+      json(res,200,{status:'NONE'});return;
+    }
+    try{
+      const info=await guestWorker('/guest-status',guest);
+      json(res,200,info);return;
+    }catch{
+      json(res,503,{code:'GUEST_STATUS_RETRY_LATER'});return;
+    }
   }
   const auth = await authorized(req);
   if (!auth) { json(res, 401, { code: 'LOGIN_REQUIRED' }); return; }
