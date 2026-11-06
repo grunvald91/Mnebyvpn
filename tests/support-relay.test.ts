@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText,
+  operatorReplyTarget,supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText,
 } from '../packages/support/src/telegram-relay.ts';
 
 test('support has no separate chat ID and only enables one configured bot operator',()=>{
@@ -27,6 +27,30 @@ test('validate support text and callback contact without accepting controls',()=
   assert.equal(validSupportContact('hello@example.com'),true);
   assert.equal(validSupportContact('not-a-contact'),false);
   assert.equal(validSupportContact('bad\ncontact'),false);
+});
+test('only a private reply by the configured operator to this bot notification can target a client',()=>{
+  const operatorId=111111;
+  const customerId=222222;
+  const notice='✉️ MNEBYVPN — обращение из бота\nID Telegram: '+customerId+
+    '\n\nВопрос:\nПомогите подключить VPN';
+  const original={
+    chat:{id:operatorId,type:'private'},
+    from:{id:operatorId},
+    reply_to_message:{from:{id:9999,is_bot:true},text:notice},
+    text:'Переустановите профиль в приложении',
+  };
+  assert.deepEqual(operatorReplyTarget(original,operatorId),
+    {userId:customerId,answer:'Переустановите профиль в приложении'});
+  assert.equal(operatorReplyTarget({...original,from:{id:98765}},operatorId),null);
+  assert.equal(operatorReplyTarget({...original,chat:{id:-222,type:'supergroup'}},operatorId),null);
+  assert.equal(operatorReplyTarget({...original,reply_to_message:{
+    from:{id:9999,is_bot:false},text:notice}},operatorId),null);
+  assert.equal(operatorReplyTarget({...original,text:'x'.repeat(1501)},operatorId),null);
+  assert.equal(operatorReplyTarget({...original,text:''},operatorId),null);
+  assert.equal(operatorReplyTarget({...original,reply_to_message:{
+    from:{id:9999,is_bot:true},text:'✉️ MNEBYVPN — обращение с сайта'}},operatorId),null);
+  assert.equal(operatorReplyTarget({...original,reply_to_message:{
+    from:{id:9999,is_bot:true},text:notice.replace(String(customerId),String(operatorId))}},operatorId),null);
 });
 test('support limiter permits three messages per window, then reopens',()=>{
   const allowed=supportLimiter(3,10_000);
