@@ -69,6 +69,7 @@ function renderPlan() {
   text('selected-duration',state.days+' дней');
   text('selected-quota',state.product==='vpn'?'Не входит':plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
   text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):'—');
+  byId('cancel-renewal-button').classList.toggle('hidden',!state.renewalTargetId);
   text('price-description',plan?(state.renewalTargetId?
     'Срок прибавится к выбранному доступу после подтверждения оплаты.':
     'Новая покупка создаёт отдельный доступ. Для продления используйте кнопку в кабинете.'):
@@ -266,7 +267,9 @@ async function purchase() {
 async function claimTrial() {
   if(state.busy || !state.trialOffers.includes(state.product))return;
   if(!state.loggedIn){
-    sessionStorage.setItem('mnebyvpn-selection',JSON.stringify({product:state.product,days:state.days}));
+    sessionStorage.setItem('mnebyvpn-selection',JSON.stringify({
+      product:state.product,days:state.days,inviteToken:state.inviteToken,
+    }));
     location.assign('/auth/login');return;
   }
   state.busy=true;renderPlan();
@@ -304,6 +307,11 @@ document.querySelectorAll('[data-days]').forEach(button=>{
 });
 byId('buy-button').addEventListener('click',purchase);
 byId('trial-button').addEventListener('click',claimTrial);
+byId('cancel-renewal-button').addEventListener('click',()=>{
+  state.renewalTargetId=null;
+  state.requestId=null;
+  renderPlan();
+});
 byId('logout-button').addEventListener('click',logout);
 applyLinkOptions();
 Promise.all([loadCatalog(),refresh()]);
