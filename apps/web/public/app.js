@@ -112,9 +112,14 @@ function renderAccess(accesses) {
     const badge=node('span','status '+(effective==='ACTIVE'?'active':
       effective.includes('PENDING')?'pending':'expired'),statusLabel(a));
     top.append(h,badge);
-    item.append(top,node('p','',a.expiresAt?
-      'До '+formatDate(a.expiresAt)+' · Осталось: '+remaining(a.secondsRemaining):
-      'Срок начнётся после подтверждённой активации.'));
+    const accessDetail=['REFUNDED','CANCELLED'].includes(a.state)
+      ? 'Доступ отозван. При возврате платежа оплаченные продления учитываются отдельно.'
+      : a.state==='EXPIRED' || (a.expiresAt && a.secondsRemaining===0)
+        ? 'Срок закончился'+(a.expiresAt?' '+formatDate(a.expiresAt):'')+'.'
+        : a.expiresAt
+          ? 'До '+formatDate(a.expiresAt)+' · Осталось: '+remaining(a.secondsRemaining)
+          : 'Срок начнётся после подтверждённой активации.';
+    item.append(top,node('p','',accessDetail));
     if (a.product==='smart_dns') {
       item.append(node('p','',a.quotaLimitBytes?
         'Пакет DNS: '+fmtBytes(a.quotaLimitBytes):'DNS-квота пока не установлена'));
@@ -137,7 +142,8 @@ function renderAccess(accesses) {
       }
     }
     const durations=state.plans.filter(p=>p.product===a.product);
-    if (durations.length) {
+    if (durations.length && a.startsAt && a.expiresAt &&
+      !['REFUNDED','CANCELLED','PENDING_PAYMENT'].includes(a.state)) {
       const renew=node('button','button button-secondary renew-button','Продлить доступ ↗');
       renew.type='button';
       renew.addEventListener('click',()=>{
@@ -177,7 +183,7 @@ function renderAccount(payload) {
   text('account-name','Мой аккаунт');
   text('account-subtitle','Вход через Telegram · защищённая сессия');
   const accesses=payload.access||[];
-  const active=accesses.filter(a=>a.state==='ACTIVE' && (a.secondsRemaining===null||a.secondsRemaining>0));
+  const active=accesses.filter(a=>a.state==='ACTIVE' && a.secondsRemaining>0);
   text('active-count',active.length);
   const timed=active.filter(a=>a.secondsRemaining!==null).sort((a,b)=>a.secondsRemaining-b.secondsRemaining);
   text('days-left',timed.length?remaining(timed[0].secondsRemaining):'—');
