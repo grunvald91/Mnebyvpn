@@ -19,6 +19,8 @@ import {
   issueAccountSession, readAccountSession, verifyEnvelope, verifyTelegramIdToken, type Jwks,
 } from '../../../packages/web/src/security.ts';
 import { loadDashboard } from '../../../packages/web/src/dashboard.ts';
+import {normalizeLoginEmail,privateDigest} from '../../../packages/web/src/email-otp.ts';
+import {beginEmailCode,verifyEmailCode} from '../../../packages/web/src/email-auth-service.ts';
 import { parseProdamusFormData } from '../../../packages/billing/src/multipart.ts';
 import { handleProdamusDelivery } from '../../../packages/billing/src/handlers.ts';
 
@@ -43,8 +45,13 @@ if (sessionSecret.length < 32) throw new Error('WEB_SESSION_SECRET too short');
 // A public informational site can be deployed before BotFather issues OIDC
 // credentials. Login is unavailable until explicitly enabled with real keys.
 const telegramLoginEnabled = process.env.WEB_TELEGRAM_OIDC_ENABLED === 'yes';
-const yandexLoginEnabled = process.env.WEB_YANDEX_OAUTH_ENABLED === 'yes';
-const loginEnabled = telegramLoginEnabled || yandexLoginEnabled;
+// Yandex sign-in is intentionally retired in favor of email OTP.
+const yandexLoginEnabled = false;
+const emailLoginEnabled = process.env.WEB_EMAIL_LOGIN_ENABLED === 'yes';
+const mailGatewaySecret = process.env.MNEBYVPN_MAIL_GATEWAY_SECRET ?? '';
+if(emailLoginEnabled && mailGatewaySecret.length<32)
+  throw Error('MNEBYVPN email OTP requires a configured private ServGo mail gateway secret');
+const loginEnabled = telegramLoginEnabled || emailLoginEnabled;
 // Reuse the existing ServGo OAuth app through its fixed registered callback.
 // No Yandex Client Secret is copied to this VPN server.
 const servgoBrokerStart = 'https://servgo.ru/api/auth/yandex/mnebyvpn/start';
@@ -57,6 +64,7 @@ if (telegramLoginEnabled && (!/^[0-9]{5,20}$/.test(clientId) || clientSecret.len
 const tls = base.protocol === 'https:';
 const sessionCookie = tls ? '__Host-mnebyvpn_session' : 'mnebyvpn_session';
 const challengeCookie = tls ? '__Host-mnebyvpn_oidc' : 'mnebyvpn_oidc';
+const deviceCookie = tls ? '__Host-mnebyvpn_device' : 'mnebyvpn_device';
 const networkVerified = process.env.WEB_NETWORK_PROVISIONING_VERIFIED === 'yes';
 // Never stop receiving previously-created payment notifications merely
 // because new sales were disabled. Both flags default to fail-closed.
@@ -164,13 +172,13 @@ function setCookie(res: ServerResponse, name: string, value: string, maxAge: num
 const sessionHash = (raw:string):string =>
   createHash('sha256').update(raw).digest('hex');
 async function authorized(req:IncomingMessage):Promise<{
-  accountId:string;telegramUserId:number|null;yandexUserId:string|null;raw:string
+  accountId:string;telegramUserId:number|null;yandexUserId:string|null;email:string|null;raw:string
 }|null> {
   const raw=cookie(req,sessionCookie);
   const accountId=readAccountSession(raw,sessionSecret);
   if(!accountId||!raw)return null;
   // Each request verifies its signed account-scoped bearer against revocable DB state.
-  const {rows}=await pool.query(`SELECT a.id,a.telegram_user_id,a.yandex_user_id
+  const {rows}=await pool.query(`SELECT a.id,a.telegram_user_id,a.yandex_user_id,a.email_address
     FROM website_sessions s JOIN accounts a ON a.id=s.account_id
     WHERE s.token_sha256=$1 AND s.account_id=$2
       AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()`,
@@ -180,7 +188,7 @@ async function authorized(req:IncomingMessage):Promise<{
   const telegramUserId=tg===null?null:Number(tg);
   if(telegramUserId!==null&&(!Number.isSafeInteger(telegramUserId)||telegramUserId<=0))
     return null;
-  return {accountId,telegramUserId,yandexUserId:rows[0].yandex_user_id??null,raw};
+  return {accountId,telegramUserId,yandexUserId:rows[0].yandex_user_id??null,email:rows[0].email_address??null,raw};
 }
 function csrfAllowed(req: IncomingMessage, raw: string): boolean {
   return req.headers.origin === publicOrigin &&
@@ -221,6 +229,62 @@ async function readRemoteJson(url: string, init?: RequestInit): Promise<Record<s
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Invalid provider response');
   return data as Record<string,any>;
 }
+
+function sourceAddress(req:IncomingMessage):string{
+  const socketIp=req.socket.remoteAddress??'unknown';
+  const supplied=req.headers['x-real-ip'];
+  // X-Real-IP must be set by the local reverse proxy, which strips inbound copies.
+  if((socketIp==='127.0.0.1'||socketIp==='::1'||socketIp==='::ffff:127.0.0.1')&&
+     typeof supplied==='string'&&/^[a-f0-9:.]{3,45}$/i.test(supplied))return supplied;
+  return socketIp;
+}
+async function emailStart(req:IncomingMessage,res:ServerResponse):Promise<void>{
+  if(!emailLoginEnabled){json(res,503,{code:'EMAIL_LOGIN_NOT_READY'});return;}
+  if(req.headers.origin!==publicOrigin||!req.headers['content-type']?.startsWith('application/json')){
+    json(res,403,{code:'FORBIDDEN'});return;
+  }
+  const body=await bodyJson(req);
+  const email=normalizeLoginEmail(body.email);
+  if(!email || (body.link!==undefined&&typeof body.link!=='boolean')){
+    json(res,400,{code:'INVALID_EMAIL'});return;
+  }
+  const current=body.link===true?await authorized(req):null;
+  if(body.link===true&&!current){json(res,401,{code:'LOGIN_REQUIRED'});return;}
+  const result=await beginEmailCode(pool,{
+    email,ip:sourceAddress(req),linkAccountId:current?.accountId??null,
+    secret:sessionSecret,gatewaySecret:mailGatewaySecret,
+  });
+  if(result==='RATE_LIMIT'){json(res,429,{code:'EMAIL_RATE_LIMIT'});return;}
+  if(result==='FAILED'){json(res,503,{code:'EMAIL_NOT_SENT'});return;}
+  json(res,200,{status:'CODE_SENT',expiresInSeconds:600});
+}
+async function emailVerify(req:IncomingMessage,res:ServerResponse):Promise<void>{
+  if(!emailLoginEnabled){json(res,503,{code:'EMAIL_LOGIN_NOT_READY'});return;}
+  if(req.headers.origin!==publicOrigin||!req.headers['content-type']?.startsWith('application/json')){
+    json(res,403,{code:'FORBIDDEN'});return;
+  }
+  const body=await bodyJson(req);
+  const email=normalizeLoginEmail(body.email);
+  if(!email||typeof body.code!=='string'||!/^[0-9]{6}$/.test(body.code)){
+    json(res,400,{code:'INVALID_EMAIL_CODE'});return;
+  }
+  const current=await authorized(req);
+  const result=await verifyEmailCode(pool,{
+    email,code:body.code,currentAccountId:current?.accountId??null,secret:sessionSecret,
+  });
+  if(result.status!=='SIGNED_IN'||!result.accountId){
+    json(res,result.status==='CONFLICT'?409:401,{
+      code:result.status==='CONFLICT'?'EMAIL_ALREADY_LINKED':'INVALID_OR_EXPIRED_CODE',
+    });return;
+  }
+  const token=issueAccountSession(result.accountId,sessionSecret);
+  await pool.query(
+    'INSERT INTO website_sessions(token_sha256,account_id,expires_at) VALUES($1,$2,$3)',
+    [sessionHash(token),result.accountId,new Date(Date.now()+12*60*60_000)]);
+  setCookie(res,sessionCookie,token,12*60*60);
+  json(res,200,{status:'SIGNED_IN'});
+}
+
 async function login(req: IncomingMessage, res: ServerResponse,
   provider:'telegram'|'yandex', query:URL) {
   if(provider==='telegram'&&!telegramLoginEnabled ||
@@ -372,6 +436,9 @@ function installHtml(subUrl:string,client:'incy'|'karing'):string {
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', publicOrigin);
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+    const device=cookie(req,deviceCookie);
+    if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
+      setCookie(res,deviceCookie,randomBytes(32).toString('base64url'),365*24*60*60);
     send(res, 200, html, 'text/html; charset=utf-8'); return;
   }
   if (req.method === 'GET' && url.pathname === '/site.css') {
@@ -433,6 +500,12 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       ...(checkoutEnabled ? [] : ['PAYMENT_PROVIDER_NOT_VERIFIED']),
     ] }); return;
   }
+  if(req.method==='POST' && url.pathname==='/api/auth/email/start'){
+    await emailStart(req,res);return;
+  }
+  if(req.method==='POST' && url.pathname==='/api/auth/email/verify'){
+    await emailVerify(req,res);return;
+  }
   if(req.method==='GET' && (url.pathname==='/auth/login' ||
        url.pathname==='/auth/yandex')){
     await login(req,res,url.pathname==='/auth/login'?'telegram':'yandex',url);
@@ -472,7 +545,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const trialOffers = trialEnabled
       ? (await pool.query('SELECT product FROM trial_offers WHERE enabled=true')).rows.map(r=>r.product as string)
       : [];
-    json(res,200,{ loginEnabled, telegramLoginEnabled, yandexLoginEnabled,
+    json(res,200,{ loginEnabled, telegramLoginEnabled, emailLoginEnabled, yandexLoginEnabled,
       checkoutEnabled, trialOffers,
       plans: plans.map(p => ({
       id: p.planId, title: p.title, product: p.product,
@@ -488,7 +561,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if (!auth) { json(res, 401, { code: 'LOGIN_REQUIRED' }); return; }
   if (req.method === 'GET' && url.pathname === '/api/me') {
     const dashboard = await loadDashboard(pool, auth.accountId, meteringVerified);
-    json(res,200,{ ...dashboard, identity:{provider:auth.telegramUserId!==null?'telegram':'yandex',telegramLinked:auth.telegramUserId!==null,yandexLinked:auth.yandexUserId!==null}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
+    json(res,200,{ ...dashboard, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
   }
   if (req.method === 'POST' && url.pathname === '/api/logout') {
     if (!csrfAllowed(req,auth.raw)) { json(res,403,{code:'FORBIDDEN'});return; }
@@ -508,8 +581,13 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
          !/^[A-Za-z0-9_-]{16,24}$/.test(body.inviteToken)))) {
       json(res,400,{code:'INVALID_TRIAL'});return;
     }
+    const device=cookie(req,deviceCookie);
+    if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device)){
+      json(res,403,{code:'BROWSER_VERIFICATION_REQUIRED'});return;
+    }
     const result = await store.grantTrial(auth.accountId,
-      body.product as 'vpn'|'smart_dns'|'bundle',body.inviteToken as string|undefined);
+      body.product as 'vpn'|'smart_dns'|'bundle',body.inviteToken as string|undefined,
+      privateDigest('trial-device-v1',device,sessionSecret));
     json(res,200,{status:result.status,expiresAt:result.expiresAt?.toISOString()??null});
     return;
   }
