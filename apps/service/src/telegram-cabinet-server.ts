@@ -140,7 +140,7 @@ async function connectVpn(id:number){
     '🔌 Подключение VPN\n\nДоступ подтверждён в кабинете, но серверная выдача конфигураций ещё не настроена. Данные не изменены.',
     [[{text:'🔁 Проверить снова',callback_data:'nav:connect'}],[homeButton]]);
   let url:string|null=null;
-  try {url=await vpnApi.subscriptionFor(candidate.entitlementId,candidate.expiresAt);}
+  try {url=await vpnApi.subscriptionFor(candidate.entitlementId,candidate.expiresAt,candidate.revision);}
   catch { /* Credentials, remote paths and provider payloads must never be logged. */ }
   if(!url)return msg(
     '🔌 Подключение VPN\n\nСсылка ещё не подтверждена сервером. Попробуйте снова позже.',
