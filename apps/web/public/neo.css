@@ -205,3 +205,33 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .hero-actions #trial-hero-button{cursor:pointer}
 @media(max-width:520px){.guest-trial-card{padding:12px}.guest-trial-copy{flex-wrap:wrap}
   .guest-trial-copy button{width:100%}}
+
+
+/* Mobile trial CTA: earlier compact-layout rules hid BOTH the hero CTA and
+   the tariff-card CTA. The free-day request must remain visible and tappable. */
+@media (max-width: 680px) {
+  .hero .hero-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0;
+    margin-top: 11px;
+  }
+  .hero .hero-actions > :not(#trial-hero-button) { display: none; }
+  .hero .hero-actions #trial-hero-button {
+    display: inline-flex;
+    justify-content: center;
+    width: 100%;
+    min-height: 44px;
+    padding: 9px 11px;
+    font-size: clamp(11px, 3.1vw, 13px);
+    white-space: nowrap;
+    line-height: 1.15;
+  }
+  #trial-button.trial-button {
+    display: flex;
+    min-height: 44px;
+    margin-top: 12px;
+  }
+  .hero { overflow: visible; }
+}
