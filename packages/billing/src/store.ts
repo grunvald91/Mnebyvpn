@@ -30,6 +30,9 @@ export interface VerifiedCapture {
   currency: 'RUB' | 'XTR';
   payloadHash: string;
 }
+export class PaymentSettlementDenied extends Error {
+  constructor(public readonly code:string){super('PAYMENT_SETTLEMENT_DENIED:'+code);}
+}
 export type SettlementOutcome =
   | 'APPLIED' | 'DUPLICATE_EVENT' | 'DUPLICATE_CAPTURE'
   | 'DENY_INVALID' | 'DENY_UNKNOWN_ORDER' | 'DENY_MISMATCH'
@@ -261,7 +264,7 @@ export class PgBillingStore {
       if (!rows.length) throw new Error('Order not found');
       const order = mapOrder(rows[0]);
       if (order.provider !== capture.provider || order.amount !== capture.amount ||
-          order.currency !== capture.currency) throw new Error('Payment does not match order snapshot');
+          order.currency !== capture.currency) throw new PaymentSettlementDenied('SNAPSHOT_MISMATCH');
       const {rows: result} = await c.query(
         `SELECT settle_verified_payment($1,$2,$3,$4,$5,$6,$7,$8,$9) AS outcome`,
         [order.id, capture.provider, capture.providerEventId, capture.providerTransactionId,
@@ -271,7 +274,7 @@ export class PgBillingStore {
       );
       const outcome = result[0].outcome as SettlementOutcome;
       if (!['APPLIED','DUPLICATE_EVENT','DUPLICATE_CAPTURE'].includes(outcome)) {
-        throw new Error('Payment settlement denied: '+outcome);
+        throw new PaymentSettlementDenied(outcome);
       }
       await c.query('COMMIT');
       return outcome;
@@ -281,6 +284,56 @@ export class PgBillingStore {
     } finally {
       c.release();
     }
+  }
+
+  /** A trusted provider already reported a capture, but fulfillment is
+   * impossible or uncertain. Preserve proof for manual refund/reconciliation.
+   * DO NOT call for invalid Prodamus signatures or unauthenticated requests.
+   */
+  async recordPaymentIncident(input:{
+    provider:PaymentProvider;transactionId:string;orderId:string|null;
+    telegramUserId?:number|null;amount:number|null;currency:string|null;
+    reason:string;payloadHash:string;
+  }):Promise<number> {
+    if(!input.transactionId || input.transactionId.length>512 ||
+       !/^[A-Z_]{3,64}$/.test(input.reason) ||
+       !/^[a-f0-9]{64}$/.test(input.payloadHash))
+      throw new Error('Invalid payment incident');
+    const txHash=createHash('sha256').update(input.provider+':'+input.transactionId).digest('hex');
+    const orderId=input.orderId && uuid.test(input.orderId)?input.orderId:null;
+    const amount=input.amount!==null&&Number.isSafeInteger(input.amount)&&input.amount>=0
+      ?input.amount:null;
+    const currency=input.currency && /^[A-Z]{3}$/.test(input.currency)?input.currency:null;
+    const actor=input.telegramUserId && Number.isSafeInteger(input.telegramUserId)
+      ?String(input.telegramUserId):null;
+    const {rows}=await this.pool.query(
+      `INSERT INTO payment_incidents
+       (provider,transaction_hash,order_id,actor_telegram_user_id,amount_minor,
+        currency,reason,payload_sha256)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT(provider,transaction_hash) DO UPDATE SET
+         last_seen_at=clock_timestamp(),
+         sightings=payment_incidents.sightings+1
+       RETURNING id`,
+       [input.provider,txHash,orderId,actor,amount,currency,input.reason,input.payloadHash]);
+    return safeInt(rows[0].id);
+  }
+  async pendingPaymentIncidentAlerts(limit=20):Promise<Array<{
+    id:number;provider:string;reason:string;currency:string|null;amount:number|null;
+  }>> {
+    if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw new Error('Invalid alert limit');
+    const {rows}=await this.pool.query(
+      `SELECT id,provider,reason,currency,amount_minor
+         FROM payment_incidents WHERE alerted_at IS NULL AND resolved_at IS NULL
+        ORDER BY id LIMIT $1`,[limit]);
+    return rows.map(r=>({id:safeInt(r.id),provider:r.provider,reason:r.reason,
+      currency:r.currency,amount:r.amount_minor===null?null:safeInt(r.amount_minor)}));
+  }
+  async markPaymentIncidentAlerted(id:number):Promise<void> {
+    if(!Number.isSafeInteger(id)||id<=0)throw new Error('Invalid incident id');
+    await this.pool.query(
+      `UPDATE payment_incidents SET alerted_at=clock_timestamp()
+        WHERE id=$1 AND alerted_at IS NULL`,[id]);
   }
 
   /** No bearer IPv6, VPN credentials, profile URLs or personally sensitive traffic history. */
