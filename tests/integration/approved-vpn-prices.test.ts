@@ -18,8 +18,10 @@ test('owner approved 15/30/60/90 day VPN offers are exactly 60/99/199/249 RUB fo
   assert.deepEqual(plans.rows.map(p=>Number(p.duration_seconds)/86400),[15,30,60,90]);
   assert.deepEqual(plans.rows.map(p=>Number(p.rub_minor)),[6000,9900,19900,24900]);
   assert.ok(plans.rows.every(p=>p.enabled===true&&p.device_limit===1));
-  // Owner did not specify XTR prices; never assume RUB == Telegram Stars.
-  assert.ok(plans.rows.every(p=>p.stars===null));
+  // XTR amounts are separate fixed owner prices, based on an 18% buyer cost markup.
+  assert.deepEqual(plans.rows.map(p=>Number(p.stars)),[34,56,112,141]);
+  const listed=await new PgBillingStore(pool).plans('telegram_stars');
+  assert.deepEqual(listed.filter(p=>p.planId.endsWith('_1device')).sort((a,b)=>a.durationSeconds-b.durationSeconds).map(p=>p.stars),[34,56,112,141]);
   const others=await pool.query(`SELECT count(*)::int AS n FROM billing_plans
     WHERE product='vpn' AND enabled=true
       AND duration_seconds IN (15*86400,30*86400,60*86400,90*86400)
