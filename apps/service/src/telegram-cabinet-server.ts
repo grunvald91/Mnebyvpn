@@ -2,14 +2,16 @@
  * Telegram-first cabinet. The public site is an optional backup, never a
  * required step to navigate the bot.
  *
- * No Bot API token is stored on this server: Telegram performs the one Bot
- * API action encoded in a webhook JSON response. A hardened foreign TLS/WG
- * ingress carries updates to this private backend. User identity is provided
- * only by authenticated Telegram updates, not caller-supplied account IDs.
+ * Routine responses use Telegram's webhook API shortcut. An optional support
+ * relay requires a server-side Telegram Bot API token to notify the operator.
+ * A hardened ingress carries authenticated updates to this private backend.
+ * User identity is derived solely from verified Telegram webhook updates.
  */
 import {createServer,type IncomingMessage,type ServerResponse} from 'node:http';
 import {createHash,timingSafeEqual} from 'node:crypto';
 import {Pool} from 'pg';
+import {supportConfig,supportLimiter,telegramSupportSend,validSupportText}
+  from '../../../packages/support/src/telegram-relay.ts';
 import {PgBillingStore} from '../../../packages/billing/src/store.ts';
 import {activationView,awaitActivation,deviceView,manualView}
   from './vpn-onboarding.ts';
@@ -30,6 +32,11 @@ const pool=process.env.DATABASE_URL ? new Pool({
   max:3,connectionTimeoutMillis:3000,idleTimeoutMillis:12000,
 }) : null;
 const store=pool?new PgBillingStore(pool):null;
+const support=supportConfig();
+const supportRate=supportLimiter(3,15*60_000);
+const supportGlobalRate=supportLimiter(120,60_000);
+const deliveredUpdates=new Set<number>();
+const supportPrompt='✉️ MnebyVPN — напишите вопрос в поддержку. Ответьте на это сообщение обычным текстом (10–1500 символов). Не отправляйте пароли и ссылки подписок.';
 type Button={text:string;callback_data?:string;url?:string;copy_text?:{text:string}};
 const homeButton:Button={text:'🏠 Главное',callback_data:'nav:home'};
 const siteButton:Button={text:'🌍 Сайт (резервный)',url:'https://mnebyvpn.site'};
@@ -39,7 +46,7 @@ const msg=(text:string,keyboard:Button[][])=>{
   return {text,reply_markup:{inline_keyboard:keyboard}};
 };
 const main=()=>msg(
-  '🌐 Мне бы VPN\n\nМы только начинаем. Наша цель — простое подключение, понятное управление и оперативная помощь без технической путаницы. Со временем хотим объединить больше возможностей в одном сервисе.\n\nСейчас развиваем VPN. Smart DNS — в разработке.\n\n💙 Поддержите проект: расскажите о нём друзьям. Выберите действие ниже.',
+  '🌐 MnebyVPN\n\nМы только начинаем. Наша цель — простое подключение, понятное управление и оперативная помощь без технической путаницы. Со временем хотим объединить больше возможностей в одном сервисе.\n\nСейчас развиваем VPN. Smart DNS — в разработке.\n\n💙 Поддержите проект: расскажите о нём друзьям. Выберите действие ниже.',
   [
     [{text:'🌐 VPN и тарифы',callback_data:'nav:vpn'}],
     [{text:'🎁 Бесплатные 24 часа',callback_data:'nav:trial'}],
@@ -48,7 +55,8 @@ const main=()=>msg(
     [{text:'🔁 Продление',callback_data:'nav:renew'},
      {text:'💙 Поддержать проект',callback_data:'nav:share'}],
     [{text:'🧭 Smart DNS — в разработке',callback_data:'nav:dns'}],
-    [{text:'❔ Помощь',callback_data:'nav:help'}],
+    [{text:'❔ Помощь',callback_data:'nav:help'},
+     {text:'✉️ Поддержка',callback_data:'nav:support'}],
     [siteButton],
   ]);
 const dbUnavailable=()=>msg('⚠️ Система подписок временно недоступна. Данные не изменены. Попробуйте снова.',
@@ -82,7 +90,7 @@ function respond(res:ServerResponse,status:number,payload:unknown){
   res.writeHead(status);
   res.end(payload===null?'':JSON.stringify(payload));
 }
-function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string}|null{
+function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string;replyToSupport?:boolean}|null{
   const cb=update.callback_query;
   if(cb){
     if(!validId(cb.from?.id)||!cb.message||cb.message.chat?.type!=='private'||
@@ -94,7 +102,10 @@ function privateActor(update:any):{id:number;messageId?:number;callbackId?:strin
   const m=update.message;
   if(!m||!validId(m.from?.id)||m.chat?.type!=='private'||
     m.chat.id!==m.from.id)return null;
-  return {id:m.from.id,text:typeof m.text==='string'?m.text:''};
+  const replied=m.reply_to_message;
+  const replyToSupport=replied?.from?.is_bot===true &&
+    typeof replied.text==='string'&&replied.text.startsWith('✉️ MnebyVPN — напишите вопрос');
+  return {id:m.from.id,text:typeof m.text==='string'?m.text:'',replyToSupport};
 }
 async function packages(id:number){
   if(!store)throw new Error('DB unavailable');
@@ -171,7 +182,8 @@ function info(data:string){
        [homeButton]]);
   if(data==='nav:help'||data==='info:help')
     return msg('❔ Помощь\n\n1. Выберите VPN.\n2. Нажмите «24 часа бесплатно» или просмотрите тарифы.\n3. В разделе «Мои подключения» проверяйте статус и остаток срока.\n\nИнтернет при ограничениях мобильной сети и совместный тариф находятся в разработке.',
-      [[{text:'🎁 Пробные сутки',callback_data:'trial:vpn'}],[homeButton]]);
+      [[{text:'✉️ Написать оператору',callback_data:'nav:support'}],
+       [{text:'🎁 Пробные сутки',callback_data:'trial:vpn'}],[homeButton]]);
   return main();
 }
 async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
@@ -193,6 +205,63 @@ function oneAction(actor:{id:number;messageId?:number;callbackId?:string},view:R
     text:'Откройте меню командой /start',show_alert:true};
   return {method:'sendMessage',chat_id:actor.id,...view};
 }
+function supportPromptResponse(id:number){
+  return {method:'sendMessage',chat_id:id,text:supportPrompt,
+    reply_markup:{force_reply:true,input_field_placeholder:'Напишите ваш вопрос…'}};
+}
+async function handleOperatorReply(update:any){
+  const m=update.message;
+  if(!support||!m||m.chat?.id!==support.chatId)return null;
+  // A group must name one explicit trusted human operator; private chats
+  // trust only the account whose numeric ID equals the configured chat.
+  const trusted=support.operatorId!==null
+    ?m.from?.id===support.operatorId
+    :m.chat?.type==='private'&&m.from?.id===support.chatId;
+  if(!trusted)return null;
+  const raw=typeof m.text==='string'?m.text.trim():'';
+  const command=/^\\/reply(?:@MnebyVPN_bot)?\\s+([0-9]{1,20})\\s+([\\s\\S]+)$/i.exec(raw);
+  const replyText=typeof m.reply_to_message?.text==='string'
+    ?m.reply_to_message.text:'';
+  const tagged=/^✉️ MnebyVPN — обращение из бота\\nID Telegram: ([0-9]{1,20})\\n/.exec(replyText);
+  if(!command&&!tagged)return null;
+  const target=Number(command?.[1]??tagged?.[1]);
+  const message=command?.[2]?.trim()??raw;
+  if(!validId(target)||!validSupportText(message,1,1500))
+    return {method:'sendMessage',chat_id:support.chatId,
+      text:'Укажите текст ответа (до 1500 символов). Для команды: /reply ID сообщение'};
+  try{
+    await telegramSupportSend(support,'✉️ Поддержка MnebyVPN\\n\\n'+message,target);
+    return {method:'sendMessage',chat_id:support.chatId,text:'✅ Ответ доставлен пользователю.'};
+  }catch{
+    return {method:'sendMessage',chat_id:support.chatId,
+      text:'⚠️ Не удалось доставить ответ. Повторите позже.'};
+  }
+}
+async function sendSupportFromBot(id:number,updateId:number,message:string){
+  const user={id};
+  if(!validSupportText(message)){
+    return oneAction(user,msg('Напишите вопрос длиной от 10 до 1500 символов. Не отправляйте ключи или пароли.',
+      [[{text:'✉️ Повторить',callback_data:'nav:support'}],[homeButton]]));
+  }
+  if(!support)return oneAction(user,msg('⚠️ Канал поддержки ещё настраивается. Сообщение не отправлено.',
+    [[{text:'🌍 Форма на сайте',url:'https://mnebyvpn.site/#contact-support'}],[homeButton]]));
+  if(deliveredUpdates.has(updateId))return oneAction(user,msg('✅ Обращение уже передано оператору.',
+    [[{text:'🏠 Главное',callback_data:'nav:home'}]]));
+  if(!supportRate(String(id))||!supportGlobalRate('bot-global'))
+    return oneAction(user,msg('Слишком много обращений. Попробуйте позже.',
+      [[{text:'🏠 Главное',callback_data:'nav:home'}]]));
+  try{
+    await telegramSupportSend(support,'✉️ MnebyVPN — обращение из бота\\nID Telegram: '+id+
+      '\\n\\nВопрос:\\n'+message.trim());
+    deliveredUpdates.add(updateId);
+    if(deliveredUpdates.size>1000)deliveredUpdates.clear();
+    return oneAction(user,msg('✅ Обращение доставлено оператору. Ответ придёт сюда, в Telegram.',
+      [[{text:'🏠 Главное',callback_data:'nav:home'}]]));
+  }catch{
+    return oneAction(user,msg('⚠️ Не получилось отправить обращение. Сообщение не доставлено — попробуйте позже.',
+      [[{text:'✉️ Повторить',callback_data:'nav:support'}],[homeButton]]));
+  }
+}
 async function processUpdate(update:any){
   if(update.message?.successful_payment||update.message?.refunded_payment)
     throw new Error('Financial event needs durable settlement');
@@ -203,9 +272,17 @@ async function processUpdate(update:any){
   if(update.widget_query?.id)return {
     method:'answerWidgetQuery',widget_query_id:update.widget_query.id,data:'UNAVAILABLE',
   };
+  const adminReply=await handleOperatorReply(update);
+  if(adminReply)return adminReply;
   const actor=privateActor(update);
   if(!actor)return null;
   const text=actor.text?.trim()??'';
+  const explicitSupport=/^\\/support(?:@MnebyVPN_bot)?(?:\\s+([\\s\\S]+))?$/i.exec(text);
+  if(!actor.callbackId&&(explicitSupport?.[1]||actor.replyToSupport))
+    return sendSupportFromBot(actor.id,update.update_id,
+      explicitSupport?.[1]??text);
+  if(actor.data==='nav:support'||(!actor.callbackId&&explicitSupport))
+    return supportPromptResponse(actor.id);
   let action=actor.data??'nav:home';
   if(!actor.callbackId){
     if(text==='/trial'||text==='🆓 Пробный день')action='trial:vpn';
@@ -213,7 +290,7 @@ async function processUpdate(update:any){
     else if(text==='/plans'||text==='🌐 Выбрать доступ')action='nav:vpn';
     else if(text==='/connect')action='nav:connect';
     else if(text==='/share')action='nav:share';
-    else if(text==='/help'||text==='/support')action='nav:help';
+    else if(text==='/help')action='nav:help';
   }
   try {return oneAction(actor,await render(actor.id,action));}
   catch{
