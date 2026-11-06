@@ -3,6 +3,8 @@ BEGIN;
 DO $$
 DECLARE
   account_id uuid := 'a4a4a4a4-0000-4000-8000-000000000001';
+  account_b uuid := 'a4a4a4a4-0000-4000-8000-000000000005';
+  account_c uuid := 'a4a4a4a4-0000-4000-8000-000000000006';
   order_a uuid := 'a4a4a4a4-0000-4000-8000-000000000002';
   order_b uuid := 'a4a4a4a4-0000-4000-8000-000000000003';
   order_c uuid := 'a4a4a4a4-0000-4000-8000-000000000004';
@@ -11,11 +13,11 @@ DECLARE
   entitlement_c uuid;
   v text;
 BEGIN
-  INSERT INTO accounts(id) VALUES(account_id);
+  INSERT INTO accounts(id) VALUES(account_id),(account_b),(account_c);
   INSERT INTO orders(id,account_id,product,provider,amount_minor,currency)
   VALUES(order_a,account_id,'smart_dns','mock',10000,'RUB'),
-        (order_b,account_id,'smart_dns','mock',10000,'RUB'),
-        (order_c,account_id,'smart_dns','mock',10000,'RUB');
+        (order_b,account_b,'smart_dns','mock',10000,'RUB'),
+        (order_c,account_c,'smart_dns','mock',10000,'RUB');
   SELECT settle_verified_payment(order_a,'mock','event1','tx1',repeat('a',64),
                                  10000,'RUB',3600,1000) INTO v;
   IF v<>'APPLIED' THEN RAISE EXCEPTION 'payment A: %',v; END IF;

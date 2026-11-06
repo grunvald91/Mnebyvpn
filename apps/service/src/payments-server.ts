@@ -10,6 +10,7 @@ import { PgBillingStore } from '../../../packages/billing/src/store.ts';
 import { handleTelegramUpdate, handleProdamusDelivery, type TelegramUpdate } from '../../../packages/billing/src/handlers.ts';
 import { parseProdamusFormData } from '../../../packages/billing/src/multipart.ts';
 import type { ProdamusConfig } from '../../../packages/billing/src/prodamus.ts';
+import type {PayformLinkTransport} from '../../../packages/billing/src/website-checkout.ts';
 
 const required = (name: string): string => {
   const v = process.env[name];
@@ -53,7 +54,8 @@ class TelegramHttp {
     return (data as {result?:unknown}).result;
   }
 }
-function getConfig(): {db:string; bot:TelegramHttp; tgSecret:string; starsSecret:string; pd:ProdamusConfig;botUsername?:string} {
+function getConfig(): {db:string; bot:TelegramHttp; tgSecret:string; starsSecret:string; pd:ProdamusConfig;botUsername?:string;
+  tgRubleTransport?:PayformLinkTransport} {
   const env = required('MNEBYVPN_ENV');
   if (env !== 'offline-test') throw new Error('Only offline-test runner is enabled');
   const db=required('DATABASE_URL');
@@ -61,8 +63,21 @@ function getConfig(): {db:string; bot:TelegramHttp; tgSecret:string; starsSecret
   const starsSecret=required('STARS_PAYLOAD_SECRET');
   const formSecret=required('PRODAMUS_SIGN_SECRET');
   if (tgSecret.length<24 || starsSecret.length<32 || formSecret.length<32) throw new Error('Secrets too short');
+  const tgRubleTransport:PayformLinkTransport|undefined=
+    process.env.MNEBYVPN_TG_RUB_LINKS_EXPLICIT==='true'?{
+      getLink:async(signedUrl:string)=>{
+        const url=new URL(signedUrl);
+        if(url.protocol!=='https:'||url.username||url.password||
+           !(url.hostname==='payform.ru'||url.hostname.endsWith('.payform.ru')))
+          throw new Error('Unapproved Prodamus merchant host');
+        const response=await fetch(signedUrl,{signal:AbortSignal.timeout(8000)});
+        if(!response.ok)throw new Error('Prodamus link request failed');
+        return (await response.text()).trim();
+      },
+    }:undefined;
   return {
     db, bot:new TelegramHttp(required('TELEGRAM_BOT_TOKEN')),
+    tgRubleTransport,
     tgSecret,starsSecret,botUsername:process.env.TELEGRAM_BOT_USERNAME,
     pd:{
       formUrl:required('PRODAMUS_FORM_URL'),
@@ -95,6 +110,7 @@ export function startOfflinePaymentsServer(): void {
         await handleTelegramUpdate(update,db,config.bot,{
           starsPayloadSecret:config.starsSecret,prodamus:config.pd,
           telegramBotUsername:config.botUsername,
+          prodamusTelegramLink:config.tgRubleTransport,
         });
         response(res,200,'OK');
         return;

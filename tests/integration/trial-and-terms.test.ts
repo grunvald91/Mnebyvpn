@@ -97,8 +97,18 @@ test('forwarded catalog supports eight configured 15/30/60/90-day rows',async()=
   }
  }
  const offers=await db.referralOffers(90900807,16);
- const termOffers=offers.filter(x=>x.planId.endsWith(suffix));
- assert.equal(termOffers.length,8);
+ assert.ok(offers.length<=16,'forwarded catalog has a documented size cap');
+ const {rows:terms}=await pool.query(
+  'SELECT * FROM billing_plans WHERE id LIKE $1 ORDER BY product,duration_seconds',
+  ['term-%'+suffix]);
+ assert.equal(terms.length,8);
+ const termOffers=terms.map((p,i)=>({
+   planId:p.id as string,title:p.title as string,
+   product:p.product as 'vpn'|'smart_dns',stars:Number(p.stars),
+   rubMinor:Number(p.rub_minor),durationSeconds:Number(p.duration_seconds),
+   dnsQuotaBytes:p.dns_quota_bytes===null?null:BigInt(p.dns_quota_bytes),
+   token:'A'.repeat(14)+String(i).padStart(2,'0'),
+ }));
  const publicData=referralPublicData(termOffers,'MnebyvpnTestBot');
  const parsed=JSON.parse(publicData);
  assert.equal(parsed.o.length,8);

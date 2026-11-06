@@ -53,17 +53,19 @@ export function effectiveDesired(desired: DesiredAccess, now: Date): DesiredAcce
 
 const matches = (a: ObservedAccess,d: DesiredAccess,clock:Date):boolean => {
   if(a.enabled!==d.enabled||a.revision!==d.revision)return false;
-  if(!d.enabled||!d.isTrial)return true;
+  if(!d.enabled)return true;
+  // Every paid ENABLE, not just free trials, requires a node-observed hard
+  // deadline. A revision/boolean alone is insufficient proof of revocation.
+
   const actual=a.expiresAt?.getTime(),target=d.expiresAt?.getTime();
   if(actual===undefined||target===undefined||
      !Number.isFinite(actual)||!Number.isFinite(target))return false;
   if(d.trialPendingActivation){
-    // Never confirm a supposedly enabled provisional credential whose
-    // observed node-side hard deadline is absent, elapsed or too distant.
+    // The trial bootstrap deadline may be shorter, never longer.
     return actual>clock.getTime()&&actual<=target+1000;
   }
-  // The second trial revision must install the exact final 24h deadline.
-  return Math.abs(actual-target)<=1000;
+  // For PAID and active trial access, require the exact node-side hard expiry.
+  return actual>clock.getTime()&&Math.abs(actual-target)<=1000;
 };
 
 /**
@@ -79,7 +81,7 @@ export async function reconcileEntitlement(
   return store.withLock(entitlementId, async fence => {
     for (let round = 0; round < MAX_CORRECTIONS; round++) {
       const desired = effectiveDesired(await store.readDesired(entitlementId), now());
-      if(desired.trialPendingActivation && adapter.enforcesHardExpiry!==true){
+      if(desired.enabled && adapter.enforcesHardExpiry!==true){
         await store.requestReconcile(entitlementId,'expiry_enforcement_unverified');
         return {status:'retry_required',reason:'expiry_enforcement_unverified'};
       }

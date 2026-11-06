@@ -42,14 +42,16 @@ BEGIN
   IF v <> 'DENY_CAPTURE_REUSED' THEN RAISE EXCEPTION 'capture reused: %',v; END IF;
   SELECT count(*) INTO count_found FROM entitlements WHERE source_order_id=o2;
   IF count_found <> 0 THEN RAISE EXCEPTION 'unauthorized second grant'; END IF;
-  -- Independent packages for the SAME account and product; refund of order o
-  -- does not revoke the second separately paid Smart DNS package.
+  -- A paid renewal for the SAME account/product extends one stable access.
+  -- Refunding an earlier payment must retain the later valid credit.
   SELECT settle_verified_payment(o2,'fake-provider','paid-event-3','capture-2',repeat('d',64),
                                  19900,'RUB',3600,200) INTO v;
   IF v <> 'APPLIED' THEN RAISE EXCEPTION 'second package: %',v; END IF;
   SELECT count(*) INTO count_found FROM entitlements
     WHERE account_id = a AND product = 'smart_dns';
-  IF count_found <> 2 THEN RAISE EXCEPTION 'package isolation: %', count_found; END IF;
+  IF count_found <> 1 THEN RAISE EXCEPTION 'renewal created extra credential: %',count_found; END IF;
+  IF NOT EXISTS(SELECT 1 FROM order_entitlement_credits WHERE order_id=o2 AND product='smart_dns') THEN
+    RAISE EXCEPTION 'renewal credit missing'; END IF;
 
 
   SELECT id INTO e_id FROM entitlements WHERE source_order_id=o AND product='vpn';
@@ -72,17 +74,22 @@ BEGIN
   IF acknowledge_provisioning(e_id,'vpn',1,tok2,true) THEN
     RAISE EXCEPTION 'stale ENABLE ack after refund';
   END IF;
-  SELECT count(*) INTO count_found FROM entitlements
-   WHERE source_order_id=o AND state='REFUNDED' AND revision=2;
-  IF count_found <> 2 THEN RAISE EXCEPTION 'bundle refund incomplete'; END IF;
-  IF NOT EXISTS (SELECT 1 FROM entitlements
-      WHERE source_order_id=o2 AND state='PAID_PENDING_PROVISIONING' AND revision=1) THEN
-    RAISE EXCEPTION 'refund revoked another purchase';
+  IF NOT EXISTS(SELECT 1 FROM entitlements WHERE source_order_id=o
+      AND product='vpn' AND state='REFUNDED' AND revision=2) THEN
+    RAISE EXCEPTION 'VPN bundle refund missing';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM entitlements WHERE source_order_id=o
+      AND product='smart_dns' AND state='PAID_PENDING_PROVISIONING' AND revision=3) THEN
+    RAISE EXCEPTION 'Refund erased separately paid DNS renewal';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM order_entitlement_credits
+      WHERE order_id=o2 AND product='smart_dns' AND refunded=false) THEN
+    RAISE EXCEPTION 'Other paid credit revoked';
   END IF;
 
   SELECT count(*) INTO count_found FROM reconcile_outbox
    WHERE entitlement_id IN (SELECT id FROM entitlements WHERE source_order_id=o);
-  IF count_found <> 4 THEN RAISE EXCEPTION 'refund outbox signals missing'; END IF;
+  IF count_found <> 5 THEN RAISE EXCEPTION 'refund outbox signals missing'; END IF;
   SELECT apply_verified_refund(o,'fake-provider','refund-event-1','capture-1',repeat('c',64)) INTO v;
   IF v <> 'DUPLICATE_EVENT' THEN RAISE EXCEPTION 'duplicate refund: %',v; END IF;
   SELECT apply_verified_refund(o,'fake-provider','refund-event-1','capture-1',repeat('e',64)) INTO v;

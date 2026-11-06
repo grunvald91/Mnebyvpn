@@ -1,6 +1,7 @@
 import { randomUUID, createHash, randomBytes } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
 import { planWidgetKey } from '../../telegram-ui/src/widget-104.ts';
+import {rublePlanKey} from './offer-keys.ts';
 import type { PaymentProvider, PricedPlan } from './channels.ts';
 import type { StarsOrder } from './stars.ts';
 import type { ProdamusOrder } from './prodamus.ts';
@@ -29,6 +30,13 @@ export interface VerifiedCapture {
   amount: number;
   currency: 'RUB' | 'XTR';
   payloadHash: string;
+}
+export class PaymentSettlementDenied extends Error {
+  readonly code:string;
+  constructor(code:string){
+    super('PAYMENT_SETTLEMENT_DENIED:'+code);
+    this.code=code;
+  }
 }
 export type SettlementOutcome =
   | 'APPLIED' | 'DUPLICATE_EVENT' | 'DUPLICATE_CAPTURE'
@@ -94,6 +102,15 @@ export class PgBillingStore {
       throw new Error('Invalid authenticated Telegram user ID');
     return this.createOrder('telegram_stars', { telegramUserId }, planId, requestId, inviteToken,expectedKey);
   }
+  /** Authenticated by Telegram webhook sender; opt-in checkout only.
+   * This provider route is disabled by default due to Telegram §6.2.
+   */
+  async createTelegramRubleOrder(telegramUserId:number,planId:string,
+    requestId:string,inviteToken?:string,expectedKey?:string):Promise<OrderRecord>{
+    if(!Number.isSafeInteger(telegramUserId)||telegramUserId<=0)
+      throw new Error('Invalid Telegram account');
+    return this.createOrder('prodamus',{telegramUserId},planId,requestId,inviteToken,expectedKey);
+  }
   /**
    * This method is for an independently authenticated WEBSITE session only.
    * Do not publish a route that accepts arbitrary accountId as proof of login.
@@ -131,7 +148,9 @@ export class PgBillingStore {
         if (order.planId !== planId ||
             ('accountId' in who ? order.accountId !== who.accountId : order.telegramUserId !== who.telegramUserId))
           throw new Error('Request key reused for another customer or plan');
-        if(expectedKey!==undefined && planWidgetKey(pricedPlanForOrder(order))!==expectedKey)
+        if(expectedKey!==undefined &&
+          (provider==='prodamus'?rublePlanKey(pricedPlanForOrder(order)):
+            planWidgetKey(pricedPlanForOrder(order)))!==expectedKey)
           throw new Error('OFFER_CHANGED');
         const saved=await c.query('SELECT invite_token FROM order_referrals WHERE order_id=$1',[order.id]);
         if ((saved.rows[0]?.invite_token??undefined)!==inviteToken)
@@ -166,7 +185,7 @@ export class PgBillingStore {
       if(cap.rows[0].total>=3)throw new Error('PENDING_CHECKOUT_RATE_LIMIT');
       let referralOwner: string | null=null;
       if(inviteToken!==undefined){
-        if(provider!=='telegram_stars' && !(provider==='prodamus' && 'accountId' in who))
+        if(provider!=='telegram_stars' && provider!=='prodamus')
           throw new Error('Referral requires authenticated checkout');
         const invite=await c.query(
           'SELECT referrer_account_id FROM referral_invites WHERE token=$1 AND plan_id=$2',
@@ -178,7 +197,8 @@ export class PgBillingStore {
       const plan = await c.query('SELECT * FROM billing_plans WHERE id=$1 AND enabled=true FOR SHARE',[planId]);
       if (!plan.rowCount) throw new Error('Plan not offered');
       const p = plan.rows[0];
-      if(expectedKey!==undefined && planWidgetKey(mapPlan(p))!==expectedKey)
+      if(expectedKey!==undefined &&
+        (provider==='prodamus'?rublePlanKey(mapPlan(p)):planWidgetKey(mapPlan(p)))!==expectedKey)
         throw new Error('OFFER_CHANGED');
       const price = provider === 'telegram_stars' ? p.stars : p.rub_minor;
       if (price === null || safeInt(price) === 0) throw new Error('Price not configured');
@@ -261,7 +281,7 @@ export class PgBillingStore {
       if (!rows.length) throw new Error('Order not found');
       const order = mapOrder(rows[0]);
       if (order.provider !== capture.provider || order.amount !== capture.amount ||
-          order.currency !== capture.currency) throw new Error('Payment does not match order snapshot');
+          order.currency !== capture.currency) throw new PaymentSettlementDenied('SNAPSHOT_MISMATCH');
       const {rows: result} = await c.query(
         `SELECT settle_verified_payment($1,$2,$3,$4,$5,$6,$7,$8,$9) AS outcome`,
         [order.id, capture.provider, capture.providerEventId, capture.providerTransactionId,
@@ -271,7 +291,7 @@ export class PgBillingStore {
       );
       const outcome = result[0].outcome as SettlementOutcome;
       if (!['APPLIED','DUPLICATE_EVENT','DUPLICATE_CAPTURE'].includes(outcome)) {
-        throw new Error('Payment settlement denied: '+outcome);
+        throw new PaymentSettlementDenied(outcome);
       }
       await c.query('COMMIT');
       return outcome;
@@ -281,6 +301,56 @@ export class PgBillingStore {
     } finally {
       c.release();
     }
+  }
+
+  /** A trusted provider already reported a capture, but fulfillment is
+   * impossible or uncertain. Preserve proof for manual refund/reconciliation.
+   * DO NOT call for invalid Prodamus signatures or unauthenticated requests.
+   */
+  async recordPaymentIncident(input:{
+    provider:PaymentProvider;transactionId:string;orderId:string|null;
+    telegramUserId?:number|null;amount:number|null;currency:string|null;
+    reason:string;payloadHash:string;
+  }):Promise<number> {
+    if(!input.transactionId || input.transactionId.length>512 ||
+       !/^[A-Z_]{3,64}$/.test(input.reason) ||
+       !/^[a-f0-9]{64}$/.test(input.payloadHash))
+      throw new Error('Invalid payment incident');
+    const txHash=createHash('sha256').update(input.provider+':'+input.transactionId).digest('hex');
+    const orderId=input.orderId && uuid.test(input.orderId)?input.orderId:null;
+    const amount=input.amount!==null&&Number.isSafeInteger(input.amount)&&input.amount>=0
+      ?input.amount:null;
+    const currency=input.currency && /^[A-Z]{3}$/.test(input.currency)?input.currency:null;
+    const actor=input.telegramUserId && Number.isSafeInteger(input.telegramUserId)
+      ?String(input.telegramUserId):null;
+    const {rows}=await this.pool.query(
+      `INSERT INTO payment_incidents
+       (provider,transaction_hash,transaction_id,order_id,actor_telegram_user_id,amount_minor,
+        currency,reason,payload_sha256)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT(provider,transaction_hash) DO UPDATE SET
+         last_seen_at=clock_timestamp(),
+         sightings=payment_incidents.sightings+1
+       RETURNING id`,
+       [input.provider,txHash,input.transactionId,orderId,actor,amount,currency,input.reason,input.payloadHash]);
+    return safeInt(rows[0].id);
+  }
+  async pendingPaymentIncidentAlerts(limit=20):Promise<Array<{
+    id:number;provider:string;reason:string;currency:string|null;amount:number|null;
+  }>> {
+    if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw new Error('Invalid alert limit');
+    const {rows}=await this.pool.query(
+      `SELECT id,provider,reason,currency,amount_minor
+         FROM payment_incidents WHERE alerted_at IS NULL AND resolved_at IS NULL
+        ORDER BY id LIMIT $1`,[limit]);
+    return rows.map(r=>({id:safeInt(r.id),provider:r.provider,reason:r.reason,
+      currency:r.currency,amount:r.amount_minor===null?null:safeInt(r.amount_minor)}));
+  }
+  async markPaymentIncidentAlerted(id:number):Promise<void> {
+    if(!Number.isSafeInteger(id)||id<=0)throw new Error('Invalid incident id');
+    await this.pool.query(
+      `UPDATE payment_incidents SET alerted_at=clock_timestamp()
+        WHERE id=$1 AND alerted_at IS NULL`,[id]);
   }
 
   /** No bearer IPv6, VPN credentials, profile URLs or personally sensitive traffic history. */
@@ -424,6 +494,19 @@ export class PgBillingStore {
       const offer=await c.query('SELECT * FROM trial_offers WHERE product=$1 AND enabled=true',
         [product]);
       if(!offer.rowCount){await c.query('COMMIT');return {status:'UNAVAILABLE'};}
+      // Paid customers are not new trial users. Per-product lock serializes
+      // daily admission across arbitrarily many Telegram accounts.
+      const priorPaid=await c.query(
+        "SELECT 1 FROM orders WHERE account_id=$1 AND state='PAID' LIMIT 1",[accountId]);
+      if(priorPaid.rowCount){await c.query('COMMIT');return {status:'UNAVAILABLE'};}
+      await c.query("SELECT pg_advisory_xact_lock(hashtext('mnebyvpn:trial'),hashtext($1))",
+        [product]);
+      const daily=await c.query(
+        "SELECT count(*)::integer AS n FROM trial_grants "+
+        "WHERE product=$1 AND reserved_at>clock_timestamp()-interval '24 hours'",[product]);
+      if(daily.rows[0].n>=Number(offer.rows[0].max_daily_grants)){
+        await c.query('COMMIT');return {status:'UNAVAILABLE'};
+      }
       if(inviteToken){
         const referral=await c.query(
           `SELECT i.referrer_account_id FROM referral_invites i

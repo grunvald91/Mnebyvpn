@@ -35,10 +35,11 @@ test('worker cannot grant with missing adapter; mock grant then full refund revo
 
   const observed=new Map<string,ObservedAccess>(),calls:string[]=[];
   const mock:AdapterMap={vpn:{
+    enforcesHardExpiry:true,
     inspect:async(id)=>observed.get(id)??{revision:0,enabled:false},
     apply:async(d:DesiredAccess,operationId)=>{
       calls.push(operationId);
-      observed.set(d.entitlementId,{revision:d.revision,enabled:d.enabled});
+      observed.set(d.entitlementId,{revision:d.revision,enabled:d.enabled,expiresAt:d.expiresAt});
       return 'applied';
     },
   }};
@@ -75,11 +76,19 @@ test('Telegram refunded_payment is idempotent and does not revoke another purcha
   await handleTelegramUpdate(update,db,tg,config);
   await handleTelegramUpdate({...update,update_id:502},db,tg,config);
   const {rows}=await pool.query(
-    'SELECT source_order_id,state,revision FROM entitlements WHERE source_order_id=ANY($1::uuid[])',
+    'SELECT id,source_order_id,state,revision FROM entitlements WHERE account_id=$1 AND product=$2',
+    [a.accountId,'vpn']);
+  assert.equal(rows.length,1,'renewal must keep same VPN entitlement');
+  assert.equal(rows[0].source_order_id,a.id);
+  assert.equal(rows[0].state,'PAID_PENDING_PROVISIONING');
+  assert.equal(Number(rows[0].revision),3);
+  const {rows:credits}=await pool.query(
+    'SELECT order_id,refunded,entitlement_id FROM order_entitlement_credits WHERE order_id=ANY($1::uuid[])',
     [[a.id,b.id]]);
-  const states=new Map(rows.map(x=>[x.source_order_id,{state:x.state,revision:Number(x.revision)}]));
-  assert.deepEqual(states.get(a.id),{state:'REFUNDED',revision:2});
-  assert.deepEqual(states.get(b.id),{state:'PAID_PENDING_PROVISIONING',revision:1});
+  assert.equal(credits.length,2);
+  assert.equal(new Set(credits.map(x=>x.entitlement_id)).size,1);
+  assert.equal(credits.find(x=>x.order_id===a.id)?.refunded,true);
+  assert.equal(credits.find(x=>x.order_id===b.id)?.refunded,false);
   assert.deepEqual(sent,['sendMessage']);
   await assert.rejects(()=>handleTelegramUpdate({...update,update_id:503,
     message:{...update.message,refunded_payment:{...refunded_payment,telegram_payment_charge_id:'charge-b'}}},
