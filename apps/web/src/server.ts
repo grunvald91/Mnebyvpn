@@ -400,8 +400,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     }
     try{
       await telegramSupportSend(support,
-        '✉️ MnebyVPN — обращение с сайта\\nКонтакт: '+contact+
-        '\\n\\nСообщение:\\n'+message);
+        '✉️ MnebyVPN — обращение с сайта\nКонтакт: '+contact+
+        '\n\nСообщение:\n'+message);
       json(res,200,{delivered:true});
     }catch{
       json(res,503,{code:'SUPPORT_DELIVERY_FAILED'});
