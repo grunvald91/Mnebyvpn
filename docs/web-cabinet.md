@@ -178,98 +178,84 @@ SQL/HTTP тесты внутри GitHub Actions используют однор�
 
 Интернет-оплата, выдача VPN/DNS и квота остаются закрытыми до end-to-end испытаний и законных условий продажи. Для публичной информационной страницы не обещать работающий платный доступ.
 
-## Этап 18 — обязательный вход для пробного VPN (06.11.2026)
+## Этап 20 — вход по email с кодом и Telegram (06.11.2026)
 
-Сайт должен требовать идентичность перед **любым** бесплатным trial. Полностью отключён
-анонимный маршрут `/api/guest/trial` (ответ HTTP 403) — старый флаг
-`WEB_GUEST_TRIAL_ENABLED` более не разрешает доступ. Не используйте cookie браузера
-как способ гарантировать «одни сутки в одни руки».
+**Актуальная схема.** Яндекс OAuth для MNEBYVPN отключён. Черновик ServGo
+PR #146 по Яндексу закрыт; почтовая интеграция — ServGo PR #147.
+Главный вход на сайте: email → шестизначный код на email →
+`POST /api/auth/email/verify` → одна серверная сессия в `accounts.id`.
 
-Есть два независимых входа на `mnebyvpn.site`:
-- Telegram: `/auth/login` и `https://mnebyvpn.site/auth/callback`.
-  `WEB_TELEGRAM_OIDC_ENABLED=yes`, `TELEGRAM_OIDC_CLIENT_ID` и
-  `TELEGRAM_OIDC_CLIENT_SECRET` из BotFather, **не Bot API token**.
-- Яндекс ID: `/auth/yandex` → существующий OAuth-сервер **ServGo** →
-  `https://mnebyvpn.site/auth/yandex/callback`. Внешний Callback Яндекса
-  остаётся на `https://servgo.ru/api/auth/yandex/callback`, уже зарегистрированном
-  для ServGo; требуется только `WEB_YANDEX_OAUTH_ENABLED=yes` после безопасного
-  развёртывания ServGo broker. Никакое новое приложение или дополнительная
-  пара Yandex OAuth Client ID/Secret для MNEBYVPN не требуется.
+### Почта и сервисная инфраструктура
 
-На сервере используется OAuth Code + PKCE S256 + одноразовый `state` в подписанном
-HttpOnly cookie; для Telegram проверяется подпись ID token и обязательные
-OIDC claims, для Яндекса — проверка в ServGo и однократный защищённый PKCE обмен идентификатором.
-Отзываемая сессия сайта привязана к внутреннему `accounts.id`; снаружи
-этот идентификатор для авторизации не принимается.
+- Отправитель: строго `mnebyvpn@servgo.ru`, бренд `MNEBYVPN` латиницей.
+- Письмо отправляется через **существующую почтовую систему ServGo**:
+  `POST https://servgo.ru/api/auth/mnebyvpn/email-code`, который вызывает
+  `bot.services.email_notifications.send_email` с безопасным override From.
+  Рабочий SMTP-пароль **не** хранится в MNEBYVPN.
+- Серверный вызов требует `MNEBYVPN_MAIL_GATEWAY_SECRET` длиной минимум
+  32 символа с **одинаковым значением** на обеих сторонах, HMAC-SHA256
+  над timestamp, nonce и точным телом JSON, TTL 60 секунд, атомарное
+  одноразовое использование nonce через PostgreSQL в ServGo.
+- Код 6 цифр, TTL 10 минут, один успешный вход, максимум 5 неверных
+  проверок; запрос нового кода не чаще раза в 60 секунд, максимум 5
+  email-запросов в час на адрес и 80 в час на сетевой IP (снижение abuse;
+  IP мобильных провайдеров могут быть общими).
+- В MNEBYVPN хранится только HMAC-хеш кода, не сам код. Новая авторизация
+  по email не требует пароля и не зависит от Telegram.
+- `WEB_EMAIL_LOGIN_ENABLED=yes` включать только **после** миграции
+  `db/migrations/0019_email_otp_and_trial_devices.sql`, проверки SMTP From,
+  SPF/DKIM/DMARC и установки секретов. Маршрут ServGo требует миграции
+  `migrations/add_mnebyvpn_email_gateway.sql` до включения.
+  Перед выпуском проверить что nginx ServGo маршрутизирует точный путь на API.
 
-Применить миграцию `db/migrations/0018_site_provider_identities.sql` **после 0017**
-до запуска новой веб-версии. `accounts.yandex_user_id` уникален; у каждого
-внутреннего аккаунта один `trial_grants.account_id` за всё время, включая
-Telegram-бота. После входа можно явно привязать второй способ через кабинет:
-`/auth/yandex?link=1` / `/auth/login?link=1`. Привязка к уже занятому
-в другом аккаунте идентификатору должна завершаться отказом, **не** слиянием
-подписок. Лимит «один на аккаунт» не устраняет злоупотребления путём создания
-разных аккаунтов; антифрод должен проектироваться отдельно.
+### Telegram — второй вход
 
-`POST /api/trial` (CSRF + authenticated session), `GET /api/me`
-(внутренний account ID), `POST /api/vpn/subscription` (CSRF + реальный узловой ACK)
-образуют путь подключения. Ответ последнего выдаёт bearer URL **только если**
-узел подтвердил ACTIVE доступ. Затем на сайте доступны ссылки для скачивания
-INCY/Karing, `/install/<token>?client=incy|karing`, а также копирование URL.
-Название подписки, заголовок клиента и логотип сайта/бота пишутся латиницей
-`MNEBYVPN`.
+- Telegram подтверждается **официальным Telegram Login/OIDC**
+  (BotFather OAuth Client ID/Secret и зарегистрированный callback), не
+  отправкой нашего ботом кодов.
+- После email-входа доступна явная привязка через `/auth/login?link=1`.
+  Если Telegram ID уже принадлежит другому `accounts.id`, автоматического
+  слияния платежей и trial **нет**: требуется проверка владельца/ручное
+  разбирательство.
+- Прямой вход через Telegram разрешён для **ранее привязанных** либо
+  уже существующих в Telegram-боте аккаунтов. Незнакомый Telegram ID
+  перенаправляется на email-вход, без создания нового trial аккаунта.
+- `WEB_TELEGRAM_OIDC_ENABLED=yes` включать только с действующими
+  BotFather credentials. В сетях, где Telegram недоступен, работает
+  email-вход через ServGo.
 
-**Единая база VPN обязательна для фактической активации.** При разрешённых
-`WEB_TRIAL_ENABLED` или `WEB_CHECKOUT_ENABLED` веб-процесс требует, чтобы
-`DATABASE_URL` и `VPN_SUBSCRIPTION_DATABASE_URL` указывали на одну и ту же
-каноническую PostgreSQL бизнес-базу, которую использует VPN-worker. Иначе
-процесс не запустит trial/checkout: отдельная веб-БД может создать «заявку»,
-которую узел никогда не увидит. Перевод с независимых БД на общую
-**требует отдельного бэкапа, миграции идентичностей и проверки полномочий**.
-Просто присвоить одинаковые строки без миграции и preflight нельзя.
-Закрытый `/profile` worker дополнен проверкой реального ACTIVE node-ACK
-для подписки Yandex-only без Telegram ID.
+### Пробный VPN и ограничения антифрода
 
-**Продакшен не подтверждён:** нужны действующий ServGo Yandex OAuth broker и его миграция,
-BotFather credentials, on-wire VPN activation/revocation, настройки веб-сервиса,
-применение миграции к БД и E2E с разными браузерами/устройствами. Текущий
-`.github/workflows/deploy-production.yml` перезапускает только отдельные
-Telegram-bot и VPN-worker systemd unit; автоматическую выкладку **самого
-веб-сайта** он не выполняет. Не объявляйте веб-релиз готовым без отдельного
-подтверждённого deploy-контура и явного включения соответствующих флагов.
+- `POST /api/trial` — только после email/Telegram авторизации, с CSRF.
+- На первом GET страницы выставляется `__Host-mnebyvpn_device` — случайный
+  HttpOnly Secure cookie. Сохраняется **только SHA-256-хеш** токена.
+- `trial_grants.account_id UNIQUE` даёт не более одного trial на
+  внутренний аккаунт. `trial_device_claims.device_hash PRIMARY KEY`
+  резервируется **в одной транзакции с пробной подпиской**: другой аккаунт
+  из того же браузера получает `DEVICE_ALREADY_USED`.
+- Важно: очистка cookies, другое приложение/браузер, смена телефона
+  или имитация HTTP-клиента **обходят браузерную привязку**. Ни email,
+  ни Telegram, ни сайт не дают неподлежащее подделке подтверждение
+  «один физический телефон = одни сутки». Требование пользователя выполняется
+  лишь как *best effort*. IP нельзя использовать как абсолютный
+  идентификатор телефона (особенно CGNAT у мобильных операторов).
+- Telegram-бот использует тот же уникальный `accounts.telegram_user_id`
+  и `trial_grants.account_id`, но **связать пробную выдачу в боте с
+  неизвестным email без связывания аккаунтов нельзя**.
+- Начало срока — только после узлового ACK; существующие VPN-подписки,
+  DNS и оплаченные заказы не обнулять.
 
-Источники:
-- https://core.telegram.org/bots/telegram-login
-- https://yandex.ru/dev/id/doc/ru/codes/code-url
-- https://yandex.ru/dev/id/doc/ru/user-information
-- https://docs.incy.cc/en/deep-links/
-- https://karing.app/cooperation/scheme
+### Проверки перед production
 
-## Этап 19 — переиспользование Яндекс OAuth приложения ServGo (06.11.2026)
-
-Никакого нового OAuth-приложения создавать не нужно; уже зарегистрированный
-Callback ServGo остаётся `https://servgo.ru/api/auth/yandex/callback`.
-
-- Страница VPN `/auth/yandex` создаёт подписанные session-cookie, одноразовый
-  `state` и PKCE-S256 и отправляет человека на
-  `https://servgo.ru/api/auth/yandex/mnebyvpn/start`.
-- Сервер **ServGo** инициирует **свой существующий** Яндекс OAuth, проверяет
-  полученный профиль сервером и создаёт одноразовый, ограниченный 5 минутами
-  PKCE-bound код в `yandex_external_tickets`. В URL перенаправления жёстко
-  указан `https://mnebyvpn.site/auth/yandex/callback`, не входной параметр.
-- MNEBYVPN по серверному HTTPS делает `POST` в
-  `https://servgo.ru/api/auth/yandex/mnebyvpn/exchange`, предъявляет
-  проверенный `code_verifier` и однократно получает **только уникальный ID
-  Яндекса**. Secret/токен Яндекс OAuth остаются только в ServGo.
-- Telegram продолжает официальный
-  [Telegram OIDC](https://core.telegram.org/bots/telegram-login).
-  Он не отправляет сообщения от VPN-бота: пользователь подтверждает вход
-  через Telegram-клиент, когда Telegram может доставить свой запрос.
-  Регистрация доверенного сайта в BotFather по-прежнему обязательна.
-
-Включение Яндекс на VPN теперь требует только `WEB_YANDEX_OAUTH_ENABLED=yes`
-и доступного, проверенного по TLS сервера ServGo с миграцией
-`migrations/add_yandex_external_ticket.sql`; **не** требует
-`YANDEX_OAUTH_CLIENT_ID` и `YANDEX_OAUTH_CLIENT_SECRET` в VPN окружении.
-Прямой callback Яндекса на домене MNEBYVPN не регистрируется. Потребуется независимая проверка запуска
-новых маршрутов ServGo и их точного публичного HTTPS routing.
+1. ServGo PR #147: SQL, SMTP-отправитель `mnebyvpn@servgo.ru`,
+   настоящее письмо тестовому ящику, обработка кодов и анти-replay.
+2. MNEBYVPN PR #31: миграции 0018/0019, проверки OTP, rate limits,
+   коллизий уникальности, привязки Telegram, реальной активации узлом.
+3. Согласовать каноническую PostgreSQL базу сайта и VPN-worker;
+   не включать trial при разных БД.
+4. Отдельно выпустить **веб-сервер** и проверить действительный HTTPS
+   (существующий workflow `deploy-production.yml` выкладывает
+   только Telegram-бота и VPN-worker). Нельзя считать
+   наличие PR работающей авторизацией.
+5. Проверить почтовый сервер и доменные SPF/DKIM/DMARC записи отдельно:
+   код не гарантирует, что From реально авторизован к отправке.
