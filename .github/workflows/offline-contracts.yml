@@ -4,6 +4,7 @@ on:
   # One short offline run per actual code push, not duplicate PR + push runs.
   push:
     branches:
+      - main
       - feat/phase1-foundation-20261105
       - feat/web-cabinet-20261106
     paths:
