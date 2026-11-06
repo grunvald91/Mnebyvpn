@@ -73,7 +73,7 @@ test('late ENABLE rev 1 after refund rev 2 gets compensating DISABLE before ack'
   };
   assert.deepEqual(await run(s), { status: 'synced', revision: 2 });
   assert.deepEqual(s.actions, ['1:true', '2:false']);
-  assert.deepEqual(s.observed, { revision: 2, enabled: false });
+  assert.deepEqual(s.observed, { revision: 2, enabled: false, expiresAt:null });
   assert.deepEqual(s.acknowledgements, [2]);
 });
 
@@ -110,7 +110,7 @@ test('expired subscription is disabled even if business state is ACTIVE', async 
   s.desired = { ...s.desired, expiresAt: new Date(moment.getTime() - 1000) };
   s.observed = { revision: 1, enabled: true };
   assert.deepEqual(await run(s), { status: 'synced', revision: 1 });
-  assert.deepEqual(s.observed, { revision: 1, enabled: false });
+  assert.deepEqual(s.observed, { revision: 1, enabled: false, expiresAt:null });
 });
 
 test('post-apply inspect failing does not acknowledge', async () => {

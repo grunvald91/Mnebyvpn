@@ -4,7 +4,7 @@ const text = (id, value) => { byId(id).textContent = String(value); };
 const state = {
   product: 'vpn', days: 15, plans: [], checkoutEnabled: false,
   loggedIn: false, csrf: '', busy: false, requestId: null, trialOffers: [],
-  inviteToken: null, refreshing: false,
+  inviteToken: null, refreshing: false, renewalTargetId: null,
 };
 const productNames = { vpn:'VPN', smart_dns:'Smart DNS', bundle:'VPN + Smart DNS' };
 const stateNames = {
@@ -51,6 +51,7 @@ async function api(url, options) {
 function setSelection(product, days) {
   if (!Object.hasOwn(productNames,product) || ![15,30,60,90].includes(days)) return;
   if (product !== state.product || days !== state.days) state.requestId = null;
+  if(product!==state.product)state.renewalTargetId=null;
   state.product = product; state.days = days;
   document.querySelectorAll('[data-product]').forEach(btn => {
     const active=btn.dataset.product===product;
@@ -68,13 +69,15 @@ function renderPlan() {
   text('selected-duration',state.days+' дней');
   text('selected-quota',state.product==='vpn'?'Не входит':plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
   text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):'—');
-  text('price-description',plan?'Фиксированный срок доступа. Покупка нового пакета не продлевает старый.':
+  text('price-description',plan?(state.renewalTargetId?
+    'Срок прибавится к выбранному доступу после подтверждения оплаты.':
+    'Новая покупка создаёт отдельный доступ. Для продления используйте кнопку в кабинете.'):
     'Тариф ещё не опубликован. Стоимость и квота появятся после утверждения.');
   const buy=byId('buy-button');
   buy.disabled=!plan||!state.checkoutEnabled||state.busy;
   buy.textContent=state.busy?'Создаём заказ…':!plan?'Тариф пока недоступен':
     !state.checkoutEnabled?'Покупка пока недоступна':
-    !state.loggedIn?'Войти и купить':'Купить доступ';
+    !state.loggedIn?'Войти и купить':state.renewalTargetId?'Оплатить продление':'Купить доступ';
   const trial=byId('trial-button');
   const trialAvailable=state.trialOffers.includes(state.product);
   trial.disabled=!trialAvailable||state.busy;
@@ -139,6 +142,9 @@ function renderAccess(accesses) {
       renew.addEventListener('click',()=>{
         const preferred=durations.find(p=>p.durationDays===30)||durations[0];
         setSelection(a.product,preferred.durationDays);
+        state.renewalTargetId=a.id;
+        state.requestId=null;
+        renderPlan();
         byId('plans').scrollIntoView({behavior:'smooth'});
       });
       item.append(renew);
@@ -238,8 +244,9 @@ async function purchase() {
   state.busy=true;state.requestId ||= crypto.randomUUID();renderPlan();
   const payload={planId:plan.id,requestId:state.requestId};
   if(state.inviteToken)payload.inviteToken=state.inviteToken;
+  if(state.renewalTargetId)payload.renewalTargetId=state.renewalTargetId;
   try {
-    const result=await api('/api/checkout',{
+    const result=await api(state.renewalTargetId?'/api/renew':'/api/checkout',{
       method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
       body:JSON.stringify(payload),
     });

@@ -75,6 +75,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0009_trial_activation_on_provision.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0010_late_payment_capture.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0011_telegram_invoice_dispatch.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0012_website_renewals.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0002_billing_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0003_ipv6_claims_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0005_outbox_contract.sql

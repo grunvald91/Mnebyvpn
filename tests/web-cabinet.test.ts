@@ -53,6 +53,7 @@ test('Telegram OIDC requires trusted RSA key, correct issuer, audience, expiry a
   assert.throws(()=>verifyTelegramIdToken(issueToken({},other.privateKey),{keys:[jwk]},'123456',now));
 });
 const dnsRow={
+  id:'11111111-1111-4111-8111-111111111111',
   product:'smart_dns' as const,state:'ACTIVE',starts_at:new Date(now-86400_000),
   expires_at:new Date(now+86400_000),
   quota_limit_bytes:String(10*1024*1024*1024),quota_used_bytes:String(4*1024*1024*1024),
