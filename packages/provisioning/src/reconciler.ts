@@ -17,6 +17,8 @@ export interface DesiredAccess {
 export interface ObservedAccess {
   revision: number;
   enabled: boolean;
+  /** A confirmed 404 for this exact per-entitlement user means disabled. */
+  absent?: true;
   /** Read back from the real node, not reconstructed from the desired state. */
   expiresAt?: Date | null;
 }
@@ -52,6 +54,9 @@ export function effectiveDesired(desired: DesiredAccess, now: Date): DesiredAcce
 }
 
 const matches = (a: ObservedAccess,d: DesiredAccess,clock:Date):boolean => {
+  // Safe no-op revoke: absence is a trusted panel 404, not an API error.
+  // No remote credential exists to revoke; no revision is written to panel.
+  if(!d.enabled&&a.absent===true&&!a.enabled)return true;
   if(a.enabled!==d.enabled||a.revision!==d.revision)return false;
   if(!d.enabled)return true;
   const actual=a.expiresAt?.getTime(),target=d.expiresAt?.getTime();
