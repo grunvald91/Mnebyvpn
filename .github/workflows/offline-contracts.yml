@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feat/phase1-foundation-20261105
+      - feat/web-cabinet-20261106
     paths:
       - 'apps/**'
       - 'packages/**'
