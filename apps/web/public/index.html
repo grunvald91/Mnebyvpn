@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#080c20">
-  <meta name="description" content="Мне бы VPN — проект простого VPN-подключения и понятного управления доступом. Начинаем с VPN, другие возможности развиваем и проверяем.">
-  <title>Мне бы VPN — VPN без лишних шагов</title>
+  <meta name="description" content="MnebyVPN — проект простого VPN-подключения и понятного управления доступом. Начинаем с VPN, другие возможности развиваем и проверяем.">
+  <title>MnebyVPN — VPN без лишних шагов</title>
   <link rel="stylesheet" href="/site.css">
   <link rel="stylesheet" href="/neo.css">
   <link rel="icon" type="image/webp" href="/brand-avatar.webp">
@@ -16,9 +16,9 @@
   <div class="ambient ambient-b" aria-hidden="true"></div>
   <header class="header">
     <div class="shell header-inner">
-      <a href="/" class="brand" aria-label="MNEBY VPN — главная">
+      <a href="/" class="brand" aria-label="MnebyVPN — главная">
         <img class="brand-avatar" src="/brand-avatar.webp" alt="" width="34" height="34" decoding="async">
-        <span class="brand-text">МНЕ БЫ <span>VPN</span></span>
+        <span class="brand-text">Mneby <span>VPN</span></span>
       </a>
       <nav class="desktop-nav" aria-label="Основные разделы">
         <a href="#features">Возможности</a>
@@ -49,7 +49,7 @@
         <div class="horizon"><div class="horizon-glow"></div><div class="horizon-sun"></div><div class="horizon-water"></div><div class="horizon-grid"></div></div>
         <div class="wall wall-left"></div><div class="wall wall-right"></div>
         <span class="floating-tag floating-tag-one">Мир без лишних границ</span>
-        <span class="floating-tag floating-tag-two">MNEBYVPN / 01</span>
+        <span class="floating-tag floating-tag-two">MnebyVPN / 01</span>
       </div>
     </section>
 
@@ -140,7 +140,7 @@
       <div class="launch-support-copy">
         <p class="eyebrow">ПРОЕКТ В НАЧАЛЕ ПУТИ</p>
         <h2 id="launch-support-title">Делаем сложное простым</h2>
-        <p>«Мне бы VPN» создаётся с одной идеей: технологии должны помогать, а не заставлять разбираться в настройках. Наши ориентиры — понятное подключение, быстрая и человеческая помощь, удобная работа на разных устройствах и больше функций в одном месте.</p>
+        <p>«MnebyVPN» создаётся с одной идеей: технологии должны помогать, а не заставлять разбираться в настройках. Наши ориентиры — понятное подключение, быстрая и человеческая помощь, удобная работа на разных устройствах и больше функций в одном месте.</p>
         <p class="launch-support-state">Сейчас сосредоточены на VPN. Smart DNS, совместный режим и другие возможности пока разрабатываются и не предлагаются как готовый доступ.</p>
       </div>
       <div class="launch-support-action">
@@ -152,6 +152,25 @@
         </div>
         <p class="launch-support-fine">Это не сбор пожертвований. Платные подключения — только после завершения необходимых проверок.</p>
       </div>
+    </section>
+
+    <section class="contact-support shell" id="contact-support" aria-labelledby="contact-support-title">
+      <div>
+        <p class="eyebrow">НА СВЯЗИ</p>
+        <h2 id="contact-support-title">Написать в поддержку</h2>
+        <p>Не получается подключиться? Есть вопрос или идея? Опишите ситуацию — ваше сообщение поступит оператору MnebyVPN.</p>
+        <p class="contact-support-note">Не отправляйте пароли, коды входа и персональные ссылки подключения.</p>
+      </div>
+      <form id="support-form" class="contact-support-form">
+        <label for="support-contact">Как с вами связаться</label>
+        <input id="support-contact" name="contact" type="text" required minlength="3" maxlength="120" autocomplete="email" placeholder="Email или @username в Telegram">
+        <label for="support-message">Ваше сообщение</label>
+        <textarea id="support-message" name="message" required minlength="10" maxlength="1500" rows="4" placeholder="Что произошло? На каком устройстве?"></textarea>
+        <div class="support-trap" aria-hidden="true"><label for="support-website">Сайт</label><input id="support-website" name="website" tabindex="-1" autocomplete="off"></div>
+        <button id="support-send" class="button button-primary" type="submit" disabled>Проверяем доступность поддержки…</button>
+        <p class="contact-support-note">Контакт и текст сообщения будут переданы оператору через Telegram для ответа.</p>
+        <p id="support-result" class="support-result" role="status" aria-live="polite"></p>
+      </form>
     </section>
 
     <section class="account-section shell" id="account">
@@ -175,7 +194,7 @@
       </div>
     </section>
   </main>
-  <footer class="footer"><div class="shell footer-inner"><div class="brand footer-brand"><img class="brand-avatar" src="/brand-avatar.webp" alt="" width="34" height="34" decoding="async"><span class="brand-text">MNEBY<span>VPN</span></span></div><p>VPN и Smart DNS — разные режимы доступа. Доступность зависит от сети, устройства и выбранной конфигурации.</p><div class="footer-links"><a href="https://t.me/MnebyVPN_bot" target="_blank" rel="noopener noreferrer" aria-label="Telegram-бот MNEBYVPN">@MnebyVPN_bot</a><a href="https://github.com/grunvald91/Mnebyvpn" rel="noopener noreferrer" target="_blank">О проекте</a></div></div></footer>
+  <footer class="footer"><div class="shell footer-inner"><div class="brand footer-brand"><img class="brand-avatar" src="/brand-avatar.webp" alt="" width="34" height="34" decoding="async"><span class="brand-text">MNEBY<span>VPN</span></span></div><p>VPN и Smart DNS — разные режимы доступа. Доступность зависит от сети, устройства и выбранной конфигурации.</p><div class="footer-links"><a href="https://t.me/MnebyVPN_bot" target="_blank" rel="noopener noreferrer" aria-label="Telegram-бот MnebyVPN">@MnebyVPN_bot</a><a href="https://github.com/grunvald91/Mnebyvpn" rel="noopener noreferrer" target="_blank">О проекте</a></div></div></footer>
   <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
