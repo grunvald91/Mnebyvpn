@@ -39,14 +39,14 @@ const msg=(text:string,keyboard:Button[][])=>{
   return {text,reply_markup:{inline_keyboard:keyboard}};
 };
 const main=()=>msg(
-  '🌐 Мне бы VPN\n\nУправляйте подключением здесь, в Telegram. Выберите действие ниже.\n\n🎁 Пробные 24 часа VPN — без оплаты. Время начнётся после реальной выдачи доступа.',
+  '🌐 Мне бы VPN\n\nМы только начинаем. Наша цель — простое подключение, понятное управление и оперативная помощь без технической путаницы. Со временем хотим объединить больше возможностей в одном сервисе.\n\nСейчас развиваем VPN. Smart DNS — в разработке.\n\n💙 Поддержите проект: расскажите о нём друзьям. Выберите действие ниже.',
   [
     [{text:'🌐 VPN и тарифы',callback_data:'nav:vpn'}],
     [{text:'🎁 Бесплатные 24 часа',callback_data:'nav:trial'}],
     [{text:'🔐 Мои подключения',callback_data:'nav:status'},
      {text:'🔌 Подключить',callback_data:'nav:connect'}],
     [{text:'🔁 Продление',callback_data:'nav:renew'},
-     {text:'🎁 Пригласить друга',callback_data:'nav:share'}],
+     {text:'💙 Поддержать проект',callback_data:'nav:share'}],
     [{text:'🧭 Smart DNS — в разработке',callback_data:'nav:dns'}],
     [{text:'❔ Помощь',callback_data:'nav:help'}],
     [siteButton],
@@ -166,7 +166,7 @@ function info(data:string){
     return msg('🧭 Smart DNS\n\nВ разработке. Планируется отдельная квота трафика, которую можно использовать на нескольких устройствах.\n\nПока доступен раздел VPN.',
       [[{text:'🌐 VPN',callback_data:'nav:vpn'}],[homeButton]]);
   if(data==='nav:share')
-    return msg('🎁 Пригласить друга\n\nПерешлите ссылку на бота. Реферальные бонусы появятся вместе с опубликованными тарифами.',
+    return msg('💙 Поддержать проект\n\nМы только в начале пути. Если вам нравится идея простого VPN, поделитесь ссылкой на бота. Это помогает развитию проекта и не требует оплаты.',
       [[{text:'📤 Поделиться',url:'https://t.me/share/url?url=https%3A%2F%2Ft.me%2FMnebyVPN_bot'}],
        [homeButton]]);
   if(data==='nav:help'||data==='info:help')
