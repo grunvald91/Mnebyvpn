@@ -8,12 +8,12 @@ test('support has no separate chat ID and only enables one configured bot operat
   const token='123456:'+('a'.repeat(35));
   assert.equal(supportConfig({}),null);
   assert.equal(supportConfig({SUPPORT_TELEGRAM_CHAT_ID:'-100456'}),null);
-  assert.throws(()=>supportConfig({TELEGRAM_TOKEN_BOT:'bad',SUPPORT_TELEGRAM_OPERATOR_ID:'12345'}));
-  assert.throws(()=>supportConfig({TELEGRAM_TOKEN_BOT:token}));
-  assert.throws(()=>supportConfig({SUPPORT_TELEGRAM_OPERATOR_ID:'12345'}));
-  assert.throws(()=>supportConfig({
+  assert.equal(supportConfig({TELEGRAM_TOKEN_BOT:'bad',SUPPORT_TELEGRAM_OPERATOR_ID:'12345'}),null);
+  assert.equal(supportConfig({TELEGRAM_TOKEN_BOT:token}),null);
+  assert.equal(supportConfig({SUPPORT_TELEGRAM_OPERATOR_ID:'12345'}),null);
+  assert.equal(supportConfig({
     TELEGRAM_TOKEN_BOT:token,SUPPORT_TELEGRAM_OPERATOR_ID:'bad',
-  }));
+  }),null);
   assert.deepEqual(supportConfig({
     TELEGRAM_TOKEN_BOT:token,SUPPORT_TELEGRAM_OPERATOR_ID:'12345',
   }),{botToken:token,operatorId:12345});
