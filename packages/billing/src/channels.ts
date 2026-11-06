@@ -31,6 +31,8 @@ export interface PricedPlan {
   rubMinor: number | null;
   stars: number | null;
   durationSeconds: number;
+  /** Licensed device slots, independent of VPN wire-level connection limits. */
+  deviceLimit?: number;
   dnsQuotaBytes: bigint | null;
 }
 export function validatePricedPlan(plan: PricedPlan): void {
