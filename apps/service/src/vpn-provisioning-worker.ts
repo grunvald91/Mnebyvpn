@@ -72,12 +72,8 @@ async function main():Promise<void>{
   if(process.env.MNEBYVPN_ENV!=='production'||
      process.env.MNEBYVPN_PROVISIONING_WORKER!=='enabled')
     throw Error('VPN provisioning worker must be explicitly enabled');
-  const evidence:HardExpiryEvidence={
-    reportSha256:configured('VPN_NODE_EXPIRY_REPORT_SHA256'),
-    panelVersion:configured('VPN_VERIFIED_PANEL_VERSION'),
-    nodeVersion:configured('VPN_VERIFIED_NODE_VERSION'),
-    xrayVersion:configured('VPN_VERIFIED_XRAY_VERSION'),
-  };
+  // Panel-only mode can perform verified revokes, but cannot approve ENABLE.
+  // Do not accept arbitrary report hashes as node-enforcement proof.
   const api=new RemnawaveApi({
     panelUrl:configured('REMNAWAVE_API_URL'),
     apiToken:configured('REMNAWAVE_API_TOKEN'),
