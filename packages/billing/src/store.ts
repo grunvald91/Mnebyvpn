@@ -31,7 +31,11 @@ export interface VerifiedCapture {
   payloadHash: string;
 }
 export class PaymentSettlementDenied extends Error {
-  constructor(public readonly code:string){super('PAYMENT_SETTLEMENT_DENIED:'+code);}
+  readonly code:string;
+  constructor(code:string){
+    super('PAYMENT_SETTLEMENT_DENIED:'+code);
+    this.code=code;
+  }
 }
 export type SettlementOutcome =
   | 'APPLIED' | 'DUPLICATE_EVENT' | 'DUPLICATE_CAPTURE'
