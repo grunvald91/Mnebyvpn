@@ -8,6 +8,8 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
+import {subscriptionOwner,subscriptionLink}
+  from '../../../packages/provisioning/src/subscription-links.ts';
 import {
   prepareWebsiteProdamusCheckout, type PayformLinkTransport,
 } from '../../../packages/billing/src/website-checkout.ts';
@@ -100,6 +102,8 @@ const css = await readFile(new URL('../public/site.css', import.meta.url));
 const neoCss = await readFile(new URL('../public/neo.css', import.meta.url));
 const brandAvatar = await readFile(new URL('../public/brand-avatar.webp', import.meta.url));
 const js = await readFile(new URL('../public/app.js', import.meta.url));
+const vpnInstallJs=await readFile(new URL('../public/vpn-install.js',import.meta.url));
+const workerProfileToken=process.env.VPN_WORKER_PROFILE_TOKEN??'';
 const policy = [
   "default-src 'none'", "script-src 'self'", "style-src 'self'",
   "connect-src 'self'", "img-src 'self' data:", "font-src 'self'",
@@ -242,6 +246,47 @@ async function callback(req: IncomingMessage, res: ServerResponse, url: URL) {
     redirect(res, '/?login=failed');
   }
 }
+
+async function liveVpnProfile(owner:{
+  telegramUserId:number;entitlementId:string;
+}):Promise<string>{
+  if(!/^[a-f0-9]{64}$/i.test(workerProfileToken))
+    throw Error('Private VPN subscription bridge not deployed');
+  const response=await fetch('http://127.0.0.1:8794/profile',{
+    method:'POST',redirect:'error',signal:AbortSignal.timeout(6500),
+    headers:{Authorization:'Bearer '+workerProfileToken,
+      'Content-Type':'application/json'},
+    body:JSON.stringify({telegramUserId:owner.telegramUserId,
+      entitlementId:owner.entitlementId}),
+  });
+  if(!response.ok)throw Error('VPN node subscription unavailable');
+  const result:unknown=await response.json();
+  const profile=(result as {profile?:unknown})?.profile;
+  if(typeof profile!=='string'||profile.length>4096||
+     !/^vless:\/\/[0-9a-f-]{36}@cdn\.servgo\.ru:8443\?/.test(profile))
+    throw Error('Unexpected VPN node configuration');
+  return profile;
+}
+function installHtml(subUrl:string,client:'incy'|'karing'):string {
+  // Both URL and client have already passed strict token/enum validation.
+  const app=client==='incy'?'INCY':'Karing';
+  return '<!doctype html><html lang="ru"><head><meta charset="utf-8">'+
+    '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+    '<meta name="referrer" content="no-referrer">'+
+    '<title>Подключение «Мне бы VPN»</title>'+
+    '<link rel="stylesheet" href="/neo.css"></head>'+
+    '<body style="margin:0"><main data-client="'+client+'" data-sub="'+subUrl+'">'+
+    '<h1>Подключить VPN в '+app+'</h1>'+
+    '<p>Установите '+app+', затем нажмите кнопку ниже для импорта подписки.</p>'+
+    '<p><button id="open-app" type="button">Открыть в '+app+'</button></p>'+
+    '<p>Если приложение не открылось — скопируйте ссылку и вставьте её в '+app+
+      ' через «Добавить подписку / Импорт из URL».</p>'+
+    '<p><input id="subscription-url" aria-label="Ссылка подписки" value="'+subUrl+
+      '" readonly><button id="copy-url" type="button">Копировать</button></p>'+
+    '<p>Подписка персональная. Не пересылайте ссылку другим людям.</p>'+
+    '<script src="/vpn-install.js" defer></script></main></body></html>';
+}
+
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', publicOrigin);
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
@@ -258,6 +303,40 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === 'GET' && url.pathname === '/app.js') {
     send(res, 200, js, 'text/javascript; charset=utf-8'); return;
+  }
+  if(req.method==='GET' && url.pathname==='/vpn-install.js'){
+    send(res,200,vpnInstallJs,'text/javascript; charset=utf-8');return;
+  }
+  const subMatch=/^\/sub\/([A-Za-z0-9_-]{43})$/.exec(url.pathname);
+  if(req.method==='GET'&&subMatch){
+    const owner=await subscriptionOwner(pool,subMatch[1]);
+    if(!owner){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
+    try{
+      const profile=await liveVpnProfile(owner);
+      // Standard V2Ray base64 subscription: clients repeatedly fetch this URL.
+      // Network revocation is enforced both in DB and by the real Xray node.
+      res.setHeader('subscription-userinfo',
+        'upload=0; download=0; total=0; expire='+
+        Math.floor(owner.expiresAt.getTime()/1000));
+      res.setHeader('profile-title','base64:'+Buffer.from('Мне бы VPN').toString('base64'));
+      send(res,200,Buffer.from(profile+'\n','utf8').toString('base64')+'\n',
+        'text/plain; charset=utf-8');
+    }catch{
+      json(res,503,{code:'VPN_SUBSCRIPTION_UNAVAILABLE'});
+    }
+    return;
+  }
+  const installMatch=/^\/install\/([A-Za-z0-9_-]{43})$/.exec(url.pathname);
+  if(req.method==='GET'&&installMatch){
+    const owner=await subscriptionOwner(pool,installMatch[1]);
+    if(!owner){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
+    const client=url.searchParams.get('client');
+    if(client!=='incy'&&client!=='karing'){
+      json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
+    }
+    send(res,200,installHtml(subscriptionLink(installMatch[1]),client),
+      'text/html; charset=utf-8');
+    return;
   }
   if (req.method === 'GET' && url.pathname === '/healthz') {
     json(res, 200, { status: 'ok', component: 'web-cabinet' }); return;
