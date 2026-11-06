@@ -10,7 +10,7 @@
 import {createServer,type IncomingMessage,type ServerResponse} from 'node:http';
 import {createHash,timingSafeEqual} from 'node:crypto';
 import {Pool} from 'pg';
-import {supportConfig,supportLimiter,telegramSupportSend,validSupportText}
+import {operatorReplyTarget,supportConfig,supportLimiter,telegramSupportSend,validSupportText}
   from '../../../packages/support/src/telegram-relay.ts';
 import {PgBillingStore} from '../../../packages/billing/src/store.ts';
 import {activationView,awaitActivation,deviceView,manualView}
@@ -211,33 +211,29 @@ function supportPromptResponse(id:number){
 }
 async function handleOperatorReply(update:any){
   const m=update.message;
-  // The operator is a regular private user of THIS bot. No external group
-  // or independently configured support chat is accepted.
   if(!support||!m||m.chat?.type!=='private'||
      m.chat?.id!==support.operatorId||m.from?.id!==support.operatorId)return null;
-  const replied=m.reply_to_message;
-  const quoted=typeof replied?.text==='string'?replied.text:'';
-  const authoredByBot=replied?.from?.is_bot===true;
-  const tagged=authoredByBot
-    ?/^✉️ MNEBYVPN — обращение из бота\nID Telegram: ([0-9]{1,16})\n/.exec(quoted)
-    :null;
-  if(!tagged){
-    // Site visitors cannot receive a Telegram DM without first opening the
-    // bot and authenticating; never pretend this is a bot-to-user reply.
-    if(authoredByBot&&quoted.startsWith('✉️ MNEBYVPN — обращение с сайта')){
+  const parsed=operatorReplyTarget(m,support.operatorId);
+  if(!parsed){
+    // Website visitors did not necessarily open the Telegram bot. A Telegram
+    // private message cannot be sent to an unknown email or @username.
+    const quoted=m.reply_to_message?.from?.is_bot===true
+      ?m.reply_to_message?.text:'';
+    if(typeof quoted==='string'&&
+       quoted.startsWith('✉️ MNEBYVPN — обращение с сайта')){
       return {method:'sendMessage',chat_id:support.operatorId,
-        text:'Обращение пришло с сайта. Для ответа используйте контакт, указанный в уведомлении: посетитель мог не запускать бота.'};
+        text:'Это обращение с сайта. Для ответа используйте контакт, указанный в уведомлении: посетитель мог не запускать бота.'};
     }
-    return null;
-  }
-  const target=Number(tagged[1]);
-  const message=typeof m.text==='string'?m.text.trim():'';
-  if(!validId(target)||target===support.operatorId||!validSupportText(message,1,1500)){
-    return {method:'sendMessage',chat_id:support.operatorId,
-      text:'Для ответа клиенту используйте «Ответить» на его уведомление и напишите до 1500 символов.'};
+    if(typeof quoted==='string'&&
+       quoted.startsWith('✉️ MNEBYVPN — обращение из бота')){
+      return {method:'sendMessage',chat_id:support.operatorId,
+        text:'Напишите ответ обычным текстом до 1500 символов, используя «Ответить» на уведомление клиента.'};
+    }
+    return null; // /start, /my, /help etc work for the operator too.
   }
   try{
-    await telegramSupportSend(support,'✉️ Поддержка MNEBYVPN\n\n'+message,target);
+    await telegramSupportSend(support,
+      '✉️ Поддержка MNEBYVPN\n\n'+parsed.answer,parsed.userId);
     return {method:'sendMessage',chat_id:support.operatorId,
       text:'✅ Ответ отправлен клиенту через MNEBYVPN.'};
   }catch{
