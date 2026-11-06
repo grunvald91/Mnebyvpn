@@ -1,0 +1,18 @@
+[Unit]
+Description=MNEBYVPN Telegram primary cabinet
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/mnebyvpn/current
+EnvironmentFile=%h/mnebyvpn/runtime-bot.env
+ExecStart=/usr/bin/env node --experimental-strip-types apps/service/src/telegram-cabinet-server.ts
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=true
+TimeoutStopSec=15s
+
+[Install]
+WantedBy=default.target

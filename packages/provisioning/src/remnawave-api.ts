@@ -93,15 +93,19 @@ export class RemnawaveApi {
     return record;
   }
   /** This only requests a change in the panel; a separate real node probe is mandatory. */
-  async applyPanelChange(id:string,revision:number,enabled:boolean,expiresAt:Date):
+  async applyPanelChange(id:string,revision:number,enabled:boolean,expiresAt:Date|null):
     Promise<RemnawaveUser> {
     const username=remnawaveUsername(id);
     if(!Number.isSafeInteger(revision)||revision<0||
-      !Number.isFinite(expiresAt.getTime()))
+      (enabled&&(!expiresAt||!Number.isFinite(expiresAt.getTime())))||
+      (expiresAt&&!Number.isFinite(expiresAt.getTime())))
       throw Error('Invalid access revision or expiry');
-    const expires=expiresAt.toISOString();
     const desc=description(id,revision);
     const current=await this.getByEntitlement(id);
+    const effectiveExpiry=expiresAt??(current?new Date(current.expireAt):null);
+    if(!effectiveExpiry||!Number.isFinite(effectiveExpiry.getTime()))
+      throw Error('Cannot set expiry for absent user');
+    const expires=effectiveExpiry.toISOString();
     if(!current) {
       if(!enabled)throw Error('Cannot disable absent profile before node verification');
       await this.request('POST','/api/users',{
@@ -117,7 +121,7 @@ export class RemnawaveApi {
     }
     const after=await this.getByEntitlement(id);
     if(!after||after.status!==(enabled?'ACTIVE':'DISABLED')||
-       Math.abs(Date.parse(after.expireAt)-expiresAt.getTime())>1000||
+       Math.abs(Date.parse(after.expireAt)-effectiveExpiry.getTime())>1000||
        after.description!==desc)
       throw Error('Remnawave panel read-back mismatch');
     return after;

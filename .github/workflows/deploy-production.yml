@@ -1,0 +1,82 @@
+name: MNEBYVPN deploy after green main CI (opt-in)
+
+on:
+  workflow_run:
+    workflows: ['Offline code and database contracts']
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mnebyvpn-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      vars.MNEBYVPN_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: mnebyvpn-production
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+      VPN_HOST: ${{ secrets.MNEBYVPN_DEPLOY_HOST }}
+      VPN_USER: ${{ secrets.MNEBYVPN_DEPLOY_USER }}
+      VPN_PORT: ${{ vars.MNEBYVPN_DEPLOY_SSH_PORT }}
+      VPN_BOT_PORT: ${{ vars.MNEBYVPN_BOT_PORT }}
+      VPN_SSH_KEY: ${{ secrets.MNEBYVPN_DEPLOY_SSH_KEY }}
+      VPN_KNOWN_HOSTS: ${{ secrets.MNEBYVPN_DEPLOY_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Verify release is still current main and credentials are configured
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$DEPLOY_SHA" || {
+            echo "::error::Main advanced; skip stale release"
+            exit 1
+          }
+          for setting in VPN_HOST VPN_USER VPN_SSH_KEY VPN_KNOWN_HOSTS; do
+            test -n "${!setting}" || { echo "::error::Missing $setting"; exit 2; }
+          done
+          [[ "$VPN_HOST" =~ ^[a-zA-Z0-9._-]+$ ]]
+          [[ "$VPN_USER" =~ ^[a-zA-Z0-9_-]+$ ]]
+          port="${VPN_PORT:-22}"
+          [[ "$port" =~ ^[0-9]{1,5}$ ]] && (( port>0 && port<65536 ))
+          bot_port="${VPN_BOT_PORT:-8793}"
+          [[ "$bot_port" =~ ^[0-9]{1,5}$ ]] && (( bot_port>0 && bot_port<65536 ))
+          bash -n ops/deploy-user-release.sh
+      - name: Upload immutable release and restart only two dedicated user services
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ssh_port="${VPN_PORT:-22}"
+          bot_port="${VPN_BOT_PORT:-8793}"
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          printf '%s\n' "$VPN_SSH_KEY" > "$tmp/id_key"
+          printf '%s\n' "$VPN_KNOWN_HOSTS" > "$tmp/known_hosts"
+          chmod 600 "$tmp/id_key" "$tmp/known_hosts"
+          ssh_opts=(
+            -i "$tmp/id_key" -o BatchMode=yes -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts"
+            -o ConnectTimeout=12
+          )
+          target="$VPN_USER@$VPN_HOST"
+          tar -czf "$tmp/release.tgz" apps packages package.json
+          ssh "${ssh_opts[@]}" -p "$ssh_port" "$target" \
+            'test -d "$HOME/mnebyvpn/releases" && test -f "$HOME/mnebyvpn/runtime-bot.env" && test -f "$HOME/mnebyvpn/runtime-vpn.env" && mkdir -p "$HOME/mnebyvpn/inbox"'
+          scp "${ssh_opts[@]}" -P "$ssh_port" \
+            "$tmp/release.tgz" "$target:mnebyvpn/inbox/$DEPLOY_SHA.tgz"
+          ssh "${ssh_opts[@]}" -p "$ssh_port" "$target" \
+            "DEPLOY_SHA=$DEPLOY_SHA BOT_PORT=$bot_port bash -se" < ops/deploy-user-release.sh

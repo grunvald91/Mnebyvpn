@@ -1,0 +1,18 @@
+[Unit]
+Description=MNEBYVPN Remnawave VPN provisioning worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/mnebyvpn/current
+EnvironmentFile=%h/mnebyvpn/runtime-vpn.env
+ExecStart=/usr/bin/env node --experimental-strip-types apps/service/src/vpn-provisioning-worker.ts
+Restart=on-failure
+RestartSec=10s
+UMask=0077
+NoNewPrivileges=true
+TimeoutStopSec=15s
+
+[Install]
+WantedBy=default.target
