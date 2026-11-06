@@ -8,12 +8,14 @@ type AccessRow = {
 
 export function publicEntitlement(row: AccessRow, meteringVerified: boolean, now = Date.now()) {
   const expiresAt = row.expires_at?.toISOString() ?? null;
-  const secondsRemaining = row.expires_at
-    ? Math.max(0, Math.ceil((row.expires_at.getTime() - now) / 1000)) : null;
+  const secondsRemaining = ['REFUNDED','CANCELLED','EXPIRED'].includes(row.state)
+    ? 0 : row.expires_at
+      ? Math.max(0, Math.ceil((row.expires_at.getTime() - now) / 1000)) : null;
   const quotaLimitBytes = row.quota_limit_bytes;
   const isDns = row.product === 'smart_dns';
   // The database counter is NOT on-wire metering until signed-off ingress tests.
-  const showUsage = isDns && meteringVerified && quotaLimitBytes !== null;
+  const showUsage = isDns && meteringVerified && quotaLimitBytes !== null &&
+    row.state === 'ACTIVE' && secondsRemaining !== null && secondsRemaining > 0;
   const limit = showUsage ? BigInt(quotaLimitBytes) : null;
   const used = showUsage ? BigInt(row.quota_used_bytes) : null;
   return {
