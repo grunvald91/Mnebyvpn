@@ -30,7 +30,7 @@ export async function vpnWorkerCycle(
      !Number.isSafeInteger(maxBatch)||maxBatch<1||maxBatch>100)
     throw Error('Invalid worker configuration');
   const expired=await dispatcher.expireDue();
-  const driftQueued=cycle%60===0?await dispatcher.scheduleDriftScan(100):0;
+  const driftQueued=cycle%60===0?await dispatcher.scheduleDriftScan(100,['vpn']):0;
   let synced=0,retry=0;
   for(let i=0;i<maxBatch;i++){
     const result=await dispatcher.processOnce(['vpn']);
