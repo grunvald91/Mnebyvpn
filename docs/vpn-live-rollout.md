@@ -27,13 +27,15 @@
 
 Отдельные unit-шаблоны: ops/systemd/mnebyvpn-telegram.service и ops/systemd/mnebyvpn-vpn-worker.service. Установить их под выделенным пользователем в ~/.config/systemd/user/ и перезагрузить менеджер systemctl --user daemon-reload. Не перенаправлять webhook/relay без отдельной проверки. VPN trial_offers.enabled в БД остаётся false до пилотного E2E.
 
-## Автоматический деплой после зелёного main
+## Автоматический деплой после зелёного main — фактическая инфраструктура
 
-Workflow: .github/workflows/deploy-production.yml.
+**Рабочая схема — GitHub Actions репозитория [telegram-proxy-infra](https://github.com/grunvald91/telegram-proxy-infra), сервер 188.120.254.223.** Существующий secret `SERVER188_SSH_PASSWORD` уже использовался при успешных выпусках. Не запрашивать секреты другого формата из исходного репозитория Mnebyvpn.
 
-Условия после разрешения владельца 06.11.2026: успешный push-CI ветки main и соответствие проверенному SHA текущей вершине main. Деплой запускается по умолчанию; аварийный выключатель `MNEBYVPN_DEPLOY_ENABLED=false` в GitHub Actions Variables предотвращает выпуск. При отсутствии SSH-секретов, подготовленных пользовательских systemd-сервисов или готовности обоих backend процесс прерывается с отказом/откатом; секреты не подставляются автоматически. Коммерческие платежи не разрешаются этим workflow.
+Сайт обслуживает `telegram-proxy-infra/.github/workflows/mnebyvpn-main-auto-public.yml`, Telegram-бот — существующий `mnebyvpn-main-bot-publish.yml` и новый автоматический `mnebyvpn-main-auto-bot.yml` после его слияния в инфраструктурный main. Оба используют уже размещённые Docker-контейнеры в `/opt/mnebyvpn`, staging/canary и rollback. **Не считать исходный `.github/workflows/deploy-production.yml` актуальным маршрутом доступа к VPS: он ориентирован на другую, не подготовленную систему SSH и user systemd services.**
 
-Необходимые GitHub Actions secrets:
+Выпуск кода и разблокировка коммерческих платежей — разные действия; необходимы подтверждённые E2E, тарифы, подписи и живой VPN provisioning.
+
+Устаревшие секреты альтернативного workflow (не создавать повторно):
 - MNEBYVPN_DEPLOY_HOST
 - MNEBYVPN_DEPLOY_USER
 - MNEBYVPN_DEPLOY_SSH_KEY
