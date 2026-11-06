@@ -86,3 +86,14 @@ test('public website references the configured Telegram bot in navigation, hero 
   assert.match(html,/@MnebyVPN_bot/);
   assert.match(html,/rel="noopener noreferrer"/);
 });
+
+test('web cabinet reserves OIDC login for explicit BotFather integration',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const backend=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
+  const ui=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
+  assert.match(backend,/WEB_TELEGRAM_OIDC_ENABLED/);
+  assert.match(backend,/TELEGRAM_LOGIN_NOT_READY/);
+  assert.match(backend,/loginEnabled.*checkoutEnabled|checkoutEnabled.*loginEnabled/s);
+  assert.match(ui,/syncLoginLinks/);
+  assert.match(ui,/cabinet-login-link/);
+});
