@@ -185,6 +185,20 @@ function renderAccount(payload) {
   renderAccess(accesses);renderOrders(payload.orders||[]);
   renderPlan();
 }
+function renderLoggedOut() {
+  // A session that expires or is revoked must not leave stale private data on
+  // a shared browser screen. Keep the public catalog and selected product.
+  state.loggedIn=false;state.csrf='';
+  state.renewalTargetId=null;state.requestId=null;
+  byId('login-prompt').classList.remove('hidden');
+  byId('account-content').classList.add('hidden');
+  byId('logout-button').classList.add('hidden');
+  byId('auth-link').textContent='Войти';
+  byId('auth-link').href='/auth/login';
+  byId('access-list').replaceChildren();
+  byId('orders-list').replaceChildren();
+  renderPlan();
+}
 async function refresh() {
   if(state.refreshing)return;
   state.refreshing=true;
@@ -193,7 +207,7 @@ async function refresh() {
     renderAccount(data);
   } catch(error) {
     if(error.status===401) {
-      state.loggedIn=false;renderPlan();return;
+      renderLoggedOut();return;
     }
     toast('Не удалось загрузить кабинет. Попробуйте обновить страницу.');
   } finally {state.refreshing=false;}
@@ -209,15 +223,35 @@ async function loadCatalog() {
   }
   renderPlan();
 }
+function savedSelection() {
+  try {
+    const raw=sessionStorage.getItem('mnebyvpn-selection');
+    return raw?JSON.parse(raw):null;
+  } catch {return null;}
+}
+function saveSelection() {
+  try {
+    sessionStorage.setItem('mnebyvpn-selection',JSON.stringify({
+      product:state.product,days:state.days,inviteToken:state.inviteToken,
+      savedAt:Date.now(),
+    }));
+  } catch { /* Privacy-mode session storage may be unavailable. */ }
+}
+function consumeReferral() {
+  state.inviteToken=null;
+  saveSelection();
+}
 function applyLinkOptions() {
   const url=new URL(location.href);
-  let saved=null;
-  try {saved=JSON.parse(sessionStorage.getItem('mnebyvpn-selection')||'null');}catch{}
+  const saved=savedSelection();
+  const fresh=Number.isSafeInteger(saved?.savedAt) &&
+    saved.savedAt<=Date.now() && Date.now()-saved.savedAt<=30*60*1000;
   const referral=url.searchParams.get('ref');
   // Persist the token across external Telegram OIDC redirects. Never trust it
   // as identity: server-side checkout still validates matching invitation.
   const token=/^[A-Za-z0-9_-]{16,24}$/.test(referral||'')?referral:
-    /^[A-Za-z0-9_-]{16,24}$/.test(saved?.inviteToken||'')?saved.inviteToken:null;
+    fresh && /^[A-Za-z0-9_-]{16,24}$/.test(saved?.inviteToken||'')
+      ?saved.inviteToken:null;
   state.inviteToken=token;
   const product=url.searchParams.get('product');
   const days=Number(url.searchParams.get('days'));
@@ -230,11 +264,7 @@ function applyLinkOptions() {
   setSelection(state.product,state.days);
   // Persist on page entry too: header and cabinet Login links bypass the
   // purchase/trial handlers and would otherwise drop the referral in OIDC.
-  try {
-    sessionStorage.setItem('mnebyvpn-selection',JSON.stringify({
-      product:state.product,days:state.days,inviteToken:state.inviteToken,
-    }));
-  } catch { /* Storage may be disabled; explicit checkout still verifies server-side. */ }
+  saveSelection();
   if(url.searchParams.get('login')==='failed')
     toast('Авторизация не завершена. Проверьте вход через Telegram.');
   if(url.searchParams.get('payment')==='returned')
@@ -244,9 +274,7 @@ async function purchase() {
   const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
   if(!plan||!state.checkoutEnabled||state.busy)return;
   if(!state.loggedIn) {
-    sessionStorage.setItem('mnebyvpn-selection',JSON.stringify({
-      product:state.product,days:state.days,inviteToken:state.inviteToken,
-    }));
+    saveSelection();
     location.assign('/auth/login');return;
   }
   state.busy=true;state.requestId ||= crypto.randomUUID();renderPlan();
@@ -261,6 +289,10 @@ async function purchase() {
     const target=new URL(result.paymentUrl);
     if(target.protocol!=='https:' || !(target.hostname==='payform.ru' ||
       target.hostname.endsWith('.payform.ru')))throw new Error('UNSAFE_PAYMENT_LINK');
+    // The signed order already retains the referral. Never apply it again to
+    // unrelated later purchases in the same session.
+    consumeReferral();
+    state.requestId=null;
     location.assign(target.toString());
   }catch(error){
     const messages={
@@ -274,9 +306,7 @@ async function purchase() {
 async function claimTrial() {
   if(state.busy || !state.trialOffers.includes(state.product))return;
   if(!state.loggedIn){
-    sessionStorage.setItem('mnebyvpn-selection',JSON.stringify({
-      product:state.product,days:state.days,inviteToken:state.inviteToken,
-    }));
+    saveSelection();
     location.assign('/auth/login');return;
   }
   state.busy=true;renderPlan();
@@ -293,6 +323,7 @@ async function claimTrial() {
       UNAVAILABLE:'Пробный доступ сейчас недоступен.',
     };
     toast(messages[response.status]||'Статус заявки обновлён.');
+    if(['GRANTED','PENDING','ALREADY_USED'].includes(response.status))consumeReferral();
     await refresh();
   } catch {toast('Не удалось проверить пробный доступ. Попробуйте позднее.');}
   finally {state.busy=false;renderPlan();}
