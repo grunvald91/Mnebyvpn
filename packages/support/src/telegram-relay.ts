@@ -45,6 +45,20 @@ export function operatorReplyTarget(message:unknown,operatorId:number):
      !validSupportText(answer,1,1500))return null;
   return {userId,answer};
 }
+export function operatorWebsiteReply(message:unknown,operatorId:number):
+  {ticketId:string;answer:string}|null{
+  if(!message||typeof message!=='object')return null;
+  const m=message as Record<string,any>;
+  if(m.chat?.type!=='private'||m.chat?.id!==operatorId||
+     m.from?.id!==operatorId||m.reply_to_message?.from?.is_bot!==true)
+    return null;
+  const quoted=typeof m.reply_to_message.text==='string'
+    ?m.reply_to_message.text:'';
+  const found=/^✉️ MNEBYVPN — обращение с сайта\nЗаявка: ([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\n/i.exec(quoted);
+  const answer=typeof m.text==='string'?m.text.trim():'';
+  if(!found||!validSupportText(answer,1,1500))return null;
+  return {ticketId:found[1],answer};
+}
 export async function telegramSupportSend(
   config:SupportConfig,text:string,to:number=config.operatorId,
 ):Promise<void>{
