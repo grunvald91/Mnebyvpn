@@ -36,7 +36,7 @@ const support=supportConfig();
 const supportRate=supportLimiter(3,15*60_000);
 const supportGlobalRate=supportLimiter(120,60_000);
 const deliveredUpdates=new Set<number>();
-const supportPrompt='✉️ MnebyVPN — напишите вопрос в поддержку. Ответьте на это сообщение обычным текстом (10–1500 символов). Не отправляйте пароли и ссылки подписок.';
+const supportPrompt='✉️ MNEBYVPN — напишите вопрос в поддержку. Ответьте на это сообщение обычным текстом (10–1500 символов). Не отправляйте пароли и ссылки подписок.';
 type Button={text:string;callback_data?:string;url?:string;copy_text?:{text:string}};
 const homeButton:Button={text:'🏠 Главное',callback_data:'nav:home'};
 const siteButton:Button={text:'🌍 Сайт (резервный)',url:'https://mnebyvpn.site'};
@@ -46,7 +46,7 @@ const msg=(text:string,keyboard:Button[][])=>{
   return {text,reply_markup:{inline_keyboard:keyboard}};
 };
 const main=()=>msg(
-  '🌐 MnebyVPN\n\nМы только начинаем. Наша цель — простое подключение, понятное управление и оперативная помощь без технической путаницы. Со временем хотим объединить больше возможностей в одном сервисе.\n\nСейчас развиваем VPN. Smart DNS — в разработке.\n\n🎁 Пробные 24 часа зависят от готовности выдачи VPN; отсчёт начинается после активации.\n\n💙 Поддержите проект: расскажите о нём друзьям. Выберите действие ниже.',
+  '🌐 MNEBYVPN\n\nМы только начинаем. Наша цель — простое подключение, понятное управление и оперативная помощь без технической путаницы. Со временем хотим объединить больше возможностей в одном сервисе.\n\nСейчас развиваем VPN. Smart DNS — в разработке.\n\n🎁 Пробные 24 часа зависят от готовности выдачи VPN; отсчёт начинается после активации.\n\n💙 Поддержите проект: расскажите о нём друзьям. Выберите действие ниже.',
   [
     [{text:'🌐 VPN и тарифы',callback_data:'nav:vpn'}],
     [{text:'🎁 Бесплатные 24 часа',callback_data:'nav:trial'}],
@@ -104,7 +104,7 @@ function privateActor(update:any):{id:number;messageId?:number;callbackId?:strin
     m.chat.id!==m.from.id)return null;
   const replied=m.reply_to_message;
   const replyToSupport=replied?.from?.is_bot===true &&
-    typeof replied.text==='string'&&replied.text.startsWith('✉️ MnebyVPN — напишите вопрос');
+    typeof replied.text==='string'&&replied.text.startsWith('✉️ MNEBYVPN — напишите вопрос');
   return {id:m.from.id,text:typeof m.text==='string'?m.text:'',replyToSupport};
 }
 async function packages(id:number){
@@ -178,7 +178,7 @@ function info(data:string){
       [[{text:'🌐 VPN',callback_data:'nav:vpn'}],[homeButton]]);
   if(data==='nav:share')
     return msg('💙 Поддержать проект\n\nМы только в начале пути. Если вам нравится идея простого VPN, поделитесь ссылкой на бота. Это помогает развитию проекта и не требует оплаты.',
-      [[{text:'📤 Поделиться',url:'https://t.me/share/url?url=https%3A%2F%2Ft.me%2FMnebyVPN_bot'}],
+      [[{text:'📤 Поделиться',url:'https://t.me/share/url?url=https%3A%2F%2Ft.me%2FMNEBYVPN_bot'}],
        [homeButton]]);
   if(data==='nav:help'||data==='info:help')
     return msg('❔ Помощь\n\n1. Выберите VPN.\n2. Нажмите «24 часа бесплатно» или просмотрите тарифы.\n3. В разделе «Мои подключения» проверяйте статус и остаток срока.\n\nИнтернет при ограничениях мобильной сети и совместный тариф находятся в разработке.',
@@ -211,32 +211,38 @@ function supportPromptResponse(id:number){
 }
 async function handleOperatorReply(update:any){
   const m=update.message;
-  if(!support||!m||m.chat?.id!==support.chatId)return null;
-  // A group must name one explicit trusted human operator; private chats
-  // trust only the account whose numeric ID equals the configured chat.
-  const trusted=support.operatorId!==null
-    ?m.from?.id===support.operatorId
-    :m.chat?.type==='private'&&m.from?.id===support.chatId;
-  if(!trusted)return null;
-  const raw=typeof m.text==='string'?m.text.trim():'';
-  const command=/^\/reply(?:@MnebyVPN_bot)?\s+([0-9]{1,20})\s+([\s\S]+)$/i.exec(raw);
-  const replyText=typeof m.reply_to_message?.text==='string'
-    ?m.reply_to_message.text:'';
-  const tagged=m.reply_to_message?.from?.is_bot===true
-    ?/^✉️ MnebyVPN — обращение из бота\nID Telegram: ([0-9]{1,20})\n/.exec(replyText)
+  // The operator is a regular private user of THIS bot. No external group
+  // or independently configured support chat is accepted.
+  if(!support||!m||m.chat?.type!=='private'||
+     m.chat?.id!==support.operatorId||m.from?.id!==support.operatorId)return null;
+  const replied=m.reply_to_message;
+  const quoted=typeof replied?.text==='string'?replied.text:'';
+  const authoredByBot=replied?.from?.is_bot===true;
+  const tagged=authoredByBot
+    ?/^✉️ MNEBYVPN — обращение из бота\nID Telegram: ([0-9]{1,16})\n/.exec(quoted)
     :null;
-  if(!command&&!tagged)return null;
-  const target=Number(command?.[1]??tagged?.[1]);
-  const message=command?.[2]?.trim()??raw;
-  if(!validId(target)||!validSupportText(message,1,1500))
-    return {method:'sendMessage',chat_id:support.chatId,
-      text:'Укажите текст ответа (до 1500 символов). Для команды: /reply ID сообщение'};
+  if(!tagged){
+    // Site visitors cannot receive a Telegram DM without first opening the
+    // bot and authenticating; never pretend this is a bot-to-user reply.
+    if(authoredByBot&&quoted.startsWith('✉️ MNEBYVPN — обращение с сайта')){
+      return {method:'sendMessage',chat_id:support.operatorId,
+        text:'Обращение пришло с сайта. Для ответа используйте контакт, указанный в уведомлении: посетитель мог не запускать бота.'};
+    }
+    return null;
+  }
+  const target=Number(tagged[1]);
+  const message=typeof m.text==='string'?m.text.trim():'';
+  if(!validId(target)||target===support.operatorId||!validSupportText(message,1,1500)){
+    return {method:'sendMessage',chat_id:support.operatorId,
+      text:'Для ответа клиенту используйте «Ответить» на его уведомление и напишите до 1500 символов.'};
+  }
   try{
-    await telegramSupportSend(support,'✉️ Поддержка MnebyVPN\n\n'+message,target);
-    return {method:'sendMessage',chat_id:support.chatId,text:'✅ Ответ доставлен пользователю.'};
+    await telegramSupportSend(support,'✉️ Поддержка MNEBYVPN\n\n'+message,target);
+    return {method:'sendMessage',chat_id:support.operatorId,
+      text:'✅ Ответ отправлен клиенту через MNEBYVPN.'};
   }catch{
-    return {method:'sendMessage',chat_id:support.chatId,
-      text:'⚠️ Не удалось доставить ответ. Повторите позже.'};
+    return {method:'sendMessage',chat_id:support.operatorId,
+      text:'⚠️ Не удалось подтвердить доставку ответа. Проверьте соединение и повторите попытку.'};
   }
 }
 async function sendSupportFromBot(id:number,updateId:number,message:string){
@@ -253,11 +259,11 @@ async function sendSupportFromBot(id:number,updateId:number,message:string){
     return oneAction(user,msg('Слишком много обращений. Попробуйте позже.',
       [[{text:'🏠 Главное',callback_data:'nav:home'}]]));
   try{
-    await telegramSupportSend(support,'✉️ MnebyVPN — обращение из бота\nID Telegram: '+id+
+    await telegramSupportSend(support,'✉️ MNEBYVPN — обращение из бота\nID Telegram: '+id+
       '\n\nВопрос:\n'+message.trim());
     deliveredUpdates.add(updateId);
     if(deliveredUpdates.size>1000)deliveredUpdates.clear();
-    return oneAction(user,msg('✅ Обращение отправлено в чат поддержки. Ответ придёт сюда, в Telegram.',
+    return oneAction(user,msg('✅ Обращение отправлено оператору в этот же бот. Ответ придёт сюда, в Telegram.',
       [[{text:'🏠 Главное',callback_data:'nav:home'}]]));
   }catch{
     return oneAction(user,msg('⚠️ Не удалось подтвердить отправку обращения. Попробуйте позже.',
@@ -276,11 +282,11 @@ async function processUpdate(update:any){
   };
   const adminReply=await handleOperatorReply(update);
   if(adminReply)return adminReply;
-  if(support&&update.message?.chat?.id===support.chatId)return null;
+  
   const actor=privateActor(update);
   if(!actor)return null;
   const text=actor.text?.trim()??'';
-  const explicitSupport=/^\\/support(?:@MnebyVPN_bot)?(?:\\s+([\\s\\S]+))?$/i.exec(text);
+  const explicitSupport=/^\/support(?:@MnebyVPN_bot)?(?:\s+([\s\S]+))?$/i.exec(text);
   if(!actor.callbackId&&(explicitSupport?.[1]||actor.replyToSupport))
     return sendSupportFromBot(actor.id,update.update_id,
       explicitSupport?.[1]??text);
