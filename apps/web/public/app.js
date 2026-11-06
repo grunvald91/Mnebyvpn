@@ -495,7 +495,9 @@ async function submitSupport(event){
   }catch(error){
     result.textContent=error.status===429
       ?'Слишком много обращений. Повторите попытку немного позже.'
-      :'Не удалось доставить сообщение. Оно не было отправлено. Повторите попытку.';
+      :error.status===400
+      ?'Укажите корректный email или @username и сообщение от 10 символов.'
+      :'Не удалось подтвердить отправку. Попробуйте позже.';
   }finally{
     send.disabled=false;
     send.textContent='Отправить обращение';
