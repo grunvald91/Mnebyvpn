@@ -80,7 +80,9 @@ test('24h free trial starts at observed provisioning, not when reserved',async()
  assert.equal((await db.pendingOutboxForOrder(orderId)),0);
  assert.equal((await db.grantTrial(actor,'vpn')).status,'ALREADY_USED');
  // Simulate wall-clock expiry in DB, run the regular expiry sweep and revoke.
- await pool.query("UPDATE entitlements SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",[entitlementId]);
+ await pool.query(
+   "UPDATE entitlements SET starts_at=clock_timestamp()-interval '25 hours',"+
+   " expires_at=clock_timestamp()-interval '1 hour' WHERE id=$1",[entitlementId]);
  assert.equal(await worker.expireDue(),1);
  assert.equal((await worker.processOnce()).status,'synced');
  assert.equal(applied.at(-1)?.enabled,false);
