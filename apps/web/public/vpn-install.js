@@ -6,7 +6,8 @@
   if(!root)return;
   const subscription=root.getAttribute('data-sub');
   const client=root.getAttribute('data-client');
-  if(!subscription||!subscription.startsWith('https://mnebyvpn.site/sub/'))return;
+  if(!subscription||!(subscription.startsWith('https://cdn.servgo.ru:8443/sub/')||
+    subscription.startsWith('https://mnebyvpn.site/sub/')))return;
   let target;
   if(client==='incy'){
     target='incy://import/'+subscription;

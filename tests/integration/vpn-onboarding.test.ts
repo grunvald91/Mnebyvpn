@@ -34,7 +34,7 @@ test('a confirmed VPN grant issues only hashed subscriber URLs and per-platform 
      row.some(b=>b.callback_data==='nav:device:ios')));
    const link=await issueSubscriptionLink(pool,user);
    assert.ok(link);
-   assert.match(link!.link,/^https:\/\/mnebyvpn\.site\/sub\/[A-Za-z0-9_-]{43}$/);
+   assert.match(link!.link,/^https:\/\/cdn\.servgo\.ru:8443\/sub\/[A-Za-z0-9_-]{43}$/);
    assert.equal(subscriptionLink(link!.token),link!.link);
    const hash=createHash('sha256').update(link!.token).digest('hex');
    const record=await pool.query(
@@ -59,10 +59,10 @@ test('a confirmed VPN grant issues only hashed subscriber URLs and per-platform 
    assert.ok(android.reply_markup.inline_keyboard.some(row=>
      row.some(b=>b.url?.startsWith('https://play.google.com/store/apps/details'))));
    assert.ok(android.reply_markup.inline_keyboard.some(row=>
-     row.some(b=>b.copy_text?.text.startsWith('https://mnebyvpn.site/sub/'))));
+     row.some(b=>b.copy_text?.text.startsWith('https://cdn.servgo.ru:8443/sub/'))));
    const manual=await manualView(pool,user);
    assert.ok(manual.reply_markup.inline_keyboard.some(row=>
-     row.some(b=>b.copy_text?.text.startsWith('https://mnebyvpn.site/sub/'))));
+     row.some(b=>b.copy_text?.text.startsWith('https://cdn.servgo.ru:8443/sub/'))));
    await pool.query("UPDATE entitlements SET state='EXPIRED' WHERE id=$1",[entitlement]);
    assert.equal(await subscriptionOwner(pool,link!.token),null);
    assert.equal(await issueSubscriptionLink(pool,user),null);

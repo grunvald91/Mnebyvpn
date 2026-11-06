@@ -85,7 +85,7 @@ test('signed Telegram connect reveals a profile only to the confirmed owner',asy
   const other=await update(user+1,token,'nav:device:android');
   const otherMessage=await other.json() as any;
   assert.equal(other.status,200);
-  assert.ok(!JSON.stringify(otherMessage).includes('https://mnebyvpn.site/sub/'));
+  assert.ok(!JSON.stringify(otherMessage).includes('https://cdn.servgo.ru:8443/sub/'));
   assert.ok(!JSON.stringify(otherMessage).includes(link));
   const own=await update(user);
   assert.equal(own.status,200);
@@ -96,13 +96,13 @@ test('signed Telegram connect reveals a profile only to the confirmed owner',asy
     row.some(b=>b.callback_data==='nav:device:android')));
   const installer=await (await update(user,token,'nav:device:android')).json() as any;
   assert.ok(installer.reply_markup.inline_keyboard.some((row:any[])=>
-    row.some(b=>b.url?.startsWith('https://mnebyvpn.site/install/'))));
+    row.some(b=>b.url?.startsWith('https://cdn.servgo.ru:8443/install/'))));
   assert.ok(installer.reply_markup.inline_keyboard.some((row:any[])=>
-    row.some(b=>b.copy_text?.text.startsWith('https://mnebyvpn.site/sub/'))));
+    row.some(b=>b.copy_text?.text.startsWith('https://cdn.servgo.ru:8443/sub/'))));
   assert.ok(!JSON.stringify(installer).includes(link));
   await pool.query('UPDATE provisioning_state SET applied_revision=1 WHERE entitlement_id=$1',[ent]);
   const stale=await (await update(user,token,'nav:device:android')).json() as any;
-  assert.ok(!JSON.stringify(stale).includes('https://mnebyvpn.site/sub/'));
+  assert.ok(!JSON.stringify(stale).includes('https://cdn.servgo.ru:8443/sub/'));
   assert.ok(!JSON.stringify(stale).includes(link));
   const unauth=await update(user,'wrong-token');
   assert.equal(unauth.status,401);

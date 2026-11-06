@@ -7,7 +7,9 @@ import {createHash,randomBytes} from 'node:crypto';
 import type {Pool} from 'pg';
 import {PgBillingStore} from '../../billing/src/store.ts';
 
-const HOST='https://mnebyvpn.site';
+// Use the externally tested CDN TLS/WireGuard path. Port 443 on the
+// public site can time out for some networks; the HTTPS import must work.
+const HOST='https://cdn.servgo.ru:8443';
 const TOKEN=/^[A-Za-z0-9_-]{43}$/;
 const digest=(token:string)=>createHash('sha256').update(token,'utf8').digest('hex');
 
