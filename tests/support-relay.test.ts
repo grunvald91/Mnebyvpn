@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  operatorReplyTarget,supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText,
+  operatorReplyTarget,operatorWebsiteReply,supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText,
 } from '../packages/support/src/telegram-relay.ts';
 
 test('support has no separate chat ID and only enables one configured bot operator',()=>{
@@ -51,6 +51,20 @@ test('only a private reply by the configured operator to this bot notification c
     from:{id:9999,is_bot:true},text:'✉️ MNEBYVPN — обращение с сайта'}},operatorId),null);
   assert.equal(operatorReplyTarget({...original,reply_to_message:{
     from:{id:9999,is_bot:true},text:notice.replace(String(customerId),String(operatorId))}},operatorId),null);
+});
+test('website ticket replies require private operator identity and a valid bot ticket notice',()=>{
+  const id=10001,ticketId='01234567-89ab-4abc-8def-0123456789ab';
+  const notice='✉️ MNEBYVPN — обращение с сайта\nЗаявка: '+ticketId+
+    '\nКонтакт: user@example.com\n\nСообщение: Помогите подключить';
+  const msg={chat:{id,type:'private'},from:{id},reply_to_message:{
+    from:{is_bot:true},text:notice},text:'Проверьте настройки приложения'};
+  assert.deepEqual(operatorWebsiteReply(msg,id),
+    {ticketId,answer:'Проверьте настройки приложения'});
+  assert.equal(operatorWebsiteReply({...msg,from:{id:id+1}},id),null);
+  assert.equal(operatorWebsiteReply({...msg,chat:{id:-1,type:'supergroup'}},id),null);
+  assert.equal(operatorWebsiteReply({...msg,text:'x'.repeat(1501)},id),null);
+  assert.equal(operatorWebsiteReply({...msg,reply_to_message:{
+    from:{is_bot:false},text:notice}},id),null);
 });
 test('support limiter permits three messages per window, then reopens',()=>{
   const allowed=supportLimiter(3,10_000);
