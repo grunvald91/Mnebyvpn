@@ -327,12 +327,12 @@ export class PgBillingStore {
    * No subscription bearer URL is ever stored in the billing database.
    */
   async confirmedVpnProfile(telegramUserId:number):Promise<{
-    entitlementId:string; expiresAt:Date;
+    entitlementId:string; expiresAt:Date; revision:number;
   }|null> {
     if(!Number.isSafeInteger(telegramUserId)||telegramUserId<=0)
       throw new Error('Invalid Telegram actor');
     const {rows}=await this.pool.query(
-      `SELECT e.id,e.expires_at
+      `SELECT e.id,e.expires_at,e.revision
         FROM entitlements e
         JOIN accounts a ON a.id=e.account_id
         JOIN provisioning_state p ON p.entitlement_id=e.id
@@ -342,7 +342,8 @@ export class PgBillingStore {
          AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL
        ORDER BY e.expires_at DESC LIMIT 1`,[String(telegramUserId)]);
     if(!rows.length)return null;
-    return {entitlementId:String(rows[0].id),expiresAt:rows[0].expires_at as Date};
+    return {entitlementId:String(rows[0].id),expiresAt:rows[0].expires_at as Date,
+      revision:Number(rows[0].revision)};
   }
 
   /** Apply ONLY independently provider-confirmed full refund, never customer POST. */
