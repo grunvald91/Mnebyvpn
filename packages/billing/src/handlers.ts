@@ -2,7 +2,7 @@ import {
   vpnWidgetPayload, statusWidgetData, plansWidgetData,planWidgetKey,
 } from '../../telegram-ui/src/widget-104.ts';
 import { referralWidgetPayload } from '../../telegram-ui/src/referral-widget.ts';
-import { navigationText,navigationCallback,issueStarsInvoice,startTrial,showHome } from './bot-navigation.ts';
+import { navigationText,navigationCallback,issueStarsInvoice,startTrial,showHome,sendReservedStarsInvoice } from './bot-navigation.ts';
 import {
   parseStarsPayload, validateStarsPreCheckout, validateStarsSuccess, buildStarsInvoice,
   type TelegramPreCheckout, type TelegramSuccessfulPayment,
@@ -93,7 +93,8 @@ async function handleVpnWidgetQuery(
       } else if(/^buy:[A-Za-z0-9_-]{16}$/.test(query.data)) {
         const result=await issueStarsInvoice(id,query.data.slice(4),db,tg,
           config.starsPayloadSecret,'widget-query:'+query.id);
-        answer=result==='SENT'?'INVOICE_SENT':'PLAN_UNAVAILABLE';
+        answer=result==='SENT'?'INVOICE_SENT':result==='ALREADY_REQUESTED'?
+          'ALREADY_REQUESTED':'PLAN_UNAVAILABLE';
       } else answer='UNKNOWN_ACTION';
     }
   } catch {
@@ -249,9 +250,9 @@ export async function handleTelegramUpdate(
             'referral-start:'+update.update_id,token);
           // No second product/period selection. Native Telegram may still show
           // its own initial Start button, and invoice requires user confirmation.
-          await tg.call('sendInvoice',{
-            ...buildStarsInvoice(starsOrderFromDB(order),pricedPlanForOrder(order),
-              config.starsPayloadSecret),
+          const delivered=await sendReservedStarsInvoice(order,db,tg,config.starsPayloadSecret);
+          if(delivered==='ALREADY_REQUESTED')await tg.call('sendMessage',{
+            chat_id:id,text:'Этот счёт уже запрашивался. Если он не появился, откройте новый тариф через меню.',
           });
         }
       } catch(error) {

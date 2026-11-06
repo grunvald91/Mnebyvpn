@@ -214,6 +214,35 @@ export class PgBillingStore {
     }
   }
 
+
+  /** Reserve at most one sendInvoice attempt, across concurrent workers.
+   * Never retry an ambiguous Telegram HTTP error for the same order.
+   */
+  async reserveStarsInvoice(orderId:string,telegramUserId:number):Promise<boolean> {
+    if(!uuid.test(orderId)||!Number.isSafeInteger(telegramUserId)||telegramUserId<=0)
+      throw new Error('Invalid invoice identity');
+    const {rows}=await this.pool.query(
+      `INSERT INTO telegram_invoice_dispatch(order_id,telegram_user_id)
+       SELECT o.id,a.telegram_user_id FROM orders o
+       JOIN accounts a ON a.id=o.account_id
+       JOIN order_terms t ON t.order_id=o.id
+       WHERE o.id=$1 AND o.provider='telegram_stars' AND o.currency='XTR'
+         AND o.state='PENDING' AND a.telegram_user_id=$2
+         AND t.expires_at>clock_timestamp()
+       ON CONFLICT(order_id) DO NOTHING
+       RETURNING order_id`,
+      [orderId,String(telegramUserId)]);
+    return rows.length===1;
+  }
+  async finishStarsInvoice(orderId:string,status:'SENT'|'UNKNOWN'):Promise<void> {
+    if(!uuid.test(orderId)||!['SENT','UNKNOWN'].includes(status))
+      throw new Error('Invalid invoice completion');
+    const {rowCount}=await this.pool.query(
+      `UPDATE telegram_invoice_dispatch SET state=$2,completed_at=clock_timestamp()
+       WHERE order_id=$1 AND state='RESERVED'`,[orderId,status]);
+    if(rowCount!==1)throw new Error('Invoice dispatch already resolved');
+  }
+
   /**
    * Only after independently authenticated Telegram update or verified signed
    * Prodamus webhook; SQL atomically writes paid state + outbox signals.
@@ -370,7 +399,7 @@ export class PgBillingStore {
    * No live VPN/DNS activation occurs until a data-plane adapter observes it.
    */
   async grantTrial(telegramUserId:number,product:Product,inviteToken?:string):
-  Promise<{status:'GRANTED'|'ALREADY_USED'|'UNAVAILABLE';orderId?:string;expiresAt?:Date}> {
+  Promise<{status:'GRANTED'|'PENDING'|'ALREADY_USED'|'UNAVAILABLE';orderId?:string;expiresAt?:Date}> {
     if(!Number.isSafeInteger(telegramUserId)||telegramUserId<=0 ||
        !['vpn','smart_dns','bundle'].includes(product))throw new Error('Invalid trial request');
     if(inviteToken!==undefined&&!/^[A-Za-z0-9_-]{16,24}$/.test(inviteToken))
@@ -384,9 +413,14 @@ export class PgBillingStore {
           SET telegram_user_id=EXCLUDED.telegram_user_id RETURNING id`,[String(telegramUserId)]);
       const accountId=user.rows[0].id as string;
       await c.query('SELECT id FROM accounts WHERE id=$1 FOR UPDATE',[accountId]);
-      const earlier=await c.query('SELECT order_id FROM trial_grants WHERE telegram_user_id=$1',
+      const earlier=await c.query(
+        'SELECT order_id,product,activated_at FROM trial_grants WHERE telegram_user_id=$1',
         [String(telegramUserId)]);
-      if(earlier.rowCount){await c.query('COMMIT');return {status:'ALREADY_USED'};}
+      if(earlier.rowCount){
+        await c.query('COMMIT');
+        return {status:earlier.rows[0].activated_at===null?'PENDING':'ALREADY_USED',
+          orderId:earlier.rows[0].order_id};
+      }
       const offer=await c.query('SELECT * FROM trial_offers WHERE product=$1 AND enabled=true',
         [product]);
       if(!offer.rowCount){await c.query('COMMIT');return {status:'UNAVAILABLE'};}

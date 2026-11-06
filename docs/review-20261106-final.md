@@ -37,3 +37,11 @@
 - https://telegram.org/tos/bot-developers
 - https://help.prodamus.ru/payform/integracii/rest-api/instrukcii-dlya-samostoyatelnaya-integracii-servisov
 - https://github.com/TelegramMessenger/widget-sandbox/blob/main/docs/tgw-format.md
+
+## Дополнительное ревью этапа 10
+
+- Исправлено P2 «Duplicate notifications»: новая таблица telegram_invoice_dispatch, один sendInvoice на order_id; исход неопределённого network timeout сохраняется UNKNOWN. Старые idempotent provider captures по-прежнему нужны, но не заменяют защиту outbound отправки.
+- Исправлено ложное «уже использован» при незапущенном пробном периоде: статус PENDING и точное сообщение.
+- Добавлена независимая offline-модель node expiry и session transfer. Симуляция — это не E2E на реальном дата-плейне; в реальном network partition нельзя гарантировать мгновенный refund revoke.
+
+[Этап 10](phase10-invoice-offline-node.md).

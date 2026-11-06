@@ -33,6 +33,8 @@ function fakeStore() {
     trialProducts:async()=>[],
     plans:async(provider:string)=>{traces.push('plans:'+provider);return [plan];},
     plan:async(id:string)=>id===plan.planId?plan:null,
+    reserveStarsInvoice:async()=>true,
+    finishStarsInvoice:async()=>{},
     createTelegramOrder:async(id:number,planId:string,requestKey:string)=>{
       traces.push('order:'+id+':'+planId+':'+requestKey);
       return order;

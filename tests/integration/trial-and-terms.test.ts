@@ -24,7 +24,7 @@ after(async()=>{await pool.end()});
 test('one free 24h trial per Telegram account even under concurrent calls',async()=>{
  const results=await Promise.all(Array.from({length:6},()=>db.grantTrial(trialUser,'vpn')));
  assert.deepEqual(results.map(x=>x.status).sort(),
-  ['ALREADY_USED','ALREADY_USED','ALREADY_USED','ALREADY_USED','ALREADY_USED','GRANTED'].sort());
+  ['PENDING','PENDING','PENDING','PENDING','PENDING','GRANTED'].sort());
  const granted=results.find(x=>x.status==='GRANTED');
  assert.ok(granted?.orderId);
  const {rows}=await pool.query(
@@ -41,7 +41,7 @@ test('one free 24h trial per Telegram account even under concurrent calls',async
  const {rows:captures}=await pool.query('SELECT count(*)::int AS n FROM provider_captures WHERE order_id=$1',[granted.orderId]);
  assert.equal(captures[0].n,0);
  assert.equal(await db.pendingOutboxForOrder(granted.orderId!),1);
- assert.equal((await db.grantTrial(trialUser,'smart_dns')).status,'ALREADY_USED');
+ assert.equal((await db.grantTrial(trialUser,'smart_dns')).status,'PENDING');
 });
 test('referral one-day Smart DNS trial attributes inviter and enforces explicit quota',async()=>{
  const offers=await db.referralOffers(inviter,16);
@@ -50,7 +50,7 @@ test('referral one-day Smart DNS trial attributes inviter and enforces explicit 
  assert.equal(one.trialAvailable,true);
  const result=await db.grantTrial(buyer,'smart_dns',one.token);
  assert.equal(result.status,'GRANTED');
- assert.equal((await db.grantTrial(buyer,'smart_dns',one.token)).status,'ALREADY_USED');
+ assert.equal((await db.grantTrial(buyer,'smart_dns',one.token)).status,'PENDING');
  const {rows}=await pool.query(
   `SELECT g.invite_token,e.product,e.quota_limit_bytes,o.state
      FROM trial_grants g JOIN orders o ON o.id=g.order_id

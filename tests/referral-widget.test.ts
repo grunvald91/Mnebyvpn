@@ -32,6 +32,8 @@ function fake(){
  const db={
   referralOffers:async(id:number)=>{trace.push('owner:'+id);return [offer];},
   referralPlan:async(id:string)=>{trace.push('invite:'+id);return id===token?plan:null;},
+  reserveStarsInvoice:async()=>true,
+  finishStarsInvoice:async()=>{},
   createTelegramOrder:async(id:number,pid:string,key:string,invite?:string)=>{
    trace.push('order:'+id+':'+pid+':'+key+':'+invite);return record;
   },

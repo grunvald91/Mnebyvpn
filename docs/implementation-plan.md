@@ -192,3 +192,12 @@ GitHub Actions для документации не нужны. Без отде�
 ## S. Этап 9 — исправление trial timing, late provider capture, website-only Prodamus
 
 См. [отчёт](phase9-completion-and-review.md). Тесты выполняются на disposable PostgreSQL; это не выпуск в прод.
+
+## Этап 10 — at-most-once invoice и offline node E2E-модель
+
+- [x] Отдельный durable dispatch per Stars order; неизвестный результат HTTP не приводит к повторной отправке счёта.
+- [x] PENDING trial не приравнивается к использованному.
+- [x] Изолированная симуляция срока на узле, открытых сессий и partition, без VPS.
+- [ ] Live Telegram invoice, сеть и refund, производственное expiry и quota enforcement остаются release gates.
+
+[Подробная спецификация](phase10-invoice-offline-node.md).

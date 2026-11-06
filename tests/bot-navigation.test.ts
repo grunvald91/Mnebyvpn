@@ -23,6 +23,8 @@ function fake(){
   plan:async(id:string)=>plans.find(p=>p.planId===id)??null,
   trialProducts:async()=>['vpn','smart_dns'],
   grantTrial:async(id:number,product:string)=>{actions.push('grant:'+id+':'+product);return {status:'GRANTED'};},
+  reserveStarsInvoice:async()=>true,
+  finishStarsInvoice:async()=>{},
   createTelegramOrder:async(id:number,planId:string,requestId:string,_token?:string,key?:string)=>{
    actions.push('order:'+id+':'+planId+':'+requestId+':'+key);
    const p=plans.find(x=>x.planId===planId)!;

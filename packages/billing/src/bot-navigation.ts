@@ -8,7 +8,7 @@ import {
 import { referralWidgetPayload } from '../../telegram-ui/src/referral-widget.ts';
 import { vpnWidgetPayload,statusWidgetData,planWidgetKey } from '../../telegram-ui/src/widget-104.ts';
 import {
-  PgBillingStore,pricedPlanForOrder,starsOrderFromDB,type Product,
+  PgBillingStore,pricedPlanForOrder,starsOrderFromDB,type Product,type OrderRecord,
 } from './store.ts';
 import { buildStarsInvoice } from './stars.ts';
 import type { PricedPlan } from './channels.ts';
@@ -116,6 +116,8 @@ export async function startTrial(
   const text=outcome.status==='GRANTED'
     ? '🎁 Заявка на пробный доступ принята: '+categoryLabel(product)+
       '. Отсчёт 24 часов начнётся только после подтверждённой активации на узле.'
+    : outcome.status==='PENDING'
+      ? '⏳ Пробная заявка уже создана, но доступ ещё не активирован. 24 часа пока не расходуются. Повторная покупка не нужна.'
     : outcome.status==='ALREADY_USED'
       ? 'Пробный день уже использован этим Telegram-аккаунтом. Можно выбрать обычный тариф.'
       : 'Пробный доступ для этой услуги пока не включён.';
@@ -125,19 +127,37 @@ export async function startTrial(
       [{text:'🌐 Выбрать тариф',callback_data:'nav:catalog'}],
     ]}});
 }
+/** One persistent sendInvoice dispatch per order.
+ * If the Telegram API call has an ambiguous outcome, never auto-resend.
+ */
+export async function sendReservedStarsInvoice(
+  order:OrderRecord,db:PgBillingStore,tg:BotSend,secret:string,
+):Promise<'SENT'|'ALREADY_REQUESTED'> {
+  const invoice=buildStarsInvoice(starsOrderFromDB(order),pricedPlanForOrder(order),secret);
+  if(!order.telegramUserId)throw new Error('Invoice lacks Telegram recipient');
+  const reserved=await db.reserveStarsInvoice(order.id,order.telegramUserId);
+  if(!reserved)return 'ALREADY_REQUESTED';
+  try {
+    await tg.call('sendInvoice',{...invoice});
+  } catch(error) {
+    // Unknown is deliberately terminal: a timeout is not proof Telegram did
+    // NOT create an invoice. The client can request a new order explicitly.
+    await db.finishStarsInvoice(order.id,'UNKNOWN').catch(()=>{});
+    throw error;
+  }
+  await db.finishStarsInvoice(order.id,'SENT');
+  return 'SENT';
+}
 export async function issueStarsInvoice(
   id:number,key:string,db:PgBillingStore,tg:BotSend,secret:string,requestId:string,
-):Promise<'SENT'|'STALE'> {
+):Promise<'SENT'|'STALE'|'ALREADY_REQUESTED'> {
   const plans=(await db.plans('telegram_stars')).filter(p=>p.stars!==null);
   const candidates=plans.filter(p=>planWidgetKey(p)===key);
   if(candidates.length!==1)return 'STALE';
   const plan=await db.plan(candidates[0].planId);
   if(!plan || plan.stars===null || planWidgetKey(plan)!==key)return 'STALE';
   const order=await db.createTelegramOrder(id,plan.planId,requestId,undefined,key);
-  await tg.call('sendInvoice',{
-    ...buildStarsInvoice(starsOrderFromDB(order),pricedPlanForOrder(order),secret),
-  });
-  return 'SENT';
+  return sendReservedStarsInvoice(order,db,tg,secret);
 }
 export async function navigationCallback(
   id:number,data:string,requestId:string,db:PgBillingStore,tg:BotSend,config:NavConfig,
@@ -167,6 +187,12 @@ export async function navigationCallback(
     if(state==='STALE')await tg.call('sendMessage',{
       chat_id:id,text:'Цена или условия тарифа изменились. Откройте обновлённый каталог.',
       reply_markup:{inline_keyboard:[[{text:'Обновить тарифы',callback_data:'nav:catalog'}]]},
+    });
+    if(state==='ALREADY_REQUESTED')await tg.call('sendMessage',{
+      chat_id:id,
+      text:'Счёт по этому заказу уже запрашивался. Повторно отправлять его небезопасно. '+
+        'Если счёт не появился, выберите тариф ещё раз — будет создан новый заказ.',
+      reply_markup:{inline_keyboard:[[{text:'🌐 Выбрать тариф',callback_data:'nav:catalog'}]]},
     });
     return true;
   }
