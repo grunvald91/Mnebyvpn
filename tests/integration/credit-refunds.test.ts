@@ -148,3 +148,30 @@ test('previously authorized renewal capture after original refund restores only 
   assert.equal(result.state,'PAID_PENDING_PROVISIONING');
   assert.ok(Math.abs(ms(result.expires_at)-(Date.now()+f.duration*1000))<10000);
 });
+
+test('DNS refund removes only unused bytes of that order, not subsequent paid quota',async()=>{
+  const f=await newSubscription('smart_dns');
+  const later=await renew(f);
+  await pool.query("UPDATE entitlements SET state='ACTIVE' WHERE id=$1",[f.entitlementId]);
+  const first=await pool.query('SELECT debit_smart_dns_quota($1,$2,$3) AS status',
+    [f.entitlementId,'credit-usage-a-'+unique(),524288]);
+  assert.equal(first.rows[0].status,'ACCEPTED');
+  assert.equal(await refund(f.first.id,f.txn,f.amount),'APPLIED');
+  let e=await entitlement(f.entitlementId);
+  assert.equal(e.quota_limit_bytes,'1572864');
+  assert.equal(e.quota_used_bytes,'524288');
+  await pool.query("UPDATE entitlements SET state='ACTIVE' WHERE id=$1",[f.entitlementId]);
+  const second=await pool.query('SELECT debit_smart_dns_quota($1,$2,$3) AS status',
+    [f.entitlementId,'credit-usage-b-'+unique(),262144]);
+  assert.equal(second.rows[0].status,'ACCEPTED');
+  const credits=await pool.query(
+    'SELECT credit_sequence,consumed_bytes FROM entitlement_credits WHERE entitlement_id=$1 ORDER BY credit_sequence',
+    [f.entitlementId]);
+  assert.equal(credits.rows[0].consumed_bytes,'524288');
+  assert.equal(credits.rows[1].consumed_bytes,'262144');
+  assert.equal(await refund(later.order.id,later.txn,f.amount),'APPLIED');
+  e=await entitlement(f.entitlementId);
+  assert.equal(e.quota_used_bytes,'786432');
+  assert.equal(e.quota_limit_bytes,'786432');
+  assert.equal(e.quota_state,'EXHAUSTED');
+});
