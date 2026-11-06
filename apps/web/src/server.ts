@@ -79,6 +79,12 @@ const subscriptionDbUrl=process.env.VPN_SUBSCRIPTION_DATABASE_URL;
 const subscriptionPool=subscriptionDbUrl
   ?new Pool({connectionString:subscriptionDbUrl,max:3,connectionTimeoutMillis:3000})
   :offline?pool:null;
+// Trial and paid provisioning must write to the SAME canonical billing DB as
+// the VPN node worker. A separate web-only account cannot activate a VPN.
+// Do not enable trial/checkout while the data stores are isolated.
+if((trialEnabled||checkoutEnabled) &&
+   (!subscriptionDbUrl || subscriptionDbUrl!==process.env.DATABASE_URL))
+  throw Error('Live VPN trial/checkout requires the canonical shared billing database');
 let payform: ProdamusConfig | undefined;
 if (webhookEnabled) {
   payform = {
