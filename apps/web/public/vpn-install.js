@@ -13,7 +13,7 @@
     target='incy://import/'+subscription;
   }else if(client==='karing'){
     target='karing://install-config?url='+encodeURIComponent(subscription)+
-      '&name='+encodeURIComponent('Мне бы VPN');
+      '&name='+encodeURIComponent('MnebyVPN');
   }else{return;}
   const action=document.getElementById('open-app');
   const copy=document.getElementById('copy-url');
