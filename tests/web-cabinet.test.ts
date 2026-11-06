@@ -168,6 +168,6 @@ test('website keeps support form accessible without Telegram login and brands it
   assert.match(server,/url\.pathname==='\/api\/support'/);
   assert.match(server,/url\.pathname==='\/api\/support\/status'/);
   assert.match(js,/submitSupport/);
-  assert.doesNotMatch(html,/MNEBYVPN|МНЕ БЫ/);
+  assert.doesNotMatch(html,/Мне бы VPN|МНЕ БЫ|MnebyVPN/);
   assert.match(html,/<title>MNEBYVPN/);
 });
