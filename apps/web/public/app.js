@@ -81,7 +81,7 @@ function renderPlan() {
     !state.checkoutEnabled?'Оплата пока недоступна':
     !state.loggedIn?'Войти для оплаты':state.renewalTargetId?'К оплате продления':'Перейти к оплате →';
   const trial=byId('trial-button');
-  const trialAvailable=state.trialOffers.includes(state.product);
+  const trialAvailable=state.product==='vpn' && state.trialOffers.includes(state.product);
   trial.disabled=!trialAvailable||state.busy;
   trial.textContent=trialAvailable?'Попробовать 24 часа бесплатно':'Пробные 24 часа — пока недоступны';
   text('checkout-hint',inDevelopment?'Smart DNS и совместный тариф находятся в разработке и пока не продаются.':
@@ -327,7 +327,7 @@ async function purchase() {
   } finally {state.busy=false;renderPlan();}
 }
 async function claimTrial() {
-  if(state.busy || !state.trialOffers.includes(state.product))return;
+  if(state.busy || state.product!=='vpn' || !state.trialOffers.includes(state.product))return;
   if(!state.loggedIn){
     saveSelection();
     location.assign('/auth/login');return;
