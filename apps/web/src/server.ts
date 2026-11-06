@@ -422,6 +422,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       plans: plans.map(p => ({
       id: p.planId, title: p.title, product: p.product,
       durationDays: p.durationSeconds / 86400, rubMinor: p.rubMinor,
+      deviceLimit: p.deviceLimit ?? 1,
       dnsQuotaBytes: p.dnsQuotaBytes?.toString() ?? null,
     })) }); return;
   }
