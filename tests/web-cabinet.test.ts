@@ -231,7 +231,7 @@ test('website requires email sign-in, explicit Telegram link, and a per-browser 
   assert.match(backend,/\/api\/auth\/email\/start/);
   assert.match(backend,/\/api\/auth\/email\/verify/);
   assert.match(backend,/BROWSER_VERIFICATION_REQUIRED/);
-  assert.match(backend,/privateDigest\('trial-device-v1'/);
+  assert.match(backend,/createHash\('sha256'\)\.update\('trial-device-v1:'/);
   assert.match(backend,/SELECT id FROM accounts WHERE telegram_user_id=\$1/);
   assert.match(billing,/DEVICE_ALREADY_USED/);
   assert.match(ui,/EMAIL_RATE_LIMIT/);
