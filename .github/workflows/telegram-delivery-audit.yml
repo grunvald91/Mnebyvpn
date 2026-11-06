@@ -1,0 +1,45 @@
+name: Diagnose Telegram webhook delivery (read-only)
+on:
+  push:
+    paths: ['.github/workflows/telegram-delivery-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN_BOT || secrets.TELEGRAM_BOT_TOKEN }}
+    steps:
+      - name: Inspect Telegram delivery status without exposing token or user messages
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$TELEGRAM_BOT_TOKEN"
+          python3 - <<'PY'
+          import json, os, urllib.request
+          token=os.environ['TELEGRAM_BOT_TOKEN']
+          def get(method):
+              req=urllib.request.Request(
+                  'https://api.telegram.org/bot'+token+'/'+method,
+                  data=b'{}',headers={'Content-Type':'application/json'},method='POST')
+              with urllib.request.urlopen(req,timeout=15) as response:
+                  payload=json.load(response)
+              if not payload.get('ok'):
+                  raise RuntimeError(method+' failed')
+              return payload['result']
+          who=get('getMe')
+          assert who.get('username','').lower()=='mnebyvpn_bot'
+          info=get('getWebhookInfo')
+          url=info.get('url','')
+          print('telegram_bot_identity=verified')
+          print('webhook_url_is_foreign_relay='+str(url=='https://cdn.servgo.ru/mnebyvpn-telegram/webhook').lower())
+          print('pending_update_count='+str(info.get('pending_update_count','unknown')))
+          print('last_error_date='+str(info.get('last_error_date','none')))
+          print('last_error_message='+str(info.get('last_error_message','none'))[:300])
+          print('last_synchronization_error_date='+str(info.get('last_synchronization_error_date','none')))
+          print('max_connections='+str(info.get('max_connections','unknown')))
+          print('ip_address='+str(info.get('ip_address','not_provided')))
+          print('allowed_updates='+','.join(info.get('allowed_updates') or []))
+          PY
