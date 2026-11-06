@@ -26,7 +26,7 @@ test('authenticated session and CSRF are signed, time-bounded and account-specif
   assert.equal(readSession(s,secret,now+1000),121232343);
   assert.equal(readSession(s,secret,now+12*60*60_000+1),null);
   assert.equal(readSession(s,secret,now-61_000),null);
-  assert.equal(readSession(s.replace(/.$/,'a'),secret,now),null);
+  assert.equal(readSession(s.slice(0,-1)+(s.endsWith('a')?'b':'a'),secret,now),null);
   assert.equal(isValidCsrf(csrfForSession(s,secret),s,secret),true);
   assert.equal(isValidCsrf(csrfForSession(s,secret),issueSession(2,secret,now),secret),false);
 });
