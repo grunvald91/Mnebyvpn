@@ -14,6 +14,7 @@ export interface TrustedWebsiteCheckout {
   requestId:string;
   planId:string;
   inviteToken?:string;
+  renewalTargetId?:string;
 }
 export interface PayformLinkTransport {
   /** Requests do=link from configured Prodamus payform, with bounded timeout. */
@@ -46,7 +47,7 @@ export async function prepareWebsiteProdamusCheckout(
 ):Promise<{orderId:string;paymentUrl:string;amountMinor:number}> {
   const order=await db.createWebsiteOrder(
     authenticated.accountId,authenticated.planId,authenticated.requestId,
-    authenticated.inviteToken);
+    authenticated.inviteToken,authenticated.renewalTargetId);
   const url=buildProdamusLinkRequest(prodamusOrderFromDB(order),order.planTitle,config);
   const payform=new URL(url);
   if(!approvedHost(payform.hostname))throw new Error('Unapproved configured Prodamus host');

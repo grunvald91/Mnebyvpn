@@ -301,13 +301,16 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     json(res,200,{status:result.status,expiresAt:result.expiresAt?.toISOString()??null});
     return;
   }
-  if (req.method === 'POST' && url.pathname === '/api/checkout') {
+  if (req.method === 'POST' && (url.pathname === '/api/checkout' || url.pathname === '/api/renew')) {
     if (!csrfAllowed(req,auth.raw)) { json(res,403,{code:'FORBIDDEN'});return; }
     if (!checkoutEnabled || !payform) {
       json(res,503,{code:'PAYMENT_NOT_AVAILABLE'});return;
     }
     const body = await bodyJson(req);
-    if (typeof body.planId !== 'string' ||
+    const isRenewal=url.pathname==='/api/renew';
+    const validTarget=typeof body.renewalTargetId==='string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.renewalTargetId);
+    if (isRenewal!==validTarget ||
         !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(body.planId) ||
         typeof body.requestId !== 'string' ||
         !/^[0-9a-f]{8}-[0-9a-f-]{27,40}$/i.test(body.requestId) ||
@@ -322,6 +325,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       accountId: owner.rows[0].id as string, planId: body.planId,
       requestId: 'web:' + body.requestId,
       inviteToken: body.inviteToken as string|undefined,
+      renewalTargetId: isRenewal ? body.renewalTargetId as string : undefined,
     },store,payform,new MerchantTransport());
     json(res,200,{orderId:purchase.orderId,paymentUrl:purchase.paymentUrl});
     return;

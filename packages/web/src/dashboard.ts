@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 
 type AccessRow = {
-  product: 'vpn'|'smart_dns'; state: string; starts_at: Date|null;
+  id: string; product: 'vpn'|'smart_dns'; state: string; starts_at: Date|null;
   expires_at: Date|null; quota_limit_bytes: string|null;
   quota_used_bytes: string; quota_state: string;
 };
@@ -17,7 +17,7 @@ export function publicEntitlement(row: AccessRow, meteringVerified: boolean, now
   const limit = showUsage ? BigInt(quotaLimitBytes) : null;
   const used = showUsage ? BigInt(row.quota_used_bytes) : null;
   return {
-    product: row.product, state: row.state,
+    id: row.id, product: row.product, state: row.state,
     startsAt: row.starts_at?.toISOString() ?? null, expiresAt, secondsRemaining,
     quotaLimitBytes: isDns ? quotaLimitBytes : null,
     quotaUsedBytes: showUsage ? String(used) : null,
@@ -33,7 +33,7 @@ export async function loadDashboard(
 ) {
   if (!Number.isSafeInteger(telegramId) || telegramId <= 0) throw new Error('Invalid Telegram account');
   const [access, orders] = await Promise.all([
-    pool.query(`SELECT e.product,e.state,e.starts_at,e.expires_at,
+    pool.query(`SELECT e.id,e.product,e.state,e.starts_at,e.expires_at,
       e.quota_limit_bytes,e.quota_used_bytes,e.quota_state
       FROM entitlements e JOIN accounts a ON a.id=e.account_id
       WHERE a.telegram_user_id=$1

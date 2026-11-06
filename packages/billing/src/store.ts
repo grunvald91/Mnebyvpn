@@ -99,16 +99,16 @@ export class PgBillingStore {
    * Do not publish a route that accepts arbitrary accountId as proof of login.
    */
   async createWebsiteOrder(accountId: string, planId: string, requestId: string,
-    inviteToken?:string): Promise<OrderRecord> {
+    inviteToken?:string, renewalTargetId?:string): Promise<OrderRecord> {
     if (!uuid.test(accountId)) throw new Error('Invalid authenticated account');
     // This MUST be called only by a website backend after its session check.
     // An arbitrary accountId supplied by a browser is NOT authentication.
-    return this.createOrder('prodamus', { accountId }, planId, requestId,inviteToken);
+    return this.createOrder('prodamus', { accountId }, planId, requestId,inviteToken,undefined,renewalTargetId);
   }
   private async createOrder(
     provider: PaymentProvider,
     who: { telegramUserId: number } | { accountId: string },
-    planId: string, requestId: string, inviteToken?: string,expectedKey?:string,
+    planId: string, requestId: string, inviteToken?: string,expectedKey?:string,renewalTargetId?:string,
   ): Promise<OrderRecord> {
     if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(planId)
         || !requestId || requestId.length > 160) throw new Error('Invalid request identity');
@@ -116,6 +116,8 @@ export class PgBillingStore {
       throw new Error('Invalid expected offer key');
     if (inviteToken!==undefined && !/^[A-Za-z0-9_-]{16,24}$/.test(inviteToken))
       throw new Error('Invalid invite token');
+    if (renewalTargetId!==undefined && !uuid.test(renewalTargetId))
+      throw new Error('Invalid renewal target');
     const c = await this.pool.connect();
     try {
       await c.query('BEGIN');
@@ -136,6 +138,9 @@ export class PgBillingStore {
         const saved=await c.query('SELECT invite_token FROM order_referrals WHERE order_id=$1',[order.id]);
         if ((saved.rows[0]?.invite_token??undefined)!==inviteToken)
           throw new Error('Request key reused with different referral');
+        const renewal=await c.query('SELECT entitlement_id FROM order_renewals WHERE order_id=$1',[order.id]);
+        if ((renewal.rows[0]?.entitlement_id??undefined)!==renewalTargetId)
+          throw new Error('Request key reused with different renewal target');
         await c.query('COMMIT');
         return order;
       }
@@ -180,6 +185,17 @@ export class PgBillingStore {
       const p = plan.rows[0];
       if(expectedKey!==undefined && planWidgetKey(mapPlan(p))!==expectedKey)
         throw new Error('OFFER_CHANGED');
+      if (renewalTargetId!==undefined) {
+        if (provider!=='prodamus' || !('accountId' in who) || p.product==='bundle')
+          throw new Error('Unsupported renewal offer');
+        // Bind to this authenticated account and matching product. Pending
+        // trial reservations without a real activation deadline cannot renew.
+        const renewal=await c.query(`SELECT e.id FROM entitlements e
+          WHERE e.id=$1 AND e.account_id=$2 AND e.product=$3
+            AND e.starts_at IS NOT NULL AND e.expires_at IS NOT NULL
+          FOR UPDATE OF e`,[renewalTargetId,accountId,p.product]);
+        if(renewal.rowCount!==1)throw new Error('Renewal target not owned or not active yet');
+      }
       const price = provider === 'telegram_stars' ? p.stars : p.rub_minor;
       if (price === null || safeInt(price) === 0) throw new Error('Price not configured');
       const currency = provider === 'telegram_stars' ? 'XTR' : 'RUB';
@@ -198,6 +214,9 @@ export class PgBillingStore {
         'INSERT INTO checkout_requests(channel,request_id,order_id) VALUES($1,$2,$3)',
         [provider,requestId,id]
       );
+      if(renewalTargetId!==undefined)
+        await c.query('INSERT INTO order_renewals(order_id,entitlement_id) VALUES($1,$2)',
+          [id,renewalTargetId]);
       if(referralOwner!==null){
         await c.query(
           'INSERT INTO order_referrals(order_id,invite_token,referrer_account_id) VALUES($1,$2,$3)',
