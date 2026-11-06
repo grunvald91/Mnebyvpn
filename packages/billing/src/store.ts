@@ -325,14 +325,14 @@ export class PgBillingStore {
       ?String(input.telegramUserId):null;
     const {rows}=await this.pool.query(
       `INSERT INTO payment_incidents
-       (provider,transaction_hash,order_id,actor_telegram_user_id,amount_minor,
+       (provider,transaction_hash,transaction_id,order_id,actor_telegram_user_id,amount_minor,
         currency,reason,payload_sha256)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT(provider,transaction_hash) DO UPDATE SET
          last_seen_at=clock_timestamp(),
          sightings=payment_incidents.sightings+1
        RETURNING id`,
-       [input.provider,txHash,orderId,actor,amount,currency,input.reason,input.payloadHash]);
+       [input.provider,txHash,input.transactionId,orderId,actor,amount,currency,input.reason,input.payloadHash]);
     return safeInt(rows[0].id);
   }
   async pendingPaymentIncidentAlerts(limit=20):Promise<Array<{

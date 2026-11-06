@@ -27,11 +27,13 @@ test('authenticated Stars captured mismatch recorded and acknowledged without 50
  await handleTelegramUpdate(event,db,tg,cfg);
  await handleTelegramUpdate({...event,update_id:112},db,tg,cfg);
  const rows=await pool.query(
-  "SELECT reason,sightings FROM payment_incidents WHERE provider='telegram_stars' AND actor_telegram_user_id=$1",
+  "SELECT reason,sightings,transaction_id FROM payment_incidents WHERE provider='telegram_stars' AND actor_telegram_user_id=$1",
   [uid]);
  assert.equal(rows.rows.length,1);
  assert.equal(rows.rows[0].reason,'STARS_CAPTURE_MISMATCH');
  assert.equal(rows.rows[0].sightings,2);
+ assert.equal(rows.rows[0].transaction_id,'unmatched-tg-'+suffix,
+  'operator must be able to resolve captured merchant transaction');
  assert.equal((await pool.query('SELECT state FROM orders WHERE id=$1',[o.id])).rows[0].state,'PENDING');
  assert.equal((await pool.query('SELECT count(*)::int AS n FROM provider_captures WHERE order_id=$1',[o.id]))
   .rows[0].n,0);
@@ -53,6 +55,7 @@ test('signed mismatched Prodamus capture logged, invalid signature is never trea
  assert.equal(mismatch.text,'MANUAL_REVIEW');
  assert.equal((await handleProdamusDelivery(body,'deadbeef',db,pd)).statusCode,401);
  const result=await pool.query(
-  "SELECT reason,sightings FROM payment_incidents WHERE provider='prodamus' AND reason='PRODAMUS_CAPTURE_MISMATCH'");
- assert.ok(result.rows.some(x=>x.sightings===1));
+  "SELECT reason,sightings,transaction_id FROM payment_incidents WHERE provider='prodamus' AND reason='PRODAMUS_CAPTURE_MISMATCH'");
+ assert.ok(result.rows.some(x=>x.sightings===1 &&
+  x.transaction_id==='incident-prodamus-'+suffix));
 });

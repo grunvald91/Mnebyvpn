@@ -37,3 +37,6 @@
 - Правила Telegram для цифровых услуг, §6.2: https://telegram.org/tos/bot-developers
 - Prodamus API: https://help.prodamus.ru/payform/integracii/rest-api/instrukcii-dlya-samostoyatelnaya-integracii-servisov
 - PR: https://github.com/grunvald91/Mnebyvpn/pull/5
+
+### Дополнительный P1 контроль операционного возврата
+В ограниченно доступной таблице `payment_incidents` сохраняется также полный `transaction_id` для разрешения спорной оплаты в кабинете провайдера и инициирования возврата. В публичное сообщение бота и alert этот ID не включается. Остаются необходимы операторская процедура, принцип минимальных прав к БД и реальные merchant API тесты.
