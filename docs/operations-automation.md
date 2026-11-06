@@ -1,6 +1,6 @@
 # Operations Controller — мониторинг, самовосстановление, ИИ-критик и autoscaling
 
-**Статус: проект. Никакой автоматической покупки VPS, остановки служб или управления продом не реализовано.**
+**Статус: DEFERRED для платного MVP.** Никакой автоматической покупки VPS, остановки служб или управления продом не реализовано. Единственный реестр: [release-gates](release-gates.md).
 
 ## Принцип: факты и детерминированный control loop важнее ИИ
 
@@ -27,7 +27,7 @@ flowchart TD
 - VPN: Xray/node heartbeat, активные подключения/ошибки, capacity, latency, packet loss, доступность профиля из реальных пользовательских сетей.
 - Control: subscription HTTPS response, user-provisioning sync, платежи, outbox lag, DB/Redis disk/RAM.
 - VPS: RAM available, CPU utilization и **CPU steal**, swap thrash, bandwidth Mbps/packet drops, conntrack, disk free, inode, provider network counters.
-- Внешние проверки возможны через https://github.com/prometheus/blackbox_exporter (HTTP(S), DNS, TCP). Не добавлять тяжёлые компоненты на существующие 1vCPU серверы до preflight.
+- Внешние проверки возможны через https://github.com/prometheus/blackbox_exporter (HTTP(S), DNS, TCP). Не добавлять тяжёлые компоненты до **свежего приватного ресурсного preflight**: старые значения vCPU могли измениться после resize.
 
 ## Классы автоматических действий
 
