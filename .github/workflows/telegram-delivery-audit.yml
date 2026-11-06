@@ -34,7 +34,7 @@ jobs:
           info=get('getWebhookInfo')
           url=info.get('url','')
           print('telegram_bot_identity=verified')
-          print('webhook_url_is_foreign_relay='+str(url=='https://cdn.servgo.ru/mnebyvpn-telegram/webhook').lower())
+          print('webhook_url_is_foreign_relay='+str(url=='https://cdn.servgo.ru:8443/mnebyvpn-telegram/webhook').lower())
           print('pending_update_count='+str(info.get('pending_update_count','unknown')))
           print('last_error_date='+str(info.get('last_error_date','none')))
           print('last_error_message='+str(info.get('last_error_message','none'))[:300])
@@ -42,4 +42,11 @@ jobs:
           print('max_connections='+str(info.get('max_connections','unknown')))
           print('ip_address='+str(info.get('ip_address','not_provided')))
           print('allowed_updates='+','.join(info.get('allowed_updates') or []))
+          from datetime import datetime,timezone
+          activated=int(datetime(2026,11,6,12,14,tzinfo=timezone.utc).timestamp())
+          newer=int(info.get('last_error_date') or 0)>activated
+          print('error_after_8443_cutover='+str(newer).lower())
+          print('foreign_8443_ready='+str(url=='https://cdn.servgo.ru:8443/mnebyvpn-telegram/webhook' and not newer and info.get('pending_update_count')==0).lower())
+          assert url=='https://cdn.servgo.ru:8443/mnebyvpn-telegram/webhook', 'Wrong Telegram webhook endpoint'
+          assert not newer, 'Telegram had a new delivery error on port 8443'
           PY
