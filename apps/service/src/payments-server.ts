@@ -44,7 +44,8 @@ class TelegramHttp {
     if (!/^[A-Za-z]+$/.test(method)) throw new Error('Invalid Bot API method');
     const result = await fetch('https://api.telegram.org/bot'+this.token+'/'+method,{
       method:'POST', headers:{'content-type':'application/json'},
-      body:JSON.stringify(params),signal:AbortSignal.timeout(8500),
+      body:JSON.stringify(params),signal:AbortSignal.timeout(
+        method==='answerPreCheckoutQuery'||method==='answerWidgetQuery'?3000:8500),
     });
     const data: unknown = await result.json();
     if (!result.ok || !data || typeof data !== 'object' || (data as {ok?:boolean}).ok !== true)

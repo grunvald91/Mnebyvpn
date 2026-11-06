@@ -66,3 +66,5 @@
 
 - [Ревью кода HTMLBubbles и реферальных покупок](docs/review-referrals-20261106.md)
 - [Этап 7: пересылаемые реферальные HTMLBubbles](docs/phase7-referral-bubbles.md)
+
+- [Этап 8: кнопки, сроки тарифов и пробные 24 часа](docs/phase8-buttons-tariffs-trial.md)

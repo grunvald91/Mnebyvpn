@@ -26,3 +26,7 @@
 - Telegram: https://github.com/TelegramMessenger/widget-sandbox/blob/main/docs/tgw-format.md
 - SDK v1: https://github.com/TelegramMessenger/widget-sandbox/blob/main/docs/sdk-v1.md
 - Репозиторий: https://github.com/grunvald91/Mnebyvpn/pull/1
+
+### Исправления этапа 8
+
+Дополнительно: checkout cap по account+15 минут, заморозка/сверка fingerprint в одной транзакции, отказ при таймауте pre-checkout, обработка Widget 10.4 с ограничением ожидания, reply и inline-клавиатуры, публичная карточка нескольких сроков, разовый 24-часовой trial. Реальный сетевой E2E и платёжные операции остаются блокирующими проверками.

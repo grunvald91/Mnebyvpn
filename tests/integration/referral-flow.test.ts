@@ -22,7 +22,7 @@ before(async()=>{
 });
 after(async()=>{await pool.end()});
 test('referral invite is stable, attributed atomically, and survives plan-price mutation',async()=>{
- const offers=await store.referralOffers(inviter,3);
+ const offers=await store.referralOffers(inviter,16);
  const vpn=offers.find(x=>x.planId===vpnId);
  const dns=offers.find(x=>x.planId===dnsId);
  assert.ok(vpn && dns,'our enabled plans must be in the catalog');
@@ -30,7 +30,7 @@ test('referral invite is stable, attributed atomically, and survives plan-price 
  assert.equal(dns.stars,75);
  assert.equal(vpn.rubMinor,19900);
  assert.equal(vpn.token.length,16);
- const again=await store.referralOffers(inviter,3);
+ const again=await store.referralOffers(inviter,16);
  assert.equal(again.find(x=>x.planId===vpnId)?.token,vpn.token);
  const record=await store.createTelegramOrder(buyer,vpnId,'ref-flow-first',vpn.token);
  assert.equal(record.amount,150);
@@ -55,7 +55,7 @@ test('referral invite is stable, attributed atomically, and survives plan-price 
  assert.equal(current?.stars,300);
  await assert.rejects(()=>store.createTelegramOrder(inviter,vpnId,'self-ref',vpn.token),
    /Self-referral/);
- const secondOffers=await store.referralOffers(otherInviter,3);
+ const secondOffers=await store.referralOffers(otherInviter,16);
  const otherToken=secondOffers.find(x=>x.planId===vpnId)?.token;
  assert.ok(otherToken);
  await assert.rejects(()=>store.createTelegramOrder(buyer,vpnId,'ref-flow-first',otherToken),
@@ -64,7 +64,7 @@ test('referral invite is stable, attributed atomically, and survives plan-price 
  assert.equal(after.rows[0].n,1);
 });
 test('wrong token, invalid product or a disabled plan cannot create attributed order',async()=>{
- const offer=await store.referralOffers(inviter,3);
+ const offer=await store.referralOffers(inviter,16);
  const vpn=offer.find(x=>x.planId===vpnId);
  assert.ok(vpn);
  await assert.rejects(()=>store.createTelegramOrder(buyer,dnsId,'wrong-product',vpn.token),

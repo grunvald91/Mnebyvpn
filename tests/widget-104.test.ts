@@ -30,6 +30,7 @@ function fakeStore() {
   const traces:string[]=[];
   const db={
     listUserPackages:async(id:number)=>{traces.push('packages:'+id);return [pkg];},
+    trialProducts:async()=>[],
     plans:async(provider:string)=>{traces.push('plans:'+provider);return [plan];},
     plan:async(id:string)=>id===plan.planId?plan:null,
     createTelegramOrder:async(id:number,planId:string,requestKey:string)=>{
@@ -74,21 +75,21 @@ test('XSS strings remain serialized data and never become executable static HTML
   assert.throws(()=>validateWidgetData('x'.repeat(1025)));
   assert.throws(()=>vpnWidgetPayload(0,state));
 });
-test('/my and /plans send actual Bot API 10.4 sendWidget',async()=>{
+test('reply-keyboard status and catalog actions render widget and inline categories',async()=>{
   const f=fakeStore();
   await handleTelegramUpdate({update_id:100,message:{
-    chat:{id:445566,type:'private'},from:{id:445566},text:'/my',
+    chat:{id:445566,type:'private'},from:{id:445566},text:'🔐 Мои подписки',
   }},f.db,f.tg,config);
   await handleTelegramUpdate({update_id:101,message:{
-    chat:{id:445566,type:'private'},from:{id:445566},text:'/plans',
+    chat:{id:445566,type:'private'},from:{id:445566},text:'🌐 Выбрать доступ',
   }},f.db,f.tg,config);
-  assert.deepEqual(f.calls.map(x=>x.method),['sendWidget','sendWidget']);
+  assert.deepEqual(f.calls.map(x=>x.method),['sendWidget','sendMessage']);
   const p=f.calls[0].params;
   assert.equal(p.chat_id,445566);
   assert.equal(p.allow_queries,true);
   assert.equal(JSON.parse(String(p.chat_data)).k,'status');
-  assert.equal(JSON.parse(String(f.calls[1].params.chat_data)).k,'plans');
-  assert.ok(String(p.html).includes('TelegramWidget'));
+  const markup=f.calls[1].params.reply_markup as {inline_keyboard:Array<Array<{callback_data:string}>>};
+  assert.ok(markup.inline_keyboard.flat().some(x=>x.callback_data==='nav:plans:vpn'));
 });
 test('10.4 widget_query updates original message chat_data then answers the press',async()=>{
   const f=fakeStore();

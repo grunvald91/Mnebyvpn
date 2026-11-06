@@ -184,3 +184,7 @@ GitHub Actions для документации не нужны. Без отде�
 - [ ] Реальные E2E виджетов и antiabuse/rate-limiting — до запуска.
 
 См. docs/phase7-referral-bubbles.md и docs/review-referrals-20261106.md.
+
+## R. Этап 8 — UX без ручных команд, сроки, пробный день
+
+См. [подробную спецификацию этапа 8](phase8-buttons-tariffs-trial.md). Код и тесты подготовлены; актуальный CI на новой ветке проверяется отдельно.

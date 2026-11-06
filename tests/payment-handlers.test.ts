@@ -42,14 +42,14 @@ function fakeStore(order: OrderRecord) {
 }
 const config={prodamus:pd,starsPayloadSecret:key};
 
-test('10.3 documented Rich Message catalog embeds callback buttons, no unsupported HTMLBubbles API',async()=>{
+test('bot home provides persistent reply keyboard and inline navigation without slash commands',async()=>{
   const f=fakeStore(record('telegram_stars'));
   await handleTelegramUpdate({update_id:10,message:{chat:{id:123456,type:'private'},from:{id:123456},text:'/start'}},f.db,f.tg,config);
-  assert.equal(f.calls[0].method,'sendRichMessage');
-  const html=(f.calls[0].params.rich_message as {html:string}).html;
-  assert.match(html,/<tg-button-row>/);
-  assert.match(html,/data="buy:vpn-test"/);
-  assert.equal(f.calls.some(x=>x.method==='sendHtmlBubble'),false);
+  assert.deepEqual(f.calls.map(x=>x.method),['sendMessage','sendMessage']);
+  const reply=f.calls[0].params.reply_markup as {keyboard:Array<Array<{text:string}>>};
+  assert.ok(reply.keyboard.flat().some(x=>x.text.includes('Поделиться')));
+  const inline=f.calls[1].params.reply_markup as {inline_keyboard:Array<Array<{callback_data:string}>>};
+  assert.ok(inline.inline_keyboard.flat().some(x=>x.callback_data==='nav:plans:vpn'));
 });
 test('Stars pre-checkout is answered, but not settled',async()=>{
   const f=fakeStore(record('telegram_stars'));

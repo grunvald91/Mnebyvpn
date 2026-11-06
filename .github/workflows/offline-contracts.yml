@@ -1,7 +1,10 @@
 name: Offline code and database contracts
 
 on:
-  pull_request:
+  # One short offline run per actual code push, not duplicate PR + push runs.
+  push:
+    branches:
+      - feat/phase1-foundation-20261105
     paths:
       - 'apps/**'
       - 'packages/**'
@@ -66,9 +69,13 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0004_catalog_and_orders.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0005_outbox_retries.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0006_referral_invites.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0007_trials_and_throttle.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0008_pricing_drafts.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0002_billing_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0003_ipv6_claims_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0005_outbox_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0007_trials_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0008_pricing_drafts_contract.sql
       - name: Payment integration with disposable PostgreSQL
         env:
           PGPASSWORD: test

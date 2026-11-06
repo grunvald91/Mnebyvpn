@@ -2,6 +2,7 @@ import {
   vpnWidgetPayload, statusWidgetData, plansWidgetData,planWidgetKey,
 } from '../../telegram-ui/src/widget-104.ts';
 import { referralWidgetPayload } from '../../telegram-ui/src/referral-widget.ts';
+import { navigationText,navigationCallback,issueStarsInvoice,startTrial,showHome } from './bot-navigation.ts';
 import {
   parseStarsPayload, validateStarsPreCheckout, validateStarsSuccess, buildStarsInvoice,
   type TelegramPreCheckout, type TelegramSuccessfulPayment,
@@ -67,6 +68,7 @@ async function handleVpnWidgetQuery(
   query: NonNullable<TelegramUpdate['widget_query']>,
   db: PgBillingStore, tg: TelegramApi, config: PaymentHandlersConfig
 ):Promise<void> {
+  const process=async():Promise<string>=>{
   let answer='NOT_ALLOWED';
   const privateOrigin=Number.isSafeInteger(query.from?.id)&&query.from.id>0 &&
     query.chat?.type==='private' && query.chat.id===query.from.id &&
@@ -89,28 +91,24 @@ async function handleVpnWidgetQuery(
         }
         answer=data;
       } else if(/^buy:[A-Za-z0-9_-]{16}$/.test(query.data)) {
-        const planKey=query.data.slice(4);
-        const candidates=(await db.plans('telegram_stars'))
-          .filter(p=>p.stars!==null && planWidgetKey(p)===planKey);
-        if(candidates.length!==1)answer='PLAN_UNAVAILABLE';
-        else {
-          // Revalidate plan against the DB, then invoice its IMMUTABLE order terms.
-          const plan=await db.plan(candidates[0].planId);
-          if(!plan || plan.stars===null)answer='PLAN_UNAVAILABLE';
-          else {
-            const order=await db.createTelegramOrder(id,plan.planId,'widget-query:'+query.id);
-            await tg.call('sendInvoice',{
-              ...buildStarsInvoice(starsOrderFromDB(order),pricedPlanForOrder(order),config.starsPayloadSecret),
-            });
-            answer='INVOICE_SENT';
-          }
-        }
+        const result=await issueStarsInvoice(id,query.data.slice(4),db,tg,
+          config.starsPayloadSecret,'widget-query:'+query.id);
+        answer=result==='SENT'?'INVOICE_SENT':'PLAN_UNAVAILABLE';
       } else answer='UNKNOWN_ACTION';
     }
   } catch {
     answer='RETRY_LATER';
   }
-  // Always answer in <=15 s. 10.4 result is data, not result or text.
+  return answer;
+  };
+  // Telegram Widget requests must be answered within 15 seconds. Do not hold
+  // the reply for arbitrarily slow DB calls; operation can safely finish later.
+  let timeout:ReturnType<typeof setTimeout>|undefined;
+  const fallback=new Promise<string>(resolve=>{
+    timeout=setTimeout(()=>resolve('PROCESSING'),5500);
+  });
+  const answer=await Promise.race([process(),fallback]);
+  if(timeout)clearTimeout(timeout);
   await tg.call('answerWidgetQuery',{widget_query_id:query.id,data:answer});
 }
 
@@ -130,16 +128,27 @@ export async function handleTelegramUpdate(
     await handleVpnWidgetQuery(update.widget_query,db,tg,config);
     return;
   }
-  const pc = update.pre_checkout_query;
-  if (pc) {
-    const orderId = parseStarsPayload(pc.invoice_payload, config.starsPayloadSecret);
-    const record = orderId ? await db.order(orderId) : null;
-    const result = validateStarsPreCheckout(pc,
-      record?.provider === 'telegram_stars' ? starsOrderFromDB(record) : null,
-      config.starsPayloadSecret);
-    await tg.call('answerPreCheckoutQuery', {
-      pre_checkout_query_id: pc.id, ok: result.ok,
-      ...(result.ok ? {} : { error_message: result.error_message }),
+  const pc=update.pre_checkout_query;
+  if(pc){
+    // Pre-checkout must respond in 10 seconds. A timeout declines the charge;
+    // it must never optimistically approve an unverified payment.
+    const validation=async()=>{
+      const orderId=parseStarsPayload(pc.invoice_payload,config.starsPayloadSecret);
+      const record=orderId ? await db.order(orderId):null;
+      return validateStarsPreCheckout(pc,
+        record?.provider==='telegram_stars'?starsOrderFromDB(record):null,
+        config.starsPayloadSecret);
+    };
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    const rejection={ok:false,error_message:'Проверка заказа заняла слишком много времени. Попробуйте ещё раз.'};
+    const result=await Promise.race([
+      validation().catch(()=>rejection),
+      new Promise<typeof rejection>(resolve=>{timer=setTimeout(()=>resolve(rejection),5500);}),
+    ]);
+    if(timer)clearTimeout(timer);
+    await tg.call('answerPreCheckoutQuery',{
+      pre_checkout_query_id:pc.id,ok:result.ok,
+      ...(result.ok?{}:{error_message:result.error_message}),
     });
     return;
   }
@@ -200,86 +209,69 @@ export async function handleTelegramUpdate(
     }
     return;
   }
-  const cb = update.callback_query;
-  if (cb) {
-    if (!validUserId(cb.from.id)) throw new Error('Invalid Telegram actor');
+
+  const cb=update.callback_query;
+  if(cb) {
+    if(!validUserId(cb.from.id))throw new Error('Invalid callback actor');
+    // Acknowledge quickly to stop the Telegram spinner before DB/network work.
+    await tg.call('answerCallbackQuery',{callback_query_id:cb.id});
+    if(cb.message?.chat.type!=='private'||cb.message.chat.id!==cb.from.id||
+      typeof cb.data!=='string'||cb.data.length>64)return;
     try {
-      if (!cb.message || cb.message.chat.type !== 'private' || cb.message.chat.id !== cb.from.id ||
-          !cb.data?.startsWith('buy:')) return;
-      const id = cb.data.slice(4);
-      if (!planId(id)) return;
-      const plan = await db.plan(id);
-      if (!plan || plan.stars === null) return;
-      const order = await db.createTelegramOrder(cb.from.id, id, 'tg-callback:'+cb.id);
-      await tg.call('sendInvoice', { ...buildStarsInvoice(starsOrderFromDB(order), pricedPlanForOrder(order), config.starsPayloadSecret) });
-    } finally {
-      await tg.call('answerCallbackQuery',{callback_query_id: cb.id});
+      const handled=await navigationCallback(cb.from.id,cb.data,cb.id,db,tg,config);
+      if(!handled)await showHome(cb.from.id,tg);
+    } catch(error) {
+      const text=String(error).includes('PENDING_CHECKOUT_RATE_LIMIT')
+        ? 'Слишком много незавершённых заказов. Завершите оплату или попробуйте позднее.'
+        : String(error).includes('OFFER_CHANGED')
+          ? 'Цена или срок обновились. Выберите тариф заново.'
+          : 'Действие пока не удалось. Попробуйте ещё раз через меню.';
+      await tg.call('sendMessage',{chat_id:cb.from.id,text});
     }
     return;
   }
-  if (msg?.chat.type === 'private' && msg.text && validUserId(msg.from?.id)
-      && msg.chat.id === msg.from.id) {
-    if (msg.text === '/my' || msg.text === '/status') {
-      const data=statusWidgetData(await db.listUserPackages(msg.from.id));
-      await tg.call('sendWidget',{...vpnWidgetPayload(msg.chat.id,data)});
-    } else if (msg.text === '/plans') {
-      const data=plansWidgetData(await db.plans('telegram_stars'));
-      await tg.call('sendWidget',{...vpnWidgetPayload(msg.chat.id,data)});
-    } else if (msg.text === '/share') {
-      if (!config.telegramBotUsername) {
-        await tg.call('sendMessage',{chat_id:msg.chat.id,
-          text:'Реферальные карточки пока не настроены: отсутствует имя бота.'});
-        return;
-      }
-      const offers=await db.referralOffers(msg.from.id);
-      if (!offers.length) {
-        await tg.call('sendMessage',{chat_id:msg.chat.id,
-          text:'Пока нет опубликованных тарифов для реферальной карточки.'});
-        return;
-      }
-      await tg.call('sendWidget',{
-        ...referralWidgetPayload(msg.chat.id,offers,config.telegramBotUsername),
-      });
-    } else if (/^\/start\s+r[A-Za-z0-9_-]{16,24}$/.test(msg.text.trim())) {
-      const token=msg.text.trim().split(' ')[1].slice(1);
-      const offer=await db.referralPlan(token);
-      if (!offer || offer.stars===null) {
-        await tg.call('sendMessage',{chat_id:msg.chat.id,
-          text:'Предложение недоступно. Выберите действующий тариф командой /plans.'});
-        return;
+  if(msg?.chat.type==='private'&&msg.text&&validUserId(msg.from?.id)&&
+     msg.chat.id===msg.from.id){
+    const id=msg.from.id,text=msg.text.trim();
+    const referral=/^\/start\s+([rt])([A-Za-z0-9_-]{16,24})$/.exec(text);
+    if(referral){
+      const token=referral[2],offer=await db.referralPlan(token);
+      if(!offer){
+        await tg.call('sendMessage',{chat_id:id,
+          text:'Предложение больше недоступно. Нажмите на кнопку выбора доступа.'});
+        await showHome(id,tg);return;
       }
       try {
-        // The referral is recorded in the SAME transaction as the order.
-        const order=await db.createTelegramOrder(msg.from.id,offer.planId,
-          'referral-start:'+update.update_id,token);
-        await tg.call('sendInvoice',{
-          ...buildStarsInvoice(starsOrderFromDB(order),pricedPlanForOrder(order),
-            config.starsPayloadSecret),
-        });
-      } catch {
-        await tg.call('sendMessage',{chat_id:msg.chat.id,
-          text:'Не удалось оформить предложение. Проверьте тариф или откройте /plans.'});
+        if(referral[1]==='t'){
+          await startTrial(id,offer.product,db,tg,token);
+        } else {
+          const order=await db.createTelegramOrder(id,offer.planId,
+            'referral-start:'+update.update_id,token);
+          // No second product/period selection. Native Telegram may still show
+          // its own initial Start button, and invoice requires user confirmation.
+          await tg.call('sendInvoice',{
+            ...buildStarsInvoice(starsOrderFromDB(order),pricedPlanForOrder(order),
+              config.starsPayloadSecret),
+          });
+        }
+      } catch(error) {
+        const message=String(error).includes('PENDING_CHECKOUT_RATE_LIMIT')
+          ? 'Слишком много незавершённых счетов. Завершите один из них или вернитесь позднее.'
+          : String(error).includes('Self-referral')||String(error).includes('self-owned')
+            ? 'Нельзя использовать собственное приглашение.'
+            : 'Не удалось открыть это предложение. Проверьте актуальную стоимость в каталоге.';
+        await tg.call('sendMessage',{chat_id:id,text:message});
       }
-    } else if (msg.text.startsWith('/start')) {
-      const plans = await db.plans('telegram_stars');
-      const available = plans.filter(p => p.stars !== null);
-      const html = '<h3>Выбери пакет MNEBYVPN</h3>' +
-        (available.length ? available.map(p =>
-          '<p><b>'+escapeHtml(p.title)+'</b> — '+p.stars+' ⭐</p>' +
-          '<tg-button-row><tg-button type="callback_data" style="primary" data="buy:'+p.planId+'">Купить '+p.stars+' ⭐</tg-button></tg-button-row>'
-        ).join('') : '<p>Тарифы пока не опубликованы.</p>');
-      // Documented Bot API 10.3 rich content + inline buttons (NOT HTMLBubbles).
-      await tg.call('sendRichMessage', {
-        chat_id: msg.chat.id,
-        rich_message: { html },
-      });
-    } else if (msg.text.startsWith('/paysupport') || msg.text.startsWith('/support')) {
-      await tg.call('sendMessage', { chat_id: msg.chat.id,
-        text: 'Поддержка платежей: напишите администратору проекта. Контакт публикуется при запуске.' });
-    } else if (msg.text.startsWith('/terms')) {
-      await tg.call('sendMessage', { chat_id: msg.chat.id,
-        text: 'Условия покупки и возврата будут опубликованы перед началом продаж.' });
+      return;
     }
+    try {
+      if(await navigationText(id,text,db,tg,config))return;
+    } catch {
+      await tg.call('sendMessage',{chat_id:id,text:'Не удалось открыть раздел. Попробуйте ещё раз.'});
+      return;
+    }
+    // Show familiar controls to any unrecognized message, no slash prompts.
+    await showHome(id,tg);
   }
 }
 export interface DeliveryResult { statusCode: number; text: string }
