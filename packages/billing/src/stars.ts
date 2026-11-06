@@ -81,13 +81,16 @@ export function buildStarsInvoice(
       || !Number.isSafeInteger(order.telegramUserId) || order.telegramUserId <= 0) {
     throw new Error('Invoice/order mismatch');
   }
+  // Telegram sendInvoice accepts only 1–32 Unicode characters in title.
+  // Catalog entries may be longer; keep the immutable order terms unchanged.
+  const invoiceTitle=Array.from(plan.title.trim()).slice(0,32).join('')||'Мне бы VPN';
   return {
     chat_id: order.telegramUserId,
-    title: plan.title,
+    title: invoiceTitle,
     description: 'Разовый пакет MNEBYVPN. Продление вручную.',
     payload: starsPayload(order.id, secret),
     currency: 'XTR',
-    prices: [{ label: plan.title, amount: order.amount }],
+    prices: [{ label: invoiceTitle, amount: order.amount }],
     start_parameter: 'order_' + order.id.replaceAll('-', ''),
   };
 }
