@@ -112,7 +112,7 @@ async function packages(id:number){
     const remaining=effective==='EXPIRED'?null:formatRemainingTime(expiresAt);
     const quota=formatRemainingQuota(row.quotaLimitBytes,row.quotaUsedBytes);
     return (index+1)+'. '+label(row.product)+' — '+state+expiry+
-      (remaining?' · '+remaining:'')+(quota?'\\n'+quota:'');
+      (remaining?' · '+remaining:'')+(quota?'\n'+quota:'');
   });
   return msg('🔐 Мои подключения\n\n'+items.join('\n\n')+
     '\n\nСрок пробного VPN не расходуется, пока узел не подтвердит выдачу.',
