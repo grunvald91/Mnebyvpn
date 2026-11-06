@@ -97,6 +97,7 @@ class MerchantTransport implements PayformLinkTransport {
 
 const html = await readFile(new URL('../public/index.html', import.meta.url));
 const css = await readFile(new URL('../public/site.css', import.meta.url));
+const neoCss = await readFile(new URL('../public/neo.css', import.meta.url));
 const js = await readFile(new URL('../public/app.js', import.meta.url));
 const policy = [
   "default-src 'none'", "script-src 'self'", "style-src 'self'",
@@ -247,6 +248,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === 'GET' && url.pathname === '/site.css') {
     send(res, 200, css, 'text/css; charset=utf-8'); return;
+  }
+  if (req.method === 'GET' && url.pathname === '/neo.css') {
+    send(res, 200, neoCss, 'text/css; charset=utf-8'); return;
   }
   if (req.method === 'GET' && url.pathname === '/app.js') {
     send(res, 200, js, 'text/javascript; charset=utf-8'); return;
