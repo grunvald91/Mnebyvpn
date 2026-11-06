@@ -4,19 +4,19 @@ import {
   supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText,
 } from '../packages/support/src/telegram-relay.ts';
 
-test('support disabled by default and rejects incomplete or unsafe configuration',()=>{
+test('support has no separate chat ID and only enables one configured bot operator',()=>{
+  const token='123456:'+('a'.repeat(35));
   assert.equal(supportConfig({}),null);
-  assert.throws(()=>supportConfig({SUPPORT_TELEGRAM_BOT_TOKEN:'12345:abc'}));
-  assert.throws(()=>supportConfig({SUPPORT_TELEGRAM_CHAT_ID:'123'}));
+  assert.equal(supportConfig({SUPPORT_TELEGRAM_CHAT_ID:'-100456'}),null);
+  assert.throws(()=>supportConfig({TELEGRAM_TOKEN_BOT:'bad',SUPPORT_TELEGRAM_OPERATOR_ID:'12345'}));
+  assert.throws(()=>supportConfig({TELEGRAM_TOKEN_BOT:token}));
+  assert.throws(()=>supportConfig({SUPPORT_TELEGRAM_OPERATOR_ID:'12345'}));
   assert.throws(()=>supportConfig({
-    SUPPORT_TELEGRAM_BOT_TOKEN:'123456:'+('a'.repeat(35)),
-    SUPPORT_TELEGRAM_CHAT_ID:'100',SUPPORT_TELEGRAM_OPERATOR_ID:'bad',
+    TELEGRAM_TOKEN_BOT:token,SUPPORT_TELEGRAM_OPERATOR_ID:'bad',
   }));
   assert.deepEqual(supportConfig({
-    SUPPORT_TELEGRAM_BOT_TOKEN:'123456:'+('a'.repeat(35)),
-    SUPPORT_TELEGRAM_CHAT_ID:'-100100',
-    SUPPORT_TELEGRAM_OPERATOR_ID:'3003',
-  }),{botToken:'123456:'+('a'.repeat(35)),chatId:-100100,operatorId:3003});
+    TELEGRAM_TOKEN_BOT:token,SUPPORT_TELEGRAM_OPERATOR_ID:'12345',
+  }),{botToken:token,operatorId:12345});
 });
 test('validate support text and callback contact without accepting controls',()=>{
   assert.equal(validSupportText('не работает'),true);
@@ -38,7 +38,7 @@ test('support limiter permits three messages per window, then reopens',()=>{
   assert.equal(allowed('a',10_001),true);
 });
 test('confirm Telegram Bot API ok before reporting delivery',async()=>{
-  const config={botToken:'123456:'+('b'.repeat(35)),chatId:123,operatorId:123};
+  const config={botToken:'123456:'+('b'.repeat(35)),operatorId:123};
   const oldFetch=globalThis.fetch;
   let lastPayload:unknown=null;
   try{
