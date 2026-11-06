@@ -132,7 +132,8 @@ export class RemnawaveApi {
       });
     }
     const after=await this.getByEntitlement(id);
-    if(!after||after.status!==(enabled?'ACTIVE':'DISABLED')||
+    if(!after||(enabled?after.status!=='ACTIVE':
+       !['DISABLED','EXPIRED'].includes(after.status))||
        Math.abs(Date.parse(after.expireAt)-effectiveExpiry.getTime())>1000||
        after.description!==desc)
       throw Error('Remnawave panel read-back mismatch');
