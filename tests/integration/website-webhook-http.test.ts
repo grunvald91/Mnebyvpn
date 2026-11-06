@@ -4,7 +4,7 @@ import {spawn,type ChildProcess} from 'node:child_process';
 import {createServer} from 'node:net';
 import {fileURLToPath} from 'node:url';
 import {randomUUID,createHash} from 'node:crypto';
-import {issueSession,csrfForSession} from '../../packages/web/src/security.ts';
+import {issueAccountSession,csrfForSession} from '../../packages/web/src/security.ts';
 import {Pool} from 'pg';
 import {PgBillingStore} from '../../packages/billing/src/store.ts';
 import {signProdamus,type Fields} from '../../packages/billing/src/prodamus.ts';
@@ -133,7 +133,7 @@ test('webhook remains available when new checkout is disabled, and customer APIs
 
 test('signed cookie not in server ledger cannot access account; logout revokes it',async()=>{
   const key='w'.repeat(64);
-  const raw=issueSession(telegramId,key);
+  const raw=issueAccountSession(accountId,key);
   const headers={cookie:'mnebyvpn_session='+raw};
   const base='http://127.0.0.1:'+port;
   assert.equal((await fetch(base+'/api/me',{headers})).status,401);
