@@ -57,9 +57,9 @@ export class RemnawaveProvisioningAdapter implements ProvisioningAdapter {
   // acknowledge a new ENABLE or start a customer's 24-hour trial.
   // Do not set enforcesHardExpiry=true based on a report SHA or version string.
   readonly panel:RemnawaveControl;
-  readonly evidence:HardExpiryEvidence;
-  constructor(panel:RemnawaveControl,evidence:HardExpiryEvidence){
-    validateHardExpiryEvidence(evidence);
+  readonly evidence?:HardExpiryEvidence;
+  constructor(panel:RemnawaveControl,evidence?:HardExpiryEvidence){
+    if(evidence)validateHardExpiryEvidence(evidence);
     this.panel=panel;
     this.evidence=evidence;
   }
