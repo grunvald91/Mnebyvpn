@@ -123,9 +123,10 @@ export class RemnawaveApi {
     return after;
   }
   /** Only after DB verifies the user owns an ACTIVE, provisioned VPN entitlement. */
-  async subscriptionFor(id:string,expectedExpiry:Date):Promise<string|null> {
+  async subscriptionFor(id:string,expectedExpiry:Date,expectedRevision:number):Promise<string|null> {
     const record=await this.getByEntitlement(id);
-    if(!record||record.status!=='ACTIVE'||!record.subscriptionUrl)return null;
+    if(!record||record.status!=='ACTIVE'||!record.subscriptionUrl||
+       record.description!==description(id,expectedRevision))return null;
     if(!Number.isFinite(expectedExpiry.getTime())||expectedExpiry.getTime()<=Date.now())return null;
     if(Math.abs(Date.parse(record.expireAt)-expectedExpiry.getTime())>1000)return null;
     const u=new URL(record.subscriptionUrl);
