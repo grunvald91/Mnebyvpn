@@ -177,3 +177,59 @@ SQL/HTTP тесты внутри GitHub Actions используют однор�
 **GitHub Actions Secrets:** в репозитории `grunvald91/Mnebyvpn` создать `TELEGRAM_BOT_TOKEN` — Bot API токен, а также отдельные `TELEGRAM_OIDC_CLIENT_ID` и `TELEGRAM_OIDC_CLIENT_SECRET` из BotFather Login Widget. Токен бота **не является** OIDC Client Secret. URL для OIDC: `https://mnebyvpn.site/auth/callback` после реального DNS+TLS. Secret никогда не хранить в Git или публичном HTML. Для production-установки секреты должны быть доступны именно тому workflow, который выпускает код; секрет другого репозитория не виден автоматически.
 
 Интернет-оплата, выдача VPN/DNS и квота остаются закрытыми до end-to-end испытаний и законных условий продажи. Для публичной информационной страницы не обещать работающий платный доступ.
+
+## Этап 18 — обязательный вход для пробного VPN (06.11.2026)
+
+Сайт должен требовать идентичность перед **любым** бесплатным trial. Полностью отключён
+анонимный маршрут `/api/guest/trial` (ответ HTTP 403) — старый флаг
+`WEB_GUEST_TRIAL_ENABLED` более не разрешает доступ. Не используйте cookie браузера
+как способ гарантировать «одни сутки в одни руки».
+
+Есть два независимых входа на `mnebyvpn.site`:
+- Telegram: `/auth/login` и `https://mnebyvpn.site/auth/callback`.
+  `WEB_TELEGRAM_OIDC_ENABLED=yes`, `TELEGRAM_OIDC_CLIENT_ID` и
+  `TELEGRAM_OIDC_CLIENT_SECRET` из BotFather, **не Bot API token**.
+- Яндекс ID: `/auth/yandex` и **точный** зарегистрированный Redirect URI
+  `https://mnebyvpn.site/auth/yandex/callback`.
+  Переменные `WEB_YANDEX_OAUTH_ENABLED=yes`, `YANDEX_OAUTH_CLIENT_ID`,
+  `YANDEX_OAUTH_CLIENT_SECRET`. Зарегистрируйте OAuth-приложение на
+  https://oauth.yandex.ru/client/new; запросите `login:info`; получите
+  Client ID/Secret, **не коммитьте** их и не помещайте в публичный JS.
+
+На сервере используется OAuth Code + PKCE S256 + одноразовый `state` в подписанном
+HttpOnly cookie; для Telegram проверяется подпись ID token и обязательные
+OIDC claims, для Яндекса — HTTPS `/info` и совпадение `client_id`.
+Отзываемая сессия сайта привязана к внутреннему `accounts.id`; снаружи
+этот идентификатор для авторизации не принимается.
+
+Применить миграцию `db/migrations/0018_site_provider_identities.sql` **после 0017**
+до запуска новой веб-версии. `accounts.yandex_user_id` уникален; у каждого
+внутреннего аккаунта один `trial_grants.account_id` за всё время, включая
+Telegram-бота. После входа можно явно привязать второй способ через кабинет:
+`/auth/yandex?link=1` / `/auth/login?link=1`. Привязка к уже занятому
+в другом аккаунте идентификатору должна завершаться отказом, **не** слиянием
+подписок. Лимит «один на аккаунт» не устраняет злоупотребления путём создания
+разных аккаунтов; антифрод должен проектироваться отдельно.
+
+`POST /api/trial` (CSRF + authenticated session), `GET /api/me`
+(внутренний account ID), `POST /api/vpn/subscription` (CSRF + реальный узловой ACK)
+образуют путь подключения. Ответ последнего выдаёт bearer URL **только если**
+узел подтвердил ACTIVE доступ. Затем на сайте доступны ссылки для скачивания
+INCY/Karing, `/install/<token>?client=incy|karing`, а также копирование URL.
+Название подписки, заголовок клиента и логотип сайта/бота пишутся латиницей
+`MNEBYVPN`.
+
+**Продакшен не подтверждён:** нужны реальный Yandex OAuth app+permissions,
+BotFather credentials, on-wire VPN activation/revocation, настройки веб-сервиса,
+применение миграции к БД и E2E с разными браузерами/устройствами. Текущий
+`.github/workflows/deploy-production.yml` перезапускает только отдельные
+Telegram-bot и VPN-worker systemd unit; автоматическую выкладку **самого
+веб-сайта** он не выполняет. Не объявляйте веб-релиз готовым без отдельного
+подтверждённого deploy-контура и явного включения соответствующих флагов.
+
+Источники:
+- https://core.telegram.org/bots/telegram-login
+- https://yandex.ru/dev/id/doc/ru/codes/code-url
+- https://yandex.ru/dev/id/doc/ru/user-information
+- https://docs.incy.cc/en/deep-links/
+- https://karing.app/cooperation/scheme
