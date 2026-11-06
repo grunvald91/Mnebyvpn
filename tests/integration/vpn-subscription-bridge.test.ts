@@ -62,7 +62,11 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
      'apps/web/src/server.ts'],{
      cwd:fileURLToPath(new URL('../../',import.meta.url)),
      stdio:'ignore',
-     env:{...process.env,DATABASE_URL:db,
+     // The website's own database intentionally has NO VPN subscription
+     // table; only the separately connected bot database does.
+     env:{...process.env,
+       DATABASE_URL:db.replace(/\/mnebyvpn_test$/, '/postgres'),
+       VPN_SUBSCRIPTION_DATABASE_URL:db,
        WEB_BASE_URL:'http://127.0.0.1:'+webPort,
        WEB_PORT:String(webPort),MNEBYVPN_ENV:'offline-test',
        WEB_SESSION_SECRET:'A'.repeat(64),
