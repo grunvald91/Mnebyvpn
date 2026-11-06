@@ -25,7 +25,6 @@ if [[ -e "$current" && ! -L "$current" ]]; then
   exit 3
 fi
 command -v node >/dev/null
-command -v npm >/dev/null
 command -v systemctl >/dev/null
 command -v curl >/dev/null
 node -e 'const [major,minor]=process.versions.node.split(".").map(Number);if(major<22||(major===22&&minor<16))process.exit(1)' || {
@@ -42,7 +41,10 @@ tar -xzf "$archive" -C "$release" --no-same-owner
   test -f package.json
   test -f apps/service/src/telegram-cabinet-server.ts
   test -f apps/service/src/vpn-provisioning-worker.ts
-  npm install --omit=dev --ignore-scripts --no-audit --no-fund --silent
+  test -f node_modules/pg/package.json
+  # The contents were built and tested in the corresponding green main run.
+  # Never resolve/install a different dependency set on the production VPS.
+  node -e "require('pg')"
 )
 old=""
 if [[ -L "$current" ]]; then
