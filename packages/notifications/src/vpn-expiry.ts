@@ -23,7 +23,8 @@ const dueWindow =
   "AND e.expires_at<=clock_timestamp()+interval '24 hours')";
 
 export class PgVpnExpiryReminderQueue {
-  constructor(private readonly pool:Pool){}
+  private readonly pool:Pool;
+  constructor(pool:Pool){this.pool=pool;}
   /** Runs after expiry/provisioning reconciliation. Only ACTIVE + node-ACK access. */
   async discover(limit=200):Promise<number>{
     if(!Number.isInteger(limit)||limit<1||limit>500)throw Error('Invalid reminder batch');
@@ -133,9 +134,13 @@ export function formatVpnExpiryReminder(job:VpnExpiryReminder):string{
     '\n\nПродлите подписку заранее, чтобы подключение не прерывалось.';
 }
 export class TelegramBotReminderSender implements ReminderSender{
-  constructor(private readonly token:string,private readonly fetcher:typeof fetch=fetch){
+  private readonly token:string;
+  private readonly fetcher:typeof fetch;
+  constructor(token:string,fetcher:typeof fetch=fetch){
     if(!/^[0-9]{5,20}:[A-Za-z0-9_-]{30,}$/.test(token))
       throw Error('Invalid Telegram bot token');
+    this.token=token;
+    this.fetcher=fetcher;
   }
   async send(job:VpnExpiryReminder):Promise<DeliveryResult>{
     const endpoint='https://api.telegram.org/bot'+this.token+'/sendMessage';
