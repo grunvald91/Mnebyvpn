@@ -1,0 +1,255 @@
+/* Public catalog + authenticated account client. No client-side entitlement decisions. */
+const byId = id => document.getElementById(id);
+const text = (id, value) => { byId(id).textContent = String(value); };
+const state = {
+  product: 'vpn', days: 15, plans: [], checkoutEnabled: false,
+  loggedIn: false, csrf: '', busy: false, requestId: null,
+};
+const productNames = { vpn:'VPN', smart_dns:'Smart DNS', bundle:'VPN + Smart DNS' };
+const stateNames = {
+  ACTIVE:'Активен', PAID_PENDING_PROVISIONING:'Подключается',
+  PENDING_PAYMENT:'Ожидает оплаты', PROVISIONING_FAILED:'Ошибка подключения',
+  SUSPENDED:'Приостановлен', EXPIRED:'Истёк', CANCELLED:'Отменён', REFUNDED:'Возврат',
+  PENDING:'Ожидает оплаты', PAID:'Оплачен', TRIAL:'Пробный доступ',
+};
+const formatMoney = n => (Number(n)/100).toLocaleString('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2});
+const formatDate = raw => raw ? new Date(raw).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'}) : 'После активации';
+const safeBigInt = value => {
+  try { return BigInt(value); } catch { return null; }
+};
+const fmtBytes = raw => {
+  const bytes = safeBigInt(raw);
+  if (bytes === null) return '—';
+  const mb = Number(bytes) / 1048576;
+  if (mb >= 1024) return (mb / 1024).toLocaleString('ru-RU',{maximumFractionDigits:1}) + ' ГБ';
+  return mb.toLocaleString('ru-RU',{maximumFractionDigits:1}) + ' МБ';
+};
+function remaining(seconds) {
+  if (seconds === null) return 'После активации';
+  if (seconds <= 0) return 'Срок истёк';
+  if (seconds < 86400) return Math.max(1,Math.ceil(seconds/3600)) + ' ч';
+  return Math.ceil(seconds/86400) + ' дн';
+}
+function toast(message) {
+  const el = byId('toast');
+  el.textContent = String(message);
+  el.classList.remove('hidden');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(()=>el.classList.add('hidden'),6500);
+}
+async function api(url, options) {
+  const response = await fetch(url,{cache:'no-store',credentials:'same-origin',...options});
+  const data = await response.json();
+  if(!response.ok) {
+    const error = new Error(data.code || 'SERVICE_UNAVAILABLE');
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+function setSelection(product, days) {
+  if (!Object.hasOwn(productNames,product) || ![15,30,60,90].includes(days)) return;
+  if (product !== state.product || days !== state.days) state.requestId = null;
+  state.product = product; state.days = days;
+  document.querySelectorAll('[data-product]').forEach(btn => {
+    const active=btn.dataset.product===product;
+    btn.classList.toggle('selected',active);btn.setAttribute('aria-pressed',String(active));
+  });
+  document.querySelectorAll('[data-days]').forEach(btn => {
+    const active=Number(btn.dataset.days)===days;
+    btn.classList.toggle('selected',active);btn.setAttribute('aria-pressed',String(active));
+  });
+  renderPlan();
+}
+function renderPlan() {
+  const plan = state.plans.find(p=>p.product===state.product && p.durationDays===state.days);
+  text('selected-plan-name', plan?.title || productNames[state.product] + ' · ' + state.days + ' дней');
+  text('selected-duration',state.days+' дней');
+  text('selected-quota',state.product==='vpn'?'Не входит':plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
+  text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):'—');
+  text('price-description',plan?'Фиксированный срок доступа. Продление оформляется отдельным заказом.':
+    'Тариф ещё не опубликован. Стоимость и квота появятся после утверждения.');
+  const buy=byId('buy-button');
+  buy.disabled=!plan||!state.checkoutEnabled||state.busy;
+  buy.textContent=state.busy?'Создаём заказ…':!plan?'Тариф пока недоступен':
+    !state.checkoutEnabled?'Покупка пока недоступна':
+    !state.loggedIn?'Войти и купить':'Купить доступ';
+  text('checkout-hint',!plan?'Неопубликованные тарифы не продаются.':
+    !state.checkoutEnabled?'Онлайн-оплата включится после проверки платёжного подключения.':
+    'Оплата проходит на защищённой странице Продамус.');
+}
+function node(tag, cls, content) {
+  const el=document.createElement(tag);
+  if(cls)el.className=cls;
+  if(content!==undefined)el.textContent=String(content);
+  return el;
+}
+function statusLabel(access) {
+  if(access.state==='ACTIVE' && access.secondsRemaining===0) return 'Истёк';
+  return stateNames[access.state] || access.state;
+}
+function renderAccess(accesses) {
+  const list=byId('access-list');
+  list.replaceChildren();
+  if(!accesses.length) {
+    list.append(node('div','empty','Пока нет подписок. Выберите тариф выше, когда он станет доступен.'));
+    return;
+  }
+  for(const a of accesses) {
+    const item=node('article','access-item');
+    const top=node('div','access-top');
+    const h=node('h4','',productNames[a.product] || a.product);
+    const effective=a.state==='ACTIVE' && a.secondsRemaining===0?'EXPIRED':a.state;
+    const badge=node('span','status '+(effective==='ACTIVE'?'active':
+      effective.includes('PENDING')?'pending':'expired'),statusLabel(a));
+    top.append(h,badge);
+    item.append(top,node('p','',a.expiresAt?
+      'До '+formatDate(a.expiresAt)+' · Осталось: '+remaining(a.secondsRemaining):
+      'Срок начнётся после подтверждённой активации.'));
+    if (a.product==='smart_dns') {
+      item.append(node('p','',a.quotaLimitBytes?
+        'Пакет DNS: '+fmtBytes(a.quotaLimitBytes):'DNS-квота пока не установлена'));
+      if (a.meteringVerified && a.quotaUsedBytes!==null && a.quotaRemainingBytes!==null) {
+        const used=safeBigInt(a.quotaUsedBytes),limit=safeBigInt(a.quotaLimitBytes);
+        const pct=(used!==null && limit!==null && limit>0n)?
+          Math.max(0,Math.min(100,Number(used*100n/limit))):0;
+        const box=node('div','usage');
+        const track=node('div','usage-track');
+        const fill=node('div','usage-fill');
+        fill.style.width=pct+'%';
+        track.append(fill);
+        const totals=node('div','usage-info');
+        totals.append(node('span','','Израсходовано: '+fmtBytes(a.quotaUsedBytes)),
+          node('span','','Осталось: '+fmtBytes(a.quotaRemainingBytes)));
+        box.append(track,totals);item.append(box);
+      } else {
+        item.append(node('div','usage-unavailable',
+          'Учёт расхода DNS пока не подтверждён. Использовано / осталось: нет достоверных данных.'));
+      }
+    }
+    list.append(item);
+  }
+}
+function renderOrders(orders) {
+  const list=byId('orders-list');
+  list.replaceChildren();
+  if (!orders.length) {list.append(node('div','empty','Здесь появится история заказов.'));return;}
+  for (const o of orders) {
+    const row=node('article','order-item');
+    const left=node('div');
+    left.append(node('strong','',o.title||productNames[o.product]||'Пробный доступ'));
+    left.append(node('p','',formatDate(o.createdAt)+' · '+(stateNames[o.state]||o.state)));
+    const amount=o.state==='TRIAL'?'Бесплатно':
+      o.currency==='RUB'?formatMoney(o.amountMinor):String(o.amountMinor)+' ⭐';
+    row.append(left,node('div','order-price',amount));list.append(row);
+  }
+}
+function renderAccount(payload) {
+  state.loggedIn=true;state.csrf=payload.csrf;
+  byId('login-prompt').classList.add('hidden');
+  byId('account-content').classList.remove('hidden');
+  byId('logout-button').classList.remove('hidden');
+  byId('auth-link').textContent='Мой доступ';
+  byId('auth-link').href='#account';
+  text('account-name','Мой аккаунт');
+  text('account-subtitle','Вход через Telegram · защищённая сессия');
+  const accesses=payload.access||[];
+  const active=accesses.filter(a=>a.state==='ACTIVE' && (a.secondsRemaining===null||a.secondsRemaining>0));
+  text('active-count',active.length);
+  const timed=active.filter(a=>a.secondsRemaining!==null).sort((a,b)=>a.secondsRemaining-b.secondsRemaining);
+  text('days-left',timed.length?remaining(timed[0].secondsRemaining):'—');
+  text('days-hint',timed.length?'До ближайшего окончания':'Нет активных подписок');
+  renderAccess(accesses);renderOrders(payload.orders||[]);
+  renderPlan();
+}
+async function refresh() {
+  try {
+    const data=await api('/api/me');
+    renderAccount(data);
+  } catch(error) {
+    if(error.status===401) {
+      state.loggedIn=false;renderPlan();return;
+    }
+    toast('Не удалось загрузить кабинет. Попробуйте обновить страницу.');
+  }
+}
+async function loadCatalog() {
+  try {
+    const data=await api('/api/plans');
+    state.plans=Array.isArray(data.plans)?data.plans:[];
+    state.checkoutEnabled=data.checkoutEnabled===true;
+  } catch {
+    toast('Не удалось загрузить тарифы. Попробуйте позже.');
+  }
+  renderPlan();
+}
+function applyLinkOptions() {
+  const url=new URL(location.href);
+  const product=url.searchParams.get('product');
+  const days=Number(url.searchParams.get('days'));
+  if(Object.hasOwn(productNames,product)&&[15,30,60,90].includes(days)){
+    state.product=product;state.days=days;
+  } else {
+    try {
+      const saved=JSON.parse(sessionStorage.getItem('mnebyvpn-selection')||'null');
+      if(saved && Object.hasOwn(productNames,saved.product) &&
+        [15,30,60,90].includes(saved.days)) {
+        state.product=saved.product;state.days=saved.days;
+      }
+    } catch {}
+  }
+  setSelection(state.product,state.days);
+  if(url.searchParams.get('login')==='failed')
+    toast('Авторизация не завершена. Проверьте вход через Telegram.');
+  if(url.searchParams.get('payment')==='returned')
+    toast('Возврат из оплаты — не подтверждение платежа. Статус появится после проверки уведомления.');
+}
+async function purchase() {
+  const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
+  if(!plan||!state.checkoutEnabled||state.busy)return;
+  if(!state.loggedIn) {
+    sessionStorage.setItem('mnebyvpn-selection',JSON.stringify({product:state.product,days:state.days}));
+    location.assign('/auth/login');return;
+  }
+  state.busy=true;state.requestId ||= crypto.randomUUID();renderPlan();
+  const params=new URL(location.href).searchParams;
+  const ref=params.get('ref');
+  const payload={planId:plan.id,requestId:state.requestId};
+  if(ref && /^[A-Za-z0-9_-]{16,24}$/.test(ref))payload.inviteToken=ref;
+  try {
+    const result=await api('/api/checkout',{
+      method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
+      body:JSON.stringify(payload),
+    });
+    const target=new URL(result.paymentUrl);
+    if(target.protocol!=='https:' || !(target.hostname==='payform.ru' ||
+      target.hostname.endsWith('.payform.ru')))throw new Error('UNSAFE_PAYMENT_LINK');
+    location.assign(target.toString());
+  }catch(error){
+    const messages={
+      PAYMENT_NOT_AVAILABLE:'Оплата сейчас недоступна.',
+      INVALID_CHECKOUT:'Не удалось проверить параметры заказа.',
+      LOGIN_REQUIRED:'Сессия истекла. Войдите повторно.',
+    };
+    toast(messages[error.message] || 'Не удалось открыть оплату. Повторите попытку позднее.');
+  } finally {state.busy=false;renderPlan();}
+}
+async function logout() {
+  if(!state.csrf)return;
+  try {
+    await api('/api/logout',{method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
+      body:'{}'});
+    location.assign('/');
+  } catch {toast('Не удалось выйти. Попробуйте ещё раз.');}
+}
+document.querySelectorAll('[data-product]').forEach(button=>{
+  button.addEventListener('click',()=>setSelection(button.dataset.product,state.days));
+});
+document.querySelectorAll('[data-days]').forEach(button=>{
+  button.addEventListener('click',()=>setSelection(state.product,Number(button.dataset.days)));
+});
+byId('buy-button').addEventListener('click',purchase);
+byId('logout-button').addEventListener('click',logout);
+applyLinkOptions();
+Promise.all([loadCatalog(),refresh()]);
