@@ -53,6 +53,14 @@ test('verified panel profile may be shown only for exact expiry and HTTPS host',
  current.subscriptionUrl='https://subs.example.test/profile/secret-token';
  current.status='DISABLED';
  assert.equal(await api.subscriptionFor(entitlement,expiry,1),null);
+ const writes=()=>calls.filter(x=>x.method==='PATCH'||x.method==='POST').length;
+ const originalWrites=writes();
+ current.description='managed-by-another-application';
+ await assert.rejects(api.applyPanelChange(entitlement,3,false,null),/not owned/);
+ assert.equal(writes(),originalWrites,'must never overwrite a colliding username');
+ current.description='mnebyvpn:'+entitlement+':rev:9';
+ await assert.rejects(api.applyPanelChange(entitlement,2,false,null),/newer/);
+ assert.equal(writes(),originalWrites,'must never downgrade a newer panel revision');
  assert.ok(calls.some(x=>x.method==='POST'));
 });
 test('no active URL from panel if it cannot be read back',async()=>{
