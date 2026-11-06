@@ -3,7 +3,7 @@ const byId = id => document.getElementById(id);
 const text = (id, value) => { byId(id).textContent = String(value); };
 const state = {
   product: 'vpn', days: 15, plans: [], checkoutEnabled: false,
-  loggedIn: false, csrf: '', busy: false, requestId: null,
+  loggedIn: false, csrf: '', busy: false, requestId: null, trialOffers: [],
 };
 const productNames = { vpn:'VPN', smart_dns:'Smart DNS', bundle:'VPN + Smart DNS' };
 const stateNames = {
@@ -74,6 +74,10 @@ function renderPlan() {
   buy.textContent=state.busy?'Создаём заказ…':!plan?'Тариф пока недоступен':
     !state.checkoutEnabled?'Покупка пока недоступна':
     !state.loggedIn?'Войти и купить':'Купить доступ';
+  const trial=byId('trial-button');
+  const trialAvailable=state.trialOffers.includes(state.product);
+  trial.disabled=!trialAvailable||state.busy;
+  trial.textContent=trialAvailable?'Попробовать 24 часа бесплатно':'Пробные 24 часа — пока недоступны';
   text('checkout-hint',!plan?'Неопубликованные тарифы не продаются.':
     !state.checkoutEnabled?'Онлайн-оплата включится после проверки платёжного подключения.':
     'Оплата проходит на защищённой странице Продамус.');
@@ -127,6 +131,17 @@ function renderAccess(accesses) {
           'Учёт расхода DNS пока не подтверждён. Использовано / осталось: нет достоверных данных.'));
       }
     }
+    const durations=state.plans.filter(p=>p.product===a.product);
+    if (durations.length) {
+      const renew=node('button','button button-secondary renew-button','Продлить доступ ↗');
+      renew.type='button';
+      renew.addEventListener('click',()=>{
+        const preferred=durations.find(p=>p.durationDays===30)||durations[0];
+        setSelection(a.product,preferred.durationDays);
+        byId('plans').scrollIntoView({behavior:'smooth'});
+      });
+      item.append(renew);
+    }
     list.append(item);
   }
 }
@@ -178,6 +193,7 @@ async function loadCatalog() {
     const data=await api('/api/plans');
     state.plans=Array.isArray(data.plans)?data.plans:[];
     state.checkoutEnabled=data.checkoutEnabled===true;
+    state.trialOffers=Array.isArray(data.trialOffers)?data.trialOffers:[];
   } catch {
     toast('Не удалось загрузить тарифы. Попробуйте позже.');
   }
@@ -234,6 +250,31 @@ async function purchase() {
     toast(messages[error.message] || 'Не удалось открыть оплату. Повторите попытку позднее.');
   } finally {state.busy=false;renderPlan();}
 }
+async function claimTrial() {
+  if(state.busy || !state.trialOffers.includes(state.product))return;
+  if(!state.loggedIn){
+    sessionStorage.setItem('mnebyvpn-selection',JSON.stringify({product:state.product,days:state.days}));
+    location.assign('/auth/login');return;
+  }
+  state.busy=true;renderPlan();
+  const ref=new URL(location.href).searchParams.get('ref');
+  const payload={product:state.product};
+  if(ref && /^[A-Za-z0-9_-]{16,24}$/.test(ref))payload.inviteToken=ref;
+  try {
+    const response=await api('/api/trial',{method:'POST',headers:{
+      'Content-Type':'application/json','X-CSRF-Token':state.csrf,
+    },body:JSON.stringify(payload)});
+    const messages={
+      GRANTED:'Пробный доступ оформлен. Статус обновится после подтверждения узлом.',
+      PENDING:'Заявка уже существует. Время не расходуется до подключения.',
+      ALREADY_USED:'Вы уже использовали свой пробный период.',
+      UNAVAILABLE:'Пробный доступ сейчас недоступен.',
+    };
+    toast(messages[response.status]||'Статус заявки обновлён.');
+    await refresh();
+  } catch {toast('Не удалось проверить пробный доступ. Попробуйте позднее.');}
+  finally {state.busy=false;renderPlan();}
+}
 async function logout() {
   if(!state.csrf)return;
   try {
@@ -250,6 +291,7 @@ document.querySelectorAll('[data-days]').forEach(button=>{
   button.addEventListener('click',()=>setSelection(state.product,Number(button.dataset.days)));
 });
 byId('buy-button').addEventListener('click',purchase);
+byId('trial-button').addEventListener('click',claimTrial);
 byId('logout-button').addEventListener('click',logout);
 applyLinkOptions();
 Promise.all([loadCatalog(),refresh()]);

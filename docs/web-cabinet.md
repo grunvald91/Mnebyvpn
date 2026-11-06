@@ -58,3 +58,12 @@
 - Существующие серверы, nginx, Xray/DoT/порты/фаервол **не изменялись**.
 
 Источники: [Telegram OIDC](https://core.telegram.org/bots/telegram-login), [Telegram legacy widget](https://core.telegram.org/widgets/login/), [Prodamus do=link](https://help.prodamus.ru/payform/integracii/rest-api/instrukcii-dlya-samostoyatelnaya-integracii-servisov).
+
+## Дополнение: пробные 24 часа и безопасное продление
+
+- На странице есть кнопка бесплатного пробного доступа; она становится активной **только** при `WEB_TRIAL_ENABLED=yes`, `WEB_NETWORK_PROVISIONING_VERIFIED=yes` и `trial_offers.enabled=true` в БД.
+- Пробный доступ запрашивается от того же подтверждённого Telegram ID, что и в боте. Один период на Telegram account; минуты не начисляются до подтверждения активации узлом.
+- На карточке каждого купленного доступа есть кнопка «Продлить доступ», переводящая к опубликованному подходящему тарифу.
+- `WEB_NETWORK_PROVISIONING_VERIFIED=yes` — только после live E2E выдачи и отзыва сетевого доступа. Без этого **невозможно** активировать checkout, trial или отображение DNS usage.
+- `WEB_LEGAL_PAGES_PUBLISHED=yes` — отдельно подтверждённые опубликованные условия продажи, политика данных, юридические реквизиты и поддержка. До их наличия checkout заблокирован.
+- `WEB_TRIAL_ENABLED=yes` — разрешить пробный доступ только после операционного одобрения; `trial_offers` по умолчанию выключены.

@@ -44,9 +44,12 @@ if (!/^[0-9]{5,20}$/.test(clientId) || clientSecret.length < 16)
 const tls = base.protocol === 'https:';
 const sessionCookie = tls ? '__Host-mnebyvpn_session' : 'mnebyvpn_session';
 const challengeCookie = tls ? '__Host-mnebyvpn_oidc' : 'mnebyvpn_oidc';
-const checkoutEnabled = process.env.WEB_CHECKOUT_ENABLED === '1' &&
-  process.env.WEB_PAYMENT_PROVIDER_TESTED === 'yes';
-const meteringVerified = process.env.WEB_DNS_METERING_VERIFIED === 'yes';
+const networkVerified = process.env.WEB_NETWORK_PROVISIONING_VERIFIED === 'yes';
+const checkoutEnabled = networkVerified && process.env.WEB_CHECKOUT_ENABLED === '1' &&
+  process.env.WEB_PAYMENT_PROVIDER_TESTED === 'yes' &&
+  process.env.WEB_LEGAL_PAGES_PUBLISHED === 'yes';
+const trialEnabled = networkVerified && process.env.WEB_TRIAL_ENABLED === 'yes';
+const meteringVerified = networkVerified && process.env.WEB_DNS_METERING_VERIFIED === 'yes';
 const pool = new Pool({ connectionString: required('DATABASE_URL'), max: 5, connectionTimeoutMillis: 3000 });
 const store = new PgBillingStore(pool);
 let payform: ProdamusConfig | undefined;
@@ -218,6 +221,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     json(res, 503, { ready: false, gates: [
       'VPN_NODE_AND_DNS_INGRESS_NOT_VERIFIED',
       'ON_WIRE_DNS_QUOTA_NOT_VERIFIED',
+      ...(networkVerified ? [] : ['NETWORK_PROVISIONING_NOT_VERIFIED']),
       ...(checkoutEnabled ? [] : ['PAYMENT_PROVIDER_NOT_VERIFIED']),
     ] }); return;
   }
@@ -229,7 +233,10 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === 'GET' && url.pathname === '/api/plans') {
     const plans = await store.plans('prodamus');
-    json(res,200,{ checkoutEnabled, plans: plans.map(p => ({
+    const trialOffers = trialEnabled
+      ? (await pool.query('SELECT product FROM trial_offers WHERE enabled=true')).rows.map(r=>r.product as string)
+      : [];
+    json(res,200,{ checkoutEnabled, trialOffers, plans: plans.map(p => ({
       id: p.planId, title: p.title, product: p.product,
       durationDays: p.durationSeconds / 86400, rubMinor: p.rubMinor,
       dnsQuotaBytes: p.dnsQuotaBytes?.toString() ?? null,
@@ -245,6 +252,22 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     if (!csrfAllowed(req,auth.raw)) { json(res,403,{code:'FORBIDDEN'});return; }
     setCookie(res,sessionCookie,'',0);
     json(res,200,{ok:true});return;
+  }
+  if (req.method === 'POST' && url.pathname === '/api/trial') {
+    if (!csrfAllowed(req,auth.raw)) { json(res,403,{code:'FORBIDDEN'});return; }
+    if (!trialEnabled) { json(res,503,{code:'TRIAL_NOT_AVAILABLE'});return; }
+    const body = await bodyJson(req);
+    if (!['vpn','smart_dns','bundle'].includes(String(body.product)) ||
+      typeof body.product !== 'string' ||
+      (body.inviteToken !== undefined &&
+        (typeof body.inviteToken !== 'string' ||
+         !/^[A-Za-z0-9_-]{16,24}$/.test(body.inviteToken)))) {
+      json(res,400,{code:'INVALID_TRIAL'});return;
+    }
+    const result = await store.grantTrial(auth.userId,
+      body.product as 'vpn'|'smart_dns'|'bundle',body.inviteToken as string|undefined);
+    json(res,200,{status:result.status,expiresAt:result.expiresAt?.toISOString()??null});
+    return;
   }
   if (req.method === 'POST' && url.pathname === '/api/checkout') {
     if (!csrfAllowed(req,auth.raw)) { json(res,403,{code:'FORBIDDEN'});return; }
