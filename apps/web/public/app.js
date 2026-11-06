@@ -223,8 +223,10 @@ function renderAccount(payload) {
 }
 function syncLoginLinks() {
   const top=byId('auth-link');
-  top.textContent=state.loginEnabled?'Войти':'Telegram-бот';
-  top.href=state.loginEnabled?'#account':'https://t.me/MnebyVPN_bot';
+  // Keep the Telegram bot as the primary product entry point.
+  // Website OAuth providers remain available inside the cabinet.
+  top.textContent='Telegram-бот';
+  top.href='https://t.me/MnebyVPN_bot';
   const cabinet=byId('cabinet-login-link');
   const yandex=byId('yandex-login-link');
   cabinet.textContent='Войти через Telegram';
