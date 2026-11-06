@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import {
   createLoginChallenge, consumeLoginChallenge, issueSession, readSession,
+  issueAccountSession, readAccountSession,
   csrfForSession, isValidCsrf, verifyTelegramIdToken,
 } from '../packages/web/src/security.ts';
 import { publicEntitlement } from '../packages/web/src/dashboard.ts';
@@ -29,6 +30,19 @@ test('authenticated session and CSRF are signed, time-bounded and account-specif
   assert.equal(readSession(s.slice(0,-1)+(s.endsWith('a')?'b':'a'),secret,now),null);
   assert.equal(isValidCsrf(csrfForSession(s,secret),s,secret),true);
   assert.equal(isValidCsrf(csrfForSession(s,secret),issueSession(2,secret,now),secret),false);
+});
+test('provider-specific PKCE and account session cannot be reused across identities',()=>{
+  const tg=createLoginChallenge(secret,now,'telegram');
+  const ya=createLoginChallenge(secret,now,'yandex');
+  assert.ok(consumeLoginChallenge(tg.cookie,tg.state,secret,now,'telegram'));
+  assert.equal(consumeLoginChallenge(tg.cookie,tg.state,secret,now,'yandex'),null);
+  assert.equal(consumeLoginChallenge(ya.cookie,ya.state,secret,now,'telegram'),null);
+  const id='11111111-1111-4111-8111-111111111111';
+  const raw=issueAccountSession(id,secret,now);
+  assert.equal(readAccountSession(raw,secret,now+60_000),id);
+  assert.equal(readAccountSession(raw,secret,now+12*60*60_000+1),null);
+  assert.equal(readAccountSession(raw+'x',secret,now),null);
+  assert.throws(()=>issueAccountSession('not-an-uuid',secret,now));
 });
 const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
 const jwk={...publicKey.export({format:'jwk'}),kid:'test-telegram-oidc',alg:'RS256',use:'sig'};
@@ -82,8 +96,8 @@ test('public website references the configured Telegram bot in navigation, hero 
   const {readFileSync}=await import('node:fs');
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
   const links=html.match(/https:\/\/t\.me\/MnebyVPN_bot/g)||[];
-  assert.equal(links.length,4);
-  assert.match(html,/id="trial-hero-button"/);
+  assert.ok(links.length>=2);
+  assert.doesNotMatch(html,/id="trial-hero-button"/);
   assert.match(html,/id="guest-trial-card"/);
   assert.match(html,/@MnebyVPN_bot/);
   assert.match(html,/rel="noopener noreferrer"/);
@@ -94,7 +108,8 @@ test('web cabinet reserves OIDC login for explicit BotFather integration',async(
   const backend=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
   const ui=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
   assert.match(backend,/WEB_TELEGRAM_OIDC_ENABLED/);
-  assert.match(backend,/TELEGRAM_LOGIN_NOT_READY/);
+  assert.match(backend,/LOGIN_PROVIDER_NOT_READY/);
+  assert.match(backend,/WEB_YANDEX_OAUTH_ENABLED/);
   assert.match(backend,/loginEnabled.*checkoutEnabled|checkoutEnabled.*loginEnabled/s);
   assert.match(ui,/syncLoginLinks/);
   assert.match(ui,/cabinet-login-link/);
@@ -132,7 +147,7 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
   assert.ok(avatar.byteLength > 1000 && avatar.byteLength < 20000);
   assert.match(html,/В тариф входит/);
   assert.match(html,/VPN-подключение<\/span><strong id="selected-quota">Входит/);
-  assert.doesNotMatch(html,/Не входит|↗|→/);
+  assert.doesNotMatch(html,/Не входит/);
   assert.doesNotMatch(client,/Перейти к оплате →|Не входит/);
   assert.match(css,/\.hero-art,\.hero-actions,\.hero-notes,\.features\{display:none\}/);
   assert.match(client,/const inDevelopment=state\.product!=='vpn'/);
@@ -141,19 +156,29 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
 });
 
 
-test('free 24h trial CTA remains visible in compact mobile layouts',async()=>{
+test('trial is behind verified Telegram/Yandex OAuth, never a guest cookie',async()=>{
   const {readFileSync}=await import('node:fs');
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
+  const backend=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
+  const ui=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
   const skin=readFileSync(new URL('../apps/web/public/neo.css',import.meta.url),'utf8');
-  const base=readFileSync(new URL('../apps/web/public/site.css',import.meta.url),'utf8');
-  assert.match(html,/id="trial-hero-button"[^>]*>🎁 Бесплатные 24 часа<\/button>/);
+  assert.doesNotMatch(html,/id="trial-hero-button"/);
   assert.match(html,/id="trial-button"/);
-  assert.match(base,/\.hero-art,\.hero-actions,\.hero-notes,\.features\{display:none\}/);
-  const mobileFix=skin.slice(skin.lastIndexOf('Mobile trial CTA:'));
-  assert.ok(mobileFix.includes('@media (max-width: 680px)'));
-  assert.match(mobileFix,/\.hero \.hero-actions\s*\{\s*display:\s*flex/);
-  assert.match(mobileFix,/#trial-button\.trial-button\s*\{\s*display:\s*flex/);
-  assert.match(mobileFix,/min-height:\s*44px/);
-  // neo.css loads after site.css: the last mobile rule overrides both hide rules.
-  assert.ok(html.indexOf('href="/site.css"')<html.indexOf('href="/neo.css"'));
+  assert.match(html,/id="yandex-login-link"/);
+  assert.match(html,/id="cabinet-login-link"/);
+  assert.match(html,/id="guest-trial-card"/);
+  assert.match(html,/Скачайте приложение/);
+  assert.match(html,/Добавьте подписку/);
+  assert.match(html,/Импорт из URL/);
+  assert.match(skin,/\.hero\{overflow:visible;min-height:100px/);
+  assert.match(backend,/AUTH_REQUIRED_FOR_TRIAL/);
+  assert.doesNotMatch(backend,/guestWorker\(/);
+  assert.match(backend,/await authorized\(req\)/);
+  assert.match(backend,/grantTrial\(auth.accountId/);
+  assert.match(backend,/issueAccountSession\(/);
+  assert.match(backend,/issueSubscriptionLinkForAccount\(/);
+  assert.match(backend,/https:\/\/login.yandex.ru\/info/);
+  assert.doesNotMatch(ui,/api\/guest\/trial/);
+  assert.doesNotMatch(ui,/api\/guest\/status/);
+  assert.match(ui,/api\/vpn\/subscription/);
 });
