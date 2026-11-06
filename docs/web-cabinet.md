@@ -189,16 +189,16 @@ SQL/HTTP тесты внутри GitHub Actions используют однор�
 - Telegram: `/auth/login` и `https://mnebyvpn.site/auth/callback`.
   `WEB_TELEGRAM_OIDC_ENABLED=yes`, `TELEGRAM_OIDC_CLIENT_ID` и
   `TELEGRAM_OIDC_CLIENT_SECRET` из BotFather, **не Bot API token**.
-- Яндекс ID: `/auth/yandex` и **точный** зарегистрированный Redirect URI
-  `https://mnebyvpn.site/auth/yandex/callback`.
-  Переменные `WEB_YANDEX_OAUTH_ENABLED=yes`, `YANDEX_OAUTH_CLIENT_ID`,
-  `YANDEX_OAUTH_CLIENT_SECRET`. Зарегистрируйте OAuth-приложение на
-  https://oauth.yandex.ru/client/new; запросите `login:info`; получите
-  Client ID/Secret, **не коммитьте** их и не помещайте в публичный JS.
+- Яндекс ID: `/auth/yandex` → существующий OAuth-сервер **ServGo** →
+  `https://mnebyvpn.site/auth/yandex/callback`. Внешний Callback Яндекса
+  остаётся на `https://servgo.ru/api/auth/yandex/callback`, уже зарегистрированном
+  для ServGo; требуется только `WEB_YANDEX_OAUTH_ENABLED=yes` после безопасного
+  развёртывания ServGo broker. Никакое новое приложение или дополнительная
+  пара Yandex OAuth Client ID/Secret для MNEBYVPN не требуется.
 
 На сервере используется OAuth Code + PKCE S256 + одноразовый `state` в подписанном
 HttpOnly cookie; для Telegram проверяется подпись ID token и обязательные
-OIDC claims, для Яндекса — HTTPS `/info` и совпадение `client_id`.
+OIDC claims, для Яндекса — проверка в ServGo и однократный защищённый PKCE обмен идентификатором.
 Отзываемая сессия сайта привязана к внутреннему `accounts.id`; снаружи
 этот идентификатор для авторизации не принимается.
 
@@ -230,7 +230,7 @@ INCY/Karing, `/install/<token>?client=incy|karing`, а также копиров
 Закрытый `/profile` worker дополнен проверкой реального ACTIVE node-ACK
 для подписки Yandex-only без Telegram ID.
 
-**Продакшен не подтверждён:** нужны реальный Yandex OAuth app+permissions,
+**Продакшен не подтверждён:** нужны действующий ServGo Yandex OAuth broker и его миграция,
 BotFather credentials, on-wire VPN activation/revocation, настройки веб-сервиса,
 применение миграции к БД и E2E с разными браузерами/устройствами. Текущий
 `.github/workflows/deploy-production.yml` перезапускает только отдельные
@@ -271,6 +271,5 @@ Callback ServGo остаётся `https://servgo.ru/api/auth/yandex/callback`.
 и доступного, проверенного по TLS сервера ServGo с миграцией
 `migrations/add_yandex_external_ticket.sql`; **не** требует
 `YANDEX_OAUTH_CLIENT_ID` и `YANDEX_OAUTH_CLIENT_SECRET` в VPN окружении.
-Документация прежнего этапа 18 с прямой регистрацией callback MNEBYVPN
-устарела и заменена этим разделом. Потребуется независимая проверка запуска
+Прямой callback Яндекса на домене MNEBYVPN не регистрируется. Потребуется независимая проверка запуска
 новых маршрутов ServGo и их точного публичного HTTPS routing.
