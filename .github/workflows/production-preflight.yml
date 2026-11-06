@@ -26,11 +26,11 @@ jobs:
         run: |
           set -euo pipefail
           missing=0
-          if [[ "$DEPLOY_ENABLED" == "true" ]]; then
-            echo 'deploy_enabled=true'
-          else
-            echo 'deploy_enabled=false (repository Actions variable MNEBYVPN_DEPLOY_ENABLED must be true)'
+          if [[ "$DEPLOY_ENABLED" == "false" ]]; then
+            echo 'deploy_enabled=false (explicit production kill switch)'
             missing=1
+          else
+            echo 'deploy_enabled=true (approved after green main CI)'
           fi
           for field in SSH_HOST SSH_USER SSH_PRIVATE_KEY SSH_KNOWN_HOSTS; do
             if [[ -n "${!field}" ]]; then
