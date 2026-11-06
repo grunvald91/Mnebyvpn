@@ -66,3 +66,30 @@ test('unsafe or inconsistent remote state fails closed',async()=>{
  await assert.rejects(new SignedXrayNodeApi(key,fail).inspect(entitlement),
    /HTTP 503/);
 });
+
+test('31-second foreign-node clock skew is compensated for exact 24h deadline',async()=>{
+ let current:any={revision:0,enabled:false,expiresAt:null};
+ let submittedDeadline='';
+ const skewMs=-31_000;
+ const remote:typeof fetch=async(_input,opts)=>{
+   const nowHeader=new Date(Date.now()+skewMs).toUTCString();
+   const body=JSON.parse(String(opts?.body));
+   if(body.op==='inspect')
+     return Response.json(current,{headers:{Date:nowHeader}});
+   submittedDeadline=body.expiresAt;
+   current={revision:body.revision,enabled:true,
+     expiresAt:body.expiresAt,credential};
+   return Response.json({status:'applied',revision:body.revision},
+     {headers:{Date:nowHeader}});
+ };
+ const api=new SignedXrayNodeApi(key,remote);
+ const desired={entitlementId:entitlement,revision:7,
+   enabled:true,expiresAt:new Date(Date.now()+86400_000)};
+ assert.equal(await api.apply(desired,entitlement+':7:enable'),'applied');
+ const appliedMs=Date.parse(submittedDeadline);
+ assert.ok(Math.abs((appliedMs-desired.expiresAt.getTime())-skewMs)<=1500,
+   'node must receive deadline in its own clock frame');
+ assert.equal((await api.inspect(entitlement)).revision,7);
+ assert.equal(await api.profileFor(entitlement,7,desired.expiresAt),
+   makeVpnImportUri(credential));
+});
