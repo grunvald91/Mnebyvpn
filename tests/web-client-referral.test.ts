@@ -80,3 +80,18 @@ test('invalid referral is never carried into checkout after login',async()=>{
   assert.equal(client.location.redirect,'/auth/login');
   assert.equal(JSON.parse(session.get('mnebyvpn-selection')||'{}').inviteToken,null);
 });
+
+test('header Login preserves referral without first clicking buy or trial',async()=>{
+  const session=new Map<string,string>();
+  openPage('https://vpn.example/?ref='+token+'&product=vpn&days=30',session);
+  await settle();
+  const saved=JSON.parse(session.get('mnebyvpn-selection')||'{}');
+  assert.equal(saved.inviteToken,token);
+  assert.equal(saved.product,'vpn');
+  assert.equal(saved.days,30);
+  const afterLogin=openPage('https://vpn.example/#account',session,true);
+  await settle();
+  afterLogin.elements.get('trial-button').handlers.get('click')();
+  await settle();
+  assert.equal(afterLogin.posts[0].body.inviteToken,token);
+});
