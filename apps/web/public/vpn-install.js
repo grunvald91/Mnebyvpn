@@ -23,6 +23,10 @@
     // Explicit user gesture is required by iOS/Android custom-URI handlers.
     window.location.href=target;
   });
+  // Best-effort one-tap import from Telegram: attempt to open the native
+  // client immediately. Mobile WebViews can block automatic custom schemes,
+  // so retain the explicit button and manual URL copy as reliable fallbacks.
+  try{window.location.assign(target);}catch{/* Browser blocked the scheme. */}
   copy.addEventListener('click',async()=>{
     try{
       await navigator.clipboard.writeText(subscription);
