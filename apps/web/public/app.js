@@ -2,7 +2,7 @@
 const byId = id => document.getElementById(id);
 const text = (id, value) => { byId(id).textContent = String(value); };
 const state = {
-  product: 'vpn', days: 15, plans: [], checkoutEnabled: false,
+  product: 'vpn', days: 15, plans: [], checkoutEnabled: false, loginEnabled:false,
   loggedIn: false, csrf: '', busy: false, requestId: null, trialOffers: [],
   inviteToken: null, refreshing: false, renewalTargetId: null,
 };
@@ -191,6 +191,17 @@ function renderAccount(payload) {
   renderAccess(accesses);renderOrders(payload.orders||[]);
   renderPlan();
 }
+function syncLoginLinks() {
+  const target=state.loginEnabled?'/auth/login':'https://t.me/MnebyVPN_bot';
+  const label=state.loginEnabled?'Войти':'Telegram-бот';
+  const top=byId('auth-link');
+  top.textContent=label;top.href=target;
+  const cabinet=byId('cabinet-login-link');
+  cabinet.textContent=state.loginEnabled?'Войти через Telegram':'Открыть Telegram-бота';
+  cabinet.href=target;
+  text('account-subtitle',state.loginEnabled?
+    'Войдите, чтобы увидеть данные':'Вход в кабинет пока подключается');
+}
 function renderLoggedOut() {
   // A session that expires or is revoked must not leave stale private data on
   // a shared browser screen. Keep the public catalog and selected product.
@@ -199,8 +210,7 @@ function renderLoggedOut() {
   byId('login-prompt').classList.remove('hidden');
   byId('account-content').classList.add('hidden');
   byId('logout-button').classList.add('hidden');
-  byId('auth-link').textContent='Войти';
-  byId('auth-link').href='/auth/login';
+  syncLoginLinks();
   byId('access-list').replaceChildren();
   byId('orders-list').replaceChildren();
   renderPlan();
@@ -223,7 +233,9 @@ async function loadCatalog() {
     const data=await api('/api/plans');
     state.plans=Array.isArray(data.plans)?data.plans:[];
     state.checkoutEnabled=data.checkoutEnabled===true;
+    state.loginEnabled=data.loginEnabled===true;
     state.trialOffers=Array.isArray(data.trialOffers)?data.trialOffers:[];
+    if(!state.loggedIn)syncLoginLinks();
   } catch {
     toast('Не удалось загрузить тарифы. Попробуйте позже.');
   }
