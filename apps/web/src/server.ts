@@ -45,10 +45,10 @@ if (sessionSecret.length < 32) throw new Error('WEB_SESSION_SECRET too short');
 const telegramLoginEnabled = process.env.WEB_TELEGRAM_OIDC_ENABLED === 'yes';
 const yandexLoginEnabled = process.env.WEB_YANDEX_OAUTH_ENABLED === 'yes';
 const loginEnabled = telegramLoginEnabled || yandexLoginEnabled;
-const yandexClientId = process.env.YANDEX_OAUTH_CLIENT_ID ?? '';
-const yandexClientSecret = process.env.YANDEX_OAUTH_CLIENT_SECRET ?? '';
-if (yandexLoginEnabled && (!/^[A-Za-z0-9_-]{12,128}$/.test(yandexClientId) ||
-    yandexClientSecret.length < 16)) throw new Error('Invalid Yandex OAuth client configuration');
+// Reuse the existing ServGo OAuth app through its fixed registered callback.
+// No Yandex Client Secret is copied to this VPN server.
+const servgoBrokerStart = 'https://servgo.ru/api/auth/yandex/mnebyvpn/start';
+const servgoBrokerExchange = 'https://servgo.ru/api/auth/yandex/mnebyvpn/exchange';
 const clientId = process.env.TELEGRAM_OIDC_CLIENT_ID ?? '';
 const clientSecret = process.env.TELEGRAM_OIDC_CLIENT_SECRET ?? '';
 if (telegramLoginEnabled && (!/^[0-9]{5,20}$/.test(clientId) || clientSecret.length < 16))
@@ -233,14 +233,19 @@ async function login(req: IncomingMessage, res: ServerResponse,
   const challenge=createLoginChallenge(sessionSecret,Date.now(),provider,
     current?.accountId??null);
   setCookie(res,challengeCookie,challenge.cookie,300);
-  const oauth=new URL(provider==='telegram'
-    ?'https://oauth.telegram.org/auth':'https://oauth.yandex.ru/authorize');
-  oauth.searchParams.set('client_id',provider==='telegram'?clientId:yandexClientId);
-  oauth.searchParams.set('redirect_uri',publicOrigin+
-    (provider==='telegram'?'/auth/callback':'/auth/yandex/callback'));
+  if(provider==='yandex'){
+    const broker=new URL(servgoBrokerStart);
+    broker.searchParams.set('state',challenge.state);
+    broker.searchParams.set('code_challenge',challenge.codeChallenge);
+    redirect(res,broker.toString());return;
+  }
+  // Telegram OAuth is confirmed in the official Telegram client, not by a
+  // message from the MNEBYVPN bot.
+  const oauth=new URL('https://oauth.telegram.org/auth');
+  oauth.searchParams.set('client_id',clientId);
+  oauth.searchParams.set('redirect_uri',publicOrigin+'/auth/callback');
   oauth.searchParams.set('response_type','code');
-  if(provider==='telegram')oauth.searchParams.set('scope','openid profile');
-  else oauth.searchParams.set('scope','login:info');
+  oauth.searchParams.set('scope','openid profile');
   oauth.searchParams.set('state',challenge.state);
   oauth.searchParams.set('code_challenge',challenge.codeChallenge);
   oauth.searchParams.set('code_challenge_method','S256');
@@ -275,21 +280,17 @@ async function callback(req: IncomingMessage,res: ServerResponse,
       const jwks=await readRemoteJson('https://oauth.telegram.org/.well-known/jwks.json');
       subject=String(verifyTelegramIdToken(token.id_token,jwks as Jwks,clientId));
     }else{
-      const params=new URLSearchParams({grant_type:'authorization_code',code,
-        client_id:yandexClientId,client_secret:yandexClientSecret,code_verifier:verifier});
-      const token=await readRemoteJson('https://oauth.yandex.ru/token',{
-        method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-        body:params.toString(),
+      // Back-channel redemption of one-use PKCE ticket at trusted ServGo.
+      // The Yandex OAuth token never leaves ServGo.
+      if(!/^[A-Za-z0-9_-]{43}$/.test(code))
+        throw Error('Invalid ServGo broker code');
+      const profile=await readRemoteJson(servgoBrokerExchange,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({code,code_verifier:verifier}),
       });
-      if(typeof token.access_token!=='string'||token.access_token.length>8192)
-        throw Error('Missing verified Yandex OAuth token');
-      const profile=await readRemoteJson('https://login.yandex.ru/info?format=json',{
-        headers:{Authorization:'OAuth '+token.access_token},
-      });
-      if((profile.client_id!==yandexClientId)||
-        typeof profile.id!=='string'||!/^[0-9]{1,32}$/.test(profile.id))
-        throw Error('Invalid Yandex OAuth subject');
-      subject=profile.id;
+      if(typeof profile.yandexId!=='string'||!/^[0-9]{1,32}$/.test(profile.yandexId))
+        throw Error('Unverified Yandex broker identity');
+      subject=profile.yandexId;
     }
     const linkAccountId=challengeData?.linkAccountId;
     let accountId:string;
