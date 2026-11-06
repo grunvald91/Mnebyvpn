@@ -53,7 +53,7 @@ test('adapter applies allowed operations and rejects stale/replayed operation ID
  const a=new RemnawaveProvisioningAdapter(panel,proof);
  const desired={entitlementId:id,revision:1,enabled:true,expiresAt:now};
  assert.equal('enforcesHardExpiry' in a,false,'panel read-back alone cannot confirm node expiry');
- assert.deepEqual(await a.inspect(id),{revision:0,enabled:false,expiresAt:null});
+ assert.deepEqual(await a.inspect(id),{revision:0,enabled:false,expiresAt:null,absent:true});
  await assert.rejects(a.apply(desired,'bad'));
  assert.deepEqual(writes,[]);
  // The clock is before the 2035 deadline.
