@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: mnebyvpn-production
@@ -17,6 +18,7 @@ jobs:
     if: >-
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
       github.event.workflow_run.conclusion == 'success' &&
       vars.MNEBYVPN_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
@@ -35,12 +37,21 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
+      - name: Download runtime artifact from this exact green CI run
+        uses: actions/download-artifact@v4
+        with:
+          name: mnebyvpn-tested-runtime
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: release
       - name: Verify release is still current main and credentials are configured
         shell: bash
         run: |
           set -euo pipefail
           [[ "$DEPLOY_SHA" =~ ^[a-f0-9]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
+          test "$(cat release/commit.sha)" = "$DEPLOY_SHA"
+          (cd release && sha256sum -c release.tgz.sha256)
           test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$DEPLOY_SHA" || {
             echo "::error::Main advanced; skip stale release"
             exit 1
@@ -73,7 +84,7 @@ jobs:
             -o ConnectTimeout=12
           )
           target="$VPN_USER@$VPN_HOST"
-          tar -czf "$tmp/release.tgz" apps packages package.json
+          cp release/release.tgz "$tmp/release.tgz"
           ssh "${ssh_opts[@]}" -p "$ssh_port" "$target" \
             'test -d "$HOME/mnebyvpn/releases" && test -f "$HOME/mnebyvpn/runtime-bot.env" && test -f "$HOME/mnebyvpn/runtime-vpn.env" && mkdir -p "$HOME/mnebyvpn/inbox"'
           scp "${ssh_opts[@]}" -P "$ssh_port" \
