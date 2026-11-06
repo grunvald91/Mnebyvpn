@@ -622,6 +622,13 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
 }
 const port = Number(process.env.WEB_PORT ?? '8791');
 if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error('Invalid WEB_PORT');
+// Ticket retention follows the thirty-day browser access window. Fail-safe
+// cleanup never logs customer messages or interrupts other website endpoints.
+async function purgeExpiredSupportTickets(){
+  await pool.query("DELETE FROM website_support_tickets WHERE created_at<clock_timestamp()-interval '30 days'");
+}
+void purgeExpiredSupportTickets().catch(()=>{});
+setInterval(()=>{void purgeExpiredSupportTickets().catch(()=>{});},6*60*60_000).unref();
 const server = createServer((req,res) => {
   handle(req,res).catch(() => json(res,503,{code:'SERVICE_UNAVAILABLE'}));
 });
