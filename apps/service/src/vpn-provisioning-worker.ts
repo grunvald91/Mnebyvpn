@@ -80,7 +80,7 @@ async function main():Promise<void>{
     subscriptionOrigin:configured('VPN_SUBSCRIPTION_ORIGIN'),
     squadUuids:configured('REMNAWAVE_SQUAD_UUIDS').split(',').map(x=>x.trim()),
   });
-  const adapter=new RemnawaveProvisioningAdapter(api,evidence);
+  const adapter=new RemnawaveProvisioningAdapter(api);
   const healthPort=Number(process.env.VPN_WORKER_HEALTH_PORT??'8794');
   if(!Number.isSafeInteger(healthPort)||healthPort<1||healthPort>65535)
     throw Error('Invalid VPN_WORKER_HEALTH_PORT');
