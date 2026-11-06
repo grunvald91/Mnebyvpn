@@ -34,7 +34,7 @@ const vpnApi=(process.env.REMNAWAVE_API_URL&&vpnReadToken&&
   process.env.VPN_SUBSCRIPTION_ORIGIN&&process.env.REMNAWAVE_SQUAD_UUIDS)
   ?new RemnawaveApi({
     panelUrl:process.env.REMNAWAVE_API_URL,
-    apiToken:process.env.REMNAWAVE_API_TOKEN,
+    apiToken:vpnReadToken,
     subscriptionOrigin:process.env.VPN_SUBSCRIPTION_ORIGIN,
     squadUuids:process.env.REMNAWAVE_SQUAD_UUIDS.split(',').map(x=>x.trim()),
   }):null;
