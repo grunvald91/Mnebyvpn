@@ -71,3 +71,23 @@ export async function subscriptionOwner(pool:Pool,token:string):
     entitlementId:String(rows[0].entitlement_id),
     expiresAt:rows[0].expires_at as Date};
 }
+
+/** The old import URL must survive ordinary expiry so INCY can refresh links
+ * and notice after a verified payment. Revoked/cancelled/refunded links do not.
+ * Expired subscriptions NEVER authorize a VPN node profile.
+ */
+export async function subscriptionForClient(pool:Pool,token:string):
+  Promise<{owner:SubscriptionOwner|null;expiresAt:Date}|null>{
+  const owner=await subscriptionOwner(pool,token);
+  if(owner)return {owner,expiresAt:owner.expiresAt};
+  if(!TOKEN.test(token))return null;
+  const {rows}=await pool.query(
+    "SELECT e.expires_at FROM vpn_subscription_links l "+
+    "JOIN entitlements e ON e.id=l.entitlement_id "+
+    "WHERE l.token_sha256=$1 AND l.revoked_at IS NULL "+
+    "AND e.product='vpn' AND e.state IN ('ACTIVE','EXPIRED') "+
+    "AND e.starts_at IS NOT NULL AND e.expires_at IS NOT NULL "+
+    "AND e.expires_at<=clock_timestamp() LIMIT 1",
+    [digest(token)]);
+  return rows.length?{owner:null,expiresAt:rows[0].expires_at as Date}:null;
+}
