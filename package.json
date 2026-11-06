@@ -13,6 +13,7 @@
     "start:payments": "node --experimental-strip-types apps/service/src/payments-server.ts",
     "start:web": "node --experimental-strip-types apps/web/src/server.ts",
     "start:expiry-worker": "node --experimental-strip-types apps/service/src/expiry-worker.ts",
+    "start:vpn-worker": "node --experimental-strip-types apps/service/src/vpn-provisioning-worker.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
