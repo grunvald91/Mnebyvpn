@@ -1,6 +1,7 @@
 import { randomUUID, createHash, randomBytes } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
 import { planWidgetKey } from '../../telegram-ui/src/widget-104.ts';
+import {rublePlanKey} from './offer-keys.ts';
 import type { PaymentProvider, PricedPlan } from './channels.ts';
 import type { StarsOrder } from './stars.ts';
 import type { ProdamusOrder } from './prodamus.ts';
@@ -101,6 +102,15 @@ export class PgBillingStore {
       throw new Error('Invalid authenticated Telegram user ID');
     return this.createOrder('telegram_stars', { telegramUserId }, planId, requestId, inviteToken,expectedKey);
   }
+  /** Authenticated by Telegram webhook sender; opt-in checkout only.
+   * This provider route is disabled by default due to Telegram §6.2.
+   */
+  async createTelegramRubleOrder(telegramUserId:number,planId:string,
+    requestId:string,inviteToken?:string,expectedKey?:string):Promise<OrderRecord>{
+    if(!Number.isSafeInteger(telegramUserId)||telegramUserId<=0)
+      throw new Error('Invalid Telegram account');
+    return this.createOrder('prodamus',{telegramUserId},planId,requestId,inviteToken,expectedKey);
+  }
   /**
    * This method is for an independently authenticated WEBSITE session only.
    * Do not publish a route that accepts arbitrary accountId as proof of login.
@@ -138,7 +148,9 @@ export class PgBillingStore {
         if (order.planId !== planId ||
             ('accountId' in who ? order.accountId !== who.accountId : order.telegramUserId !== who.telegramUserId))
           throw new Error('Request key reused for another customer or plan');
-        if(expectedKey!==undefined && planWidgetKey(pricedPlanForOrder(order))!==expectedKey)
+        if(expectedKey!==undefined &&
+          (provider==='prodamus'?rublePlanKey(pricedPlanForOrder(order)):
+            planWidgetKey(pricedPlanForOrder(order)))!==expectedKey)
           throw new Error('OFFER_CHANGED');
         const saved=await c.query('SELECT invite_token FROM order_referrals WHERE order_id=$1',[order.id]);
         if ((saved.rows[0]?.invite_token??undefined)!==inviteToken)
@@ -173,7 +185,7 @@ export class PgBillingStore {
       if(cap.rows[0].total>=3)throw new Error('PENDING_CHECKOUT_RATE_LIMIT');
       let referralOwner: string | null=null;
       if(inviteToken!==undefined){
-        if(provider!=='telegram_stars' && !(provider==='prodamus' && 'accountId' in who))
+        if(provider!=='telegram_stars' && provider!=='prodamus')
           throw new Error('Referral requires authenticated checkout');
         const invite=await c.query(
           'SELECT referrer_account_id FROM referral_invites WHERE token=$1 AND plan_id=$2',
@@ -185,7 +197,8 @@ export class PgBillingStore {
       const plan = await c.query('SELECT * FROM billing_plans WHERE id=$1 AND enabled=true FOR SHARE',[planId]);
       if (!plan.rowCount) throw new Error('Plan not offered');
       const p = plan.rows[0];
-      if(expectedKey!==undefined && planWidgetKey(mapPlan(p))!==expectedKey)
+      if(expectedKey!==undefined &&
+        (provider==='prodamus'?rublePlanKey(mapPlan(p)):planWidgetKey(mapPlan(p)))!==expectedKey)
         throw new Error('OFFER_CHANGED');
       const price = provider === 'telegram_stars' ? p.stars : p.rub_minor;
       if (price === null || safeInt(price) === 0) throw new Error('Price not configured');

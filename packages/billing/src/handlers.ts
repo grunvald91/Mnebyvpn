@@ -2,7 +2,10 @@ import {
   vpnWidgetPayload, statusWidgetData, plansWidgetData,planWidgetKey,
 } from '../../telegram-ui/src/widget-104.ts';
 import { referralWidgetPayload } from '../../telegram-ui/src/referral-widget.ts';
-import { navigationText,navigationCallback,issueStarsInvoice,startTrial,showHome,sendReservedStarsInvoice } from './bot-navigation.ts';
+import { navigationText,navigationCallback,issueStarsInvoice,startTrial,showHome,
+  sendReservedStarsInvoice,issueTelegramRubleLink } from './bot-navigation.ts';
+import {rublePlanKey} from './offer-keys.ts';
+import type {PayformLinkTransport} from './website-checkout.ts';
 import {
   parseStarsPayload, validateStarsPreCheckout, validateStarsSuccess, buildStarsInvoice,
   type TelegramPreCheckout, type TelegramSuccessfulPayment,
@@ -23,6 +26,7 @@ export interface PaymentHandlersConfig {
   prodamus: ProdamusConfig;
   /** Real Telegram @bot username, configured at deployment. Never invent it. */
   telegramBotUsername?: string;
+  prodamusTelegramLink?: PayformLinkTransport;
 }
 export interface TelegramUpdate {
   update_id: number;
@@ -250,7 +254,7 @@ export async function handleTelegramUpdate(
   if(msg?.chat.type==='private'&&msg.text&&validUserId(msg.from?.id)&&
      msg.chat.id===msg.from.id){
     const id=msg.from.id,text=msg.text.trim();
-    const referral=/^\/start\s+([rt])([A-Za-z0-9_-]{16,24})$/.exec(text);
+    const referral=/^\/start\s+([rtp])([A-Za-z0-9_-]{16,24})$/.exec(text);
     if(referral){
       const token=referral[2],offer=await db.referralPlan(token);
       if(!offer){
@@ -261,6 +265,11 @@ export async function handleTelegramUpdate(
       try {
         if(referral[1]==='t'){
           await startTrial(id,offer.product,db,tg,token);
+        } else if(referral[1]==='p'){
+          const status=await issueTelegramRubleLink(id,rublePlanKey(offer),
+            'referral:'+update.update_id,db,tg,config,token);
+          if(status!=='SENT')await tg.call('sendMessage',{chat_id:id,
+            text:'Оплата в рублях для этого предложения недоступна.'});
         } else {
           const order=await db.createTelegramOrder(id,offer.planId,
             'referral-start:'+update.update_id,token);

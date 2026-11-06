@@ -30,11 +30,13 @@ function item(o:PublicReferralOffer):Row {
   return [id,duration/DAY,o.stars,o.rubMinor??0,o.token,o.title.slice(0,26),
     o.trialAvailable?1:0,quota];
 }
-export function referralPublicData(offers:ReadonlyArray<PublicReferralOffer>,botUsername:string):string {
+export function referralPublicData(offers:ReadonlyArray<PublicReferralOffer>,botUsername:string,
+  allowRuble=false):string {
   if(!BOT.test(botUsername)||!botUsername.toLowerCase().endsWith('bot'))
     throw new Error('Invalid configured Telegram bot username');
   const sorted=offers.slice(0,MAX_ITEMS).map(item);
-  const body={v:2,b:botUsername,o:sorted,more:Math.max(0,offers.length-sorted.length)};
+  const body={v:2,b:botUsername,o:sorted,r:allowRuble?1:0,
+    more:Math.max(0,offers.length-sorted.length)};
   // Preserve all 15/30/60/90 options for both VPN and DNS when 8 exist.
   // Truncate only beyond payload size, never silently change a selected plan.
   while(true){
@@ -95,6 +97,12 @@ footer{color:var(--tg-theme-hint-color);font-size:10px;line-height:1.4;margin-to
    top.appendChild(left);btn.type="button";
    btn.addEventListener("click",function(){open("r",r[4])});top.appendChild(btn);card.appendChild(top);
    card.appendChild(mk("div","price",String(r[2])+" ⭐  ·  "+(r[3]>0?rub(r[3]):"₽ —")));
+   if(s.r===1&&r[3]>0){
+    var rubButton=mk("button","pay","Оплатить ₽");
+    rubButton.type="button";
+    rubButton.addEventListener("click",function(){open("p",r[4])});
+    card.appendChild(rubButton);
+   }
    list.appendChild(card);
   });
   var trial=rows.find(function(r){return r[6]===1});
@@ -126,9 +134,10 @@ export function referralWidgetHtml():string {
     throw new Error('Forwardable widget exceeds Telegram size limits');
   return HTML;
 }
-export function referralWidgetPayload(chatId:number,offers:ReadonlyArray<PublicReferralOffer>,botUsername:string) {
+export function referralWidgetPayload(chatId:number,offers:ReadonlyArray<PublicReferralOffer>,
+  botUsername:string,allowRuble=false) {
   if(!Number.isSafeInteger(chatId)||chatId<=0)throw new Error('Invalid chat');
-  const public_data=referralPublicData(offers,botUsername);
+  const public_data=referralPublicData(offers,botUsername,allowRuble);
   const first=offers[0];
   return {
     chat_id:chatId,html:referralWidgetHtml(),width:0,height:0,

@@ -11,6 +11,9 @@ import {
   PgBillingStore,pricedPlanForOrder,starsOrderFromDB,type Product,type OrderRecord,
 } from './store.ts';
 import { buildStarsInvoice } from './stars.ts';
+import {buildProdamusLinkRequest,type ProdamusConfig} from './prodamus.ts';
+import {validateProdamusShortLink,type PayformLinkTransport} from './website-checkout.ts';
+import {rublePlanKey} from './offer-keys.ts';
 import type { PricedPlan } from './channels.ts';
 
 export interface BotSend {
@@ -19,6 +22,9 @@ export interface BotSend {
 export interface NavConfig {
   starsPayloadSecret:string;
   telegramBotUsername?:string;
+  prodamus?:ProdamusConfig;
+  /** Explicitly opted-in; external digital checkout inside Telegram may violate platform §6.2. */
+  prodamusTelegramLink?:PayformLinkTransport;
 }
 function categoryLabel(product:string):string {
   return product==='vpn'?'🌐 VPN':product==='smart_dns'?'🧭 Smart DNS':'🔐 VPN + DNS';
@@ -50,7 +56,7 @@ export async function showCatalog(id:number,db:PgBillingStore,tg:BotSend):Promis
   });
 }
 export async function showProductPlans(
-  id:number,product:Product,db:PgBillingStore,tg:BotSend,
+  id:number,product:Product,db:PgBillingStore,tg:BotSend,config?:NavConfig,
 ):Promise<void> {
   const plans=(await db.plans('telegram_stars')).filter(p=>p.product===product)
     .sort((a,b)=>a.durationSeconds-b.durationSeconds || a.planId.localeCompare(b.planId));
@@ -62,8 +68,13 @@ export async function showProductPlans(
   const visible=plans.slice(0,16);
   const lines=visible.map(p=>formatDuration(p.durationSeconds)+' — '+
     p.stars+' ⭐ / '+formatRoubles(p.rubMinor));
-  const keyboard=visible.map(p=>[{text:formatDuration(p.durationSeconds)+' · '+p.stars+' ⭐',
-    callback_data:'buy:'+planWidgetKey(p)}]);
+  const keyboard=visible.map(p=>{
+    const row=[{text:formatDuration(p.durationSeconds)+' · '+p.stars+' ⭐',
+      callback_data:'buy:'+planWidgetKey(p)}];
+    if(config?.prodamusTelegramLink && p.rubMinor!==null)
+      row.push({text:formatRoubles(p.rubMinor),callback_data:'rub:'+rublePlanKey(p)});
+    return row;
+  });
   if((await db.trialProducts()).includes(product))
     keyboard.unshift([{text:'🎁 Попробовать 1 день бесплатно',callback_data:'trial:'+product}]);
   keyboard.push([{text:'↩️ К услугам',callback_data:'nav:catalog'}]);
@@ -87,7 +98,8 @@ export async function showShare(id:number,db:PgBillingStore,tg:BotSend,config:Na
       text:'Сначала необходимо опубликовать хотя бы один тариф VPN или DNS.'});
     return;
   }
-  await tg.call('sendWidget',{...referralWidgetPayload(id,offers,config.telegramBotUsername)});
+  await tg.call('sendWidget',{...referralWidgetPayload(id,offers,config.telegramBotUsername,
+      Boolean(config.prodamusTelegramLink))});
   await tg.call('sendMessage',{chat_id:id,
     text:'🎁 Готово! Перешлите карточку другу. Он выберет услугу и срок в самой карточке, а бот откроет счёт.',
     reply_markup:{inline_keyboard:[[{text:MENU.home,callback_data:'nav:home'}]]}});
@@ -159,6 +171,30 @@ export async function issueStarsInvoice(
   const order=await db.createTelegramOrder(id,plan.planId,requestId,undefined,key);
   return sendReservedStarsInvoice(order,db,tg,secret);
 }
+/** Explicit opt-in; NEVER silently switch a Stars invoice to external RUB. */
+export async function issueTelegramRubleLink(
+ id:number,key:string,requestId:string,db:PgBillingStore,tg:BotSend,config:NavConfig,
+ inviteToken?:string,
+):Promise<'SENT'|'STALE'|'DISABLED'> {
+ if(!config.prodamusTelegramLink||!config.prodamus)return 'DISABLED';
+ const plans=(await db.plans('prodamus')).filter(p=>p.rubMinor!==null);
+ const matches=plans.filter(p=>rublePlanKey(p)===key);
+ if(matches.length!==1)return 'STALE';
+ const order=await db.createTelegramRubleOrder(id,matches[0].planId,
+  'tg-rub:'+requestId,inviteToken,key);
+ const request=buildProdamusLinkRequest(
+  {id:order.id,provider:'prodamus',currency:'RUB',
+    amountMinor:order.amount,state:order.state},
+  order.planTitle,config.prodamus);
+ const link=validateProdamusShortLink(await config.prodamusTelegramLink.getLink(request));
+ await tg.call('sendMessage',{chat_id:id,
+  text:'Оплата в рублях: '+order.planTitle+'. Итог '+formatRoubles(order.amount)+
+   '. После подтверждения платежа доступ будет зарегистрирован.',
+  reply_markup:{inline_keyboard:[[{text:'Оплатить через Продамус',url:link}]]},
+ });
+ return 'SENT';
+}
+
 export async function navigationCallback(
   id:number,data:string,requestId:string,db:PgBillingStore,tg:BotSend,config:NavConfig,
 ):Promise<boolean> {
@@ -176,10 +212,17 @@ export async function navigationCallback(
   }
   if(/^nav:plans:(vpn|smart_dns|bundle)$/.test(data)){
     const product=data.slice('nav:plans:'.length) as Product;
-    await showProductPlans(id,product,db,tg);return true;
+    await showProductPlans(id,product,db,tg,config);return true;
   }
   if(/^trial:(vpn|smart_dns|bundle)$/.test(data)){
     await startTrial(id,data.slice(6) as Product,db,tg);return true;
+  }
+  if(/^rub:[A-Za-z0-9_-]{16}$/.test(data)){
+    const status=await issueTelegramRubleLink(id,data.slice(4),requestId,db,tg,config);
+    if(status!=='SENT')await tg.call('sendMessage',{chat_id:id,
+      text:status==='DISABLED'?'Рублёвая оплата здесь не включена.':
+        'Цена изменилась. Откройте новый список тарифов.'});
+    return true;
   }
   if(/^buy:[A-Za-z0-9_-]{16}$/.test(data)){
     const state=await issueStarsInvoice(id,data.slice(4),db,tg,config.starsPayloadSecret,
