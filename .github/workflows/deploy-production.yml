@@ -75,7 +75,7 @@ jobs:
           target="$VPN_USER@$VPN_HOST"
           tar -czf "$tmp/release.tgz" apps packages package.json
           ssh "${ssh_opts[@]}" -p "$ssh_port" "$target" \
-            'test -d "$HOME/mnebyvpn/releases" && test -f "$HOME/mnebyvpn/runtime.env" && mkdir -p "$HOME/mnebyvpn/inbox"'
+            'test -d "$HOME/mnebyvpn/releases" && test -f "$HOME/mnebyvpn/runtime-bot.env" && test -f "$HOME/mnebyvpn/runtime-vpn.env" && mkdir -p "$HOME/mnebyvpn/inbox"'
           scp "${ssh_opts[@]}" -P "$ssh_port" \
             "$tmp/release.tgz" "$target:mnebyvpn/inbox/$DEPLOY_SHA.tgz"
           ssh "${ssh_opts[@]}" -p "$ssh_port" "$target" \
