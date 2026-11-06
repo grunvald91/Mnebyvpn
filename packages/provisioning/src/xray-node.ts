@@ -37,7 +37,7 @@ export function makeVpnImportUri(credential:string):string {
     host:WEB_PROFILE_HOST,sni:WEB_PROFILE_HOST,path:'/mnebyvpn-vpn/ws',
   });
   return 'vless://'+id+'@'+WEB_PROFILE_HOST+':8443?'+query+
-    '#'+encodeURIComponent('Мне бы VPN');
+    '#'+encodeURIComponent('MNEBYVPN');
 }
 export class SignedXrayNodeApi implements ProvisioningAdapter {
   /** The actual isolated Xray agent enforces expiry locally without Panel. */
