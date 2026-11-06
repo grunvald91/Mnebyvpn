@@ -463,6 +463,46 @@ document.querySelectorAll('[data-product]').forEach(button=>{
 document.querySelectorAll('[data-days]').forEach(button=>{
   button.addEventListener('click',()=>setSelection(state.product,Number(button.dataset.days)));
 });
+async function supportStatus(){
+  const send=byId('support-send');
+  const result=byId('support-result');
+  try{
+    const data=await api('/api/support/status');
+    send.disabled=!data.available;
+    send.textContent=data.available?'Отправить обращение':'Поддержка пока настраивается';
+    result.textContent=data.available?'':'Приём обращений с сайта ещё не подключён.';
+  }catch{
+    send.disabled=true;
+    send.textContent='Поддержка временно недоступна';
+    result.textContent='Не удалось проверить канал поддержки.';
+  }
+}
+async function submitSupport(event){
+  event.preventDefault();
+  const form=byId('support-form'),send=byId('support-send'),result=byId('support-result');
+  if(!form.reportValidity())return;
+  send.disabled=true;
+  send.textContent='Отправляем…';
+  result.textContent='';
+  try{
+    await api('/api/support',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      contact:byId('support-contact').value,
+      message:byId('support-message').value,
+      website:byId('support-website').value,
+    })});
+    byId('support-message').value='';
+    result.textContent='✅ Сообщение доставлено оператору. Ответ придёт по указанному контакту.';
+  }catch(error){
+    result.textContent=error.status===429
+      ?'Слишком много обращений. Повторите попытку немного позже.'
+      :'Не удалось доставить сообщение. Оно не было отправлено. Повторите попытку.';
+  }finally{
+    send.disabled=false;
+    send.textContent='Отправить обращение';
+  }
+}
+byId('support-form').addEventListener('submit',submitSupport);
+supportStatus();
 byId('buy-button').addEventListener('click',purchase);
 byId('trial-button').addEventListener('click',claimTrial);
 byId('trial-hero-button').addEventListener('click',claimTrial);
