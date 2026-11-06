@@ -37,6 +37,8 @@ export class PgVpnExpiryReminderQueue {
       'WHERE e.product=\'vpn\' AND e.state=\'ACTIVE\' '+
       'AND a.telegram_user_id IS NOT NULL AND a.telegram_user_id>0 '+
       'AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL '+
+      "AND EXISTS (SELECT 1 FROM entitlement_credits c JOIN orders paid ON paid.id=c.order_id " +
+      "WHERE c.entitlement_id=e.id AND c.refunded_at IS NULL AND paid.state='PAID') "+
       'AND ('+dueWindow+') ORDER BY e.expires_at,e.id LIMIT $1 '+
       'ON CONFLICT(entitlement_id,days_before,expires_at) DO NOTHING',
       [limit]);
@@ -55,6 +57,8 @@ export class PgVpnExpiryReminderQueue {
       'AND e.product=\'vpn\' AND e.state=\'ACTIVE\' '+
       'AND a.telegram_user_id IS NOT NULL AND a.telegram_user_id>0 '+
       'AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL '+
+      "AND EXISTS (SELECT 1 FROM entitlement_credits c JOIN orders paid ON paid.id=c.order_id " +
+      "WHERE c.entitlement_id=e.id AND c.refunded_at IS NULL AND paid.state='PAID') "+
       'AND ((r.days_before=3 AND e.expires_at>clock_timestamp()+interval \'48 hours\' '+
       'AND e.expires_at<=clock_timestamp()+interval \'72 hours\') OR '+
       '(r.days_before=1 AND e.expires_at>clock_timestamp() '+
@@ -88,6 +92,8 @@ export class PgVpnExpiryReminderQueue {
       'WHERE e.id=$1 AND e.expires_at=$2 AND e.product=\'vpn\' '+
       'AND e.state=\'ACTIVE\' AND a.telegram_user_id=$3 '+
       'AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL '+
+      "AND EXISTS (SELECT 1 FROM entitlement_credits c JOIN orders paid ON paid.id=c.order_id " +
+      "WHERE c.entitlement_id=e.id AND c.refunded_at IS NULL AND paid.state='PAID') "+
       'AND (CASE WHEN $4::int=3 THEN '+
       'e.expires_at>clock_timestamp()+interval \'48 hours\' AND '+
       'e.expires_at<=clock_timestamp()+interval \'72 hours\' ELSE '+
