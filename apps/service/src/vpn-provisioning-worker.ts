@@ -18,6 +18,8 @@ import {RemnawaveApi} from '../../../packages/provisioning/src/remnawave-api.ts'
 import {RemnawaveProvisioningAdapter}
   from '../../../packages/provisioning/src/remnawave-adapter.ts';
 import {PgOutboxDispatcher,type Product} from '../../../packages/provisioning/src/pg-worker.ts';
+import {PgVpnExpiryReminderQueue,TelegramBotReminderSender,processVpnExpiryReminders,
+  type ReminderSender} from '../../../packages/notifications/src/vpn-expiry.ts';
 
 export interface VpnDispatcher {
   expireDue():Promise<number>;
@@ -69,6 +71,32 @@ export async function runVpnWorker(
     catch {if(!signal.aborted)throw Error('VPN worker sleep failed');}
   }
 }
+
+/** Runs independently from 5-second provisioning, never holds the node worker
+ * hostage during Bot API rate limits/outages. One sweep on boot and per minute.
+ */
+export async function runVpnExpiryReminderLoop(
+  queue:PgVpnExpiryReminderQueue,sender:ReminderSender,signal:AbortSignal,
+  wait:(ms:number,signal:AbortSignal)=>Promise<void>=
+    async(ms,s)=>{await sleep(ms,undefined,{signal:s});},
+):Promise<void>{
+  while(!signal.aborted){
+    try{
+      const result=await processVpnExpiryReminders(queue,sender);
+      if(Object.values(result).some(Boolean)){
+        process.stdout.write('vpn-expiry-notifications '+JSON.stringify(result)+'\n');
+      }
+    }catch{
+      // No email addresses, token, Telegram IDs or subscription keys in logs.
+      process.stderr.write('vpn-expiry-notifications retry after transient failure\n');
+    }
+    if(signal.aborted)break;
+    try{await wait(60_000,signal);}catch{
+      if(!signal.aborted)throw Error('Notification worker delay failed');
+    }
+  }
+}
+
 function configured(name:string):string{
   const value=process.env[name];
   if(!value||!value.trim())throw Error('Missing required VPN worker setting: '+name);
@@ -200,8 +228,20 @@ async function main():Promise<void>{
         health.once('error',reject);
         health.listen(healthPort,'127.0.0.1',resolve);
       });
-      await runVpnWorker(new PgOutboxDispatcher(pool,{vpn:adapter}),
-        abort.signal,undefined,()=>{lastCycleSuccess=Date.now();});
+      // A proactive Bot API send requires the *bot token*. It is separate from
+      // the webhook secret and must be provided only in private runtime-vpn.env.
+      const remindersEnabled=process.env.VPN_EXPIRY_REMINDERS_ENABLED==='yes';
+      const reminders=remindersEnabled
+        ?new TelegramBotReminderSender(configured('TELEGRAM_BOT_TOKEN')):null;
+      const notificationLoop=reminders?runVpnExpiryReminderLoop(
+        new PgVpnExpiryReminderQueue(pool),reminders,abort.signal):null;
+      try{
+        await runVpnWorker(new PgOutboxDispatcher(pool,{vpn:adapter}),
+          abort.signal,undefined,()=>{lastCycleSuccess=Date.now();});
+      }finally{
+        abort.abort();
+        if(notificationLoop)await notificationLoop;
+      }
     }finally{
       await new Promise<void>(resolve=>health.close(()=>resolve()));
     }
