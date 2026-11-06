@@ -109,6 +109,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/tests/0009_trial_activation_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0011_invoice_dispatch_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0018_site_auth_trials_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0019_email_device_contract.sql
       - name: Payment integration with disposable PostgreSQL
         env:
           PGPASSWORD: test
