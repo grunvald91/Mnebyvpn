@@ -8,10 +8,11 @@ import {
   type TelegramPreCheckout, type TelegramSuccessfulPayment,
 } from './stars.ts';
 import {
-  verifyProdamusPayment, type Fields, type ProdamusConfig,
+  verifyProdamusPayment, verifyProdamus, canonicalProdamusJson,
+  type Fields, type ProdamusConfig,
 } from './prodamus.ts';
 import {
-  PgBillingStore, prodamusOrderFromDB, starsOrderFromDB, starsPaymentHash, pricedPlanForOrder,
+  PgBillingStore, PaymentSettlementDenied, prodamusOrderFromDB, starsOrderFromDB, starsPaymentHash, pricedPlanForOrder,
 } from './store.ts';
 
 export interface TelegramApi {
@@ -180,33 +181,48 @@ export async function handleTelegramUpdate(
     return;
   }
   if (msg?.successful_payment) {
-    if (!validUserId(msg.from?.id) || msg.chat.type !== 'private' || msg.chat.id !== msg.from.id)
-      throw new Error('Unexpected Telegram payment sender');
-    const orderId = parseStarsPayload(msg.successful_payment.invoice_payload, config.starsPayloadSecret);
-    const record = orderId ? await db.order(orderId) : null;
-    const verified = validateStarsSuccess(
-      msg.successful_payment, msg.from.id,
-      record?.provider === 'telegram_stars' ? starsOrderFromDB(record) : null,
-      config.starsPayloadSecret);
-    if (!verified.ok) throw new Error('Telegram successful_payment mismatch: '+verified.reason);
-    const status = await db.settleVerified({
-      provider: 'telegram_stars', orderId: verified.capture.orderId,
-      providerTransactionId: verified.capture.providerTransactionId,
-      providerEventId: verified.capture.providerEventId,
-      amount: verified.capture.amount, currency: 'XTR',
-      payloadHash: starsPaymentHash(msg.successful_payment),
-    });
-    // Required durable write is completed before sending a non-critical message.
-    if (status === 'APPLIED') {
-      // The durable settlement must not be retried just because a message fails.
-      try {
-        await tg.call('sendMessage', {
-          chat_id: msg.chat.id,
-          text: '✅ Оплата подтверждена. Пакет зарегистрирован. Выдача доступа — после подключения сети.',
-        });
-      } catch {
-        // Delivery of the receipt is non-critical; notify from support sweep.
+    // Authenticated Telegram webhook is evidence of a charge; even a mismatch
+    // must be retained for operator refund/reconciliation, never discarded.
+    const payment=msg.successful_payment;
+    const sender=validUserId(msg.from?.id)?msg.from.id:null;
+    const orderId=parseStarsPayload(payment.invoice_payload,config.starsPayloadSecret);
+    const record=orderId?await db.order(orderId):null;
+    const verified=validateStarsSuccess(
+      payment,sender??0,
+      record?.provider==='telegram_stars'?starsOrderFromDB(record):null,
+      config.starsPayloadSecret,
+    );
+    const transactionId=typeof payment.telegram_payment_charge_id==='string' &&
+      payment.telegram_payment_charge_id.length>0
+       ?payment.telegram_payment_charge_id:'unknown:'+starsPaymentHash(payment);
+    const recordIncident=async(reason:string)=>{
+      await db.recordPaymentIncident({
+        provider:'telegram_stars',transactionId,orderId,
+        telegramUserId:sender,amount:payment.total_amount,currency:payment.currency,
+        reason,payloadHash:starsPaymentHash(payment),
+      });
+    };
+    if(msg.chat.type!=='private'||!validUserId(msg.chat.id)||sender!==msg.chat.id ||
+       !verified.ok) {
+      await recordIncident('STARS_CAPTURE_MISMATCH');
+      return;
+    }
+    try {
+      const outcome=await db.settleVerified({
+        provider:'telegram_stars',orderId:verified.capture.orderId,
+        providerTransactionId:verified.capture.providerTransactionId,
+        providerEventId:verified.capture.providerEventId,
+        amount:verified.capture.amount,currency:'XTR',
+        payloadHash:starsPaymentHash(payment),
+      });
+      if(outcome==='APPLIED') {
+        try {await tg.call('sendMessage',{chat_id:msg.chat.id,
+          text:'✅ Оплата подтверждена, заказ зарегистрирован. Выдача доступа зависит от статуса узла.'});
+        } catch { /* persisted capture must not be retried due to Telegram notification */ }
       }
+    } catch(error) {
+      if(!(error instanceof PaymentSettlementDenied))throw error;
+      await recordIncident('STARS_SETTLEMENT_DENIED');
     }
     return;
   }
@@ -281,24 +297,41 @@ export interface DeliveryResult { statusCode: number; text: string }
  * plus its original HTTP Sign header. Never accept success_url as payment proof.
  */
 export async function handleProdamusDelivery(
-  fields: Fields, signature: string, db: PgBillingStore, config: ProdamusConfig
-): Promise<DeliveryResult> {
-  if (typeof fields.order_num !== 'string') return {statusCode:400,text:'INVALID_ORDER'};
-  const record = await db.order(fields.order_num);
-  const checked = verifyProdamusPayment(fields, signature,
-    record?.provider === 'prodamus' ? prodamusOrderFromDB(record) : null, config);
-  if (!checked.ok) return {statusCode:400,text:checked.reason};
-  const outcome = await db.settleVerified({
-    provider:'prodamus',
-    orderId: checked.capture.orderId,
-    providerTransactionId: checked.capture.providerTransactionId,
-    providerEventId: checked.capture.providerEventId,
-    amount: checked.capture.amountMinor,
-    currency:'RUB',
-    payloadHash: checked.capture.payloadSha256,
-  });
-  return {
-    statusCode:200,
-    text: outcome === 'APPLIED' ? 'OK' : 'ALREADY_PROCESSED',
+  fields:Fields,signature:string,db:PgBillingStore,config:ProdamusConfig,
+):Promise<DeliveryResult> {
+  // Signed merchant notification must be authenticated BEFORE an incident or
+  // payment is accepted. A redirect to success_url is never payment proof.
+  if(!verifyProdamus(fields,signature,config.secret))
+    return {statusCode:401,text:'INVALID_SIGNATURE'};
+  if(fields.payment_status!=='success')
+    return {statusCode:200,text:'IGNORED_NON_CAPTURE'};
+  const orderId=typeof fields.order_num==='string'?fields.order_num:null;
+  const record=orderId?await db.order(orderId):null;
+  const checked=verifyProdamusPayment(
+    fields,signature,record?.provider==='prodamus'?prodamusOrderFromDB(record):null,config);
+  const hash=starsPaymentHash(canonicalProdamusJson(fields));
+  const transaction=typeof fields.order_id==='string' && fields.order_id.length>0
+    ?fields.order_id:'unknown:'+hash;
+  const recordIncident=async(reason:string)=>{
+    await db.recordPaymentIncident({provider:'prodamus',transactionId:transaction,
+      orderId,amount:null,currency:'RUB',reason,payloadHash:hash});
   };
+  if(!checked.ok) {
+    await recordIncident('PRODAMUS_CAPTURE_MISMATCH');
+    return {statusCode:200,text:'MANUAL_REVIEW'};
+  }
+  try {
+    const outcome=await db.settleVerified({
+      provider:'prodamus',orderId:checked.capture.orderId,
+      providerTransactionId:checked.capture.providerTransactionId,
+      providerEventId:checked.capture.providerEventId,
+      amount:checked.capture.amountMinor,currency:'RUB',
+      payloadHash:checked.capture.payloadSha256,
+    });
+    return {statusCode:200,text:outcome==='APPLIED'?'OK':'ALREADY_PROCESSED'};
+  } catch(error) {
+    if(!(error instanceof PaymentSettlementDenied))throw error;
+    await recordIncident('PRODAMUS_SETTLEMENT_DENIED');
+    return {statusCode:200,text:'MANUAL_REVIEW'};
+  }
 }

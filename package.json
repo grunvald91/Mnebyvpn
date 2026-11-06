@@ -11,7 +11,9 @@
     "test:integration": "node --experimental-strip-types --test --test-concurrency=1 tests/integration/*.test.ts",
     "start:diagnostics": "node --experimental-strip-types apps/service/src/server.ts",
     "start:payments": "node --experimental-strip-types apps/service/src/payments-server.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "start:worker:offline": "node --experimental-strip-types apps/service/src/provisioning-worker.ts",
+    "start:alerts:offline": "node --experimental-strip-types apps/service/src/payment-incidents-worker.ts"
   },
   "dependencies": {
     "pg": "8.16.3"

@@ -29,16 +29,18 @@ function record(provider:'telegram_stars'|'prodamus',state:OrderRecord['state']=
 }
 function fakeStore(order: OrderRecord) {
   const captures: VerifiedCapture[] = [];
+  const incidents:string[]=[];
   const db = {
     order:async(id:string)=>id===oid?order:null,
     plan:async()=>({planId:'vpn-test',title:'VPN',product:'vpn',stars:37,rubMinor:9900,dnsQuotaBytes:null,durationSeconds:3600}),
     plans:async()=>[{planId:'vpn-test',title:'VPN',product:'vpn',stars:37,rubMinor:9900,dnsQuotaBytes:null,durationSeconds:3600}],
     createTelegramOrder:async()=>order,
+    recordPaymentIncident:async(e:{reason:string})=>{incidents.push(e.reason);return 1;},
     settleVerified:async(c:VerifiedCapture)=>{captures.push(c);return 'APPLIED' as const;},
   };
   const calls:{method:string;params:Record<string,unknown>}[]=[];
   const tg:TelegramApi={call:async(method,params)=>{calls.push({method,params});return true;}};
-  return {db:db as unknown as PgBillingStore,tg,captures,calls};
+  return {db:db as unknown as PgBillingStore,tg,captures,calls,incidents};
 }
 const config={prodamus:pd,starsPayloadSecret:key};
 
@@ -68,8 +70,9 @@ test('Stars successful payment settles only for matching sender and charge',asyn
   assert.equal(f.captures[0].providerTransactionId,'charge1');
   assert.equal(f.calls[0].method,'sendMessage');
   const g=fakeStore(record('telegram_stars'));
-  await assert.rejects(()=>handleTelegramUpdate({update_id:13,message:{chat:{id:123456,type:'private'},from:{id:999},successful_payment:payment}},g.db,g.tg,config));
+  await handleTelegramUpdate({update_id:13,message:{chat:{id:123456,type:'private'},from:{id:999},successful_payment:payment}},g.db,g.tg,config);
   assert.equal(g.captures.length,0);
+  assert.deepEqual(g.incidents,['STARS_CAPTURE_MISMATCH']);
 });
 test('signed Prodamus webhook repeat after PAID is eligible for SQL idempotency',async()=>{
   const f=fakeStore(record('prodamus','PAID'));
@@ -79,7 +82,7 @@ test('signed Prodamus webhook repeat after PAID is eligible for SQL idempotency'
   assert.equal(result.statusCode,200);
   assert.equal(f.captures[0].providerTransactionId,'capture1');
   assert.equal(f.captures[0].amount,9900);
-  assert.equal((await handleProdamusDelivery({...body,sum:'1.00'},signProdamus(body,key),f.db,pd)).statusCode,400);
+  assert.equal((await handleProdamusDelivery({...body,sum:'1.00'},signProdamus(body,key),f.db,pd)).statusCode,401);
 });
 test('multipart decoder handles official nested products syntax and rejects ambiguous inputs',async()=>{
   const form=new FormData();

@@ -1,4 +1,5 @@
-import { Pool } from 'pg';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { Pool, type PoolClient } from 'pg';
 import {
   reconcileEntitlement, type DesiredAccess, type ProvisioningAdapter,
   type ReconcileResult, type ReconcileStore,
@@ -14,35 +15,47 @@ function asInt(value: unknown): number {
   return n;
 }
 
-/** Persistent PostgreSQL store with SESSION advisory locking over remote calls.
- * Fencing verifies acknowledgement but does not cancel an upstream in-flight operation. */
+/** Non-blocking per-entitlement lock, with all DB work running on the SAME
+ * checked-out client while a remote operation is in progress. Prevents pool
+ * starvation with max=2 and two concurrent reconciliations.
+ */
+export class ReconcileLockBusy extends Error {
+  constructor(){super('RECONCILE_LOCK_BUSY');}
+}
 export class PgReconcileStore implements ReconcileStore {
   readonly pool: Pool;
+  private readonly lockContext=new AsyncLocalStorage<PoolClient>();
   constructor(pool: Pool) { this.pool=pool; }
+  private query(sql:string,params:unknown[]=[]){
+    return (this.lockContext.getStore()??this.pool).query(sql,params);
+  }
   async withLock<T>(id:string,action:(fence:number)=>Promise<T>):Promise<T> {
     const client=await this.pool.connect();
     let locked=false, close=false;
     try {
-      await client.query("SELECT pg_advisory_lock(hashtext('mnebyvpn:provision'),hashtext($1))",[id]);
+      const tryLock=await client.query(
+        "SELECT pg_try_advisory_lock(hashtext('mnebyvpn:provision'),hashtext($1)) AS ok",[id]);
+      if(tryLock.rows[0]?.ok!==true)throw new ReconcileLockBusy();
       locked=true;
       const type=await client.query('SELECT product FROM entitlements WHERE id=$1',[id]);
       if (!type.rowCount) throw new Error('Unknown entitlement');
       const {rows}=await client.query('SELECT claim_provisioning_fence($1,$2) AS fence',
         [id,type.rows[0].product]);
-      return await action(asInt(rows[0].fence));
+      return await this.lockContext.run(client,()=>action(asInt(rows[0].fence)));
     } finally {
       if (locked) {
         try {
-          const unlock=await client.query("SELECT pg_advisory_unlock(hashtext('mnebyvpn:provision'),hashtext($1)) AS ok",[id]);
+          const unlock=await client.query(
+            "SELECT pg_advisory_unlock(hashtext('mnebyvpn:provision'),hashtext($1)) AS ok",[id]);
           if (unlock.rows[0].ok !== true) close=true;
         } catch { close=true; }
       }
       client.release(close);
-      if(close) throw new Error('Advisory lock connection lost');
+      if(close)throw new Error('Advisory lock connection lost');
     }
   }
   async readDesired(id:string):Promise<DesiredAccess> {
-    const {rows}=await this.pool.query(
+    const {rows}=await this.query(
       `SELECT e.id,e.revision,e.state,e.expires_at,e.starts_at,
           e.quota_limit_bytes,e.quota_used_bytes,e.quota_state,
           t.order_id AS trial_order_id,t.activated_at
@@ -64,7 +77,7 @@ export class PgReconcileStore implements ReconcileStore {
       expiresAt:expiry,trialPendingActivation:pendingTrial,isTrial:Boolean(r.trial_order_id)};
   }
   async acknowledge(id:string,revision:number,fence:number,observedEnabled:boolean):Promise<boolean> {
-    const {rows}=await this.pool.query(
+    const {rows}=await this.query(
       `SELECT acknowledge_provisioning($1,
         (SELECT product FROM entitlements WHERE id=$1),$2,$3,$4) AS ok`,
       [id,revision,fence,observedEnabled]);
@@ -72,7 +85,7 @@ export class PgReconcileStore implements ReconcileStore {
   }
   async requestReconcile(id:string,reason:string):Promise<void> {
     if(!/^[a-z_]{1,80}$/.test(reason)) throw new Error('Invalid reconcile reason');
-    await this.pool.query(
+    await this.query(
       `INSERT INTO reconcile_outbox(entitlement_id,desired_revision,next_attempt_at,last_error_code)
         SELECT id,revision,clock_timestamp(),$2 FROM entitlements WHERE id=$1
         ON CONFLICT(entitlement_id,desired_revision) DO UPDATE SET

@@ -4,7 +4,18 @@ on:
   # One short offline run per actual code push, not duplicate PR + push runs.
   push:
     branches:
-      - feat/phase1-foundation-20261105
+      - main
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'tests/**'
+      - 'db/**'
+      - 'package.json'
+      - 'tsconfig.json'
+      - '.github/workflows/offline-contracts.yml'
+  pull_request:
+    branches:
+      - main
     paths:
       - 'apps/**'
       - 'packages/**'
@@ -74,6 +85,9 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0009_trial_activation_on_provision.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0010_late_payment_capture.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0011_telegram_invoice_dispatch.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0012_payment_incidents.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0013_renewal_credits.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0014_trial_admission_cap.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0002_billing_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0003_ipv6_claims_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0005_outbox_contract.sql
@@ -81,6 +95,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/tests/0008_pricing_drafts_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0009_trial_activation_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0011_invoice_dispatch_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0012_0014_upgrade_contract.sql
       - name: Payment integration with disposable PostgreSQL
         env:
           PGPASSWORD: test

@@ -424,6 +424,19 @@ export class PgBillingStore {
       const offer=await c.query('SELECT * FROM trial_offers WHERE product=$1 AND enabled=true',
         [product]);
       if(!offer.rowCount){await c.query('COMMIT');return {status:'UNAVAILABLE'};}
+      // Paid customers are not new trial users. Per-product lock serializes
+      // daily admission across arbitrarily many Telegram accounts.
+      const priorPaid=await c.query(
+        "SELECT 1 FROM orders WHERE account_id=$1 AND state='PAID' LIMIT 1",[accountId]);
+      if(priorPaid.rowCount){await c.query('COMMIT');return {status:'UNAVAILABLE'};}
+      await c.query("SELECT pg_advisory_xact_lock(hashtext('mnebyvpn:trial'),hashtext($1))",
+        [product]);
+      const daily=await c.query(
+        "SELECT count(*)::integer AS n FROM trial_grants "+
+        "WHERE product=$1 AND reserved_at>clock_timestamp()-interval '24 hours'",[product]);
+      if(daily.rows[0].n>=Number(offer.rows[0].max_daily_grants)){
+        await c.query('COMMIT');return {status:'UNAVAILABLE'};
+      }
       if(inviteToken){
         const referral=await c.query(
           `SELECT i.referrer_account_id FROM referral_invites i
