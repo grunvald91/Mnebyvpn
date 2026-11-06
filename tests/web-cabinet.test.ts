@@ -81,11 +81,11 @@ test('unactivated trial never shows a fabricated expiry or quota amount',()=>{
 test('public website references the configured Telegram bot in navigation, hero and footer',async()=>{
   const {readFileSync}=await import('node:fs');
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
-  const links=html.match(/https:\/\/t\.me\/MnebyVPN_bot/g)||[];
+  const links=html.match(/https:\/\/t\.me\/MNEBYVPN_bot/g)||[];
   assert.ok(links.length>=4);
   assert.match(html,/id="trial-hero-button"/);
   assert.match(html,/id="guest-trial-card"/);
-  assert.match(html,/@MnebyVPN_bot/);
+  assert.match(html,/@MNEBYVPN_bot/);
   assert.match(html,/rel="noopener noreferrer"/);
 });
 
@@ -158,7 +158,7 @@ test('mobile hero trial CTA stays hidden while tariff-card trial remains visible
   assert.ok(html.indexOf('href="/site.css"')<html.indexOf('href="/neo.css"'));
 });
 
-test('website keeps support form accessible without Telegram login and brands it MnebyVPN',async()=>{
+test('website keeps support form accessible without Telegram login and brands it MNEBYVPN',async()=>{
   const {readFileSync}=await import('node:fs');
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
   const server=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
@@ -168,6 +168,6 @@ test('website keeps support form accessible without Telegram login and brands it
   assert.match(server,/url\.pathname==='\/api\/support'/);
   assert.match(server,/url\.pathname==='\/api\/support\/status'/);
   assert.match(js,/submitSupport/);
-  assert.doesNotMatch(html,/Мне бы VPN|МНЕ БЫ/);
-  assert.match(html,/<title>MnebyVPN/);
+  assert.doesNotMatch(html,/MNEBYVPN|МНЕ БЫ/);
+  assert.match(html,/<title>MNEBYVPN/);
 });
