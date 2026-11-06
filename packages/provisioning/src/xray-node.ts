@@ -88,7 +88,7 @@ export class SignedXrayNodeApi implements ProvisioningAdapter {
     Promise<string|null>{
     const observed=await this.inspect(entitlementId);
     if(!observed.enabled||observed.revision!==revision||
-      observed.expiresAt===null||!observed.credential||
+      !observed.expiresAt||!observed.credential||
       !Number.isFinite(expiresAt.getTime())||expiresAt.getTime()<=Date.now()||
       Math.abs(observed.expiresAt.getTime()-expiresAt.getTime())>1000)
       return null;
