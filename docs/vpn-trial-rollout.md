@@ -31,3 +31,10 @@ If Remnawave is absent, `/connect` must not reveal or fabricate a profile.
 5. Verify stale-window acceptance, protection against leaking subscriptions and actual webhook delivery; only then enable the VPN trial offer in database. Paid checkout has separate finance and legal gates.
 
 Official API contract: https://docs.rw/api/ (Users Controller, API v3.4.7 at time of development).
+
+## Database expiry scheduler
+
+The dedicated `npm run start:expiry-worker` process needs the following runtime settings:
+`MNEBYVPN_ENV=production`, `MNEBYVPN_EXPIRY_WORKER=enabled`, `DATABASE_URL`.
+
+Once started, it runs `expire_due_entitlements()` each minute and drift reconciliation scheduling every five minutes. PostgreSQL atomically sets past-due entitlement state to EXPIRED and enqueues a new revision. It is safe to retry after a crash, but **this scheduler does not itself disable an existing Xray TCP/UDP stream**. That requires a real node adapter and the separately documented hard-expiry gate. Do not advertise production VPN expiry until verified on the wire.

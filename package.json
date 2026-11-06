@@ -12,6 +12,7 @@
     "start:diagnostics": "node --experimental-strip-types apps/service/src/server.ts",
     "start:payments": "node --experimental-strip-types apps/service/src/payments-server.ts",
     "start:web": "node --experimental-strip-types apps/web/src/server.ts",
+    "start:expiry-worker": "node --experimental-strip-types apps/service/src/expiry-worker.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
