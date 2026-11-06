@@ -196,3 +196,23 @@ test('confirmed absent remote profile can acknowledge disable without creating a
   assert.deepEqual(state.actions,[],'no API writes needed to revoke a nonexistent profile');
   assert.deepEqual(state.acknowledgements,[9]);
 });
+
+test('panel-only DISABLED read-back does not acknowledge Xray Node revocation',async()=>{
+  const state=setup();
+  delete state.adapter.enforcesHardExpiry;
+  state.desired={...state.desired,revision:3,enabled:false,expiresAt:null};
+  const result=await run(state);
+  assert.deepEqual(result,{status:'retry_required',reason:'node_unverified'});
+  assert.deepEqual(state.actions,['3:false'],'send best-effort panel revoke');
+  assert.deepEqual(state.acknowledgements,[],'panel-only state cannot clear outbox');
+});
+test('panel-only 404 does not acknowledge: old Xray config may still be active',async()=>{
+  const state=setup();
+  delete state.adapter.enforcesHardExpiry;
+  state.desired={...state.desired,revision:3,enabled:false,expiresAt:null};
+  state.observed={revision:0,enabled:false,absent:true};
+  const result=await run(state);
+  assert.deepEqual(result,{status:'retry_required',reason:'node_unverified'});
+  assert.deepEqual(state.actions,[]);
+  assert.deepEqual(state.acknowledgements,[]);
+});
