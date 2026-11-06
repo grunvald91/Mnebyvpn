@@ -280,7 +280,7 @@ async function callback(req: IncomingMessage,res: ServerResponse,
       const profile=await readRemoteJson('https://login.yandex.ru/info?format=json',{
         headers:{Authorization:'OAuth '+token.access_token},
       });
-      if((profile.client_id!==undefined&&profile.client_id!==yandexClientId)||
+      if((profile.client_id!==yandexClientId)||
         typeof profile.id!=='string'||!/^[0-9]{1,32}$/.test(profile.id))
         throw Error('Invalid Yandex OAuth subject');
       subject=profile.id;
