@@ -197,7 +197,7 @@ function renderAccount(payload) {
   renderPlan();
 }
 function syncLoginLinks() {
-  const target=state.loginEnabled?'/auth/login':'https://t.me/MnebyVPN_bot';
+  const target=state.loginEnabled?'/auth/login':'https://t.me/MNEBYVPN_bot';
   const label=state.loginEnabled?'Войти':'Telegram-бот';
   const top=byId('auth-link');
   top.textContent=label;top.href=target;
@@ -360,7 +360,7 @@ async function claimTrial() {
   if(!state.loggedIn){
     saveSelection();
     if(!state.loginEnabled){
-      location.assign('https://t.me/MnebyVPN_bot');
+      location.assign('https://t.me/MNEBYVPN_bot');
     }else{
       location.assign('/auth/login');
     }
