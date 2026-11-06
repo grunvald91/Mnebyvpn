@@ -73,30 +73,36 @@ test('signed Telegram connect reveals a profile only to the confirmed owner',asy
     if(i===49)throw Error('Bot server not ready');
     await new Promise(resolve=>setTimeout(resolve,100));
   }
-  const update=async(actor:number,secret=token)=>{
+  const update=async(actor:number,secret=token,action='nav:connect')=>{
     const r=await fetch('http://127.0.0.1:'+port+'/webhooks/telegram',{
       method:'POST',headers:{'Content-Type':'application/json',
         'X-Telegram-Bot-Api-Secret-Token':secret},
       body:JSON.stringify({update_id:Math.floor(Math.random()*1000000),
         callback_query:{id:'synthetic',from:{id:actor},
-        message:{chat:{type:'private',id:actor},message_id:7},data:'nav:connect'}})});
+        message:{chat:{type:'private',id:actor},message_id:7},data:action}})});
     return r;
   };
-  const other=await update(user+1);
+  const other=await update(user+1,token,'nav:device:android');
   const otherMessage=await other.json() as any;
   assert.equal(other.status,200);
+  assert.ok(!JSON.stringify(otherMessage).includes('https://mnebyvpn.site/sub/'));
   assert.ok(!JSON.stringify(otherMessage).includes(link));
   const own=await update(user);
   assert.equal(own.status,200);
-  const profile=await own.json() as any;
-  assert.equal(profile.method,'editMessageText');
-  assert.ok(profile.reply_markup.inline_keyboard.some((row:any[])=>row.some(b=>b.url===link)));
-  remoteRevision=3;
-  const mismatched=await (await update(user)).json() as any;
-  assert.ok(!JSON.stringify(mismatched).includes(link));
-  remoteRevision=2;
+  const chooser=await own.json() as any;
+  assert.equal(chooser.method,'editMessageText');
+  assert.match(chooser.text,/VPN активирован/);
+  assert.ok(chooser.reply_markup.inline_keyboard.some((row:any[])=>
+    row.some(b=>b.callback_data==='nav:device:android')));
+  const installer=await (await update(user,token,'nav:device:android')).json() as any;
+  assert.ok(installer.reply_markup.inline_keyboard.some((row:any[])=>
+    row.some(b=>b.url?.startsWith('https://mnebyvpn.site/install/'))));
+  assert.ok(installer.reply_markup.inline_keyboard.some((row:any[])=>
+    row.some(b=>b.copy_text?.text.startsWith('https://mnebyvpn.site/sub/'))));
+  assert.ok(!JSON.stringify(installer).includes(link));
   await pool.query('UPDATE provisioning_state SET applied_revision=1 WHERE entitlement_id=$1',[ent]);
-  const stale=await (await update(user)).json() as any;
+  const stale=await (await update(user,token,'nav:device:android')).json() as any;
+  assert.ok(!JSON.stringify(stale).includes('https://mnebyvpn.site/sub/'));
   assert.ok(!JSON.stringify(stale).includes(link));
   const unauth=await update(user,'wrong-token');
   assert.equal(unauth.status,401);
