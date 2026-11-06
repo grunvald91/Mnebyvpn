@@ -292,7 +292,7 @@ export async function handleProdamusDelivery(
   if (fields.domain !== new URL(config.formUrl).hostname)
     return {statusCode:400,text:'MERCHANT_MISMATCH'};
   if (typeof fields.payment_status !== 'string' ||
-      fields.payment_status.length>64)
+      fields.payment_status.trim().length===0 || fields.payment_status.length>64)
     return {statusCode:400,text:'INVALID_PAYMENT_STATUS'};
   if (fields.payment_status !== 'success') {
     // No DB mutation and no entitlement for denied/cancelled/unknown statuses.
