@@ -105,7 +105,7 @@ footer{color:var(--tg-theme-hint-color);font-size:10px;line-height:1.4;margin-to
    top.appendChild(label);
    var b=mk("button","pay","Попробовать");b.type="button";
    b.addEventListener("click",function(){open("t",trial[4])});
-   top.appendChild(b);box.appendChild(top);list.prepend(box);
+   top.appendChild(b);box.appendChild(top);list.insertBefore(box,list.firstChild);
   }
   if(!rows.length)list.appendChild(mk("p","desc","В этой категории пока нет опубликованных тарифов."));
   el("footer").textContent="Оплата через Telegram Stars. ₽ — цена для отдельного сайта Продамус. "+

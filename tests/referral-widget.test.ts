@@ -134,7 +134,7 @@ function execBubble(data:string){
   return {
    tag,className:'',textContent:'',hidden:false,children:[] as any[],
    appendChild(child:any){this.children.push(child);return child;},
-   prepend(child:any){this.children.unshift(child);return child;},
+   insertBefore(child:any,_before:any){this.children.unshift(child);return child;},
    setAttribute(){},
    addEventListener(_ev:string,fire:()=>void){
     clicked.push({label:this.textContent,fire});
