@@ -135,6 +135,8 @@ test('previously authorized renewal capture after original refund restores only 
     undefined,f.entitlementId);
   assert.equal(await refund(f.first.id,f.txn,f.amount),'APPLIED');
   assert.equal((await entitlement(f.entitlementId)).state,'REFUNDED');
+  await assert.rejects(db.createWebsiteOrder(f.accountId,f.planId,'void-'+unique(),
+    undefined,f.entitlementId),/Renewal target not owned/);
   // The checkout was valid at creation time. A subsequently confirmed capture
   // must not strand the payment even if its older subscription got refunded.
   const txn='txn-'+unique();
@@ -142,6 +144,4 @@ test('previously authorized renewal capture after original refund restores only 
   const result=await entitlement(f.entitlementId);
   assert.equal(result.state,'PAID_PENDING_PROVISIONING');
   assert.ok(Math.abs(ms(result.expires_at)-(Date.now()+f.duration*1000))<10000);
-  await assert.rejects(db.createWebsiteOrder(f.accountId,f.planId,'void-'+unique(),
-    undefined,f.entitlementId),/Renewal target not owned/);
 });
