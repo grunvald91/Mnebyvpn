@@ -55,6 +55,14 @@ test('Stars invoice is bound to trusted price and opaque order payload', () => {
   assert.throws(() => buildStarsInvoice({ ...starsOrder, amount: 30 }, plan, key));
 });
 
+test('Stars invoice obeys Telegram product title limit for long catalog names', () => {
+  const longTitle='Очень длинное название VPN пакета с дополнительным текстом';
+  const invoice=buildStarsInvoice(starsOrder,{...plan,title:longTitle},key);
+  assert.equal(Array.from(invoice.title).length,32);
+  assert.equal(invoice.prices[0].label,invoice.title);
+  assert.equal(invoice.prices[0].amount,250);
+});
+
 test('pre-checkout requires exact order and does not grant any right', () => {
   const query = {
     id: 'checkout_1', from: { id: 100001 }, total_amount: 250,
