@@ -7,6 +7,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFile } from 'node:fs/promises';
 import { createHash,randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
+import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
+  from '../../../packages/support/src/telegram-relay.ts';
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
 import {subscriptionOwner,subscriptionLink}
   from '../../../packages/provisioning/src/subscription-links.ts';
@@ -38,6 +40,9 @@ if (offline && !['http:', 'https:'].includes(base.protocol))
 if (base.pathname !== '/' || base.search || base.hash || base.username || base.password)
   throw new Error('WEB_BASE_URL must be a bare origin');
 const publicOrigin = base.origin;
+const support=supportConfig();
+const contactLimit=supportLimiter(3,15*60_000);
+const globalSupportLimit=supportLimiter(120,60_000);
 const sessionSecret = required('WEB_SESSION_SECRET');
 if (sessionSecret.length < 32) throw new Error('WEB_SESSION_SECRET too short');
 // A public informational site can be deployed before BotFather issues OIDC
@@ -306,7 +311,7 @@ function installHtml(subUrl:string,client:'incy'|'karing'):string {
   return '<!doctype html><html lang="ru"><head><meta charset="utf-8">'+
     '<meta name="viewport" content="width=device-width,initial-scale=1">'+
     '<meta name="referrer" content="no-referrer">'+
-    '<title>Подключение «Мне бы VPN»</title>'+
+    '<title>Подключение MnebyVPN</title>'+
     '<link rel="stylesheet" href="/neo.css"></head>'+
     '<body style="margin:0"><main data-client="'+client+'" data-sub="'+subUrl+'">'+
     '<h1>Подключить VPN в '+app+'</h1>'+
@@ -352,7 +357,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       res.setHeader('subscription-userinfo',
         'upload=0; download=0; total=0; expire='+
         Math.floor(owner.expiresAt.getTime()/1000));
-      res.setHeader('profile-title','base64:'+Buffer.from('Мне бы VPN').toString('base64'));
+      res.setHeader('profile-title','base64:'+Buffer.from('MnebyVPN').toString('base64'));
       send(res,200,Buffer.from(profile+'\n','utf8').toString('base64')+'\n',
         'text/plain; charset=utf-8');
     }catch{
@@ -371,6 +376,36 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     }
     send(res,200,installHtml(subscriptionLink(installMatch[1]),client),
       'text/html; charset=utf-8');
+    return;
+  }
+  if(req.method==='GET'&&url.pathname==='/api/support/status'){
+    json(res,200,{available:!!support});return;
+  }
+  if(req.method==='POST'&&url.pathname==='/api/support'){
+    if(!support){json(res,503,{code:'SUPPORT_NOT_CONFIGURED'});return;}
+    if(req.headers.origin!==publicOrigin||
+      !req.headers['content-type']?.startsWith('application/json')){
+      json(res,403,{code:'INVALID_ORIGIN'});return;
+    }
+    const body=await bodyJson(req);
+    if(Object.keys(body).some(key=>!['contact','message','website'].includes(key))||
+       (body.website!==undefined&&body.website!=='')||
+       !validSupportContact(body.contact)||!validSupportText(body.message)){
+      json(res,400,{code:'INVALID_SUPPORT_REQUEST'});return;
+    }
+    const contact=body.contact.trim(),message=body.message.trim();
+    const contactKey=createHash('sha256').update(contact.toLowerCase()).digest('hex');
+    if(!contactLimit(contactKey)||!globalSupportLimit('global')){
+      json(res,429,{code:'SUPPORT_RATE_LIMIT'});return;
+    }
+    try{
+      await telegramSupportSend(support,
+        '✉️ MnebyVPN — обращение с сайта\\nКонтакт: '+contact+
+        '\\n\\nСообщение:\\n'+message);
+      json(res,200,{delivered:true});
+    }catch{
+      json(res,503,{code:'SUPPORT_DELIVERY_FAILED'});
+    }
     return;
   }
   if (req.method === 'GET' && url.pathname === '/healthz') {
