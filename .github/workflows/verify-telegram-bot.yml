@@ -1,0 +1,40 @@
+name: Verify MNEBYVPN Telegram bot identity (secret-safe)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  get-me:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    steps:
+      - name: Verify Bot API identity without exposing the token
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+            echo "::error::Add TELEGRAM_BOT_TOKEN in this repository's Actions secrets"
+            exit 2
+          fi
+          python3 - <<'PY'
+          import json,os,sys,urllib.request
+          token=os.environ['TELEGRAM_BOT_TOKEN']
+          try:
+            request=urllib.request.Request('https://api.telegram.org/bot'+token+'/getMe',
+              method='POST',data=b'')
+            with urllib.request.urlopen(request,timeout=12) as response:
+              result=json.loads(response.read(8192))
+            bot=result.get('result') or {}
+            if result.get('ok') is not True or bot.get('is_bot') is not True:
+              raise ValueError('Provider did not confirm bot identity')
+            if str(bot.get('username','')).lower()!='mnebyvpn_bot':
+              raise ValueError('Bot username does not match the website link')
+          except Exception:
+            print('Bot API getMe validation failed. Check token and exact username. Token was not printed.')
+            sys.exit(1)
+          print('bot_identity_verified=true')
+          print('bot_username=@MnebyVPN_bot')
+          print('secret_exposed=false')
+          PY
