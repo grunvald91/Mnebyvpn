@@ -289,3 +289,7 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
  .contact-support-form label{font-size:11px}
  .contact-support-form input,.contact-support-form textarea{font-size:12px}
 }
+
+.support-thread{margin-top:9px;padding:13px 14px;border:1px solid rgba(78,207,246,.38);border-radius:13px;background:rgba(9,38,67,.67)}
+.support-thread strong{font-size:12px;letter-spacing:.2px}
+.contact-support-form .support-thread p{margin:7px 0 0;color:#dcf4ff;white-space:pre-wrap;overflow-wrap:anywhere}
