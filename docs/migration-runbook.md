@@ -4,14 +4,14 @@
 
 ## STOP
 
-До Gates 0–2 запрещены `rm -rf`, reset Docker, замена ОС, изменение nginx :443, systemd WireGuard/Xray/Telemt/MTG, firewall, DNS, SSH и ключей. Исторический git snapshot **не равен** проверенной резервной копии живого состояния.
+До Gates 0–2 запрещены `rm -rf`, reset Docker, замена ОС, изменение nginx :443, любых действующих systemd/proxy служб, firewall, DNS, SSH и ключей. Исторический git snapshot **не равен** проверенной резервной копии живого состояния.
 
 ## Gate 0 — read-only
 
-- Свежая карта адресов, 80/443/853/53, local upstream, SNI, Docker host/bridge, nft/iptables и защита SSH.
-- Отдельная проверка публичных 8888/8787, роли и защиты.
+- Свежая **приватная** карта адресов, портов, локальных upstream, SNI, Docker host/bridge, nft/iptables и защита SSH.
+- Отдельная проверка всех нестандартных публичных listeners, роли и аутентификации; протокол и результаты не публиковать.
 - Фактическое потребление RAM/disk/CPU при пиках; GPU для ИИ локально не нужен, ИИ-критик может быть удалённым.
-- Выяснить возможный resize 188 (сохранится ли публичный IP, диски, данные, услуги). 
+- Проверить ресурсы **после уже заявленного владельцем resize** и актуальное состояние IP/диска/сервисов; не полагаться на старый audit. 
 - Документировать источники сертификатов и DNS (без секрета).
 
 ## Gate 1 — защищённый backup и откат
@@ -25,26 +25,26 @@
 
 - Ресурсы Panel соответствуют https://docs.rw/install/requirements/ .
 - Утверждены конкретные домены, DNS/TLS, маршруты Node control API, список портов, конфигурация монитора и rollback.
-- Remnawave Node `network_mode: host`: отдельные тестовые порты, **нет дублирования 443/8443**. Не вытеснять существующий Xray.
+- Remnawave Node `network_mode: host`: отдельные тестовые порты, **нет конфликтов занятых адресов/портов**. Не вытеснять существующий Xray.
 - Smart DNS PoC на **изолированном** тестовом IP/порту; никаких публичных DNS rewrite или open proxy до проверки.
 - Версии официальных backend/node/SDK/Xray/CoreDNS/nginx закреплены и протестированы.
 - Отдельное разрешение владельца на изменяющие команды.
 
 ## Gate 3 — staged VPN
 
-- После разрешения: backend+Panel (188 после resize), DB/Redis, HTTPS subscription, защищённый admin API.
-- Remnawave Node на 89 в параллельном isolated pilot; тесты Xray конфигурации, импорт 2 разных приложений, expiry/revoke.
-- Проверка existing proxy services, SNI routing, ресурсы, WireGuard **до и после**.
+- После разрешения: backend+Panel (только на одобренном control-plane узле после свежего capacity check), DB/Redis, HTTPS subscription, защищённый admin API.
+- Remnawave Node на согласованном data-plane узле в параллельном isolated pilot; тесты Xray конфигурации, импорт 2 разных приложений, expiry/revoke.
+- Проверка existing proxy services, SNI routing, ресурсы, действующих сервисов **до и после**.
 
-## Gate 4 — свой MNEBYDNS PoC
+## Этап 4 — свой MNEBYDNS PoC (DEFERRED, не коммерческий gate MVP)
 
 - DNS engine, DoH/DoT frontend, policy/ACL, один-два разрешённых тестовых сайта, strict SNI passthrough без MITM.
 - Тесты DNSSEC/ECH/QUIC/IPv6/cache/built-in DNS, запрет неизвестных SNI/private-IP, per-user access и revoke.
 - Только после отдельной проверки включать DNS-профили в пользовательский интерфейс.
 
-## Gate 5 — commercial + guarded ops
+## Этап 5 — commercial (после всех P0) + guarded ops (позже)
 
-- TypeScript bot + backend, платежи, entitlement `vpn`/`smart_dns`, outbox, reconciliation, refunds.
+- TypeScript bot + backend, платежи, первый entitlement `vpn`, outbox, reconciliation, refunds, web self-service. Smart DNS entitlement остаётся неактивным коммерчески.
 - Сначала **только наблюдение** и алерты; A1/A2 self-heal после dry-run и ручной приёмки.
 - Auto-provision VPS только после выбора провайдера/API, тестов IaC, hard budgets и отдельного разрешения. Дорогие special узлы по умолчанию только manual.
 - Canary users/протоколы, контроль отсутствия деградации существующих прокси.

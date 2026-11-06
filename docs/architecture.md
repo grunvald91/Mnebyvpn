@@ -33,7 +33,7 @@ flowchart TB
 
 ## Логика слоёв
 
-1. **Commercial**: единый аккаунт, заказ/платёж, тариф, entitlement с `service_type` = `vpn` / `smart_dns` / `bundle`, support, self-service, обработчик outbox.
+1. **Commercial**: единый аккаунт, заказ/платёж, тариф, entitlement с `service_type` = `vpn` / `smart_dns` / `bundle`, support, self-service, обработчик outbox. **Только VPN — кандидат первого коммерческого запуска, Smart DNS/sni отложены.**
 2. **VPN control/data**: Remnawave backend/панель + Node/Xray + Remnawave subscription templates/response rules. Генератор собственной «универсальной подписки» на MVP не нужен.
 3. **Smart DNS control/data**: собственная служба политики DNS и конфигураций (не Remnawave); CoreDNS/DoH/DoT resolver и отдельный SNI/TCP passthrough ingress. Настройка защищённых DNS-профилей не гарантирует маршрутизацию всех приложений.
 4. **Operations**: probes → метрики → правила → безвредный/runbook action → повторная проверка. ИИ только объясняет причину и выбирает из разрешённых действий, но **не управляет root shell**. Автоскейл — отдельный контроллер с тарифными/денежными лимитами и approval gates.
@@ -50,7 +50,7 @@ flowchart TB
 ## Приоритеты
 
 - P0: Xray/REALITY и несколько проверенных клиентских приложений, единое право доступа, ресурсный preflight, защита текущих прокси.
-- P1: собственный Smart DNS/SNI proof of concept с одним-двумя разрешёнными HTTPS-доменами; независимый resolver и routing.
+- P2/исследование: собственный Smart DNS/SNI proof of concept с одним-двумя разрешёнными HTTPS-доменами; независимый resolver и routing.
 - P1: мониторинг + алерты + *детерминированные* ограниченные restart/recovery с проверкой.
 - P2: ИИ-критик инцидентов, approved runbooks, масштабирование через провайдеров; ни один из этих сервисов не считается реализованным.
 - P3: специальные дорогие узлы для операторских ограничений, только после проверки сети и договора.
@@ -59,16 +59,11 @@ flowchart TB
 
 Проверенные принципы: https://docs.rw/learn-en/templates/ ; https://docs.rw/learn-en/routing-rules/ ; https://github.com/coredns/coredns ; https://nginx.org/en/docs/stream/ngx_stream_ssl_preread_module.html ; https://www.rfc-editor.org/rfc/rfc6066.html.
 
-## Gate v3: шесть инвариантов перед платной эксплуатацией
+## Критерии релиза
 
-- Smart DNS и прозрачный TLS/SNI relay НЕ имеют общей автоматической subscriber auth: токен DoH не попадает в TLS ClientHello. Платный relay остаётся BLOCKED до проверенной [привязки каждого соединения к подписке и общего server-side quota enforcement](smart-dns-access-gate.md). HWID/идентификация устройств для этого не нужны.
-- Любая команда выдачи VPN/DNS должна применять **последнее desired state** и защищаться `revision + fencing`; см. [порядок применения](provisioning-ordering.md).
-- Новый узел не равен переносу клиентов. Для scale-out необходимы проверенные client updates, выбор и замер разгрузки; см. [scale-out](scale-out-contract.md).
-- Покупка VPS возможна только после атомарного резерва бюджета с учётом ресурсов неизвестного исхода; см. [budget contract](scale-out-contract.md).
-- Не подтверждено, что Remnawave Node сам отключает expired пользователей при разрыве связи с панелью; см. [offline-expiry](offline-expiry.md).
-- Для Smart DNS требуются согласованные ответы A/AAAA/HTTPS/SVCB/CNAME/DNSSEC; без этого домен исключается из Smart proxy; см. [DNS RR policy](dns-record-policy.md).
+Единый реестр и статусы P0/P1 — [docs/release-gates.md](release-gates.md). Шесть исторических gates сохранены там как ссылки на подробные контракты. Не считать разработанный контракт выполненным тестом.
 
-**Все эти пункты спроектированы, но НЕ проверены на реальных узлах и клиентах.**
+**MVP — VPN-first + бот + веб-кабинет**; платный SNI, AI-autoscaling, special nodes отложены по [решению](mvp-scope.md). Показанная выше схема — будущая архитектура, **не одна одновременно развёрнутая система**.
 
 ## Бизнес-модель MNEBYDNS
 
