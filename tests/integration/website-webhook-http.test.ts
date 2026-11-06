@@ -99,7 +99,7 @@ test('live HTTP loopback: reject spoofed signature, settle signed Prodamus multi
     sum:'119.00',payment_status:'success',attempt:'1',
   };
   const invalid=await post(fields,false);
-  assert.equal(invalid.status,400);
+  assert.equal(invalid.status,401);
   assert.equal((await pool.query('SELECT state FROM orders WHERE id=$1',[payment.id])).rows[0].state,'PENDING');
   const good=await post(fields);
   assert.equal(good.status,200);
