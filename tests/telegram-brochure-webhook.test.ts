@@ -57,7 +57,7 @@ test('Telegram /start is answered with one webhook sendMessage API method, no Bo
   const answer=await result.json() as any;
   assert.equal(answer.method,'sendMessage');
   assert.equal(answer.chat_id,1234567);
-  assert.match(answer.text,/ещё не запущены/);
+  assert.match(answer.text,/пока не запущены/);
   assert.equal(answer.reply_markup.inline_keyboard[0][0].url,'https://mnebyvpn.site');
   assert.equal(answer.token,undefined);
 });
