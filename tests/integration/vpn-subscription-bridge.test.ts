@@ -97,7 +97,9 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.equal((await fetch(root+'/install/'+issued!.token+'?client=bogus')).status,400);
    const script=await fetch(root+'/vpn-install.js');
    assert.equal(script.status,200);
-   assert.match(await script.text(),/incy:\/\/import\//);
+   const installerJs=await script.text();
+   assert.match(installerJs,/incy:\/\/import\//);
+   assert.ok(installerJs.includes('window.location.assign(target)'));
    await pool.query("UPDATE entitlements SET state='EXPIRED' WHERE id=$1",[entitlement]);
    assert.equal((await fetch(root+'/sub/'+issued!.token)).status,404);
    assert.equal((await fetch(root+'/install/'+issued!.token+'?client=incy')).status,404);
