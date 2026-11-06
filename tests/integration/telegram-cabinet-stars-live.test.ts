@@ -72,7 +72,14 @@ test('production cabinet: Stars invoice, checked payment, durable settlement and
     assert.ok(orderId);
 
     const repeat=await post(button(81002,'buy:stars:'+planId));
-    assert.equal(JSON.parse(repeat.data).payload,invoice.payload);
+    assert.equal(repeat.resp.status,200);
+    const duplicateResponse=JSON.parse(repeat.data);
+    assert.equal(duplicateResponse.method,'sendMessage');
+    assert.match(duplicateResponse.text,/уже запрашивался/);
+    const dispatch=await pool.query(
+      'SELECT state FROM telegram_invoice_dispatch WHERE order_id=$1',[orderId]);
+    assert.equal(dispatch.rowCount,1);
+    assert.equal(dispatch.rows[0].state,'UNKNOWN');
 
     const incorrect=await post({update_id:81003,pre_checkout_query:{
       id:'pre-bad',from:{id:user},currency:'XTR',total_amount:99,
