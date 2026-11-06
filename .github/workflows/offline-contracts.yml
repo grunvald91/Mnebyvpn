@@ -7,6 +7,7 @@ on:
       - main
       - feat/phase1-foundation-20261105
       - feat/web-cabinet-20261106
+      - feat/site-domain-telegram-20261106
     paths:
       - 'apps/**'
       - 'packages/**'
