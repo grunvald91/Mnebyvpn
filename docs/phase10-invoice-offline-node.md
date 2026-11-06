@@ -38,3 +38,9 @@
 - Platform agreement for digital services: https://telegram.org/tos/bot-developers
 - Stars: https://core.telegram.org/bots/payments-stars
 - Repo: https://github.com/grunvald91/Mnebyvpn/pull/1
+
+## Результаты тестирования
+
+[GitHub Actions 42177619691](https://github.com/grunvald91/Mnebyvpn/actions/runs/42177619691): **SUCCESS**, 64/64 unit tests, 20/20 PostgreSQL integration tests, TypeScript, миграции 0001–0011 и SQL контрактные тесты, на исходниках ea5501df89f5fe236a64e5242c05e0446cba8711. Симуляция не является подтверждением фактического поведения сетевого узла.
+
+См. [повторное ревью](review-20261106-phase10.md).
