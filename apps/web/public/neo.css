@@ -97,13 +97,13 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
   .brand-text span{letter-spacing:-.45px;margin-left:3px}
   .symbol{width:30px;height:30px}
   .header .button-small{font-size:11px;min-height:35px;border:1px solid rgba(94,212,255,.65);padding:6px 11px;border-radius:12px;box-shadow:0 0 11px rgba(88,90,251,.18)}
-  .hero{display:block;position:relative;min-height:176px;padding:30px 0 15px;overflow:hidden}
+  .hero{display:block;position:relative;min-height:116px;padding:14px 0 7px;overflow:hidden}
   .hero-copy{width:72%;max-width:290px}
   .hero .eyebrow,.hero .hero-notes,.hero-actions{display:none}
-  .hero h1{font-size:clamp(29px,7.8vw,39px);font-weight:850;line-height:1.03;letter-spacing:-1px;margin:4px 0 11px}
+  .hero h1{font-size:clamp(29px,7.8vw,39px);font-weight:850;line-height:1.03;letter-spacing:-1px;margin:3px 0 0}
   .hero h1 span{display:block}
   .hero-lead{font-size:11px;line-height:1.48;max-width:240px;margin:0;color:#c8cce8}
-  .portal-art{position:absolute;z-index:1;right:-45px;top:0;width:206px;height:182px;filter:drop-shadow(0 0 14px rgba(80,38,191,.4))}
+  .portal-art{position:absolute;z-index:1;right:-36px;top:-22px;width:185px;height:160px;filter:drop-shadow(0 0 14px rgba(80,38,191,.4))}
   .portal-core{inset:21% 30%;border-radius:27%}
   .portal-orbit{top:43%;height:26%;left:8%;width:86%}
   .plans-section{padding:0}
@@ -160,7 +160,7 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 @media(max-width:360px){
  .hero h1{font-size:27px}
  .hero-copy{width:73%}
- .portal-art{right:-54px;width:195px}
+ .portal-art{right:-49px;top:-17px;width:173px;height:151px}
  .plans-section>.shell{width:calc(100% - 20px);padding:13px 10px}
  .days-tab{font-size:11px}
  .coming-item{padding:11px!important}
