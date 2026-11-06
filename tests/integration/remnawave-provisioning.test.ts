@@ -55,7 +55,17 @@ test('Telegram free trial → Remnawave API → 24h DB grant → profile → rev
    reportSha256:'b'.repeat(64),
    panelVersion:'3.4.7',nodeVersion:'synthetic',xrayVersion:'synthetic',
  });
- const worker=new PgOutboxDispatcher(pool,{vpn:adapter});
+ // Panel alone must fail closed: these synthetic tests explicitly inject
+ // a fake *node* expiry capability to exercise billing without claiming an
+ // actual physical VPN node was tested.
+ const blocked=new PgOutboxDispatcher(pool,{vpn:adapter});
+ const simulatedNode={
+   enforcesHardExpiry:true as const,
+   inspect:(id:string)=>adapter.inspect(id),
+   apply:(desired:Parameters<typeof adapter.apply>[0],
+          operationId:string)=>adapter.apply(desired,operationId),
+ };
+ const worker=new PgOutboxDispatcher(pool,{vpn:simulatedNode});
  try{
   await pool.query("UPDATE reconcile_outbox SET handled_at=clock_timestamp() WHERE handled_at IS NULL");
   await pool.query("UPDATE trial_offers SET enabled=true WHERE product='vpn'");
@@ -67,6 +77,13 @@ test('Telegram free trial → Remnawave API → 24h DB grant → profile → rev
     [orderId]);
   entitlementId=rows[0].id;
   assert.equal(rows[0].expires_at,null);
+  const unsafe=await blocked.processOnce(['vpn']);
+  assert.equal(unsafe.status,'retry');
+  assert.equal(unsafe.reason,'expiry_enforcement_unverified');
+  assert.equal(apiCalls.length,0,'Panel alone must not issue trial credentials');
+  await pool.query(
+    'UPDATE reconcile_outbox SET next_attempt_at=clock_timestamp() WHERE entitlement_id=$1',
+    [entitlementId]);
   assert.equal((await worker.processOnce(['vpn'])).status,'synced');
   const first=await pool.query(
     'SELECT state,revision,expires_at FROM entitlements WHERE id=$1',[entitlementId]);
