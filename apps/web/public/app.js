@@ -67,19 +67,19 @@ function renderPlan() {
   const plan = state.plans.find(p=>p.product===state.product && p.durationDays===state.days);
   text('selected-plan-name', plan?.title || productNames[state.product] + ' · ' + state.days + ' дней');
   text('selected-duration',state.days+' дней');
-  text('selected-quota',state.product==='vpn'?'Не входит':plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
+  text('selected-quota',state.product==='vpn'?'Входит':plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
   text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):'—');
   byId('cancel-renewal-button').classList.toggle('hidden',!state.renewalTargetId);
   text('price-description',plan?(state.renewalTargetId?
     'Срок прибавится к выбранному доступу после подтверждения оплаты.':
     'Новая покупка создаёт отдельный доступ. Для продления используйте кнопку в кабинете.'):
-    'Тариф ещё не опубликован. Стоимость и квота появятся после утверждения.');
+    'Тариф ещё не опубликован. Стоимость появится после утверждения.');
   const buy=byId('buy-button');
   const inDevelopment=state.product!=='vpn';
   buy.disabled=inDevelopment||!plan||!state.checkoutEnabled||state.busy;
   buy.textContent=inDevelopment?'В разработке':state.busy?'Создаём заказ…':!plan?'Тариф пока недоступен':
     !state.checkoutEnabled?'Оплата пока недоступна':
-    !state.loggedIn?'Войти для оплаты':state.renewalTargetId?'К оплате продления':'Перейти к оплате →';
+    !state.loggedIn?'Войти для оплаты':state.renewalTargetId?'К оплате продления':'Перейти к оплате';
   const trial=byId('trial-button');
   const trialAvailable=state.product==='vpn' && state.trialOffers.includes(state.product);
   trial.disabled=!trialAvailable||state.busy;
