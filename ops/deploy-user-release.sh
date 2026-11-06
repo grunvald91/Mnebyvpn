@@ -6,10 +6,15 @@ umask 077
 
 : "${DEPLOY_SHA:?Expected immutable main commit}"
 : "${BOT_PORT:=8793}"
+: "${WORKER_HEALTH_PORT:=8794}"
 [[ "$DEPLOY_SHA" =~ ^[a-f0-9]{40}$ ]] || { echo "Invalid release SHA" >&2; exit 2; }
 [[ "$BOT_PORT" =~ ^[0-9]{1,5}$ ]] && (( BOT_PORT>0 && BOT_PORT<65536 )) || {
   echo "Invalid BOT_PORT" >&2; exit 2;
 }
+
+[[ "$WORKER_HEALTH_PORT" =~ ^[0-9]{1,5}$ ]] &&
+  (( WORKER_HEALTH_PORT>0 && WORKER_HEALTH_PORT<65536 )) ||
+  { echo "Invalid WORKER_HEALTH_PORT" >&2; exit 2; }
 
 root="$HOME/mnebyvpn"
 archive="$root/inbox/$DEPLOY_SHA.tgz"
@@ -81,7 +86,9 @@ for (( i=0; i<12; i++ )); do
   if systemctl --user is-active --quiet mnebyvpn-telegram.service &&
      systemctl --user is-active --quiet mnebyvpn-vpn-worker.service &&
      curl --noproxy '*' --fail --silent --max-time 3 \
-       "http://127.0.0.1:$BOT_PORT/readyz" >/dev/null; then
+       "http://127.0.0.1:$BOT_PORT/readyz" >/dev/null &&
+     curl --noproxy '*' --fail --silent --max-time 3 \
+       "http://127.0.0.1:$WORKER_HEALTH_PORT/readyz" >/dev/null; then
     ready=1
     break
   fi
