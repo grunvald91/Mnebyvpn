@@ -4,6 +4,8 @@ on:
   workflow_run:
     workflows: ['Offline code and database contracts']
     types: [completed]
+    # Do not spawn skipped privileged workflow runs for every PR/test branch.
+    branches: [main]
 
 permissions:
   contents: read

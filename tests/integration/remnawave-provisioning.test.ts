@@ -103,8 +103,21 @@ test('Telegram free trial → Remnawave API → 24h DB grant → profile → rev
     "UPDATE entitlements SET starts_at=now()-interval '26 hours',"+
     " expires_at=now()-interval '2 hours' WHERE id=$1",[entitlementId]);
   assert.equal(await worker.expireDue(),1);
-  assert.equal((await worker.processOnce(['vpn'])).status,'synced');
-  assert.equal((await api.getByEntitlement(entitlementId!))?.status,'DISABLED');
+  const panelOnlyRevoke=await blocked.processOnce(['vpn']);
+  assert.equal(panelOnlyRevoke.status,'retry');
+  assert.equal(panelOnlyRevoke.reason,'node_unverified');
+  assert.equal((await api.getByEntitlement(entitlementId!))?.status,'DISABLED',
+    'panel received the revoke, but this is not yet node verification');
+  const beforeNode=await pool.query(
+    'SELECT applied_revision FROM provisioning_state WHERE entitlement_id=$1',
+    [entitlementId]);
+  assert.equal(Number(beforeNode.rows[0].applied_revision),2,
+    'panel-side revoke must not acknowledge revision 3');
+  await pool.query(
+    'UPDATE reconcile_outbox SET next_attempt_at=clock_timestamp() WHERE entitlement_id=$1',
+    [entitlementId]);
+  assert.equal((await worker.processOnce(['vpn'])).status,'synced',
+    'only the synthetic node-verifying adapter may acknowledge');
   assert.equal(await store.confirmedVpnProfile(actor),null);
   assert.equal(await api.subscriptionFor(entitlementId!,confirmed!.expiresAt,2),null);
  }finally{
