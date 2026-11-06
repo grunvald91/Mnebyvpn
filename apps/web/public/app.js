@@ -68,7 +68,7 @@ function renderPlan() {
   const plan = state.plans.find(p=>p.product===state.product && p.durationDays===state.days);
   text('selected-plan-name', plan?.title || productNames[state.product] + ' · ' + state.days + ' дней');
   text('selected-duration',state.days+' дней');
-  text('selected-quota',state.product==='vpn'?'Входит':plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
+  text('selected-quota',state.product==='vpn'?'1 устройство':plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
   text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):'—');
   byId('cancel-renewal-button').classList.toggle('hidden',!state.renewalTargetId);
   text('price-description',plan?(state.renewalTargetId?
