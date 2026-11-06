@@ -8,7 +8,7 @@ import {
   type TelegramPreCheckout, type TelegramSuccessfulPayment,
 } from './stars.ts';
 import {
-  verifyProdamusPayment, type Fields, type ProdamusConfig,
+  verifyProdamus, verifyProdamusPayment, type Fields, type ProdamusConfig,
 } from './prodamus.ts';
 import {
   PgBillingStore, prodamusOrderFromDB, starsOrderFromDB, starsPaymentHash, pricedPlanForOrder,
@@ -283,7 +283,25 @@ export interface DeliveryResult { statusCode: number; text: string }
 export async function handleProdamusDelivery(
   fields: Fields, signature: string, db: PgBillingStore, config: ProdamusConfig
 ): Promise<DeliveryResult> {
-  if (typeof fields.order_num !== 'string') return {statusCode:400,text:'INVALID_ORDER'};
+  // Prodamus can be configured to notify ALL statuses. A correctly signed,
+  // non-paid status is processed successfully WITHOUT granting access.
+  // Respond HTTP 200 so Prodamus does not retry rejected/cancelled checkouts.
+  // Keep signature and merchant-domain checks before accepting any event.
+  if (!verifyProdamus(fields,signature,config.secret))
+    return {statusCode:401,text:'INVALID_SIGNATURE'};
+  if (fields.domain !== new URL(config.formUrl).hostname)
+    return {statusCode:400,text:'MERCHANT_MISMATCH'};
+  if (typeof fields.payment_status !== 'string' ||
+      fields.payment_status.length>64)
+    return {statusCode:400,text:'INVALID_PAYMENT_STATUS'};
+  if (fields.payment_status !== 'success') {
+    // No DB mutation and no entitlement for denied/cancelled/unknown statuses.
+    // Refunds of already-settled orders still require a separate, independently
+    // verified refund reconciliation path before access can be revoked.
+    return {statusCode:200,text:'EVENT_ACCEPTED_NO_PAYMENT'};
+  }
+  if (typeof fields.order_num !== 'string')
+    return {statusCode:400,text:'INVALID_ORDER'};
   const record = await db.order(fields.order_num);
   const checked = verifyProdamusPayment(fields, signature,
     record?.provider === 'prodamus' ? prodamusOrderFromDB(record) : null, config);
