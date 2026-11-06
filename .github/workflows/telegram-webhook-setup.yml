@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 4
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN_BOT || secrets.TELEGRAM_BOT_TOKEN }}
-      ACTIVATE_WEBHOOK: 'yes'
+      ACTIVATE_WEBHOOK: 'no'
     steps:
       - name: Check BotFather identity and print only SHA256 of webhook secret
         shell: bash
@@ -59,6 +59,13 @@ jobs:
               print('telegram_webhook_activated=true')
               print('telegram_webhook_url_verified=true')
             else:
+              # Telegram updates must reach a verified foreign server.
+              # Disable only our old Russian-host webhook, preserving pending updates.
+              if current=='https://mnebyvpn.site/webhooks/telegram':
+                result=call('deleteWebhook',{'drop_pending_updates':False})
+                if not result.get('ok') or result.get('result') is not True:
+                  raise ValueError('Could not stop old RU webhook')
+                print('previous_russian_host_webhook_disabled=true')
               print('telegram_webhook_activated=false')
           except Exception:
             print('Telegram webhook identity/activation validation failed; no token printed')
