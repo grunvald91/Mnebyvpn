@@ -1,0 +1,34 @@
+# MNEBYVPN — единый реестр release gates
+
+Дата оценки: 2026-11-06. **Источник истины для статусов готовности к запуску.** Описание механизма, зелёный unit test и проверенный production-путь — разные состояния. Другие документы ССЫЛАЮТСЯ на этот реестр, не копируют его статусы.
+
+Статусы: **DESIGNED** — зафиксирован контракт; **CODED** — реализованы локальные функции; **TESTED_OFFLINE** — прошли unit/integration на изолированной модели; **E2E_VERIFIED** — испытано на фактическом data plane/провайдере; **BLOCKED** — необходимое свидетельство отсутствует; **DEFERRED** — не входит в MVP. Только E2E_VERIFIED плюс оформленные условия могут закрыть коммерческий gate. Сведения о производственных серверах, портах, секретах и сырые результаты аудита хранятся вне публичного git.
+
+## Запуск платного VPN и веб-кабинета — обязательные P0
+
+| Gate | Текущий статус | Доказательство, необходимое для PASS |
+|---|---|---|
+| P0-NET / ресурсный preflight | BLOCKED | Свежие приватные замеры двух VPS после resize; реальные ports/firewall, capacity, backup/restore, не нарушены старые сервисы. Требования панели: https://docs.rw/install/requirements/ |
+| P0-SEC / входящие прокси | BLOCKED | Проверить каждый нештатный публичный listener из приватного реестра: внешний reachability + auth + ACL; при open proxy ограничить доступ с проверенным планом отката. Не называть открытым без теста |
+| P0-DATAPLANE / VPN adapter | BLOCKED | Реальная выдача подписки, два клиента, revoke, исчерпание квоты если заявлена, новая и существующая TCP/UDP-сессия; no DNS leaks согласно поддержанному клиенту |
+| P0-OFFLINE / потеря панели | TESTED_OFFLINE; E2E BLOCKED | Отключить связь Panel ↔ Node до expires_at; проверить новых и старых клиентов после срока, reboot, clock skew, restore. Определить измеренный max stale window; симулятор не PASS. [План теста](offline-expiry.md) |
+| P0-ORDER / поздняя выдача после revoke | TESTED_OFFLINE; E2E BLOCKED | На реальном adapter/Node доказать latest revision + fencing, refund во время задержанной ENABLE, reconciler restart. [Контракт](provisioning-ordering.md) |
+| P0-PAY / коммерческая оплата | CODED; E2E BLOCKED | Реальные подтверждённые Stars и независимый веб-платёж, привязка заказа к проверенной сессии, сверка status у провайдера, refund и чек, support, аварийные повторы. [Billing](billing-lifecycle.md) |
+| P0-WEB / self-service | CODED части библиотеки; BLOCKED | HTTPS-сайт, вход, сессии/CSRF/лимиты, покупка, оставшиеся дни/байты, история, renew/refund; без доступа к чужому entitlement |
+| P0-COMPLIANCE | BLOCKED | Правовая модель и допустимая аудитория/реклама/обработка ПДн; политика конфиденциальности/оферта/возвраты/контакты и учёт чека, проверенные до оплаты. [Checklist](commercial-readiness.md) |
+| P0-PRICING | BLOCKED | Утверждены XTR/RUB прайсы на сроки, лимиты, бесплатный период, себестоимость/нагрузка и расходы провайдера; цены в `pricing_drafts` — не оферта. [Экономика](commercial-readiness.md) |
+
+## Риски исходного архитектурного ревью: отдельные gate IDs
+
+| ID | Статус | Что делать |
+|---|---|---|
+| P1-DNS-AUTH | **DEFERRED; PAID SNI BLOCKED** | Не продавать прозрачный платный SNI как DNS-only. Авторизованный CONNECT/SOCKS либо VPN — отдельный транспорт; bearer IPv6 остаётся экспериментом. [Проверки](smart-dns-access-gate.md) |
+| P1-ORDER | См. P0-ORDER | Сохранён как алиас исторических review, не независимый чеклист |
+| P1-LOAD | DEFERRED | Scale-out не входит в MVP. Доказать разгрузку живых клиентов и обновление подписок до включения. [Контракт](scale-out-contract.md) |
+| P1-BUDGET | DEFERRED | Автоматическое создание VPS запрещено. Перед включением: атомарное резервирование, UnknownOutcome, hard cap, manual approval. [Контракт](scale-out-contract.md) |
+| P1-OFFLINE | См. P0-OFFLINE | Алиас исторического review |
+| P1-RR | DEFERRED | До DNS rewrite выполнить end-to-end для A/AAAA/CNAME/HTTPS/SVCB/DNSSEC/ECH/QUIC. [Контракт](dns-record-policy.md) |
+
+## Правило изменения
+
+Для каждого закрытия gate добавить: версию, environment, команду/сценарий теста, обезличенную ссылку на CI/отчёт, наблюдаемый результат, дату и ответственного. Если свидетельства нет — статус не меняется. Коммерческий запуск остаётся **BLOCKED**. Указанные здесь тестовые статусы основаны на offline-отчётах [этапа 10](phase10-invoice-offline-node.md), а не на независимом запуске команд в этом ревью.
