@@ -381,7 +381,14 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     return;
   }
   if(req.method==='GET'&&url.pathname==='/api/support/status'){
-    json(res,200,{available:!!support});return;
+    let ready=false;
+    if(support){
+      try{
+        const check=await pool.query("SELECT to_regclass('public.website_support_tickets') IS NOT NULL AS ready");
+        ready=check.rows[0]?.ready===true;
+      }catch{ready=false;}
+    }
+    json(res,200,{available:ready});return;
   }
   if(req.method==='GET'&&url.pathname==='/api/support/ticket'){
     const matched=supportCookiePattern.exec(cookie(req,supportCookie)??'');
