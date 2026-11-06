@@ -106,7 +106,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const installerJs=await script.text();
    assert.match(installerJs,/incy:\/\/import\//);
    assert.ok(installerJs.includes('window.location.assign(target)'));
-   await pool.query("UPDATE entitlements SET state='EXPIRED', expires_at=now()-interval '1 second' WHERE id=$1",[entitlement]);
+   await pool.query("UPDATE entitlements SET state='EXPIRED', starts_at=now()-interval '2 days', expires_at=now()-interval '1 second' WHERE id=$1",[entitlement]);
    const expiredResponse=await fetch(root+'/sub/'+issued!.token);
    assert.equal(expiredResponse.status,200);
    assert.equal(expiredResponse.headers.get('profile-title'),'MNEBYVPN');
