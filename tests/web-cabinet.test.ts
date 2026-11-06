@@ -97,3 +97,20 @@ test('web cabinet reserves OIDC login for explicit BotFather integration',async(
   assert.match(ui,/syncLoginLinks/);
   assert.match(ui,/cabinet-login-link/);
 });
+
+test('mobile VPN purchase is compact and unlaunched features are clearly unavailable',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
+  const css=readFileSync(new URL('../apps/web/public/site.css',import.meta.url),'utf8');
+  const client=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
+  assert.match(html,/Выберите тариф VPN/);
+  assert.match(html,/Обычный интернет при ограничениях мобильной сети/);
+  assert.match(html,/Готовим режим для случаев/);
+  assert.match(html,/data-product="smart_dns"[^>]*disabled/);
+  assert.match(html,/data-product="bundle"[^>]*disabled/);
+  assert.match(css,/VPN-first mobile checkout/);
+  assert.match(css,/\.hero-art,\.hero-actions,\.hero-notes,\.features\{display:none\}/);
+  assert.match(client,/const inDevelopment=state\.product!=='vpn'/);
+  assert.match(client,/if\(state\.product!=='vpn'\|\|!plan/);
+  assert.match(client,/Способ оплаты выбирается на защищённой странице/);
+});
