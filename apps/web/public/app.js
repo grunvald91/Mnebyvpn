@@ -477,6 +477,21 @@ async function supportStatus(){
     result.textContent='Не удалось проверить канал поддержки.';
   }
 }
+async function refreshSupportTicket(){
+  try{
+    const ticket=await api('/api/support/ticket');
+    const thread=byId('support-thread');
+    if(ticket.status==='NONE'){
+      thread.classList.add('hidden');
+      return;
+    }
+    thread.classList.remove('hidden');
+    byId('support-reply').textContent=ticket.answer||
+      'Обращение зарегистрировано. Ответ оператора появится здесь, в этом браузере.';
+  }catch{
+    // Keep any last known reply visible during a temporary outage.
+  }
+}
 async function submitSupport(event){
   event.preventDefault();
   const form=byId('support-form'),send=byId('support-send'),result=byId('support-result');
@@ -491,7 +506,8 @@ async function submitSupport(event){
       website:byId('support-website').value,
     })});
     byId('support-message').value='';
-    result.textContent='✅ Сообщение доставлено оператору. Ответ придёт по указанному контакту.';
+    result.textContent='✅ Обращение отправлено оператору MNEBYVPN.';
+    await refreshSupportTicket();
   }catch(error){
     result.textContent=error.status===429
       ?'Слишком много обращений. Повторите попытку немного позже.'
@@ -505,6 +521,8 @@ async function submitSupport(event){
 }
 byId('support-form').addEventListener('submit',submitSupport);
 supportStatus();
+refreshSupportTicket();
+setInterval(()=>{if(document.visibilityState==='visible')refreshSupportTicket();},15000);
 byId('buy-button').addEventListener('click',purchase);
 byId('trial-button').addEventListener('click',claimTrial);
 byId('trial-hero-button').addEventListener('click',claimTrial);
