@@ -36,9 +36,9 @@
         <p class="eyebrow"><span class="eyebrow-line"></span> ПРОСТО. ПОНЯТНО. ПОД КОНТРОЛЕМ.</p>
         <h1>VPN без<span> лишних шагов</span></h1>
         <div class="hero-actions">
-          <a class="button button-primary" href="#plans">Выбрать тариф</a>
-          <a class="button button-secondary" href="#account">Мой кабинет</a>
-          <a class="button button-outline telegram-hero-link" href="https://t.me/MnebyVPN_bot" target="_blank" rel="noopener noreferrer">Наш бот · @MnebyVPN_bot</a>
+          <button class="button button-primary" id="trial-hero-button" type="button">🎁 Бесплатные 24 часа</button>
+          <a class="button button-secondary" href="#plans">Тарифы</a>
+          <a class="button button-outline telegram-hero-link" href="#account">Мой доступ</a>
         </div>
         <div class="hero-notes"><span><b class="note-dot"></b> Прозрачные сроки</span><span><b class="note-dot"></b> Один аккаунт</span></div>
       </div>
@@ -98,7 +98,27 @@
             </div>
             <button type="button" class="button button-primary button-block" id="buy-button" disabled>Загрузка тарифов…</button>
             <p class="small-print" id="checkout-hint" role="status">Оплата станет доступна после проверки платёжного подключения. Способ оплаты выбирается на странице провайдера.</p>
-            <button type="button" class="button button-secondary button-block trial-button" id="trial-button" disabled>Пробные 24 часа — пока недоступны</button>
+            <button type="button" class="button button-secondary button-block trial-button" id="trial-button" disabled>🎁 Бесплатные 24 часа</button>
+            <section id="guest-trial-card" class="guest-trial-card hidden" aria-live="polite" aria-label="Подключение бесплатного VPN">
+              <h3 id="guest-trial-title">Ваш бесплатный VPN</h3>
+              <p id="guest-trial-status">Проверяем активацию…</p>
+              <div id="guest-trial-ready" class="hidden">
+                <p class="guest-trial-guide">Скачайте приложение, затем нажмите «Добавить автоматически». Если переход не сработает — скопируйте ссылку и вставьте её через импорт URL в приложении.</p>
+                <div class="guest-trial-apps">
+                  <a href="https://play.google.com/store/apps/details?id=llc.itdev.incy" rel="noopener noreferrer" target="_blank">Android · INCY</a>
+                  <a href="https://apps.apple.com/ru/app/karing/id6472431552" rel="noopener noreferrer" target="_blank">iOS · Karing</a>
+                  <a href="https://github.com/INCY-DEV/incy-platforms/releases" rel="noopener noreferrer" target="_blank">Windows / macOS · INCY</a>
+                </div>
+                <div class="guest-trial-apps">
+                  <a id="guest-auto-incy" href="#" rel="nofollow noopener noreferrer">⚡ Импорт в INCY</a>
+                  <a id="guest-auto-karing" href="#" rel="nofollow noopener noreferrer">⚡ Импорт в Karing</a>
+                </div>
+                <div class="guest-trial-copy">
+                  <input id="guest-subscription-url" type="text" aria-label="Ссылка для ручной настройки" readonly>
+                  <button id="guest-copy-subscription" type="button" class="button button-secondary">Копировать</button>
+                </div>
+              </div>
+            </section>
           </article>
           <aside class="benefits">
             <div class="benefit"><span class="benefit-number">01</span><div><h3>Без путаницы</h3><p>Срок доступа и остаток квоты видны в кабинете после входа.</p></div></div>
