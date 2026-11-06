@@ -244,3 +244,33 @@ Telegram-bot и VPN-worker systemd unit; автоматическую выкла
 - https://yandex.ru/dev/id/doc/ru/user-information
 - https://docs.incy.cc/en/deep-links/
 - https://karing.app/cooperation/scheme
+
+## Этап 19 — переиспользование Яндекс OAuth приложения ServGo (06.11.2026)
+
+Никакого нового OAuth-приложения создавать не нужно; уже зарегистрированный
+Callback ServGo остаётся `https://servgo.ru/api/auth/yandex/callback`.
+
+- Страница VPN `/auth/yandex` создаёт подписанные session-cookie, одноразовый
+  `state` и PKCE-S256 и отправляет человека на
+  `https://servgo.ru/api/auth/yandex/mnebyvpn/start`.
+- Сервер **ServGo** инициирует **свой существующий** Яндекс OAuth, проверяет
+  полученный профиль сервером и создаёт одноразовый, ограниченный 5 минутами
+  PKCE-bound код в `yandex_external_tickets`. В URL перенаправления жёстко
+  указан `https://mnebyvpn.site/auth/yandex/callback`, не входной параметр.
+- MNEBYVPN по серверному HTTPS делает `POST` в
+  `https://servgo.ru/api/auth/yandex/mnebyvpn/exchange`, предъявляет
+  проверенный `code_verifier` и однократно получает **только уникальный ID
+  Яндекса**. Secret/токен Яндекс OAuth остаются только в ServGo.
+- Telegram продолжает официальный
+  [Telegram OIDC](https://core.telegram.org/bots/telegram-login).
+  Он не отправляет сообщения от VPN-бота: пользователь подтверждает вход
+  через Telegram-клиент, когда Telegram может доставить свой запрос.
+  Регистрация доверенного сайта в BotFather по-прежнему обязательна.
+
+Включение Яндекс на VPN теперь требует только `WEB_YANDEX_OAUTH_ENABLED=yes`
+и доступного, проверенного по TLS сервера ServGo с миграцией
+`migrations/add_yandex_external_ticket.sql`; **не** требует
+`YANDEX_OAUTH_CLIENT_ID` и `YANDEX_OAUTH_CLIENT_SECRET` в VPN окружении.
+Документация прежнего этапа 18 с прямой регистрацией callback MNEBYVPN
+устарела и заменена этим разделом. Потребуется независимая проверка запуска
+новых маршрутов ServGo и их точного публичного HTTPS routing.
