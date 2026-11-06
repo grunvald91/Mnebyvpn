@@ -2,17 +2,19 @@
 
 ## Публичный репозиторий
 
-Никаких рабочих API keys, SSH passwords/keys, subscription URLs/QR, TLS/WireGuard/Xray private keys, токенов DoH, raw logs, .env или cloud provider state в git. `grunvald91/telegram-proxy-infra` стал публичным; отдельно проверить историю коммитов и sanitzed backups на утечку, в случае раскрытия секретов — rotation по согласованному плану. **Не публиковать** клиентские IP и историю DNS.
+Никаких рабочих API keys, SSH passwords/keys, subscription URLs/QR, TLS/WireGuard/Xray private keys, токенов DoH, raw logs, .env или cloud provider state в git. Отдельно проверить историю публичных репозиториев, включая ссылки на аудит и старые коммиты: удаление строк из HEAD **не удаляет историю Git, публичные Actions-логи и чужие копии**. При фактическом раскрытии секретов — согласованная rotation. **Не публиковать** клиентские IP и историю DNS.
 
 ## Доступ к сетевым интерфейсам
 
 - Panel UI/API — закрытый admin/management segment, защищённая аутентификация, RBAC, audit.
 - Remnawave Node control port — только от Panel IP, по официальным требованиям https://docs.rw/install/remnawave-node/ . Не привязывать к публичному 443.
 - Root SSH только на время администрирования, по возможности ключи и pinned host keys, no `StrictHostKeyChecking=no`; least privilege.
-- Firewall открывать только по утверждённой карте портов. Прослушивание TCP 8888/8787 на ru-edge требует реальной проверки авторизации/достижимости, не считать открытым прокси без теста.
+- Firewall открывать только по приватной утверждённой карте портов. Нестандартные публичные listeners требуют доказанного теста внешней достижимости/авторизации; не называть open proxy без проверки.
 - DoH/DoT protected resolver: доступ только с проверенным entitlement и ограничения запросов, либо отдельно утверждённая abuse policy. Иначе становится публичным open resolver.
 - SNI ingress: explicit allowlist, нет универсального proxy target, блок private/localhost/metadata, DNS rebinding, target whitelist pinning, лимиты соединений/полосы. **No TLS interception / root CA**.
 - Помнить о built-in DoH в приложениях, DNSSEC, ECH, QUIC. DNS-режим не объявлять полноценной защитой приватности/VPN.
+
+Правовая проверка рекламы, ПДн и оферты до продаж — [commercial-readiness](commercial-readiness.md); готовность и свидетельства — [release-gates](release-gates.md).
 
 ## Платежи и данные
 
