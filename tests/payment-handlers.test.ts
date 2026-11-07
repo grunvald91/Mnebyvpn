@@ -81,6 +81,24 @@ test('signed Prodamus webhook repeat after PAID is eligible for SQL idempotency'
   assert.equal(f.captures[0].amount,9900);
   assert.equal((await handleProdamusDelivery({...body,sum:'1.00'},signProdamus(body,key),f.db,pd)).statusCode,401);
 });
+test('official signed Prodamus RUB callback without currency settles the correct order',async()=>{
+  const f=fakeStore(record('prodamus'));
+  // Example field set from Prodamus webhook documentation: currency is omitted.
+  const fields:Fields={order_id:'charge-official-1',order_num:oid,domain:'merchant.payform.ru',
+    sum:'99.00',payment_status:'success',attempt:'1',
+    products:[{name:'VPN',price:'99.00',quantity:'1',sum:'99.00'}]};
+  const response=await handleProdamusDelivery(fields,signProdamus(fields,key),f.db,pd);
+  assert.equal(response.statusCode,200);
+  assert.equal(response.text,'OK');
+  assert.equal(f.captures.length,1);
+  assert.equal(f.captures[0].currency,'RUB');
+  const wrongCurrency={...fields,currency:'usd'};
+  const rejected=await handleProdamusDelivery(wrongCurrency,
+    signProdamus(wrongCurrency,key),f.db,pd);
+  assert.equal(rejected.statusCode,400);
+  assert.equal(f.captures.length,1);
+});
+
 test('multipart decoder handles official nested products syntax and rejects ambiguous inputs',async()=>{
   const form=new FormData();
   form.set('order_num',oid);
@@ -132,7 +150,7 @@ test('Prodamus verified refund revokes only original captured order and retries 
   refunds.push(x);return 'APPLIED';
  };
  const fields:Fields={order_id:'capture1',order_num:oid,domain:'merchant.payform.ru',
-  sum:'99.00',currency:'rub',payment_status:'refunded',attempt:'1'};
+  sum:'99.00',payment_status:'refunded',attempt:'1'};
  const reply=await handleProdamusDelivery(fields,signProdamus(fields,key),f.db,pd);
  assert.equal(reply.statusCode,200);
  assert.equal(reply.text,'REFUND_PROCESSED');
@@ -151,6 +169,9 @@ test('Prodamus verified refund revokes only original captured order and retries 
  assert.equal(repeated.text,'REFUND_ALREADY_PROCESSED');
  const underpaid={...fields,sum:'49.00'};
  assert.equal((await handleProdamusDelivery(underpaid,signProdamus(underpaid,key),f.db,pd)).statusCode,409);
+ const wrongCurrency={...fields,currency:'usd'};
+ assert.equal((await handleProdamusDelivery(wrongCurrency,
+   signProdamus(wrongCurrency,key),f.db,pd)).statusCode,400);
  assert.equal(refunds.length,1);
  (f.db as unknown as {applyVerifiedRefund:(x:unknown)=>Promise<'APPLIED'>}).applyVerifiedRefund=async()=>{
   throw new Error('failed to revoke');
