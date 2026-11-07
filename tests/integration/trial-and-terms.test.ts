@@ -87,21 +87,32 @@ test('catalog-key validation rejects stale price even inside checkout transactio
 });
 test('forwarded catalog supports eight configured 15/30/60/90-day rows',async()=>{
  const suffix=randomUUID().slice(0,6);
- for(const product of ['vpn','smart_dns'] as const){
-  for(const days of [15,30,60,90]){
-   const id='term-'+product+'-'+days+'-'+suffix;
-   await pool.query(
-    `INSERT INTO billing_plans(id,product,title,duration_seconds,dns_quota_bytes,stars,rub_minor,enabled)
-     VALUES($1,$2,$3,$4,$5,$6,$7,true)`,
-    [id,product,product+' '+days,days*86400,product==='smart_dns'?'1073741824':null,days+2,days*100]);
+ // Published production prices and preceding fixtures occupy the first pages
+ // of the global catalog. Isolate these eight offers for an accurate test.
+ const active=(await pool.query('UPDATE billing_plans SET enabled=false WHERE enabled=true RETURNING id'))
+   .rows.map(row=>String(row.id));
+ const inserted:string[]=[];
+ try{
+  for(const product of ['vpn','smart_dns'] as const){
+   for(const days of [15,30,60,90]){
+    const id='term-'+product+'-'+days+'-'+suffix;
+    await pool.query(
+     `INSERT INTO billing_plans(id,product,title,duration_seconds,dns_quota_bytes,stars,rub_minor,enabled)
+      VALUES($1,$2,$3,$4,$5,$6,$7,true)`,
+     [id,product,product+' '+days,days*86400,product==='smart_dns'?'1073741824':null,days+2,days*100]);
+    inserted.push(id);
+   }
   }
+  const offers=await db.referralOffers(90900807,16);
+  const termOffers=offers.filter(x=>x.planId.endsWith(suffix));
+  assert.equal(termOffers.length,8);
+  const publicData=referralPublicData(termOffers,'MnebyvpnTestBot');
+  const parsed=JSON.parse(publicData);
+  assert.equal(parsed.o.length,8);
+  assert.ok(Buffer.byteLength(publicData,'utf8')<=1024);
+  assert.deepEqual(parsed.o.filter((r:number[])=>r[0]===1).map((r:number[])=>r[1]),[15,30,60,90]);
+ }finally{
+  if(inserted.length)await pool.query('UPDATE billing_plans SET enabled=false WHERE id=ANY($1::text[])',[inserted]);
+  if(active.length)await pool.query('UPDATE billing_plans SET enabled=true WHERE id=ANY($1::text[])',[active]);
  }
- const offers=await db.referralOffers(90900807,16);
- const termOffers=offers.filter(x=>x.planId.endsWith(suffix));
- assert.equal(termOffers.length,8);
- const publicData=referralPublicData(termOffers,'MnebyvpnTestBot');
- const parsed=JSON.parse(publicData);
- assert.equal(parsed.o.length,8);
- assert.ok(Buffer.byteLength(publicData,'utf8')<=1024);
- assert.deepEqual(parsed.o.filter((r:number[])=>r[0]===1).map((r:number[])=>r[1]),[15,30,60,90]);
 });
