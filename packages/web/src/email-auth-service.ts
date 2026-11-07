@@ -35,7 +35,7 @@ export async function beginEmailCode(pool:Pool,options:{
     const byIp=await incrementRate(client,'ip:'+ip,80,60*60_000,secret);
     const previous=await client.query(
       'SELECT sent_at FROM web_email_codes WHERE email=$1 FOR UPDATE',[email]);
-    const cooldown=previous.rowCount>0 &&
+    const cooldown=Boolean(previous.rowCount) &&
       Date.now()-(previous.rows[0].sent_at as Date).getTime()<60_000;
     if(byEmail&&byIp&&!cooldown){
       await client.query(
