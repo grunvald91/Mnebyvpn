@@ -49,6 +49,9 @@ export interface ProdamusConfig {
   successUrl: string;
   returnUrl: string;
   secret: string;
+  /** Optional Prodamus-approved integration code. Without it urlNotification
+   * must be configured in the merchant dashboard; Prodamus ignores overrides. */
+  sys?:string;
 }
 function httpsUrl(value: string): URL {
   const url = new URL(value);
@@ -68,12 +71,18 @@ export function buildProdamusLinkRequest(order: ProdamusOrder, title: string, cf
   httpsUrl(cfg.notificationUrl);
   httpsUrl(cfg.successUrl);
   httpsUrl(cfg.returnUrl);
+  // Prodamus documents that urlNotification works only together with a
+  // merchant-approved integration code (sys). Never send an empty sys while
+  // claiming per-order notification is enabled.
+  if (cfg.sys !== undefined && !/^[A-Za-z0-9_-]{2,64}$/.test(cfg.sys))
+    throw new Error('Invalid merchant Prodamus integration code');
   const data: Fields = {
     do: 'link',
-    sys: '',
     order_id: order.id,
+    currency: 'rub',
+    payments_limit: '1',
     products: [{ name: title, price: price(order.amountMinor), quantity: '1' }],
-    urlNotification: cfg.notificationUrl,
+    ...(cfg.sys ? {sys:cfg.sys,urlNotification:cfg.notificationUrl} : {}),
     urlSuccess: cfg.successUrl,
     urlReturn: cfg.returnUrl,
   };
