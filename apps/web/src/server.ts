@@ -686,9 +686,19 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
         !/^multipart\/form-data;\s*boundary=/i.test(ct)) {
       send(res,415,'UNSUPPORTED_MEDIA_TYPE','text/plain; charset=utf-8');return;
     }
-    const fields=await parseProdamusFormData(ct,await readPaymentBody(req));
-    const answer=await handleProdamusDelivery(fields,sign,store,payform);
-    send(res,answer.statusCode,answer.text,'text/plain; charset=utf-8');
+    try {
+      const fields=await parseProdamusFormData(ct,await readPaymentBody(req));
+      const answer=await handleProdamusDelivery(fields,sign,store,payform);
+      // Log only stable result codes, never payment payloads, emails or signatures.
+      console.info('MNEBYVPN_PRODAMUS_WEBHOOK_RESULT',answer.statusCode,answer.text);
+      send(res,answer.statusCode,answer.text,'text/plain; charset=utf-8');
+    } catch(error) {
+      const sqlstate=(error as {code?:unknown})?.code;
+      console.error('MNEBYVPN_PRODAMUS_WEBHOOK_PROCESSING_ERROR',
+        typeof sqlstate==='string'&&/^[0-9A-Z]{5}$/.test(sqlstate)
+          ?'SQLSTATE_'+sqlstate:'PARSE_OR_PROCESSING_FAILURE');
+      send(res,503,'WEBHOOK_PROCESSING_ERROR','text/plain; charset=utf-8');
+    }
     return;
   }
   if (req.method === 'GET' && url.pathname === '/api/plans') {
