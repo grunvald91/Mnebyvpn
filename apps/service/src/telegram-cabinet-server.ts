@@ -443,7 +443,10 @@ async function sendSupportFromBot(id:number,updateId:number,message:string){
     [[{text:'🌍 Форма на сайте',url:'https://mnebyvpn.site/#contact-support'}],[homeButton]]));
   if(support.botToken&&deliveredUpdates.has(updateId))return oneAction(user,msg('✅ Обращение уже передано оператору.',
     [[{text:'🏠 Главное',callback_data:'nav:home'}]]));
-  if(!supportRate(String(id))||!supportGlobalRate('bot-global'))
+  // Telegram may retry the same update after a lost webhook acknowledgement.
+  // Count a retried update only once against support spam limits.
+  if(!deliveredUpdates.has(updateId)&&
+     (!supportRate(String(id))||!supportGlobalRate('bot-global')))
     return oneAction(user,msg('Слишком много обращений. Попробуйте позже.',
       [[{text:'🏠 Главное',callback_data:'nav:home'}]]));
   if(!support.botToken){
@@ -452,6 +455,8 @@ async function sendSupportFromBot(id:number,updateId:number,message:string){
     // this operation after accepting our HTTP response.
     // A webhook JSON response has no delivery receipt. On a Telegram retry,
     // return the operator notification again rather than falsely claiming delivery.
+    deliveredUpdates.add(updateId);
+    if(deliveredUpdates.size>1000)deliveredUpdates.clear();
     return {method:'sendMessage',chat_id:support.operatorId,
       text:'✉️ MNEBYVPN — обращение из бота\nID Telegram: '+id+
         '\n\nВопрос:\n'+message.trim(),
