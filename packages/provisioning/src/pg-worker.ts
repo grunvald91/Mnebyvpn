@@ -53,9 +53,11 @@ export class PgReconcileStore implements ReconcileStore {
     const {rows}=await this.query(
       `SELECT e.id,e.revision,e.state,e.expires_at,e.starts_at,
           e.quota_limit_bytes,e.quota_used_bytes,e.quota_state,
-          t.order_id AS trial_order_id,t.activated_at
+          t.order_id AS trial_order_id,t.activated_at,
+          paid.state AS paid_order_state,paid.provider AS paid_order_provider
          FROM entitlements e
          LEFT JOIN trial_grants t ON t.order_id=e.source_order_id
+         LEFT JOIN orders paid ON paid.id=e.source_order_id
         WHERE e.id=$1`,[id]);
     if (!rows.length) throw new Error('Unknown entitlement');
     const r=rows[0];
@@ -66,10 +68,14 @@ export class PgReconcileStore implements ReconcileStore {
       r.activated_at===null && r.starts_at===null && r.expires_at===null;
     // Provisional, hard-enforced 5-minute node expiry. NEVER return NULL to
     // a trial adapter as that would create permanent pre-activation access.
-    const expiry=pendingTrial?new Date(Date.now()+5*60*1000):r.expires_at;
+    const pendingPaid= !pendingTrial && r.state==='PAID_PENDING_PROVISIONING' &&
+      r.starts_at===null && r.expires_at===null && r.paid_order_state==='PAID' &&
+      ['prodamus','telegram_stars'].includes(r.paid_order_provider);
+    const expiry=pendingTrial||pendingPaid?new Date(Date.now()+5*60*1000):r.expires_at;
     return {entitlementId:r.id,revision:asInt(r.revision),
       enabled:quotaOK && ['ACTIVE','PAID_PENDING_PROVISIONING','PROVISIONING_FAILED'].includes(r.state),
-      expiresAt:expiry,trialPendingActivation:pendingTrial,isTrial:Boolean(r.trial_order_id)};
+      expiresAt:expiry,trialPendingActivation:pendingTrial,
+      provisionalActivation:pendingPaid,isTrial:Boolean(r.trial_order_id)};
   }
   async acknowledge(id:string,revision:number,fence:number,observedEnabled:boolean):Promise<boolean> {
     const {rows}=await this.query(
