@@ -139,6 +139,16 @@ test('Prodamus verified refund revokes only original captured order and retries 
  assert.equal(refunds.length,1);
  assert.deepEqual((refunds[0] as {orderId:string;transactionId:string;amount:number}).orderId,oid);
  assert.equal((refunds[0] as {transactionId:string}).transactionId,'capture1');
+ (f.db as unknown as {applyVerifiedRefund:(x:unknown)=>Promise<'DENY_CAPTURE_MISMATCH'>}).applyVerifiedRefund=
+   async()=> 'DENY_CAPTURE_MISMATCH';
+ const failed=await handleProdamusDelivery(fields,signProdamus(fields,key),f.db,pd);
+ assert.equal(failed.statusCode,503);
+ assert.equal(failed.text,'REFUND_NOT_CONFIRMED');
+ (f.db as unknown as {applyVerifiedRefund:(x:unknown)=>Promise<'DUPLICATE_EVENT'>}).applyVerifiedRefund=
+   async()=> 'DUPLICATE_EVENT';
+ const repeated=await handleProdamusDelivery(fields,signProdamus(fields,key),f.db,pd);
+ assert.equal(repeated.statusCode,200);
+ assert.equal(repeated.text,'REFUND_ALREADY_PROCESSED');
  const underpaid={...fields,sum:'49.00'};
  assert.equal((await handleProdamusDelivery(underpaid,signProdamus(underpaid,key),f.db,pd)).statusCode,409);
  assert.equal(refunds.length,1);
