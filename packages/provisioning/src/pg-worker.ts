@@ -68,7 +68,8 @@ export class PgReconcileStore implements ReconcileStore {
       r.activated_at===null && r.starts_at===null && r.expires_at===null;
     // Provisional, hard-enforced 5-minute node expiry. NEVER return NULL to
     // a trial adapter as that would create permanent pre-activation access.
-    const pendingPaid= !pendingTrial && r.state==='PAID_PENDING_PROVISIONING' &&
+    const pendingPaid= !pendingTrial &&
+      ['PAID_PENDING_PROVISIONING','PROVISIONING_FAILED'].includes(r.state) &&
       r.starts_at===null && r.expires_at===null && r.paid_order_state==='PAID' &&
       ['prodamus','telegram_stars'].includes(r.paid_order_provider);
     const expiry=pendingTrial||pendingPaid?new Date(Date.now()+5*60*1000):r.expires_at;
