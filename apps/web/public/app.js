@@ -40,6 +40,26 @@ function toast(message) {
   clearTimeout(toast.timer);
   toast.timer = setTimeout(()=>el.classList.add('hidden'),6500);
 }
+function checkoutError(message) {
+  const el=byId('checkout-error');
+  el.textContent=message||'';
+  el.classList.toggle('hidden',!message);
+}
+function showPaymentLink(url) {
+  const el=byId('payment-link');
+  if(!url){el.removeAttribute('href');el.classList.add('hidden');return;}
+  el.href=url;
+  el.classList.remove('hidden');
+}
+function newRequestId() {
+  if(typeof crypto.randomUUID==='function')return crypto.randomUUID();
+  // Secure, cryptographically random RFC 4122 v4 fallback for older webviews.
+  const bytes=crypto.getRandomValues(new Uint8Array(16));
+  bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+  const hex=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
+  return [hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),
+    hex.slice(16,20),hex.slice(20)].join('-');
+}
 async function api(url, options) {
   const response = await fetch(url,{cache:'no-store',credentials:'same-origin',...options});
   const data = await response.json();
@@ -52,7 +72,9 @@ async function api(url, options) {
 }
 function setSelection(product, days) {
   if (!Object.hasOwn(productNames,product) || ![15,30,60,90].includes(days)) return;
-  if (product !== state.product || days !== state.days) state.requestId = null;
+  if (product !== state.product || days !== state.days) {
+    state.requestId = null;showPaymentLink(null);checkoutError('');
+  }
   if(product!==state.product)state.renewalTargetId=null;
   state.product = product; state.days = days;
   document.querySelectorAll('[data-product]').forEach(btn => {
@@ -332,17 +354,24 @@ function applyLinkOptions() {
 }
 async function purchase() {
   const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
-  if(state.product!=='vpn'||!plan||!state.checkoutEnabled||state.busy)return;
-  if(!state.loggedIn) {
+  if(state.busy)return;
+  if(state.product!=='vpn'||!plan||!state.checkoutEnabled){
+    checkoutError('Оплата этого тарифа пока недоступна.');return;
+  }
+  if(!state.loggedIn){
     saveSelection();
     byId('account').scrollIntoView({behavior:'smooth'});
+    toast('Для оплаты войдите в личный кабинет.');
     return;
   }
-  state.busy=true;state.requestId ||= crypto.randomUUID();renderPlan();
-  const payload={planId:plan.id,requestId:state.requestId};
-  if(state.inviteToken)payload.inviteToken=state.inviteToken;
-  if(state.renewalTargetId)payload.renewalTargetId=state.renewalTargetId;
+  state.busy=true;checkoutError('');showPaymentLink(null);renderPlan();
   try {
+    // Request identity must be created inside the guarded block: some in-app
+    // browsers do not expose randomUUID even though crypto.getRandomValues works.
+    state.requestId ||= newRequestId();
+    const payload={planId:plan.id,requestId:state.requestId};
+    if(state.inviteToken)payload.inviteToken=state.inviteToken;
+    if(state.renewalTargetId)payload.renewalTargetId=state.renewalTargetId;
     const result=await api(state.renewalTargetId?'/api/renew':'/api/checkout',{
       method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
       body:JSON.stringify(payload),
@@ -350,19 +379,26 @@ async function purchase() {
     const target=new URL(result.paymentUrl);
     if(target.protocol!=='https:' || !(target.hostname==='payform.ru' ||
       target.hostname.endsWith('.payform.ru')))throw new Error('UNSAFE_PAYMENT_LINK');
-    // The signed order already retains the referral. Never apply it again to
-    // unrelated later purchases in the same session.
+    // A visible, user-clickable fallback matters for WebViews that refuse
+    // programmatic navigation after an asynchronous request.
+    showPaymentLink(target.toString());
     consumeReferral();
     state.requestId=null;
     location.assign(target.toString());
   }catch(error){
     const messages={
       PAYMENT_NOT_AVAILABLE:'Оплата сейчас недоступна.',
+      PAYMENT_PROVIDER_UNAVAILABLE:'Prodamus не ответил. Заказ сохранён: нажмите оплату повторно.',
+      PAYMENT_PROVIDER_INVALID_LINK:'Prodamus вернул некорректную ссылку. Повторите попытку.',
+      CHECKOUT_RETRY_LIMIT:'Слишком много заказов за короткое время. Повторите позже.',
       INVALID_CHECKOUT:'Не удалось проверить параметры заказа.',
       LOGIN_REQUIRED:'Сессия истекла. Войдите повторно.',
+      FORBIDDEN:'Сессия изменилась. Обновите страницу и войдите повторно.',
+      UNSAFE_PAYMENT_LINK:'Не удалось проверить ссылку Prodamus.',
     };
-    toast(messages[error.message] || 'Не удалось открыть оплату. Повторите попытку позднее.');
-  } finally {state.busy=false;renderPlan();}
+    const message=messages[error?.message] || 'Не удалось создать заказ или открыть оплату. Повторите попытку.';
+    checkoutError(message);toast(message);
+  }finally{state.busy=false;renderPlan();}
 }
 async function claimTrial(){
   if(state.busy)return;
