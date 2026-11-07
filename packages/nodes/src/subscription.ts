@@ -68,8 +68,7 @@ export async function loadMultiNodeSubscription(
      !(expiresAt instanceof Date)||expiresAt.getTime()<=Date.now())
     return null;
 
-  const nodes=await pool.query(
-    `SELECT n.id,n.client_host,n.client_port,n.client_sni,n.client_ws_path
+  const eligibleNodesSql=`SELECT n.id,n.client_host,n.client_port,n.client_sni,n.client_ws_path
        FROM vpn_node_assignments a
        JOIN vpn_nodes n ON n.id=a.node_id
       WHERE a.entitlement_id=$1
@@ -83,8 +82,9 @@ export async function loadMultiNodeSubscription(
         AND n.last_healthy_at >= clock_timestamp() - interval '120 seconds'
         AND n.client_host IS NOT NULL AND n.client_port IS NOT NULL
         AND n.client_sni IS NOT NULL AND n.client_ws_path IS NOT NULL
-      ORDER BY n.code`,[entitlementId,expectedRevision]);
-  const profiles:string[]=[];
+      ORDER BY n.code`;
+  const nodes=await pool.query(eligibleNodesSql,[entitlementId,expectedRevision]);
+  const candidates:Array<{nodeId:string;profile:string;endpoint:string}>=[];
   const endpoints=new Set<string>();
   for(const n of nodes.rows){
     const provider=providers.get(String(n.id));
@@ -101,9 +101,9 @@ export async function loadMultiNodeSubscription(
     const endpoint=[host,port,sni,wsPath].join(':');
     if(endpoints.has(endpoint))continue;
     endpoints.add(endpoint);
-    profiles.push(profile);
+    candidates.push({nodeId:String(n.id),profile,endpoint});
   }
-  if(!profiles.length||Date.now()>=expiresAt.getTime())return null;
+  if(!candidates.length||Date.now()>=expiresAt.getTime())return null;
   // A revoked bearer may race profile retrieval: check entitlement/token again.
   const recent=await pool.query(
     `SELECT 1 FROM vpn_subscription_links l
@@ -113,5 +113,12 @@ export async function loadMultiNodeSubscription(
         AND e.expires_at>clock_timestamp() LIMIT 1`,
     [digest,entitlementId,expectedRevision]);
   if(recent.rows.length!==1)return null;
+  // Node eligibility can change without advancing the global entitlement.
+  // Recheck assignments/health/routes after slow upstream profile retrieval.
+  const stillEligible=await pool.query(eligibleNodesSql,[entitlementId,expectedRevision]);
+  const allowed=new Map(stillEligible.rows.map(n=>[String(n.id),
+    [String(n.client_host),Number(n.client_port),String(n.client_sni),String(n.client_ws_path)].join(':')]));
+  const profiles=candidates.filter(c=>allowed.get(c.nodeId)===c.endpoint).map(c=>c.profile);
+  if(!profiles.length||Date.now()>=expiresAt.getTime())return null;
   return {entitlementId,expiresAt,profiles,text:subscriptionText(profiles)};
 }

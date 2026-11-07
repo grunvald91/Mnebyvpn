@@ -116,3 +116,14 @@ test('incorrect observed deadline is not published',async()=>{
  });
  assert.deepEqual(x.ack,[]);
 });
+
+test('missing adapter and failed retry persistence do not stop later revocations',async()=>{
+ const x=fixture();
+ x.store.retry=async()=>{throw Error('retry ledger unavailable');};
+ x.desiredByNode.set(b,{entitlementId:id,revision:2,enabled:false,expiresAt:null});
+ x.observed.set(b,{revision:1,enabled:true,expiresAt:expiry});
+ const result=await reconcileAllAssignedNodes(id,x.store,new Map([[b,x.adapter(b)]]),1);
+ assert.equal(result[0].status,'retry_required');
+ assert.equal(result[1].status,'synced');
+ assert.equal(x.observed.get(b)?.enabled,false);
+});

@@ -94,6 +94,29 @@ test('node-scoped access, subscription publication and refund revoke end-to-end 
   assert.ok(subscription?.text.includes('vpn-1.example.test'));
   assert.equal(await loadMultiNodeSubscription(pool,'invalid',profiles),null);
 
+  // Renewal enters PENDING before the legacy global ACK. Existing assigned
+  // nodes must extend access, not receive an irreversible same-revision revoke.
+  await pool.query("UPDATE vpn_nodes SET state='draining',enabled_for_new=false WHERE id=$1",[nodeIds[0]]);
+  await pool.query("UPDATE entitlements SET state='PAID_PENDING_PROVISIONING',revision=2,expires_at=expires_at+interval '1 day' WHERE id=$1",[entitlement]);
+  const renewed=await reconcileAllAssignedNodes(entitlement,store,adapters);
+  assert.deepEqual(renewed.map(x=>x.status),['synced','synced']);
+  assert.ok([...state.values()].every(x=>x.enabled&&x.revision===2));
+  await pool.query("UPDATE entitlements SET state='ACTIVE' WHERE id=$1",[entitlement]);
+  assert.ok((await pool.query('SELECT state FROM vpn_node_assignments WHERE entitlement_id=$1',[entitlement])).rows.every(x=>x.state==='active'));
+  await pool.query("UPDATE vpn_nodes SET state='verified',enabled_for_new=true WHERE id=$1",[nodeIds[0]]);
+  // Disable one node while its upstream profile is being fetched. Its old
+  // result must not be published even though the global revision is unchanged.
+  const original=profiles.get(nodeIds[0])!;
+  profiles.set(nodeIds[0],{profileFor:async(...args)=>{
+    await pool.query("UPDATE vpn_nodes SET state='disabled' WHERE id=$1",[nodeIds[0]]);
+    return original.profileFor(...args);
+  }});
+  const raced=await loadMultiNodeSubscription(pool,token,profiles);
+  assert.equal(raced?.profiles.length,1);
+  assert.ok(raced?.text.includes('vpn-1.example.test'));
+  profiles.set(nodeIds[0],original);
+  await pool.query("UPDATE vpn_nodes SET state='verified' WHERE id=$1",[nodeIds[0]]);
+
   // When one node goes unhealthy, its profile disappears without revoking
   // the second healthy node's access.
   await registry.recordProbe(nodeIds[0],false);
@@ -111,11 +134,11 @@ test('node-scoped access, subscription publication and refund revoke end-to-end 
     'refund must enqueue revoke on every assigned node');
   const revoke=await reconcileAllAssignedNodes(entitlement,store,adapters);
   assert.deepEqual(revoke.map(x=>x.status),['synced','synced']);
-  assert.ok([...state.values()].every(x=>x.enabled===false&&x.revision===2));
+  assert.ok([...state.values()].every(x=>x.enabled===false&&x.revision===3));
   const revoked=await pool.query(
     'SELECT state,applied_revision FROM vpn_node_assignments WHERE entitlement_id=$1',
     [entitlement]);
-  assert.ok(revoked.rows.every(x=>x.state==='revoked'&&Number(x.applied_revision)===2));
+  assert.ok(revoked.rows.every(x=>x.state==='revoked'&&Number(x.applied_revision)===3));
   assert.equal(await loadMultiNodeSubscription(pool,token,profiles),null);
  }finally{
   await pool.query('DELETE FROM vpn_subscription_links WHERE entitlement_id=$1',

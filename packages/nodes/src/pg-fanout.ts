@@ -68,7 +68,7 @@ const SELECT= `SELECT
 function desiredFromRow(r:Row,now:Date):DesiredAccess {
   const revision=safeNumber(r.entitlement_revision);
   const deadline=validTime(r.expires_at);
-  const entitled=['ACTIVE'].includes(r.entitlement_state)&&
+  const entitled=['ACTIVE','PAID_PENDING_PROVISIONING','PROVISIONING_FAILED'].includes(r.entitlement_state)&&
     r.quota_state==='AVAILABLE'&&deadline!==null&&deadline.getTime()>now.getTime();
   const previouslyActive=r.assignment_state==='active'&&
     ['verified','degraded','draining'].includes(r.node_state)&&

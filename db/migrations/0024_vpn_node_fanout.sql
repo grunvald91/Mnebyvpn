@@ -28,7 +28,10 @@ BEGIN
              WHEN NEW.state IN ('ACTIVE','PAID_PENDING_PROVISIONING','PROVISIONING_FAILED')
                   AND NEW.quota_state = 'AVAILABLE'
                   AND (NEW.expires_at IS NULL OR NEW.expires_at > clock_timestamp())
-               THEN 'pending'
+               THEN CASE
+                 WHEN state='active' THEN 'active'
+                 WHEN state='revoked' AND NEW.revision=desired_revision THEN 'revoked'
+                 ELSE 'pending' END
              ELSE 'revoking'
            END,
            next_attempt_at = clock_timestamp(),

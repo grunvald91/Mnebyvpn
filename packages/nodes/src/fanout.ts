@@ -113,12 +113,12 @@ export async function reconcileAllAssignedNodes(
       const i=next++;
       const nodeId=nodeIds[i];
       const adapter=adapters.get(nodeId);
+      try{
       if(!adapter){
         await store.retry(entitlementId,nodeId,'node_unconfigured');
         outcomes[i]={nodeId,status:'retry_required',reason:'node_unconfigured'};
         continue;
       }
-      try{
         outcomes[i]={nodeId,...await reconcileAssignedNode(
           entitlementId,nodeId,store,adapter)};
       }catch{
