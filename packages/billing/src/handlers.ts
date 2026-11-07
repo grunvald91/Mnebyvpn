@@ -303,7 +303,8 @@ export async function handleProdamusDelivery(
       return {statusCode:400,text:'INVALID_REFUND'};
     const order=await db.order(fields.order_num);
     if (!order || order.provider!=='prodamus' || order.currency!=='RUB' ||
-        order.amount!==Number(String(fields.sum??'').replace('.','')) ||
+        (typeof fields.sum!=='string' || !/^[0-9]{1,12}\\.[0-9]{2}$/.test(fields.sum) ||
+         order.amount!==Number(fields.sum.replace('.',''))) ||
         order.id!==fields.order_num)
       return {statusCode:409,text:'UNKNOWN_REFUND'};
     const hash=createHash('sha256').update(canonicalProdamusJson(fields)).digest('hex');
