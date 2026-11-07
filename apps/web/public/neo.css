@@ -370,3 +370,6 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
  .about-tabs{margin-left:12px;margin-right:12px}
  .about-tabs button{font-size:11px}
 }
+
+/* Keep the account and project controls usable on narrow phones. */
+@media(max-width:400px){.header .brand-text{display:none}.header-inner{gap:7px}.about-trigger{padding:8px 10px}.header #auth-link{padding:8px 10px;min-height:37px}}
