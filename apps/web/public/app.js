@@ -5,7 +5,8 @@ const state = {
   product: 'vpn', days: 15, plans: [], checkoutEnabled: false, loginEnabled:false,
   loggedIn: false, csrf: '', busy: false, requestId: null, trialOffers: [],
   inviteToken: null, refreshing: false, renewalTargetId: null,
-  guestTrialEnabled:false,guestTrialStatus:'NONE',guestSubscriptionUrl:null,guestRefreshing:false,
+  telegramLoginEnabled:false,emailLoginEnabled:false,emailLinkMode:false,
+  trialStatus:'NONE',guestSubscriptionUrl:null,setupLoading:false,
 };
 const productNames = { vpn:'VPN', smart_dns:'Smart DNS', bundle:'VPN + Smart DNS' };
 const stateNames = {
@@ -82,11 +83,13 @@ function renderPlan() {
     !state.checkoutEnabled?'Оплата пока недоступна':
     !state.loggedIn?'Войти для оплаты':state.renewalTargetId?'К оплате продления':'Перейти к оплате';
   const trial=byId('trial-button');
-  const trialAvailable=state.product==='vpn' && (
-    state.guestTrialEnabled || state.trialOffers.includes(state.product));
+  const trialAvailable=state.product==='vpn' &&
+    state.trialOffers.includes(state.product) && state.loginEnabled;
   trial.disabled=!trialAvailable||state.busy;
-  trial.textContent=trialAvailable?'🎁 Получить 24 часа бесплатно':'🎁 Бесплатные 24 часа';
-  byId('trial-hero-button').disabled=state.busy;
+  trial.textContent=state.busy?'Проверяем заявку…':
+    !state.loginEnabled?'Бесплатный доступ временно недоступен':
+    trialAvailable?(state.loggedIn?'🎁 Получить 24 часа бесплатно':'Войти и получить 24 часа бесплатно'):
+    'Бесплатный доступ временно недоступен';
   text('checkout-hint',inDevelopment?'Smart DNS и совместный тариф находятся в разработке и пока не продаются.':
     !plan?'Неопубликованные тарифы не продаются.':
     !state.checkoutEnabled?'Онлайн-оплата включится после проверки платёжного подключения.':
@@ -146,6 +149,13 @@ function renderAccess(accesses) {
           'Учёт расхода DNS пока не подтверждён. Использовано / осталось: нет достоверных данных.'));
       }
     }
+    if(a.product==='vpn' &&
+       a.state==='ACTIVE' && a.secondsRemaining!==null && a.secondsRemaining>0){
+      const setup=node('button','button button-secondary setup-button','Подключить VPN');
+      setup.type='button';
+      setup.addEventListener('click',loadSubscription);
+      item.append(setup);
+    }
     const durations=state.plans.filter(p=>p.product===a.product);
     if (durations.length && a.startsAt && a.expiresAt &&
       !['REFUNDED','CANCELLED','PENDING_PAYMENT'].includes(a.state)) {
@@ -186,7 +196,7 @@ function renderAccount(payload) {
   byId('auth-link').textContent='Мой доступ';
   byId('auth-link').href='#account';
   text('account-name','Мой аккаунт');
-  text('account-subtitle','Вход через Telegram · защищённая сессия');
+  text('account-subtitle','Защищённый вход · '+(payload.identity?.email||'Telegram'));
   const accesses=payload.access||[];
   const active=accesses.filter(a=>a.state==='ACTIVE' && a.secondsRemaining>0);
   text('active-count',active.length);
@@ -194,26 +204,48 @@ function renderAccount(payload) {
   text('days-left',timed.length?remaining(timed[0].secondsRemaining):'—');
   text('days-hint',timed.length?'До ближайшего окончания':'Нет активных подписок');
   renderAccess(accesses);renderOrders(payload.orders||[]);
+  byId('link-email').classList.toggle('hidden',!state.emailLoginEnabled||payload.identity?.emailLinked);
+  byId('link-telegram').classList.toggle('hidden',!state.telegramLoginEnabled||payload.identity?.telegramLinked);
+  if(!state.emailLinkMode)byId('email-auth-panel').classList.add('hidden');
+  // Never show a stale bearer subscription on a different account.
+  if(!accesses.some(a=>a.product==='vpn' && a.state==='ACTIVE' && a.secondsRemaining>0)){
+    state.guestSubscriptionUrl=null;
+    byId('guest-trial-card').classList.add('hidden');
+  }
+  if(accesses.some(a=>a.product==='vpn' && a.state==='PAID_PENDING_PROVISIONING')){
+    const card=byId('guest-trial-card');
+    card.classList.remove('hidden');
+    byId('guest-trial-title').textContent='Подключаем VPN';
+    byId('guest-trial-status').textContent=
+      'Заявка принята. Пробные 24 часа начнутся только после подтверждения активации сервером.';
+    if(!state.guestSubscriptionUrl)byId('guest-trial-ready').classList.add('hidden');
+  }
   renderPlan();
 }
-function syncLoginLinks() {
-  const target=state.loginEnabled?'/auth/login':'https://t.me/MnebyVPN_bot';
-  const label=state.loginEnabled?'Войти':'Telegram-бот';
+function syncLoginLinks(){
   const top=byId('auth-link');
-  top.textContent=label;top.href=target;
-  const cabinet=byId('cabinet-login-link');
-  cabinet.textContent=state.loginEnabled?'Войти через Telegram':'Открыть Telegram-бота';
-  cabinet.href=target;
-  text('login-prompt-copy',state.loginEnabled?
-    'Войдите через Telegram, чтобы видеть свои подписки, оставшиеся дни и DNS-квоту.':
-    'Вход в кабинет пока подключается. Связаться с проектом можно через Telegram-бота.');
+  top.textContent='Telegram-бот';
+  top.href='https://t.me/MnebyVPN_bot';
+  const tg=byId('cabinet-login-link');
+  tg.href=state.telegramLoginEnabled?'/auth/login':'#account';
+  tg.setAttribute('aria-disabled',String(!state.telegramLoginEnabled));
+  byId('email-auth-panel').classList.toggle('hidden',!state.emailLoginEnabled);
+  text('login-prompt-copy',state.emailLoginEnabled?
+    'Получите код на email и войдите без пароля.':'Вход по email пока настраивается.');
+  text('login-help',state.telegramLoginEnabled?
+    'Если Telegram уже привязан к аккаунту, можно войти и через него.':
+    'После входа по email можно будет привязать Telegram.');
   text('account-subtitle',state.loginEnabled?
     'Войдите, чтобы увидеть данные':'Вход в кабинет пока подключается');
 }
+
 function renderLoggedOut() {
   // A session that expires or is revoked must not leave stale private data on
   // a shared browser screen. Keep the public catalog and selected product.
-  state.loggedIn=false;state.csrf='';
+  state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;
+  byId('guest-trial-card').classList.add('hidden');
+  byId('link-email').classList.add('hidden');
+  byId('link-telegram').classList.add('hidden');
   state.renewalTargetId=null;state.requestId=null;
   byId('login-prompt').classList.remove('hidden');
   byId('account-content').classList.add('hidden');
@@ -242,7 +274,8 @@ async function loadCatalog() {
     state.plans=Array.isArray(data.plans)?data.plans:[];
     state.checkoutEnabled=data.checkoutEnabled===true;
     state.loginEnabled=data.loginEnabled===true;
-    state.guestTrialEnabled=data.guestTrialEnabled===true;
+    state.telegramLoginEnabled=data.telegramLoginEnabled===true;
+    state.emailLoginEnabled=data.emailLoginEnabled===true;
     state.trialOffers=Array.isArray(data.trialOffers)?data.trialOffers:[];
     if(!state.loggedIn)syncLoginLinks();
   } catch {
@@ -293,7 +326,7 @@ function applyLinkOptions() {
   // purchase/trial handlers and would otherwise drop the referral in OIDC.
   saveSelection();
   if(url.searchParams.get('login')==='failed')
-    toast('Авторизация не завершена. Проверьте вход через Telegram.');
+    toast('Вход не завершён. Попробуйте вход по email или повторите Telegram.');
   if(url.searchParams.get('payment')==='returned')
     toast('Возврат из оплаты — не подтверждение платежа. Статус появится после проверки уведомления.');
 }
@@ -302,7 +335,8 @@ async function purchase() {
   if(state.product!=='vpn'||!plan||!state.checkoutEnabled||state.busy)return;
   if(!state.loggedIn) {
     saveSelection();
-    location.assign('/auth/login');return;
+    byId('account').scrollIntoView({behavior:'smooth'});
+    return;
   }
   state.busy=true;state.requestId ||= crypto.randomUUID();renderPlan();
   const payload={planId:plan.id,requestId:state.requestId};
@@ -330,117 +364,90 @@ async function purchase() {
     toast(messages[error.message] || 'Не удалось открыть оплату. Повторите попытку позднее.');
   } finally {state.busy=false;renderPlan();}
 }
-async function claimTrial() {
+async function claimTrial(){
   if(state.busy)return;
-  // The website must offer a usable flow even when Telegram is unavailable.
-  if(state.guestTrialEnabled && !state.loggedIn){
-    state.busy=true;renderPlan();
-    try{
-      const result=await api('/api/guest/trial',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({product:'vpn'}),
-      });
-      if(result.status==='UNAVAILABLE'){
-        toast('Бесплатный доступ временно недоступен. Попробуйте позднее.');
-      }else{
-        toast(result.status==='ALREADY_USED'?
-          'Пробные сутки для этого браузера уже использованы.':
-          'Заявка принята. Ожидаем подтверждения сервера.');
-      }
-      await refreshGuestTrial();
-      byId('guest-trial-card').scrollIntoView({behavior:'smooth',block:'center'});
-    }catch{toast('Не удалось оформить бесплатный доступ. Попробуйте позднее.');}
-    finally{state.busy=false;renderPlan();}
-    return;
-  }
-  if(state.product!=='vpn'||!state.trialOffers.includes(state.product)){
-    toast('Сейчас пробные сутки можно получить через Telegram-бота.');
-    return;
+  if(state.product!=='vpn'||!state.trialOffers.includes('vpn')){
+    toast('Бесплатный доступ сейчас недоступен.');return;
   }
   if(!state.loggedIn){
+    if(!state.loginEnabled){toast('Вход пока недоступен.');return;}
     saveSelection();
-    if(!state.loginEnabled){
-      location.assign('https://t.me/MnebyVPN_bot');
-    }else{
-      location.assign('/auth/login');
-    }
+    try{sessionStorage.setItem('mnebyvpn-pending-trial','1');}catch{}
+    byId('account').scrollIntoView({behavior:'smooth'});
+    toast('Для получения бесплатных суток сначала войдите по email или через привязанный Telegram.');
     return;
   }
   state.busy=true;renderPlan();
-  const payload={product:state.product};
+  const payload={product:'vpn'};
   if(state.inviteToken)payload.inviteToken=state.inviteToken;
-  try {
+  try{
     const response=await api('/api/trial',{method:'POST',headers:{
       'Content-Type':'application/json','X-CSRF-Token':state.csrf,
     },body:JSON.stringify(payload)});
     const messages={
-      GRANTED:'Пробный доступ оформлен. Статус обновится после подтверждения узлом.',
-      PENDING:'Заявка уже существует. Время не расходуется до подключения.',
-      ALREADY_USED:'Вы уже использовали свой пробный период.',
+      GRANTED:'Пробный доступ оформлен. Ожидаем подтверждения подключения узлом.',
+      PENDING:'Заявка уже есть. Время начнётся после активации.',
+      ALREADY_USED:'Пробные сутки для этого аккаунта уже использованы.',
+      DEVICE_ALREADY_USED:'В этом браузере уже оформляли пробные сутки.',
       UNAVAILABLE:'Пробный доступ сейчас недоступен.',
     };
-    toast(messages[response.status]||'Статус заявки обновлён.');
+    toast(messages[response.status]||'Статус обновлён.');
     if(['GRANTED','PENDING','ALREADY_USED'].includes(response.status))consumeReferral();
     await refresh();
-  } catch {toast('Не удалось проверить пробный доступ. Попробуйте позднее.');}
-  finally {state.busy=false;renderPlan();}
+    if(response.status==='ALREADY_USED')
+      byId('account').scrollIntoView({behavior:'smooth'});
+    else if(['GRANTED','PENDING'].includes(response.status))
+      byId('guest-trial-card').scrollIntoView({behavior:'smooth',block:'center'});
+  }catch(error){
+    toast(error.status===401?'Сессия истекла. Войдите повторно.':
+      'Не удалось проверить бесплатный доступ. Попробуйте позднее.');
+  }finally{state.busy=false;renderPlan();}
 }
-function renderGuestTrial(data){
-  const status=data?.status;
-  if(!['NONE','PENDING','ACTIVE','EXPIRED'].includes(status))return;
-  state.guestTrialStatus=status;
+function renderVpnSetup(data){
+  const url=String(data.subscriptionUrl||'');
+  const parsed=(()=>{try{return new URL(url);}catch{return null;}})();
+  if(!parsed||parsed.protocol!=='https:'||
+      !(['cdn.servgo.ru','mnebyvpn.site'].includes(parsed.hostname))||
+      !/^\/sub\/[A-Za-z0-9_-]{43}$/.test(parsed.pathname)){
+    throw Error('UNSAFE_SUBSCRIPTION_URL');
+  }
+  const token=parsed.pathname.slice('/sub/'.length);
+  const root=parsed.origin;
+  state.guestSubscriptionUrl=url;
   const card=byId('guest-trial-card');
-  const ready=byId('guest-trial-ready');
-  const message=byId('guest-trial-status');
-  const header=byId('guest-trial-title');
-  if(status==='NONE'){
-    card.classList.add('hidden');
-    ready.classList.add('hidden');
-    return;
-  }
   card.classList.remove('hidden');
-  ready.classList.toggle('hidden',status!=='ACTIVE');
-  if(status==='PENDING'){
-    header.textContent='⏳ Подключаем VPN';
-    message.textContent='Запрос получен. Ожидаем подтверждения VPN-сервера. 24 часа начнутся после активации.';
-  }else if(status==='EXPIRED'){
-    header.textContent='⌛ Бесплатные сутки завершены';
-    message.textContent='Пробный период уже использован. Для продолжения выберите платный тариф.';
-  }else if(status==='ACTIVE'){
-    const url=String(data.subscriptionUrl||'');
-    const base='https://cdn.servgo.ru:8443/sub/';
-    if(!url.startsWith(base) ||
-       !/^[A-Za-z0-9_-]{43}$/.test(url.slice(base.length))){
-      ready.classList.add('hidden');
-      message.textContent='VPN активирован. Не удалось получить ссылку — обновите страницу.';
-      return;
-    }
-    state.guestSubscriptionUrl=url;
-    header.textContent='✅ VPN активирован!';
-    const expiry=data.expiresAt?new Date(data.expiresAt):null;
-    message.textContent='Подписка действует'+
-      (expiry&&!Number.isNaN(expiry.getTime())?
-        ' до '+expiry.toLocaleString('ru-RU',{dateStyle:'medium',timeStyle:'short'})+'.':'.')+
-      ' Выберите приложение для подключения.';
-    const suffix=url.slice(base.length);
-    byId('guest-auto-incy').href='https://cdn.servgo.ru:8443/install/'+suffix+'?client=incy';
-    byId('guest-auto-karing').href='https://cdn.servgo.ru:8443/install/'+suffix+'?client=karing';
-    byId('guest-subscription-url').value=url;
-  }
+  byId('guest-trial-title').textContent='Ваш VPN готов к подключению';
+  const exp=data.expiresAt?new Date(data.expiresAt):null;
+  byId('guest-trial-status').textContent='Срок доступа'+
+    (exp&&!Number.isNaN(exp.getTime())?
+      ' до '+exp.toLocaleString('ru-RU',{dateStyle:'medium',timeStyle:'short'}):' активен')+
+    '. Следуйте инструкции ниже.';
+  byId('guest-trial-ready').classList.remove('hidden');
+  byId('guest-auto-incy').href=root+'/install/'+token+'?client=incy';
+  byId('guest-auto-karing').href=root+'/install/'+token+'?client=karing';
+  byId('guest-subscription-url').value=url;
+  card.scrollIntoView({behavior:'smooth',block:'center'});
 }
-async function refreshGuestTrial(){
-  if(state.guestRefreshing)return;
-  state.guestRefreshing=true;
-  try{renderGuestTrial(await api('/api/guest/status'));}
-  catch{if(state.guestTrialStatus==='PENDING')toast('Проверка активации временно недоступна.');}
-  finally{state.guestRefreshing=false;}
+async function loadSubscription(){
+  if(state.setupLoading||!state.loggedIn)return;
+  state.setupLoading=true;
+  try{
+    const data=await api('/api/vpn/subscription',{method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
+      body:'{}'});
+    renderVpnSetup(data);
+  }catch(error){
+    toast(error.message==='VPN_NOT_ACTIVE'?
+      'VPN ещё не подтверждён сервером. Проверьте статус позже.':
+      'Не удалось получить ссылку. Попробуйте позже.');
+  }finally{state.setupLoading=false;}
 }
 async function copyGuestSubscription(){
   const url=state.guestSubscriptionUrl;
   if(!url)return;
   try{
     await navigator.clipboard.writeText(url);
-    toast('Персональная ссылка подписки скопирована.');
+    toast('Ссылка подписки скопирована.');
   }catch{
     const field=byId('guest-subscription-url');
     field.focus();field.select();
@@ -448,6 +455,54 @@ async function copyGuestSubscription(){
   }
 }
 
+let pendingEmail=null;
+async function beginEmail(event){
+  event.preventDefault();
+  if(!state.emailLoginEnabled)return;
+  const email=byId('email-input').value.trim().toLowerCase();
+  if(!email)return;
+  const button=byId('email-send-button');
+  button.disabled=true;
+  text('email-status','Отправляем код с mnebyvpn@servgo.ru…');
+  try{
+    const payload={email};
+    if(state.loggedIn&&state.emailLinkMode)payload.link=true;
+    await api('/api/auth/email/start',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    pendingEmail=email;
+    byId('email-verify-form').classList.remove('hidden');
+    text('email-status','Письмо отправлено. Код действителен 10 минут. Проверьте также папку «Спам».');
+    byId('email-code-input').focus();
+  }catch(error){
+    text('email-status',error.message==='EMAIL_RATE_LIMIT'?
+      'Слишком много запросов. Повторите позже.':
+      'Отправить код не удалось. Проверьте адрес или попробуйте позже.');
+  }finally{button.disabled=false;}
+}
+async function finishEmail(event){
+  event.preventDefault();
+  if(!pendingEmail)return;
+  const code=byId('email-code-input').value.trim();
+  if(!/^[0-9]{6}$/.test(code)){text('email-status','Введите шесть цифр из письма.');return;}
+  const button=byId('email-verify-button');
+  button.disabled=true;
+  try{
+    await api('/api/auth/email/verify',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({email:pendingEmail,code})});
+    pendingEmail=null;
+    location.assign('/#account');
+  }catch(error){
+    text('email-status',error.message==='EMAIL_ALREADY_LINKED'?
+      'Этот email уже привязан к другой учётной записи. Слияние не выполнено.':
+      'Код неверен или истёк. Проверьте письмо или запросите новый.');
+  }finally{button.disabled=false;}
+}
+function openEmailLink(){
+  state.emailLinkMode=true;
+  byId('email-auth-panel').classList.remove('hidden');
+  text('email-status','Подтвердите email, который хотите привязать к этому аккаунту.');
+  byId('email-input').focus();
+}
 async function logout() {
   if(!state.csrf)return;
   try {
@@ -465,7 +520,6 @@ document.querySelectorAll('[data-days]').forEach(button=>{
 });
 byId('buy-button').addEventListener('click',purchase);
 byId('trial-button').addEventListener('click',claimTrial);
-byId('trial-hero-button').addEventListener('click',claimTrial);
 byId('guest-copy-subscription').addEventListener('click',copyGuestSubscription);
 byId('cancel-renewal-button').addEventListener('click',()=>{
   state.renewalTargetId=null;
@@ -473,13 +527,23 @@ byId('cancel-renewal-button').addEventListener('click',()=>{
   renderPlan();
 });
 byId('logout-button').addEventListener('click',logout);
+byId('email-start-form').addEventListener('submit',beginEmail);
+byId('email-verify-form').addEventListener('submit',finishEmail);
+byId('link-email').addEventListener('click',openEmailLink);
 applyLinkOptions();
-Promise.all([loadCatalog(),refresh(),refreshGuestTrial()]);
+Promise.all([loadCatalog(),refresh()]).then(async()=>{
+  if(state.loggedIn && state.trialOffers.includes('vpn')){
+    let pending=false;
+    try{pending=sessionStorage.getItem('mnebyvpn-pending-trial')==='1';
+      sessionStorage.removeItem('mnebyvpn-pending-trial');
+    }catch{}
+    if(pending)await claimTrial();
+  }
+});
 // Payment verification and provisioning can complete after the user returns.
 setInterval(()=>{if(document.visibilityState==='visible' && state.loggedIn)refresh();},15000);
-setInterval(()=>{if(document.visibilityState==='visible' && state.guestTrialStatus==='PENDING')refreshGuestTrial();},5000);
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'){
-    refresh();refreshGuestTrial();
+    refresh();
   }
 });

@@ -28,23 +28,24 @@ export function verifyEnvelope(raw: string | undefined, secret: string): Record<
 }
 
 /** The PKCE verifier is encrypted in transit (HTTPS) and signed in an HttpOnly cookie. */
-export function createLoginChallenge(secret: string, now = Date.now()): {
+export function createLoginChallenge(secret: string, now = Date.now(), provider: 'telegram'|'yandex' = 'telegram', linkAccountId: string | null = null): {
   cookie: string; state: string; codeChallenge: string;
 } {
   const state = randomBytes(24).toString('base64url');
   const verifier = randomBytes(32).toString('base64url');
   return {
-    cookie: signEnvelope({ state, verifier, issuedAt: now }, secret),
+    cookie: signEnvelope({ state, verifier, issuedAt: now, provider, linkAccountId }, secret),
     state,
     codeChallenge: createHash('sha256').update(verifier).digest('base64url'),
   };
 }
 export function consumeLoginChallenge(
   raw: string | undefined, state: string | null, secret: string, now = Date.now(),
+  provider?: 'telegram'|'yandex',
 ): string | null {
   if (!state || !/^[A-Za-z0-9_-]{32}$/.test(state)) return null;
   const data = verifyEnvelope(raw, secret);
-  if (!data || !equal(String(data.state), state) ||
+  if (!data || (provider && data.provider !== provider) || !equal(String(data.state), state) ||
       typeof data.issuedAt !== 'number' || now < data.issuedAt ||
       now - data.issuedAt > 5 * 60_000 ||
       typeof data.verifier !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(data.verifier)) return null;
@@ -64,6 +65,21 @@ export function readSession(raw: string | undefined, secret: string, now = Date.
       data.expiresAt - data.issuedAt !== SESSION_MS) return null;
   return Number(data.telegramId);
 }
+/** Sessions identify the internal account, never an untrusted provider's email/login. */
+const ACCOUNT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export function issueAccountSession(accountId: string, secret: string, now = Date.now()): string {
+  if (!ACCOUNT_UUID.test(accountId)) throw new Error('Invalid website account');
+  return signEnvelope({accountId, issuedAt:now, expiresAt:now+SESSION_MS},secret);
+}
+export function readAccountSession(raw: string | undefined, secret: string, now = Date.now()): string | null {
+  const data = verifyEnvelope(raw,secret);
+  if (!data || typeof data.accountId !== 'string' || !ACCOUNT_UUID.test(data.accountId) ||
+      typeof data.issuedAt !== 'number' || typeof data.expiresAt !== 'number' ||
+      data.issuedAt>now+60_000 || data.expiresAt<now ||
+      data.expiresAt-data.issuedAt!==SESSION_MS) return null;
+  return data.accountId;
+}
+
 export function csrfForSession(raw: string, secret: string): string {
   return stamp(secret, 'csrf:' + raw);
 }

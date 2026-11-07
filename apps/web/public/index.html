@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#080c20">
-  <meta name="description" content="Мне бы VPN — выбор срока VPN-подписки и управление доступом. Smart DNS и совместный тариф — в разработке.">
-  <title>Мне бы VPN — тарифы и личный кабинет</title>
+  <meta name="description" content="MNEBYVPN — выбор срока VPN-подписки и управление доступом. Smart DNS и совместный тариф — в разработке.">
+  <title>MNEBYVPN — тарифы и личный кабинет</title>
   <link rel="stylesheet" href="/site.css">
   <link rel="stylesheet" href="/neo.css">
   <link rel="icon" type="image/webp" href="/brand-avatar.webp">
@@ -18,7 +18,7 @@
     <div class="shell header-inner">
       <a href="/" class="brand" aria-label="MNEBY VPN — главная">
         <img class="brand-avatar" src="/brand-avatar.webp" alt="" width="34" height="34" decoding="async">
-        <span class="brand-text">МНЕ БЫ <span>VPN</span></span>
+        <span class="brand-text">MNEBY<span>VPN</span></span>
       </a>
       <nav class="desktop-nav" aria-label="Основные разделы">
         <a href="#features">Возможности</a>
@@ -35,11 +35,6 @@
       <div class="hero-copy">
         <p class="eyebrow"><span class="eyebrow-line"></span> ПРОСТО. ПОНЯТНО. ПОД КОНТРОЛЕМ.</p>
         <h1>VPN без<span> лишних шагов</span></h1>
-        <div class="hero-actions">
-          <button class="button button-primary" id="trial-hero-button" type="button">🎁 Бесплатные 24 часа</button>
-          <a class="button button-secondary" href="#plans">Тарифы</a>
-          <a class="button button-outline telegram-hero-link" href="#account">Мой доступ</a>
-        </div>
         <div class="hero-notes"><span><b class="note-dot"></b> Прозрачные сроки</span><span><b class="note-dot"></b> Один аккаунт</span></div>
       </div>
       <div class="portal-art" aria-hidden="true"><span class="portal-flare"></span><img class="portal-avatar" src="/brand-avatar.webp" alt="" width="112" height="112" decoding="async"><span class="portal-orbit"></span></div>
@@ -99,19 +94,19 @@
             <button type="button" class="button button-primary button-block" id="buy-button" disabled>Загрузка тарифов…</button>
             <p class="small-print" id="checkout-hint" role="status">Оплата станет доступна после проверки платёжного подключения. Способ оплаты выбирается на странице провайдера.</p>
             <button type="button" class="button button-secondary button-block trial-button" id="trial-button" disabled>🎁 Бесплатные 24 часа</button>
-            <section id="guest-trial-card" class="guest-trial-card hidden" aria-live="polite" aria-label="Подключение бесплатного VPN">
+            <section id="guest-trial-card" class="guest-trial-card hidden" aria-live="polite" aria-label="Подключение VPN после авторизации">
               <h3 id="guest-trial-title">Ваш бесплатный VPN</h3>
               <p id="guest-trial-status">Проверяем активацию…</p>
               <div id="guest-trial-ready" class="hidden">
-                <p class="guest-trial-guide">Скачайте приложение, затем нажмите «Добавить автоматически». Если переход не сработает — скопируйте ссылку и вставьте её через импорт URL в приложении.</p>
+                <div class="setup-steps"><p><b>1. Скачайте приложение</b><span>Установите VPN-клиент для вашего устройства.</span></p><p><b>2. Добавьте подписку</b><span>Нажмите «Добавить в INCY» или «Добавить в Karing» и подтвердите импорт внутри приложения.</span></p><p><b>3. Подключите VPN</b><span>Если автоматический импорт не открылся, скопируйте ссылку ниже и в приложении выберите «Добавить подписку» → «Импорт из URL».</span></p></div>
                 <div class="guest-trial-apps">
                   <a href="https://play.google.com/store/apps/details?id=llc.itdev.incy" rel="noopener noreferrer" target="_blank">Android · INCY</a>
                   <a href="https://apps.apple.com/ru/app/karing/id6472431552" rel="noopener noreferrer" target="_blank">iOS · Karing</a>
                   <a href="https://github.com/INCY-DEV/incy-platforms/releases" rel="noopener noreferrer" target="_blank">Windows / macOS · INCY</a>
                 </div>
                 <div class="guest-trial-apps">
-                  <a id="guest-auto-incy" href="#" rel="nofollow noopener noreferrer">⚡ Импорт в INCY</a>
-                  <a id="guest-auto-karing" href="#" rel="nofollow noopener noreferrer">⚡ Импорт в Karing</a>
+                  <a id="guest-auto-incy" href="#" rel="nofollow noopener noreferrer">Добавить в INCY</a>
+                  <a id="guest-auto-karing" href="#" rel="nofollow noopener noreferrer">Добавить в Karing</a>
                 </div>
                 <div class="guest-trial-copy">
                   <input id="guest-subscription-url" type="text" aria-label="Ссылка для ручной настройки" readonly>
@@ -140,9 +135,23 @@
         <p class="section-desc">Один вход — ваши подписки и платежи в одном месте.</p>
       </div>
       <div class="account-panel">
-        <div class="account-toolbar"><div class="account-heading"><span class="avatar">M</span><div><strong id="account-name">Личный кабинет</strong><p id="account-subtitle">Войдите, чтобы увидеть данные</p></div></div><button id="logout-button" type="button" class="text-button hidden">Выйти</button></div>
+        <div class="account-toolbar"><div class="account-heading"><span class="avatar">M</span><div><strong id="account-name">Личный кабинет</strong><p id="account-subtitle">Войдите, чтобы увидеть данные</p></div></div><div class="account-tools"><button id="link-email" type="button" class="text-button hidden">Привязать email</button><a id="link-telegram" href="/auth/login?link=1" class="text-button hidden">Привязать Telegram</a><button id="logout-button" type="button" class="text-button hidden">Выйти</button></div></div>
         <div id="login-prompt" class="login-prompt">
-          <div class="prompt-symbol" aria-hidden="true">◈</div><h3>Ваш доступ — под рукой</h3><p id="login-prompt-copy">Вход в кабинет пока подключается. Связаться с проектом можно через Telegram-бота.</p><a href="https://t.me/MnebyVPN_bot" class="button button-primary" id="cabinet-login-link">Открыть Telegram-бота</a>
+          <div class="prompt-symbol" aria-hidden="true">◈</div><h3>Вход в MNEBYVPN</h3><p id="login-prompt-copy">Введите email, получите одноразовый код и войдите без пароля.</p><p class="login-help" id="login-help">Уже привязали Telegram? Тогда можно войти через него.</p>
+          <div class="login-options"><a href="/auth/login" class="button button-secondary" id="cabinet-login-link">Войти через Telegram</a></div>
+        </div>
+        <div id="email-auth-panel" class="email-auth-panel hidden">
+          <form id="email-start-form" autocomplete="on">
+            <label for="email-input">Ваш email</label>
+            <div class="email-fields"><input id="email-input" type="email" required autocomplete="email" inputmode="email" maxlength="254" placeholder="email@example.com">
+              <button type="submit" class="button button-primary" id="email-send-button">Получить код</button></div>
+          </form>
+          <form id="email-verify-form" class="hidden" autocomplete="one-time-code">
+            <label for="email-code-input">Код из письма</label>
+            <div class="email-fields"><input id="email-code-input" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="6 цифр">
+              <button type="submit" class="button button-primary" id="email-verify-button">Подтвердить</button></div>
+          </form>
+          <p id="email-status" class="login-help" role="status" aria-live="polite">Код придёт от mnebyvpn@servgo.ru. Никому его не сообщайте.</p>
         </div>
         <div id="account-content" class="hidden">
           <div class="metric-cards">

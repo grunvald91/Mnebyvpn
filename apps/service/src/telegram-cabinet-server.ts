@@ -49,7 +49,7 @@ const msg=(text:string,keyboard:Button[][])=>{
   return {text,reply_markup:{inline_keyboard:keyboard}};
 };
 const main=()=>msg(
-  '🌐 Мне бы VPN\n\nУправляйте подключением здесь, в Telegram. Выберите действие ниже.\n\n🎁 Пробные 24 часа VPN — без оплаты. Время начнётся после реальной выдачи доступа.',
+  '🌐 MNEBYVPN\n\nУправляйте подключением здесь, в Telegram. Выберите действие ниже.\n\n🎁 Пробные 24 часа VPN — без оплаты. Время начнётся после реальной выдачи доступа.',
   [
     [{text:'🌐 VPN и тарифы',callback_data:'nav:vpn'}],
     [{text:'🎁 Бесплатные 24 часа',callback_data:'nav:trial'}],
