@@ -125,6 +125,13 @@ function configured(name:string):string{
   if(!value||!value.trim())throw Error('Missing required VPN worker setting: '+name);
   return value;
 }
+/** Existing isolated bot runtime uses TELEGRAM_TOKEN_BOT, not a second token. */
+export function notificationBotToken(env:NodeJS.ProcessEnv=process.env):string{
+  const token=env.TELEGRAM_TOKEN_BOT||env.TELEGRAM_BOT_TOKEN||'';
+  if(!/^[0-9]{5,20}:[A-Za-z0-9_-]{30,}$/.test(token))
+    throw Error('Missing or invalid Telegram notification token');
+  return token;
+}
 async function main():Promise<void>{
   if(process.env.MNEBYVPN_ENV!=='production'||
      process.env.MNEBYVPN_PROVISIONING_WORKER!=='enabled')
@@ -272,12 +279,12 @@ async function main():Promise<void>{
       // the webhook secret and must be provided only in private runtime-vpn.env.
       const remindersEnabled=process.env.VPN_EXPIRY_REMINDERS_ENABLED==='yes';
       const reminders=remindersEnabled
-        ?new TelegramBotReminderSender(configured('TELEGRAM_BOT_TOKEN')):null;
+        ?new TelegramBotReminderSender(notificationBotToken()):null;
       const notificationLoop=reminders?runVpnExpiryReminderLoop(
         new PgVpnExpiryReminderQueue(pool),reminders,abort.signal):null;
       const purchasesEnabled=process.env.VPN_PURCHASE_NOTIFICATIONS_ENABLED==='yes';
       const purchaseSender=purchasesEnabled
-        ?new TelegramBotPurchaseSender(configured('TELEGRAM_BOT_TOKEN')):null;
+        ?new TelegramBotPurchaseSender(notificationBotToken()):null;
       const purchaseLoop=purchaseSender?runVpnPurchaseNoticeLoop(
         new PgVpnPurchaseNoticeQueue(pool),purchaseSender,abort.signal):null;
       try{
