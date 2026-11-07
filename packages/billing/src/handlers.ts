@@ -308,12 +308,18 @@ export async function handleProdamusDelivery(
         order.id!==fields.order_num)
       return {statusCode:409,text:'UNKNOWN_REFUND'};
     const hash=createHash('sha256').update(canonicalProdamusJson(fields)).digest('hex');
-    await db.applyVerifiedRefund({
+    const outcome=await db.applyVerifiedRefund({
       provider:'prodamus',orderId:order.id,transactionId:fields.order_id,
       refundEventId:'refund:'+fields.order_id,
       payloadHash:hash,amount:order.amount,currency:'RUB',
     });
-    return {statusCode:200,text:'REFUND_PROCESSED'};
+    // Prodamus should retry a signed refund callback if the paid credit
+    // could not be durably revoked. HTTP 200 is reserved for applied or
+    // confirmed idempotent refunds only.
+    if(outcome==='APPLIED')return {statusCode:200,text:'REFUND_PROCESSED'};
+    if(outcome==='DUPLICATE_EVENT'||outcome==='DUPLICATE_REFUND')
+      return {statusCode:200,text:'REFUND_ALREADY_PROCESSED'};
+    return {statusCode:503,text:'REFUND_NOT_CONFIRMED'};
   }
   if (fields.payment_status !== 'success') {
     // Signed non-paid statuses must not provision access.
