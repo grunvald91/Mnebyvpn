@@ -71,11 +71,9 @@ const main=(id:number)=>msg(
     [{text:'🔁 Продление',callback_data:'nav:renew'},
      {text:'💙 Поддержать проект',callback_data:'nav:share'}],
     [{text:'🧭 Smart DNS — в разработке',callback_data:'nav:dns'}],
-    [{text:'❔ Помощь',callback_data:'nav:help'},
-     {text:'✉️ Поддержка',callback_data:'nav:support'}],
-    ...(support?.operatorId===id
-      ? [[{text:'📥 Входящие заявки',callback_data:'support:page:0'}]]
-      : []),
+    [{text:'❔ Помощь',callback_data:'nav:help'}],
+    [{text:support?.operatorId===id?'📥 Входящие заявки':'✉️ Поддержка',
+      callback_data:support?.operatorId===id?'support:page:0':'nav:support'}],
     [siteButton],
   ]);
 const dbUnavailable=()=>msg('⚠️ Система подписок временно недоступна. Данные не изменены. Попробуйте снова.',
@@ -326,7 +324,9 @@ function info(data:string,id:number){
        [homeButton]]);
   if(data==='nav:help'||data==='info:help')
     return msg('❔ Помощь\n\n1. Выберите VPN.\n2. Нажмите «24 часа бесплатно» или просмотрите тарифы.\n3. В разделе «Мои подключения» проверяйте статус и остаток срока.\n\nИнтернет при ограничениях мобильной сети и совместный тариф находятся в разработке.',
-      [[{text:'✉️ Написать оператору',callback_data:'nav:support'}],
+      [[support?.operatorId===id
+         ?{text:'📥 Входящие заявки',callback_data:'support:page:0'}
+         :{text:'✉️ Написать оператору',callback_data:'nav:support'}],
        [{text:'🎁 Пробные сутки',callback_data:'trial:vpn'}],[homeButton]]);
   return main(id);
 }
