@@ -55,25 +55,20 @@ test('/start shows primary Telegram VPN, trial, status and optional site',async(
   assert.ok(buttons.some((b:any)=>b.callback_data===val));
  assert.ok(buttons.some((b:any)=>b.url==='https://mnebyvpn.site'));
 });
-test('support button and /support use ForceReply, without false delivery when relay is off',async()=>{
+test('support is reached by a button and replies to its prompt without slash commands',async()=>{
  const button=await update({update_id:200,callback_query:{id:'support-200',from:{id:user},
   message:{chat:{id:user,type:'private'},message_id:920},data:'nav:support'}});
  const prompted=await button.json() as any;
  assert.equal(prompted.method,'sendMessage');
  assert.equal(prompted.reply_markup.force_reply,true);
  assert.match(prompted.text,/MNEBYVPN/);
- const command=await update({update_id:201,message:{chat:{id:user,type:'private'},
-  from:{id:user},text:'/support'}});
- assert.equal((await command.json() as any).reply_markup.force_reply,true);
- const failed=await update({update_id:202,message:{chat:{id:user,type:'private'},
-  from:{id:user},text:'/support Проблема с подключением к VPN'}});
- const response=await failed.json() as any;
- assert.match(response.text,/Канал поддержки ещё настраивается/);
- assert.doesNotMatch(response.text,/Обращение отправлено/);
- const reply=await update({update_id:203,message:{chat:{id:user,type:'private'},
+ assert.doesNotMatch(prompted.text,/\\/(?:support|inbox)/);
+ const reply=await update({update_id:201,message:{chat:{id:user,type:'private'},
   from:{id:user},text:'Помогите подключить VPN на телефон',
-  reply_to_message:{from:{is_bot:true},text:'✉️ MNEBYVPN — напишите вопрос в поддержку.'}}});
- assert.match((await reply.json() as any).text,/Канал поддержки ещё настраивается/);
+  reply_to_message:{from:{is_bot:true},text:prompted.text}}});
+ const failed=await reply.json() as any;
+ assert.match(failed.text,/Канал поддержки ещё настраивается/);
+ assert.doesNotMatch(failed.text,/Обращение отправлено/);
 });
 test('VPN callback edits Telegram message instead of redirect to website',async()=>{
  const r=await update({update_id:3,callback_query:{id:'callback3',from:{id:user},
