@@ -423,7 +423,9 @@ async function handleOperatorReply(update:any){
   }
   try{
     await telegramSupportSend(support,
-      '✉️ Поддержка MNEBYVPN\n\n'+parsed.answer,parsed.userId);
+      '✉️ Поддержка MNEBYVPN\n\n'+parsed.answer,parsed.userId,
+      {inline_keyboard:[[{text:'✉️ Написать ещё',callback_data:'nav:support'}],
+        [{text:'🏠 Главное',callback_data:'nav:home'}]]});
     return {method:'sendMessage',chat_id:support.operatorId,
       text:'✅ Ответ отправлен клиенту через MNEBYVPN.'};
   }catch{
@@ -439,7 +441,7 @@ async function sendSupportFromBot(id:number,updateId:number,message:string){
   }
   if(!support)return oneAction(user,msg('⚠️ Канал поддержки ещё настраивается. Сообщение не отправлено.',
     [[{text:'🌍 Форма на сайте',url:'https://mnebyvpn.site/#contact-support'}],[homeButton]]));
-  if(deliveredUpdates.has(updateId))return oneAction(user,msg('✅ Обращение уже передано оператору.',
+  if(support.botToken&&deliveredUpdates.has(updateId))return oneAction(user,msg('✅ Обращение уже передано оператору.',
     [[{text:'🏠 Главное',callback_data:'nav:home'}]]));
   if(!supportRate(String(id))||!supportGlobalRate('bot-global'))
     return oneAction(user,msg('Слишком много обращений. Попробуйте позже.',
@@ -448,8 +450,8 @@ async function sendSupportFromBot(id:number,updateId:number,message:string){
     // Only one Bot API method may be returned in a webhook response.
     // Do not claim confirmed delivery to the sender: the provider performs
     // this operation after accepting our HTTP response.
-    deliveredUpdates.add(updateId);
-    if(deliveredUpdates.size>1000)deliveredUpdates.clear();
+    // A webhook JSON response has no delivery receipt. On a Telegram retry,
+    // return the operator notification again rather than falsely claiming delivery.
     return {method:'sendMessage',chat_id:support.operatorId,
       text:'✉️ MNEBYVPN — обращение из бота\nID Telegram: '+id+
         '\n\nВопрос:\n'+message.trim(),
@@ -461,7 +463,11 @@ async function sendSupportFromBot(id:number,updateId:number,message:string){
   }
   try{
     await telegramSupportSend(support,'✉️ MNEBYVPN — обращение из бота\nID Telegram: '+id+
-      '\n\nВопрос:\n'+message.trim());
+      '\n\nВопрос:\n'+message.trim(),support.operatorId,
+      {inline_keyboard:[
+        [{text:'✍️ Ответить клиенту',callback_data:'support:reply:bot:'+id}],
+        [{text:'📥 Входящие с сайта',callback_data:'support:page:0'}],
+      ]});
     deliveredUpdates.add(updateId);
     if(deliveredUpdates.size>1000)deliveredUpdates.clear();
     return oneAction(user,msg('✅ Обращение отправлено оператору в этот же бот. Ответ придёт сюда, в Telegram.',
