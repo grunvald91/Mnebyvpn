@@ -109,8 +109,8 @@ test('web cabinet reserves OIDC login for explicit BotFather integration',async(
   const backend=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
   const ui=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
   assert.match(backend,/WEB_TELEGRAM_OIDC_ENABLED/);
-  assert.match(backend,/LOGIN_PROVIDER_NOT_READY/);
-  assert.match(backend,/WEB_YANDEX_OAUTH_ENABLED/);
+  assert.match(backend,/TELEGRAM_LOGIN_NOT_READY/);
+  assert.match(backend,/WEB_EMAIL_LOGIN_ENABLED/);
   assert.match(backend,/loginEnabled.*checkoutEnabled|checkoutEnabled.*loginEnabled/s);
   assert.match(ui,/syncLoginLinks/);
   assert.match(ui,/cabinet-login-link/);
@@ -157,7 +157,7 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
 });
 
 
-test('trial is behind verified Telegram/Yandex OAuth, never a guest cookie',async()=>{
+test('trial is behind email OTP or Telegram OAuth, never an anonymous cookie',async()=>{
   const {readFileSync}=await import('node:fs');
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
   const backend=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
@@ -165,7 +165,7 @@ test('trial is behind verified Telegram/Yandex OAuth, never a guest cookie',asyn
   const skin=readFileSync(new URL('../apps/web/public/neo.css',import.meta.url),'utf8');
   assert.doesNotMatch(html,/id="trial-hero-button"/);
   assert.match(html,/id="trial-button"/);
-  assert.match(html,/id="yandex-login-link"/);
+  assert.match(html,/id="email-start-form"/);
   assert.match(html,/id="cabinet-login-link"/);
   assert.match(html,/id="guest-trial-card"/);
   assert.match(html,/Скачайте приложение/);
@@ -178,8 +178,8 @@ test('trial is behind verified Telegram/Yandex OAuth, never a guest cookie',asyn
   assert.match(backend,/grantTrial\(auth.accountId/);
   assert.match(backend,/issueAccountSession\(/);
   assert.match(backend,/issueSubscriptionLinkForAccount\(/);
-  assert.match(backend,/https:\/\/servgo.ru\/api\/auth\/yandex\/mnebyvpn\/start/);
-  assert.match(backend,/https:\/\/servgo.ru\/api\/auth\/yandex\/mnebyvpn\/exchange/);
+  assert.match(backend,/\/api\/auth\/email\/start/);
+  assert.match(backend,/\/auth\/callback/);
   assert.doesNotMatch(backend,/process\.env\.YANDEX_OAUTH_CLIENT_SECRET/);
   assert.doesNotMatch(ui,/api\/guest\/trial/);
   assert.doesNotMatch(ui,/api\/guest\/status/);
