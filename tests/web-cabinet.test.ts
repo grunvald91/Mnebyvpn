@@ -260,5 +260,7 @@ test('production email login uses canonical narrowly scoped auth DB, not public 
   assert.match(backend,/verifyEmailCode\(authPool,/);
   assert.match(backend,/loadDashboard\(authPool,/);
   assert.match(backend,/FROM website_sessions s JOIN accounts a/);
-  assert.match(backend,/const store = new PgBillingStore\(pool\)/);
+  assert.match(backend,/const store = new PgBillingStore\(billingPool\)/);
+  assert.match(backend,/WEB_BILLING_DATABASE_URL/);
+  assert.match(backend,/sameCanonicalPostgresDb\(billingDbUrl/);
 });
