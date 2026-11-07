@@ -108,6 +108,14 @@ test('Prodamus creates signed request using trusted RUB amount and title', () =>
   assert.equal(url.hostname, 'merchant.payform.ru');
   assert.equal(url.searchParams.get('do'), 'link');
   assert.equal(url.searchParams.get('order_id'), orderId);
+  assert.equal(url.searchParams.get('currency'), 'rub');
+  assert.equal(url.searchParams.get('payments_limit'), '1');
+  assert.equal(url.searchParams.has('urlNotification'),false);
+  const approved=new URL(buildProdamusLinkRequest(rubOrder,'VPN месяц',
+    {...config,sys:'mnebyvpn_shop'}));
+  assert.equal(approved.searchParams.get('sys'),'mnebyvpn_shop');
+  assert.equal(approved.searchParams.get('urlNotification'),config.notificationUrl);
+  assert.throws(()=>buildProdamusLinkRequest(rubOrder,'VPN месяц',{...config,sys:'  '}));
   assert.equal(url.searchParams.get('products[0][price]'), '199.00');
   assert.match(url.searchParams.get('signature') ?? '', /^[0-9a-f]{64}$/);
   assert.throws(() => buildProdamusLinkRequest(rubOrder, 'x', { ...config, formUrl: 'http://merchant.payform.ru' }));
