@@ -58,7 +58,7 @@ CREATE INDEX vpn_nodes_new_candidates_idx
 
 -- These transitions are binding for direct SQL writes too. When returning
 -- to testing, a node must be re-attested before verified can be restored.
-CREATE FUNCTION validate_vpn_node_transition() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE FUNCTION validate_vpn_node_transition() RETURNS trigger LANGUAGE plpgsql AS $node_guard$
 BEGIN
   IF NEW.state IS DISTINCT FROM OLD.state THEN
     IF NOT (
@@ -82,7 +82,7 @@ BEGIN
   NEW.updated_at=clock_timestamp();
   RETURN NEW;
 END;
-$;
+$node_guard$;
 CREATE TRIGGER vpn_node_lifecycle_guard
   BEFORE UPDATE ON vpn_nodes
   FOR EACH ROW EXECUTE FUNCTION validate_vpn_node_transition();
