@@ -27,7 +27,12 @@ const DEFAULT_ROUTE:XrayNodeRoute={
 };
 export function validateXrayNodeRoute(route:XrayNodeRoute):XrayNodeRoute {
   const control=new URL(route.controlUrl);
-  const privateIpv4=/^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|127\.)/.test(control.hostname);
+  const ipv4=/^[0-9]{1,3}(?:\.[0-9]{1,3}){3}$/.test(control.hostname);
+  const octets=control.hostname.split('.').map(Number);
+  const privateIpv4=ipv4&&octets.every(x=>x<=255)&&(
+    octets[0]===10||octets[0]===127||
+    (octets[0]===192&&octets[1]===168)||
+    (octets[0]===172&&octets[1]>=16&&octets[1]<=31));
   if(control.username||control.password||control.search||control.hash||
      control.pathname!=='/v1/provision'||
      !(control.protocol==='https:'||(control.protocol==='http:'&&privateIpv4)))
