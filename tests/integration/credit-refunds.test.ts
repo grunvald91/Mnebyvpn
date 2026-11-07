@@ -20,6 +20,20 @@ function event(orderId:string,txn:string,amount:number){
     payloadHash:'a'.repeat(64),
   };
 }
+/** Model two independent node observations: provisional hard expiry, then final paid expiry. */
+async function acknowledgePaidVpn(entitlementId:string){
+  const first=await pool.query(
+    "SELECT claim_provisioning_fence($1,'vpn') AS fence",[entitlementId]);
+  const fence=first.rows[0].fence;
+  const pending=await pool.query(
+    "SELECT acknowledge_provisioning($1,'vpn',1,$2,true) AS accepted",
+    [entitlementId,fence]);
+  assert.equal(pending.rows[0].accepted,true);
+  const confirmed=await pool.query(
+    "SELECT acknowledge_provisioning($1,'vpn',2,$2,true) AS accepted",
+    [entitlementId,fence]);
+  assert.equal(confirmed.rows[0].accepted,true);
+}
 async function newSubscription(product:'vpn'|'smart_dns',duration=86400,quota=1048576){
   const accountId=randomUUID(),planId='credit-'+unique(),amount=7000;
   await pool.query('INSERT INTO accounts(id) VALUES($1)',[accountId]);
@@ -33,6 +47,7 @@ async function newSubscription(product:'vpn'|'smart_dns',duration=86400,quota=10
   const {rows}=await pool.query(
     'SELECT * FROM entitlements WHERE source_order_id=$1',[first.id]);
   assert.equal(rows.length,1);
+  if(product==='vpn')await acknowledgePaidVpn(rows[0].id as string);
   return {accountId,planId,first,txn,entitlementId:rows[0].id as string,amount,duration,quota};
 }
 async function renew(f:Awaited<ReturnType<typeof newSubscription>>){

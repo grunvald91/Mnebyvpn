@@ -31,6 +31,17 @@ test('confirmed renewal credits exactly one existing VPN entitlement, idempotent
   const before=await pool.query('SELECT id,expires_at,revision FROM entitlements WHERE source_order_id=$1',[initial.id]);
   assert.equal(before.rowCount,1);
   const entitlementId=before.rows[0].id as string;
+  // Synthetic node observations: issue a short-lived paid credential, then
+  // independently confirm the purchased full deadline before renewal.
+  const fence=(await pool.query("SELECT claim_provisioning_fence($1,'vpn') AS fence",[entitlementId])).rows[0].fence;
+  assert.equal((await pool.query("SELECT acknowledge_provisioning($1,'vpn',1,$2,true) AS ok",
+    [entitlementId,fence])).rows[0].ok,true);
+  assert.equal((await pool.query("SELECT acknowledge_provisioning($1,'vpn',2,$2,true) AS ok",
+    [entitlementId,fence])).rows[0].ok,true);
+  const activated=(await pool.query('SELECT expires_at,revision FROM entitlements WHERE id=$1',
+    [entitlementId])).rows[0];
+  before.rows[0].expires_at=activated.expires_at;
+  before.rows[0].revision=activated.revision;
   await assert.rejects(
     store.createWebsiteOrder(stranger,planId,'stranger-'+suffix,undefined,entitlementId),
     /Renewal target not owned/);

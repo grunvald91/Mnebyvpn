@@ -48,6 +48,7 @@ test('worker cannot grant with missing adapter; mock grant then full refund revo
   await pool.query(
     'UPDATE reconcile_outbox SET next_attempt_at=clock_timestamp() WHERE entitlement_id=(SELECT id FROM entitlements WHERE source_order_id=$1)',[order.id]);
   assert.equal((await worker.processOnce()).status,'synced');
+  assert.equal((await worker.processOnce()).status,'synced','second node ACK confirms paid expiry');
   r=await pool.query('SELECT state FROM entitlements WHERE source_order_id=$1',[order.id]);
   assert.equal(r.rows[0].state,'ACTIVE');
   const refund={provider:'telegram_stars' as const,orderId:order.id,transactionId:'charge-5',
@@ -57,8 +58,9 @@ test('worker cannot grant with missing adapter; mock grant then full refund revo
   assert.equal((await worker.processOnce()).status,'synced');
   r=await pool.query('SELECT state,revision FROM entitlements WHERE source_order_id=$1',[order.id]);
   assert.equal(r.rows[0].state,'REFUNDED');
-  assert.equal(Number(r.rows[0].revision),2);
-  assert.deepEqual(calls.map(x=>x.split(':').slice(-2).join(':')),['1:enable','2:disable']);
+  assert.equal(Number(r.rows[0].revision),3);
+  assert.deepEqual(calls.map(x=>x.split(':').slice(-2).join(':')),
+    ['1:enable','2:enable','3:disable']);
 });
 test('Telegram refunded_payment is idempotent and does not revoke another purchase',async()=>{
   const a=await db.createTelegramOrder(771101,planId,'phase5-2a');

@@ -106,6 +106,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0101_email_otp_and_trial_devices.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0102_trial_paid_renewal.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0103_website_subscription_permissions.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0104_purchase_notifications.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0105_paid_vpn_activation_clock.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0002_billing_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0003_ipv6_claims_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0005_outbox_contract.sql
@@ -115,6 +117,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/tests/0011_invoice_dispatch_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0018_site_auth_trials_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0019_email_device_contract.sql
+          # E2E test fixture explicitly simulates a separately deployed, verified node worker.
+          psql -v ON_ERROR_STOP=1 -c "UPDATE vpn_release_flags SET enabled=true WHERE feature='paid_vpn_clock_on_node'" >/dev/null
       - name: Payment integration with disposable PostgreSQL
         env:
           PGPASSWORD: test

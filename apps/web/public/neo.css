@@ -329,3 +329,18 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 #email-verify-form{margin-top:14px}
 #email-status{margin:10px 0 0}
 @media(max-width:420px){.email-auth-panel{padding:12px}.email-fields .button{flex:1 1 100%}}
+
+/* Server-verified purchase status, scoped to the authenticated account. */
+.purchase-result{margin:0 0 20px;padding:20px;border:1px solid rgba(94,183,219,.38);
+  border-radius:20px;background:linear-gradient(125deg,rgba(11,49,66,.76),rgba(21,27,72,.76))}
+.purchase-result.hidden{display:none}
+.purchase-result h3{margin:5px 0 9px;font-size:clamp(19px,3vw,24px);color:#f0faff}
+.purchase-result p:not(.eyebrow){margin:0 0 10px;line-height:1.55;color:#c6d9eb;font-size:13px}
+.purchase-result-details{font-size:13px;color:#d5f8e9;font-weight:650;margin:12px 0}
+.purchase-result-actions{display:flex;gap:9px;flex-wrap:wrap}
+.purchase-result-actions .button{min-height:44px;flex:1 1 180px}
+@media(max-width:520px){
+  .purchase-result{padding:15px;border-radius:16px}
+  .purchase-result-actions{display:grid}
+  .purchase-result-actions .button{width:100%}
+}
