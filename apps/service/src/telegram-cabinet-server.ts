@@ -464,33 +464,56 @@ async function sendSupportFromBot(id:number,updateId:number,message:string){
       [[{text:'✉️ Повторить',callback_data:'nav:support'}],[homeButton]]));
   }
 }
-async function operatorSupportInbox(id:number){
-  if(!supportAuthKey||!supportWebsiteReady)return {method:'sendMessage',chat_id:id,
-    text:'⚠️ Внутренний канал обращений сайта ещё не настроен.'};
+async function operatorSupportInbox(
+  actor:{id:number;messageId?:number;callbackId?:string},offset:number,
+){
+  const back:Button[][]=[[{text:'🔄 Обновить',callback_data:'support:page:0'}],
+    [homeButton]];
+  if(!supportAuthKey||!supportWebsiteReady)
+    return oneAction(actor,msg('⚠️ Внутренний канал обращений сайта ещё не настроен.',back));
+  if(!Number.isSafeInteger(offset)||offset<0||offset>199)
+    return oneAction(actor,msg('⚠️ Неверная страница заявок.',back));
   const stamp=String(Math.floor(Date.now()/1000));
   const signature=createHmac('sha256',supportAuthKey)
-    .update('MNEBYVPN-inbox-v1\n'+stamp).digest('hex');
+    .update(offset===0?'MNEBYVPN-inbox-v1\n'+stamp:
+      'MNEBYVPN-inbox-v2\n'+stamp+'\n'+offset).digest('hex');
   try{
     const response=await fetch(
-      'http://127.0.0.1:'+supportWebsitePort+'/api/support/operator-inbox',{
+      'http://127.0.0.1:'+supportWebsitePort+
+        '/api/support/operator-inbox?offset='+offset,{
       method:'GET',redirect:'error',signal:AbortSignal.timeout(5000),
       headers:{'X-MNEBYVPN-Support-Ts':stamp,
         'X-MNEBYVPN-Support-Signature':signature},
     });
     if(!response.ok)throw Error('Website inbox unavailable');
     const result=await response.json() as {ticket?:{
-      id:string;contact:string;question:string}|null};
+      id:string;contact:string;question:string}|null;hasNext?:boolean};
     const ticket=result.ticket;
-    if(!ticket)return {method:'sendMessage',chat_id:id,
-      text:'📥 Новых обращений с сайта пока нет.',
-      reply_markup:{inline_keyboard:[[{text:'🔄 Проверить ещё',callback_data:'support:next'}]]}};
-    return {method:'sendMessage',chat_id:id,
-      text:'✉️ MNEBYVPN — обращение с сайта\nЗаявка: '+ticket.id+
-        '\nКонтакт: '+ticket.contact+'\n\nСообщение:\n'+ticket.question+
-        '\n\nОтветьте на это сообщение. Ответ появится на сайте.',
-      reply_markup:{inline_keyboard:[[{text:'📥 Следующее обращение',callback_data:'support:next'}]]}};
-  }catch{return {method:'sendMessage',chat_id:id,
-    text:'⚠️ Не удалось загрузить обращения с сайта. Попробуйте позже.'};}
+    if(!ticket){
+      const buttons:Button[][]=[];
+      if(offset>0)buttons.push([{text:'⬅️ Предыдущая',callback_data:'support:page:'+(offset-1)}]);
+      buttons.push([{text:'🔄 Обновить',callback_data:'support:page:0'}],[homeButton]);
+      return oneAction(actor,msg('📥 Обращения с сайта\n\nНовых заявок на этой странице нет.',buttons));
+    }
+    const buttons:Button[][]=[
+      [{text:'✍️ Ответить',callback_data:'support:reply:site:'+ticket.id}],
+    ];
+    const pageButtons:Button[]=[];
+    if(offset>0)pageButtons.push({text:'⬅️ Назад',callback_data:'support:page:'+(offset-1)});
+    if(result.hasNext&&offset<199)
+      pageButtons.push({text:'➡️ Далее',callback_data:'support:page:'+(offset+1)});
+    if(pageButtons.length)buttons.push(pageButtons);
+    buttons.push([{text:'🔄 Обновить',callback_data:'support:page:0'}],[homeButton]);
+    return oneAction(actor,msg(
+      '✉️ MNEBYVPN — обращение с сайта\nЗаявка: '+ticket.id+
+      '\nКонтакт: '+ticket.contact+
+      '\n\nСообщение:\n'+ticket.question+
+      '\n\n📥 Входящие · заявка '+(offset+1)+
+      '\nНажмите «Ответить», чтобы написать клиенту.',buttons));
+  }catch{
+    return oneAction(actor,msg(
+      '⚠️ Не удалось загрузить обращения с сайта. Попробуйте ещё раз.',back));
+  }
 }
 async function processUpdate(update:any){
   if(update.message?.successful_payment||update.message?.refunded_payment||
@@ -503,15 +526,28 @@ async function processUpdate(update:any){
   const actor=privateActor(update);
   if(!actor)return null;
   const text=actor.text?.trim()??'';
-  if(support&&actor.id===support.operatorId&&
-     (actor.data==='nav:support'||actor.data==='support:next'||
-      (!actor.callbackId&&/^\/(?:inbox|support)(?:@MnebyVPN_bot)?$/i.test(text))))
-    return operatorSupportInbox(actor.id);
-  const explicitSupport=/^\/support(?:@MnebyVPN_bot)?(?:\s+([\s\S]+))?$/i.exec(text);
-  if(!actor.callbackId&&(explicitSupport?.[1]||actor.replyToSupport))
-    return sendSupportFromBot(actor.id,update.update_id,
-      explicitSupport?.[1]??text);
-  if(actor.data==='nav:support'||(!actor.callbackId&&explicitSupport))
+  const operator=support&&actor.id===support.operatorId;
+  if(operator){
+    const page=/^support:page:(0|[1-9][0-9]{0,2})$/.exec(actor.data??'');
+    if(page)return operatorSupportInbox(actor,Number(page[1]));
+    // Older inbox cards are upgraded to the new button-based page.
+    if(actor.data==='support:next')return operatorSupportInbox(actor,0);
+    if(actor.data?.startsWith('support:reply:')){
+      const customer=/^support:reply:bot:([1-9][0-9]{0,15})$/.exec(actor.data);
+      if(customer&&Number.isSafeInteger(Number(customer[1]))&&
+         Number(customer[1])!==actor.id)
+        return operatorReplyPrompt(actor.id,'bot',customer[1]);
+      const website=/^support:reply:site:([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.exec(actor.data);
+      if(website)return operatorReplyPrompt(actor.id,'site',website[1]);
+      return oneAction(actor,msg('⚠️ Некорректная заявка. Откройте входящие снова.',
+        [[{text:'📥 Входящие',callback_data:'support:page:0'}],[homeButton]]));
+    }
+    if(actor.data==='nav:support'||actor.data==='support:inbox')
+      return operatorSupportInbox(actor,0);
+  }
+  if(!actor.callbackId&&actor.replyToSupport)
+    return sendSupportFromBot(actor.id,update.update_id,text);
+  if(actor.data==='nav:support')
     return supportPromptResponse(actor.id);
   let action=actor.data??'nav:home';
   if(!actor.callbackId){
