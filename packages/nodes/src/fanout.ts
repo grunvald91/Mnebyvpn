@@ -24,9 +24,7 @@ export type NodeSyncResult =
       'node_unconfigured'|'expiry_unverified'|'unknown_outcome'|
       'verification_failed'|'state_changed'|'fence_lost'|'node_exception'};
 
-export interface NodeSyncOutcome extends NodeSyncResult {
-  nodeId:string;
-}
+export type NodeSyncOutcome = NodeSyncResult & {nodeId:string};
 
 function matches(observed:ObservedAccess,desired:DesiredAccess,now:Date):boolean {
   if(!desired.enabled&&observed.absent===true&&!observed.enabled)return true;
