@@ -557,6 +557,13 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     await pool.query(
       "INSERT INTO website_support_tickets(id,token_sha256,contact,question) VALUES($1,$2,$3,$4)",
       [ticketId,sessionHash(ticketToken),contact,message]);
+    if(!support.botToken){
+      // Tokenless webhook mode: guest site tickets are durably queued, then
+      // opened and answered by the operator via /inbox in the SAME bot.
+      // Do not call this "delivered" to Telegram; no Bot API send occurred.
+      setCookie(res,supportCookie,ticketId+'.'+ticketToken,60*60*24*30);
+      json(res,200,{queued:true,webTicket:true});return;
+    }
     try{
       await telegramSupportSend(support,
         '✉️ MNEBYVPN — обращение с сайта\nЗаявка: '+ticketId+
