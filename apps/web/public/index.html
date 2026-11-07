@@ -233,6 +233,7 @@
     <div class="about-tabs" role="tablist" aria-label="Разделы о проекте">
       <button type="button" role="tab" id="about-tab-about" aria-selected="true" aria-controls="about-panel-about" data-about-tab="about">О нас</button>
       <button type="button" role="tab" id="about-tab-bonus" aria-selected="false" aria-controls="about-panel-bonus" data-about-tab="bonus" tabindex="-1">Бонусы</button>
+      <button type="button" role="tab" id="about-tab-security" aria-selected="false" aria-controls="about-panel-security" data-about-tab="security" tabindex="-1">Защита</button>
       <button type="button" role="tab" id="about-tab-roadmap" aria-selected="false" aria-controls="about-panel-roadmap" data-about-tab="roadmap" tabindex="-1">Roadmap</button>
     </div>
     <section id="about-panel-about" class="about-tab-panel" role="tabpanel" aria-labelledby="about-tab-about" data-about-panel="about">
@@ -242,8 +243,21 @@
         <p><strong>Просто.</strong> Минимум действий и понятная помощь.</p>
         <p><strong>Доступно.</strong> Стремимся держать народные цены без лишних услуг.</p>
         <p><strong>Вместе.</strong> Хотим благодарить тех, кто делится сервисом с друзьями.</p>
+        <p><strong>Ответственно.</strong> Безопасность соединения и прозрачность обработки данных для нас — обязательные требования.</p>
       </div>
       <p class="about-muted">Наш ориентир — широкий и устойчивый доступ к интернет-сервисам. Работа отдельных сайтов и приложений может зависеть от сети, устройства и их собственных ограничений.</p>
+    </section>
+    <section id="about-panel-security" class="about-tab-panel" role="tabpanel" aria-labelledby="about-tab-security" data-about-panel="security" hidden>
+      <h3>Ваше доверие — наша ответственность</h3>
+      <p>Когда человек подключает VPN, он доверяет провайдеру передачу части своего интернет-трафика. Поэтому защита данных — не дополнительная функция, а основа MNEBYVPN.</p>
+      <div class="about-principles">
+        <p><strong>Защита канала.</strong> Мы используем VPN-туннель и стремимся исключить утечки DNS и незаметное переключение на незащищённое соединение. Эти свойства требуют проверки для конкретных устройств и режимов.</p>
+        <p><strong>Минимум данных.</strong> Наш принцип — обрабатывать только необходимое для аккаунта, оплаты, поддержки и работы сервиса; фактический состав и сроки хранения должны быть подробно раскрыты в политике.</p>
+        <p><strong>Прозрачность.</strong> Не обещаем абсолютную анонимность или недоступность трафика провайдеру. Обнаруженные ограничения и подтверждённые результаты проверок должны быть доступны пользователям.</p>
+      </div>
+      <p>VPN защищает участок соединения от устройства до VPN-сервера. Это не заменяет HTTPS и сквозное шифрование в приложениях.</p>
+      <p class="about-muted">Пока нет независимого аудита и полной проверки всех режимов, мы не заявляем о подтверждённой политике «без журналов» или гарантированном отсутствии утечек.</p>
+      <a class="about-policy-link" href="/privacy">Как мы обрабатываем данные</a>
     </section>
     <section id="about-panel-bonus" class="about-tab-panel" role="tabpanel" aria-labelledby="about-tab-bonus" data-about-panel="bonus" hidden>
       <h3>Расскажите о MNEBYVPN</h3>
