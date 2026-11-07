@@ -61,7 +61,7 @@ button[aria-selected=true],.pay{background:var(--tg-theme-button-color);color:va
 .trial{border:1px solid var(--tg-theme-button-color)}.trial .term{color:var(--tg-theme-link-color)}
 footer{color:var(--tg-theme-hint-color);font-size:10px;line-height:1.4;margin-top:10px}
 </style></head><body>
-<header><div class="logo">M</div><div><h2>Мне бы VPN</h2><p class="sub">Открой интернет. Выбери свой доступ.</p></div></header>
+<header><div class="logo">M</div><div><h2>MNEBYVPN</h2><p class="sub">Открой интернет. Выбери свой доступ.</p></div></header>
 <div id="tabs"></div><main id="offers"></main>
 <footer id="footer">Цены за выбранный срок. Окончательная стоимость подтверждается ботом перед оплатой.</footer>
 <script>
@@ -132,7 +132,7 @@ export function referralWidgetPayload(chatId:number,offers:ReadonlyArray<PublicR
   const first=offers[0];
   return {
     chat_id:chatId,html:referralWidgetHtml(),width:0,height:0,
-    caption:'Мне бы VPN · VPN, DNS и бесплатный пробный день. Выбери услугу и срок внутри карточки.'+
+    caption:'MNEBYVPN · VPN, DNS и бесплатный пробный день. Выбери услугу и срок внутри карточки.'+
       (first?' https://t.me/'+botUsername+'?start=r'+first.token:''),
     public_data,
   };

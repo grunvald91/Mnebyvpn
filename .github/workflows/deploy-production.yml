@@ -1,4 +1,7 @@
-name: MNEBYVPN deploy after green main CI
+# This legacy path is not configured on the live production host. Production
+# releases use telegram-proxy-infra's vetted SSH workflows. Do not run this
+# unless the distinct SSH target is explicitly provisioned and enabled.
+name: MNEBYVPN legacy SSH deploy (opt-in only)
 
 on:
   workflow_run:
@@ -22,7 +25,7 @@ jobs:
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       github.event.workflow_run.conclusion == 'success' &&
-      vars.MNEBYVPN_DEPLOY_ENABLED != 'false'
+      vars.MNEBYVPN_SOURCE_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     environment: mnebyvpn-production

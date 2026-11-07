@@ -10,6 +10,8 @@
 import {createServer,type IncomingMessage,type ServerResponse} from 'node:http';
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {Pool} from 'pg';
+import {operatorReplyTarget,operatorWebsiteReply,supportConfig,supportLimiter,telegramSupportSend,validSupportText}
+  from '../../../packages/support/src/telegram-relay.ts';
 import {
   PgBillingStore,starsOrderFromDB,pricedPlanForOrder,starsPaymentHash,
 } from '../../../packages/billing/src/store.ts';
@@ -40,6 +42,11 @@ const pool=process.env.DATABASE_URL ? new Pool({
   max:3,connectionTimeoutMillis:3000,idleTimeoutMillis:12000,
 }) : null;
 const store=pool?new PgBillingStore(pool):null;
+const support=supportConfig();
+const supportRate=supportLimiter(3,15*60_000);
+const supportGlobalRate=supportLimiter(120,60_000);
+const deliveredUpdates=new Set<number>();
+const supportPrompt='✉️ MNEBYVPN — напишите вопрос в поддержку. Ответьте на это сообщение обычным текстом (10–1500 символов). Не отправляйте пароли и ссылки подписок.';
 type Button={text:string;callback_data?:string;url?:string;copy_text?:{text:string}};
 const homeButton:Button={text:'🏠 Главное',callback_data:'nav:home'};
 const siteButton:Button={text:'🌍 Сайт (резервный)',url:'https://mnebyvpn.site'};
@@ -49,16 +56,17 @@ const msg=(text:string,keyboard:Button[][])=>{
   return {text,reply_markup:{inline_keyboard:keyboard}};
 };
 const main=()=>msg(
-  '🌐 Мне бы VPN\n\nУправляйте подключением здесь, в Telegram. Выберите действие ниже.\n\n🎁 Пробные 24 часа VPN — без оплаты. Время начнётся после реальной выдачи доступа.',
+  '🌐 MNEBYVPN\n\nМы только начинаем. Наша цель — простое подключение, понятное управление и оперативная помощь без технической путаницы. Со временем хотим объединить больше возможностей в одном сервисе.\n\nСейчас развиваем VPN. Smart DNS — в разработке.\n\n🎁 Пробные 24 часа зависят от готовности выдачи VPN; отсчёт начинается после активации.\n\n💙 Поддержите проект: расскажите о нём друзьям. Выберите действие ниже.',
   [
     [{text:'🌐 VPN и тарифы',callback_data:'nav:vpn'}],
     [{text:'🎁 Бесплатные 24 часа',callback_data:'nav:trial'}],
     [{text:'🔐 Мои подключения',callback_data:'nav:status'},
      {text:'🔌 Подключить',callback_data:'nav:connect'}],
     [{text:'🔁 Продление',callback_data:'nav:renew'},
-     {text:'🎁 Пригласить друга',callback_data:'nav:share'}],
+     {text:'💙 Поддержать проект',callback_data:'nav:share'}],
     [{text:'🧭 Smart DNS — в разработке',callback_data:'nav:dns'}],
-    [{text:'❔ Помощь',callback_data:'nav:help'}],
+    [{text:'❔ Помощь',callback_data:'nav:help'},
+     {text:'✉️ Поддержка',callback_data:'nav:support'}],
     [siteButton],
   ]);
 const dbUnavailable=()=>msg('⚠️ Система подписок временно недоступна. Данные не изменены. Попробуйте снова.',
@@ -92,7 +100,7 @@ function respond(res:ServerResponse,status:number,payload:unknown){
   res.writeHead(status);
   res.end(payload===null?'':JSON.stringify(payload));
 }
-function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string}|null{
+function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string;replyToSupport?:boolean}|null{
   const cb=update.callback_query;
   if(cb){
     if(!validId(cb.from?.id)||!cb.message||cb.message.chat?.type!=='private'||
@@ -104,7 +112,10 @@ function privateActor(update:any):{id:number;messageId?:number;callbackId?:strin
   const m=update.message;
   if(!m||!validId(m.from?.id)||m.chat?.type!=='private'||
     m.chat.id!==m.from.id)return null;
-  return {id:m.from.id,text:typeof m.text==='string'?m.text:''};
+  const replied=m.reply_to_message;
+  const replyToSupport=replied?.from?.is_bot===true &&
+    typeof replied.text==='string'&&replied.text.startsWith('✉️ MNEBYVPN — напишите вопрос');
+  return {id:m.from.id,text:typeof m.text==='string'?m.text:'',replyToSupport};
 }
 async function packages(id:number){
   if(!store)throw new Error('DB unavailable');
@@ -301,12 +312,13 @@ function info(data:string){
     return msg('🧭 Smart DNS\n\nВ разработке. Планируется отдельная квота трафика, которую можно использовать на нескольких устройствах.\n\nПока доступен раздел VPN.',
       [[{text:'🌐 VPN',callback_data:'nav:vpn'}],[homeButton]]);
   if(data==='nav:share')
-    return msg('🎁 Пригласить друга\n\nПерешлите ссылку на бота. Реферальные бонусы появятся вместе с опубликованными тарифами.',
-      [[{text:'📤 Поделиться',url:'https://t.me/share/url?url=https%3A%2F%2Ft.me%2FMnebyVPN_bot'}],
+    return msg('💙 Поддержать проект\n\nМы только в начале пути. Если вам нравится идея простого VPN, поделитесь ссылкой на бота. Это помогает развитию проекта и не требует оплаты.',
+      [[{text:'📤 Поделиться',url:'https://t.me/share/url?url=https%3A%2F%2Ft.me%2FMNEBYVPN_bot'}],
        [homeButton]]);
   if(data==='nav:help'||data==='info:help')
     return msg('❔ Помощь\n\n1. Выберите VPN.\n2. Нажмите «24 часа бесплатно» или просмотрите тарифы.\n3. В разделе «Мои подключения» проверяйте статус и остаток срока.\n\nИнтернет при ограничениях мобильной сети и совместный тариф находятся в разработке.',
-      [[{text:'🎁 Пробные сутки',callback_data:'trial:vpn'}],[homeButton]]);
+      [[{text:'✉️ Написать оператору',callback_data:'nav:support'}],
+       [{text:'🎁 Пробные сутки',callback_data:'trial:vpn'}],[homeButton]]);
   return main();
 }
 async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
@@ -328,15 +340,115 @@ function oneAction(actor:{id:number;messageId?:number;callbackId?:string},view:R
     text:'Откройте меню командой /start',show_alert:true};
   return {method:'sendMessage',chat_id:actor.id,...view};
 }
+function supportPromptResponse(id:number){
+  return {method:'sendMessage',chat_id:id,text:supportPrompt,
+    reply_markup:{force_reply:true,input_field_placeholder:'Напишите ваш вопрос…'}};
+}
+async function handleOperatorReply(update:any){
+  const m=update.message;
+  if(!support||!m||m.chat?.type!=='private'||
+     m.chat?.id!==support.operatorId||m.from?.id!==support.operatorId)return null;
+  const parsed=operatorReplyTarget(m,support.operatorId);
+  if(!parsed){
+    // Website visitors did not necessarily open the Telegram bot. A Telegram
+    // private message cannot be sent to an unknown email or @username.
+    const quoted=m.reply_to_message?.from?.is_bot===true
+      ?m.reply_to_message?.text:'';
+    const siteTicket=operatorWebsiteReply(m,support.operatorId);
+    if(siteTicket){
+      const {ticketId,answer}=siteTicket;
+      const webPort=Number(process.env.WEB_PORT??'8791');
+      if(!Number.isSafeInteger(webPort)||webPort<1||webPort>65535)
+        return {method:'sendMessage',chat_id:support.operatorId,
+          text:'Не настроен внутренний канал ответов на сайт.'};
+      const payload=JSON.stringify({ticketId,message:answer});
+      const signature=createHmac('sha256',support.botToken)
+        .update('MNEBYVPN-support\n'+ticketId+'\n'+answer).digest('hex');
+      // Try co-located website first; if site and bot are deployed on
+      // different hosts, use the fixed public HTTPS origin with the same
+      // HMAC authentication. Do not allow an arbitrary destination URL.
+      const origins=['http://127.0.0.1:'+webPort,'https://mnebyvpn.site'];
+      for(const origin of origins){
+        try{
+          const response=await fetch(origin+'/api/support/operator-reply',{
+            method:'POST',redirect:'error',signal:AbortSignal.timeout(6000),
+            headers:{'Content-Type':'application/json',
+              'X-MNEBYVPN-Support-Signature':signature},
+            body:payload,
+          });
+          if(response.ok){
+            return {method:'sendMessage',chat_id:support.operatorId,
+              text:'✅ Ответ сохранён в обращении. Посетитель увидит его на сайте.'};
+          }
+          if(response.status===409)break; // already answered or closed
+        }catch{/* Next known origin, no fabricated success. */}
+      }
+      return {method:'sendMessage',chat_id:support.operatorId,
+        text:'⚠️ Сайт не подтвердил сохранение ответа. Проверьте обращение, прежде чем повторять.'};
+    }
+    if(typeof quoted==='string'&&quoted.startsWith('✉️ MNEBYVPN — обращение с сайта')){
+      return {method:'sendMessage',chat_id:support.operatorId,
+        text:'Для ответа на обращение сайта нажмите «Ответить» и отправьте текст до 1500 символов.'};
+    }
+    if(typeof quoted==='string'&&
+       quoted.startsWith('✉️ MNEBYVPN — обращение из бота')){
+      return {method:'sendMessage',chat_id:support.operatorId,
+        text:'Напишите ответ обычным текстом до 1500 символов, используя «Ответить» на уведомление клиента.'};
+    }
+    return null; // /start, /my, /help etc work for the operator too.
+  }
+  try{
+    await telegramSupportSend(support,
+      '✉️ Поддержка MNEBYVPN\n\n'+parsed.answer,parsed.userId);
+    return {method:'sendMessage',chat_id:support.operatorId,
+      text:'✅ Ответ отправлен клиенту через MNEBYVPN.'};
+  }catch{
+    return {method:'sendMessage',chat_id:support.operatorId,
+      text:'⚠️ Не удалось подтвердить доставку ответа. Проверьте соединение и повторите попытку.'};
+  }
+}
+async function sendSupportFromBot(id:number,updateId:number,message:string){
+  const user={id};
+  if(!validSupportText(message)){
+    return oneAction(user,msg('Напишите вопрос длиной от 10 до 1500 символов. Не отправляйте ключи или пароли.',
+      [[{text:'✉️ Повторить',callback_data:'nav:support'}],[homeButton]]));
+  }
+  if(!support)return oneAction(user,msg('⚠️ Канал поддержки ещё настраивается. Сообщение не отправлено.',
+    [[{text:'🌍 Форма на сайте',url:'https://mnebyvpn.site/#contact-support'}],[homeButton]]));
+  if(deliveredUpdates.has(updateId))return oneAction(user,msg('✅ Обращение уже передано оператору.',
+    [[{text:'🏠 Главное',callback_data:'nav:home'}]]));
+  if(!supportRate(String(id))||!supportGlobalRate('bot-global'))
+    return oneAction(user,msg('Слишком много обращений. Попробуйте позже.',
+      [[{text:'🏠 Главное',callback_data:'nav:home'}]]));
+  try{
+    await telegramSupportSend(support,'✉️ MNEBYVPN — обращение из бота\nID Telegram: '+id+
+      '\n\nВопрос:\n'+message.trim());
+    deliveredUpdates.add(updateId);
+    if(deliveredUpdates.size>1000)deliveredUpdates.clear();
+    return oneAction(user,msg('✅ Обращение отправлено оператору в этот же бот. Ответ придёт сюда, в Telegram.',
+      [[{text:'🏠 Главное',callback_data:'nav:home'}]]));
+  }catch{
+    return oneAction(user,msg('⚠️ Не удалось подтвердить отправку обращения. Попробуйте позже.',
+      [[{text:'✉️ Повторить',callback_data:'nav:support'}],[homeButton]]));
+  }
+}
 async function processUpdate(update:any){
   if(update.message?.successful_payment||update.message?.refunded_payment||
      update.pre_checkout_query?.id)return receiveStars(update);
   if(update.widget_query?.id)return {
     method:'answerWidgetQuery',widget_query_id:update.widget_query.id,data:'UNAVAILABLE',
   };
+  const adminReply=await handleOperatorReply(update);
+  if(adminReply)return adminReply;
   const actor=privateActor(update);
   if(!actor)return null;
   const text=actor.text?.trim()??'';
+  const explicitSupport=/^\/support(?:@MnebyVPN_bot)?(?:\s+([\s\S]+))?$/i.exec(text);
+  if(!actor.callbackId&&(explicitSupport?.[1]||actor.replyToSupport))
+    return sendSupportFromBot(actor.id,update.update_id,
+      explicitSupport?.[1]??text);
+  if(actor.data==='nav:support'||(!actor.callbackId&&explicitSupport))
+    return supportPromptResponse(actor.id);
   let action=actor.data??'nav:home';
   if(!actor.callbackId){
     if(text==='/trial'||text==='🆓 Пробный день')action='trial:vpn';
@@ -344,7 +456,7 @@ async function processUpdate(update:any){
     else if(text==='/plans'||text==='🌐 Выбрать доступ')action='nav:vpn';
     else if(text==='/connect')action='nav:connect';
     else if(text==='/share')action='nav:share';
-    else if(text==='/help'||text==='/support')action='nav:help';
+    else if(text==='/help')action='nav:help';
   }
   try {
     if(/^buy:stars:[a-z0-9][a-z0-9_-]{0,52}$/.test(action))

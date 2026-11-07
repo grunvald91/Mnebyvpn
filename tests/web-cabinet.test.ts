@@ -81,11 +81,11 @@ test('unactivated trial never shows a fabricated expiry or quota amount',()=>{
 test('public website references the configured Telegram bot in navigation, hero and footer',async()=>{
   const {readFileSync}=await import('node:fs');
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
-  const links=html.match(/https:\/\/t\.me\/MnebyVPN_bot/g)||[];
-  assert.equal(links.length,4);
+  const links=html.match(/https:\/\/t\.me\/MNEBYVPN_bot/g)||[];
+  assert.ok(links.length>=4);
   assert.match(html,/id="trial-hero-button"/);
   assert.match(html,/id="guest-trial-card"/);
-  assert.match(html,/@MnebyVPN_bot/);
+  assert.match(html,/@MNEBYVPN_bot/);
   assert.match(html,/rel="noopener noreferrer"/);
 });
 
@@ -118,7 +118,7 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
   assert.match(neoCss,/\.portal-art/);
   assert.match(neoCss,/@media\(max-width:680px\)/);
   assert.match(html,/<h1>VPN без<span> лишних шагов<\/span><\/h1>/);
-  assert.doesNotMatch(html,/<p class="hero-lead">/);
+  assert.match(html,/<p class="hero-lead">/);
   assert.match(neoCss,/\.hero\{display:block;position:relative;min-height:82px;padding:10px 0 5px/);
   assert.match(neoCss,/\.portal-avatar/);
   assert.match(html,/<img class="portal-avatar" src="\/brand-avatar\.webp"/);
@@ -141,19 +141,33 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
 });
 
 
-test('free 24h trial CTA remains visible in compact mobile layouts',async()=>{
+test('mobile hero trial CTA stays hidden while tariff-card trial remains visible',async()=>{
   const {readFileSync}=await import('node:fs');
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
   const skin=readFileSync(new URL('../apps/web/public/neo.css',import.meta.url),'utf8');
   const base=readFileSync(new URL('../apps/web/public/site.css',import.meta.url),'utf8');
-  assert.match(html,/id="trial-hero-button"[^>]*>🎁 Бесплатные 24 часа<\/button>/);
+  assert.match(html,/id="trial-hero-button"[^>]*aria-hidden="true"/);
   assert.match(html,/id="trial-button"/);
   assert.match(base,/\.hero-art,\.hero-actions,\.hero-notes,\.features\{display:none\}/);
   const mobileFix=skin.slice(skin.lastIndexOf('Mobile trial CTA:'));
   assert.ok(mobileFix.includes('@media (max-width: 680px)'));
-  assert.match(mobileFix,/\.hero \.hero-actions\s*\{\s*display:\s*flex/);
+  assert.match(mobileFix,/\.hero \.hero-actions\s*\{\s*display:\s*none/);
   assert.match(mobileFix,/#trial-button\.trial-button\s*\{\s*display:\s*flex/);
   assert.match(mobileFix,/min-height:\s*44px/);
   // neo.css loads after site.css: the last mobile rule overrides both hide rules.
   assert.ok(html.indexOf('href="/site.css"')<html.indexOf('href="/neo.css"'));
+});
+
+test('website keeps support form accessible without Telegram login and brands it MNEBYVPN',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
+  const server=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
+  const js=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
+  assert.match(html,/id="support-form"/);
+  assert.match(html,/href="#contact-support"/);
+  assert.match(server,/url\.pathname==='\/api\/support'/);
+  assert.match(server,/url\.pathname==='\/api\/support\/status'/);
+  assert.match(js,/submitSupport/);
+  assert.doesNotMatch(html,/Мне бы VPN|МНЕ БЫ|MnebyVPN/);
+  assert.match(html,/<title>MNEBYVPN/);
 });

@@ -97,6 +97,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0015_dns_credit_metering.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0016_vpn_subscription_links.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0017_web_guest_trials.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0018_website_support_tickets.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0019_vpn_1device_owner_prices.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0020_vpn_stars_prices.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0021_vpn_expiry_reminders.sql >/dev/null

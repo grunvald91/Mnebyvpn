@@ -26,7 +26,7 @@ function categoryLabel(product:string):string {
 export async function showHome(id:number,tg:BotSend):Promise<void> {
   await tg.call('sendMessage',{
     chat_id:id,
-    text:'🌐 Мне бы VPN\nВыберите нужное действие кнопками ниже.',
+    text:'🌐 MNEBYVPN\nВыберите нужное действие кнопками ниже.',
     reply_markup:menuReplyKeyboard,
   });
   await tg.call('sendMessage',{

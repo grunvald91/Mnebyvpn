@@ -5,8 +5,10 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { createHash,randomBytes } from 'node:crypto';
+import { createHash,createHmac,randomBytes,randomUUID,timingSafeEqual } from 'node:crypto';
 import { Pool } from 'pg';
+import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
+  from '../../../packages/support/src/telegram-relay.ts';
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
 import {subscriptionOwner,subscriptionLink}
   from '../../../packages/provisioning/src/subscription-links.ts';
@@ -38,6 +40,9 @@ if (offline && !['http:', 'https:'].includes(base.protocol))
 if (base.pathname !== '/' || base.search || base.hash || base.username || base.password)
   throw new Error('WEB_BASE_URL must be a bare origin');
 const publicOrigin = base.origin;
+const support=supportConfig();
+const contactLimit=supportLimiter(3,15*60_000);
+const globalSupportLimit=supportLimiter(120,60_000);
 const sessionSecret = required('WEB_SESSION_SECRET');
 if (sessionSecret.length < 32) throw new Error('WEB_SESSION_SECRET too short');
 // A public informational site can be deployed before BotFather issues OIDC
@@ -118,6 +123,8 @@ if(guestTrialEnabled&&(!/^[a-f0-9]{64}$/i.test(workerProfileToken)||!subscriptio
   throw Error('Guest VPN trial requires the isolated authenticated node worker');
 const guestCookie=tls?'__Host-mnebyvpn_guest':'mnebyvpn_guest';
 const guestPattern=/^[A-Za-z0-9_-]{43}$/;
+const supportCookie=tls?'__Host-mnebyvpn_support':'mnebyvpn_support';
+const supportCookiePattern=/^([0-9a-f-]{36})\.([A-Za-z0-9_-]{43})$/;
 const policy = [
   "default-src 'none'", "script-src 'self'", "style-src 'self'",
   "connect-src 'self'", "img-src 'self' data:", "font-src 'self'",
@@ -307,7 +314,7 @@ function installHtml(subUrl:string,client:'incy'|'karing'):string {
   return '<!doctype html><html lang="ru"><head><meta charset="utf-8">'+
     '<meta name="viewport" content="width=device-width,initial-scale=1">'+
     '<meta name="referrer" content="no-referrer">'+
-    '<title>Подключение «Мне бы VPN»</title>'+
+    '<title>Подключение MNEBYVPN</title>'+
     '<link rel="stylesheet" href="/neo.css"></head>'+
     '<body style="margin:0"><main data-client="'+client+'" data-sub="'+subUrl+'">'+
     '<h1>Подключить VPN в '+app+'</h1>'+
@@ -353,7 +360,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       res.setHeader('subscription-userinfo',
         'upload=0; download=0; total=0; expire='+
         Math.floor(owner.expiresAt.getTime()/1000));
-      res.setHeader('profile-title','base64:'+Buffer.from('Мне бы VPN').toString('base64'));
+      res.setHeader('profile-title','base64:'+Buffer.from('MNEBYVPN').toString('base64'));
       send(res,200,Buffer.from(profile+'\n','utf8').toString('base64')+'\n',
         'text/plain; charset=utf-8');
     }catch{
@@ -373,6 +380,92 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     send(res,200,installHtml(subscriptionLink(installMatch[1]),client),
       'text/html; charset=utf-8');
     return;
+  }
+  if(req.method==='GET'&&url.pathname==='/api/support/status'){
+    let ready=false;
+    if(support){
+      try{
+        const check=await pool.query("SELECT to_regclass('public.website_support_tickets') IS NOT NULL AS ready");
+        ready=check.rows[0]?.ready===true;
+      }catch{ready=false;}
+    }
+    json(res,200,{available:ready});return;
+  }
+  if(req.method==='GET'&&url.pathname==='/api/support/ticket'){
+    const matched=supportCookiePattern.exec(cookie(req,supportCookie)??'');
+    if(!matched){json(res,200,{status:'NONE'});return;}
+    const tokenHash=sessionHash(matched[2]);
+    const result=await pool.query(
+      "SELECT delivery_state,answer,answered_at FROM website_support_tickets WHERE id=$1 AND token_sha256=$2",
+      [matched[1],tokenHash]);
+    if(result.rowCount!==1){json(res,200,{status:'NONE'});return;}
+    json(res,200,{status:result.rows[0].delivery_state,
+      answer:result.rows[0].answer??null,
+      answeredAt:result.rows[0].answered_at?.toISOString()??null});
+    return;
+  }
+  if(req.method==='POST'&&url.pathname==='/api/support/operator-reply'){
+    if(!support){json(res,503,{code:'SUPPORT_NOT_CONFIGURED'});return;}
+    if(!req.headers['content-type']?.startsWith('application/json')){
+      json(res,415,{code:'UNSUPPORTED_MEDIA_TYPE'});return;
+    }
+    const body=await bodyJson(req);
+    const ticketId=body.ticketId,message=body.message;
+    if(typeof ticketId!=='string'||
+       !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ticketId)||
+       !validSupportText(message,1,1500)){
+      json(res,400,{code:'INVALID_REPLY'});return;
+    }
+    const signature=req.headers['x-mnebyvpn-support-signature'];
+    if(typeof signature!=='string'||!/^[0-9a-f]{64}$/i.test(signature)){
+      json(res,403,{code:'FORBIDDEN'});return;
+    }
+    const expected=createHmac('sha256',support.botToken)
+      .update('MNEBYVPN-support\n'+ticketId+'\n'+message).digest('hex');
+    if(!timingSafeEqual(Buffer.from(signature,'hex'),Buffer.from(expected,'hex'))){
+      json(res,403,{code:'FORBIDDEN'});return;
+    }
+    const updated=await pool.query(
+      "UPDATE website_support_tickets SET answer=$2,answered_at=clock_timestamp() "+
+      "WHERE id=$1 AND answer IS NULL AND delivery_state<>'FAILED' RETURNING id",
+      [ticketId,message.trim()]);
+    if(updated.rowCount!==1){json(res,409,{code:'TICKET_NOT_OPEN'});return;}
+    json(res,200,{saved:true});return;
+  }
+  if(req.method==='POST'&&url.pathname==='/api/support'){
+    if(!support){json(res,503,{code:'SUPPORT_NOT_CONFIGURED'});return;}
+    if(req.headers.origin!==publicOrigin||
+      !req.headers['content-type']?.startsWith('application/json')){
+      json(res,403,{code:'INVALID_ORIGIN'});return;
+    }
+    const body=await bodyJson(req);
+    if(Object.keys(body).some(key=>!['contact','message','website'].includes(key))||
+       (body.website!==undefined&&body.website!=='')||
+       !validSupportContact(body.contact)||!validSupportText(body.message)){
+      json(res,400,{code:'INVALID_SUPPORT_REQUEST'});return;
+    }
+    const contact=body.contact.trim(),message=body.message.trim();
+    const contactKey=createHash('sha256').update(contact.toLowerCase()).digest('hex');
+    if(!contactLimit(contactKey)||!globalSupportLimit('global')){
+      json(res,429,{code:'SUPPORT_RATE_LIMIT'});return;
+    }
+    const ticketId=randomUUID(),ticketToken=randomBytes(32).toString('base64url');
+    await pool.query(
+      "INSERT INTO website_support_tickets(id,token_sha256,contact,question) VALUES($1,$2,$3,$4)",
+      [ticketId,sessionHash(ticketToken),contact,message]);
+    try{
+      await telegramSupportSend(support,
+        '✉️ MNEBYVPN — обращение с сайта\nЗаявка: '+ticketId+
+        '\nКонтакт: '+contact+'\n\nСообщение:\n'+message);
+      await pool.query("UPDATE website_support_tickets SET delivery_state='DELIVERED',delivered_at=clock_timestamp() WHERE id=$1",
+        [ticketId]);
+      setCookie(res,supportCookie,ticketId+'.'+ticketToken,60*60*24*30);
+      json(res,200,{delivered:true,webTicket:true});return;
+    }catch{
+      await pool.query("UPDATE website_support_tickets SET delivery_state='FAILED' WHERE id=$1 AND delivery_state='PENDING'",
+        [ticketId]).catch(()=>{});
+      json(res,503,{code:'SUPPORT_DELIVERY_UNCONFIRMED'});return;
+    }
   }
   if (req.method === 'GET' && url.pathname === '/healthz') {
     json(res, 200, { status: 'ok', component: 'web-cabinet' }); return;
@@ -531,6 +624,13 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
 }
 const port = Number(process.env.WEB_PORT ?? '8791');
 if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error('Invalid WEB_PORT');
+// Ticket retention follows the thirty-day browser access window. Fail-safe
+// cleanup never logs customer messages or interrupts other website endpoints.
+async function purgeExpiredSupportTickets(){
+  await pool.query("DELETE FROM website_support_tickets WHERE created_at<clock_timestamp()-interval '30 days'");
+}
+void purgeExpiredSupportTickets().catch(()=>{});
+setInterval(()=>{void purgeExpiredSupportTickets().catch(()=>{});},6*60*60_000).unref();
 const server = createServer((req,res) => {
   handle(req,res).catch(() => json(res,503,{code:'SERVICE_UNAVAILABLE'}));
 });
