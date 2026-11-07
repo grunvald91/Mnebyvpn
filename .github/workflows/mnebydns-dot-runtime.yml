@@ -34,7 +34,7 @@ jobs:
       - name: Start loopback-only DoT service with an ephemeral test certificate
         run: |
           set -euo pipefail
-          bash ops/smart-dns-poc/make-local-cert.sh
+          sudo bash ops/smart-dns-poc/make-local-cert.sh
           docker compose -f ops/smart-dns-poc/compose.yaml up -d --pull missing
       - name: Validate real DoT responses and reject incorrect TLS hostname
         run: python3 ops/smart-dns-poc/probe-dot.py
