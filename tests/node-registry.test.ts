@@ -26,7 +26,7 @@ test('only verified, manually approved, fresh and healthy nodes are candidates',
     {lastProbeAt:new Date(now.getTime()-NODE_HEALTH_TTL_MS-1)},
     {lastHealthyAt:new Date(now.getTime()-NODE_HEALTH_TTL_MS-1)},
     {lastProbeAt:new Date(now.getTime()+1000)},
-    {maxClients:5},{allocatedClients:-1},
+    {maxClients:5},{maxClients:null},{allocatedClients:-1},
     {capabilities:['wireguard']},
   ];
   for(const change of disallowed)
