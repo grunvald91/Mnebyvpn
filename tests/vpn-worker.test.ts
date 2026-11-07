@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {vpnWorkerCycle,runVpnWorker} from '../apps/service/src/vpn-provisioning-worker.ts';
+import {vpnWorkerCycle,runVpnWorker,notificationBotToken} from '../apps/service/src/vpn-provisioning-worker.ts';
 import type {VpnDispatcher} from '../apps/service/src/vpn-provisioning-worker.ts';
 
 test('provisioning cycle only claims VPN signals and processes bounded batches',async()=>{
@@ -43,4 +43,14 @@ test('provisioning worker exits after cancellation and does not perform hidden w
    if(loops>=3)controller.abort();
  });
  assert.equal(loops,3);
+});
+
+test('notification sender reuses existing private bot token without requesting a new secret',()=>{
+  const original='123456:'+ 'a'.repeat(40);
+  const alternate='654321:'+ 'b'.repeat(40);
+  assert.equal(notificationBotToken({TELEGRAM_TOKEN_BOT:original}),original);
+  assert.equal(notificationBotToken({TELEGRAM_BOT_TOKEN:alternate}),alternate);
+  assert.equal(notificationBotToken({TELEGRAM_TOKEN_BOT:original,TELEGRAM_BOT_TOKEN:alternate}),original);
+  assert.throws(()=>notificationBotToken({}));
+  assert.throws(()=>notificationBotToken({TELEGRAM_TOKEN_BOT:'invalid'}));
 });
