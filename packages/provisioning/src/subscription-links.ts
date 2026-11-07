@@ -49,6 +49,37 @@ export async function issueSubscriptionLink(pool:Pool,userId:number):Promise<{
   return {link:subscriptionLink(token),token,expiresAt:active.expiresAt,
     entitlementId:active.entitlementId};
 }
+/** Mint a link only for the caller's authenticated internal account.
+ * Re-check node-observed ACTIVE entitlement inside the private subscription DB.
+ */
+export async function issueSubscriptionLinkForAccount(pool:Pool,accountId:string):Promise<{
+  link:string;token:string;expiresAt:Date;entitlementId:string;
+}|null>{
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(accountId))
+    return null;
+  const result=await pool.query(
+    `SELECT e.id,e.expires_at FROM entitlements e
+     JOIN provisioning_state p ON p.entitlement_id=e.id AND p.adapter='vpn'
+     WHERE e.account_id=$1 AND e.product='vpn' AND e.state='ACTIVE'
+       AND e.expires_at>clock_timestamp()
+       AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL
+     ORDER BY e.expires_at DESC LIMIT 1`,[accountId]);
+  if(result.rows.length!==1)return null;
+  const entitlementId=String(result.rows[0].id);
+  const token=randomBytes(32).toString('base64url');
+  const claim=await pool.query(
+    `INSERT INTO vpn_subscription_links(token_sha256,entitlement_id)
+       SELECT $1,e.id FROM entitlements e
+       JOIN provisioning_state p ON p.entitlement_id=e.id AND p.adapter='vpn'
+       WHERE e.id=$2 AND e.account_id=$3 AND e.product='vpn'
+         AND e.state='ACTIVE' AND e.expires_at>clock_timestamp()
+         AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL`,
+    [digest(token),entitlementId,accountId]);
+  return claim.rowCount===1
+    ?{link:subscriptionLink(token),token,expiresAt:result.rows[0].expires_at as Date,
+      entitlementId}:null;
+}
+
 export async function subscriptionOwner(pool:Pool,token:string):
   Promise<SubscriptionOwner|null>{
   if(!TOKEN.test(token))return null;

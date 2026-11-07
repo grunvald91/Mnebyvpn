@@ -30,23 +30,23 @@ export function publicEntitlement(row: AccessRow, meteringVerified: boolean, now
 }
 
 export async function loadDashboard(
-  pool: Pick<Pool, 'query'>, telegramId: number, meteringVerified = false,
+  pool: Pick<Pool, 'query'>, accountId: string, meteringVerified = false,
   now = Date.now(),
 ) {
-  if (!Number.isSafeInteger(telegramId) || telegramId <= 0) throw new Error('Invalid Telegram account');
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(accountId)) throw new Error('Invalid verified account');
   const [access, orders] = await Promise.all([
     pool.query(`SELECT e.id,e.product,e.state,e.starts_at,e.expires_at,
       e.quota_limit_bytes,e.quota_used_bytes,e.quota_state
-      FROM entitlements e JOIN accounts a ON a.id=e.account_id
-      WHERE a.telegram_user_id=$1
-      ORDER BY e.expires_at DESC NULLS LAST, e.id DESC LIMIT 40`, [String(telegramId)]),
+      FROM entitlements e
+      WHERE e.account_id=$1
+      ORDER BY e.expires_at DESC NULLS LAST, e.id DESC LIMIT 40`, [accountId]),
     pool.query(`SELECT o.id,o.product,o.state,o.amount_minor,o.currency,o.created_at,
-      t.plan_title FROM orders o JOIN accounts a ON a.id=o.account_id
+      t.plan_title FROM orders o
       LEFT JOIN order_terms t ON t.order_id=o.id
-      WHERE a.telegram_user_id=$1 ORDER BY o.created_at DESC LIMIT 30`,[String(telegramId)]),
+      WHERE o.account_id=$1 ORDER BY o.created_at DESC LIMIT 30`,[accountId]),
   ]);
   return {
-    identity: { provider: 'telegram' as const },
+    identity: { provider: 'account' as const },
     access: (access.rows as AccessRow[]).map(row => publicEntitlement(row, meteringVerified, now)),
     orders: orders.rows.map(row => ({
       id: row.id as string, product: row.product as string, state: row.state as string,
