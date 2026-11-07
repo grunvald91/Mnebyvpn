@@ -210,6 +210,16 @@
           <p id="email-status" class="login-help" role="status" aria-live="polite">Код придёт от mnebyvpn@servgo.ru. Никому его не сообщайте.</p>
         </div>
         <div id="account-content" class="hidden">
+          <section id="purchase-result" class="purchase-result hidden" aria-live="polite" aria-label="Результат покупки">
+            <p class="eyebrow">ВАША ПОКУПКА</p>
+            <h3 id="purchase-result-title">Проверяем оплату</h3>
+            <p id="purchase-result-text"></p>
+            <div id="purchase-result-details" class="purchase-result-details"></div>
+            <div class="purchase-result-actions">
+              <button id="purchase-connect" type="button" class="button button-primary hidden">🔌 Подключить VPN</button>
+              <button id="purchase-refresh" type="button" class="button button-secondary">🔄 Проверить статус</button>
+            </div>
+          </section>
           <div class="metric-cards">
             <div class="metric-card"><span>Активные подключения</span><strong id="active-count">—</strong><small>VPN и Smart DNS</small></div>
             <div class="metric-card"><span>Ближайшее окончание</span><strong id="days-left">—</strong><small id="days-hint">Без активных подписок</small></div>
