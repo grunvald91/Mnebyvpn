@@ -85,9 +85,13 @@ export class PgVpnNodeRegistry {
     try{
       await client.query('BEGIN');
       const entitlement=await client.query(
-        "SELECT id,revision FROM entitlements WHERE id=$1 AND product='vpn' "+
-        "AND state IN ('PAID_PENDING_PROVISIONING','ACTIVE') "+
-        'AND (expires_at IS NULL OR expires_at>clock_timestamp()) FOR UPDATE',
+        "SELECT id,revision FROM entitlements e WHERE id=$1 AND product='vpn' "+
+        "AND state IN ('PAID_PENDING_PROVISIONING','PROVISIONING_FAILED','ACTIVE') "+
+        "AND quota_state='AVAILABLE' "+
+        "AND (expires_at>clock_timestamp() OR "+
+        "  (expires_at IS NULL AND starts_at IS NULL AND EXISTS ("+
+        "     SELECT 1 FROM trial_grants t WHERE t.order_id=e.source_order_id "+
+        "       AND t.activated_at IS NULL))) FOR UPDATE",
         [entitlementId]);
       if(entitlement.rows.length!==1){
         await client.query('ROLLBACK');return 'ineligible';
@@ -110,9 +114,9 @@ export class PgVpnNodeRegistry {
         await client.query('ROLLBACK');return 'unavailable';
       }
       await client.query(
-        'INSERT INTO vpn_node_assignments(entitlement_id,node_id,desired_revision) '+
-        'VALUES($1,$2,$3)',
-        [entitlementId,nodeId,entitlement.rows[0].revision]);
+        'INSERT INTO vpn_node_assignments(entitlement_id,node_id,desired_revision,allow_special) '+
+        'VALUES($1,$2,$3,$4)',
+        [entitlementId,nodeId,entitlement.rows[0].revision,request.allowSpecial===true]);
       await client.query('COMMIT');return 'reserved';
     }catch(error){
       await client.query('ROLLBACK');throw error;

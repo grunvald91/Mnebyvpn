@@ -37,7 +37,7 @@ const TRANSITIONS:Record<NodeState,readonly NodeState[]>={
   canary:['verified','testing','disabled'],
   verified:['degraded','draining','disabled'],
   degraded:['testing','draining','disabled'],
-  draining:['disabled','degraded'],
+  draining:['verified','disabled','degraded'],
   disabled:['testing'],
 };
 

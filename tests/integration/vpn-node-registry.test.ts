@@ -39,6 +39,13 @@ test('multi-node inventory stays dormant until separately approved and healthy',
       [entitlement,second,account,orders.rows[0].id,orders.rows[1].id]);
     assert.equal(await registry.reserve(entitlement,nodeId,request),'unavailable');
     // Operator attestation simulated only in disposable test DB.
+    await assert.rejects(pool.query(
+      "UPDATE vpn_nodes SET state='verified',verified_at=clock_timestamp(),"+
+      "verification_report_sha256=repeat('a',64),"+
+      "operator_approved_at=clock_timestamp(),enabled_for_new=true WHERE id=$1",
+      [nodeId]),/Invalid VPN node lifecycle transition/);
+    await pool.query("UPDATE vpn_nodes SET state='testing' WHERE id=$1",[nodeId]);
+    await pool.query("UPDATE vpn_nodes SET state='canary' WHERE id=$1",[nodeId]);
     await pool.query(
       "UPDATE vpn_nodes SET state='verified',verified_at=clock_timestamp(),"+
       "verification_report_sha256=repeat('a',64),"+
