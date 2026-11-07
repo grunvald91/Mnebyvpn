@@ -30,7 +30,7 @@ function openPage(href:string,stored:Map<string,string>,authenticated=false){
     if(path==='/api/plans')return {ok:true,json:async()=>({
       plans:[{id:'vpn-30',title:'VPN 30 days',product:'vpn',
         durationDays:30,rubMinor:9900,dnsQuotaBytes:null}],
-      checkoutEnabled:true,loginEnabled:true,trialOffers:['vpn'],
+      checkoutEnabled:true,loginEnabled:true,telegramLoginEnabled:true,emailLoginEnabled:true,trialOffers:['vpn'],
     })};
     if(path==='/api/me')return authState.value
       ?{ok:true,json:async()=>({csrf:'csrf-test',access:[],orders:[]})}
@@ -46,6 +46,7 @@ function openPage(href:string,stored:Map<string,string>,authenticated=false){
     sessionStorage:{
       getItem:(k:string)=>stored.get(k)??null,
       setItem:(k:string,v:string)=>{stored.set(k,v);},
+      removeItem:(k:string)=>{stored.delete(k);},
     },
     setInterval:()=>0,setTimeout:()=>0,clearTimeout:()=>{},
   });
@@ -55,19 +56,23 @@ function openPage(href:string,stored:Map<string,string>,authenticated=false){
 async function settle(){
   await new Promise<void>(resolve=>setImmediate(resolve));
 }
-test('trial referral survives Telegram OIDC redirect and arrives in authenticated request',async()=>{
+test('trial referral survives email or Telegram sign-in and arrives in authenticated request',async()=>{
   const session=new Map<string,string>();
   const first=openPage('https://vpn.example/?ref='+token+'&product=vpn&days=30',session);
   await settle();
   assert.equal(first.location.redirect,null);
   first.elements.get('trial-button').handlers.get('click')();
-  assert.equal(first.location.redirect,'/auth/login');
+  assert.equal(first.location.redirect,null);
+  assert.equal(session.get('mnebyvpn-pending-trial'),'1');
+  assert.equal(first.elements.get('cabinet-login-link').href,'/auth/login');
+  assert.ok(first.elements.get('email-start-form').handlers.get('submit'));
+  assert.ok(first.elements.get('cabinet-login-link').href==='/auth/login');
   const saved=JSON.parse(session.get('mnebyvpn-selection')||'{}');
   assert.equal(saved.inviteToken,token);
   assert.equal(saved.days,30);
   const afterLogin=openPage('https://vpn.example/#account',session,true);
   await settle();
-  afterLogin.elements.get('trial-button').handlers.get('click')();
+  // OAuth callback returns to the cabinet; the stored trial intent is redeemed once.
   await settle();
   assert.equal(afterLogin.posts.length,1);
   assert.equal(afterLogin.posts[0].body.product,'vpn');
@@ -78,7 +83,8 @@ test('invalid referral is never carried into checkout after login',async()=>{
   const client=openPage('https://vpn.example/?ref=bad<script>&product=vpn&days=30',session);
   await settle();
   client.elements.get('buy-button').handlers.get('click')();
-  assert.equal(client.location.redirect,'/auth/login');
+  assert.equal(client.location.redirect,null);
+  assert.equal(client.elements.get('cabinet-login-link').href,'/auth/login');
   assert.equal(JSON.parse(session.get('mnebyvpn-selection')||'{}').inviteToken,null);
 });
 
@@ -128,5 +134,5 @@ test('401 during auto-refresh clears private DOM and session state',async()=>{
   await vm.runInContext('refresh()',client.context);
   assert.equal(vm.runInContext('state.loggedIn',client.context),false);
   assert.equal(vm.runInContext('state.csrf',client.context),'');
-  assert.equal(client.elements.get('auth-link').href,'/auth/login');
+  assert.equal(client.elements.get('auth-link').href,'https://t.me/MnebyVPN_bot');
 });

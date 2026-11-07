@@ -445,24 +445,33 @@ export class PgBillingStore {
    * PostgreSQL account row lock + trial_grants PK serialize repeated clicks.
    * No live VPN/DNS activation occurs until a data-plane adapter observes it.
    */
-  async grantTrial(telegramUserId:number,product:Product,inviteToken?:string):
-  Promise<{status:'GRANTED'|'PENDING'|'ALREADY_USED'|'UNAVAILABLE';orderId?:string;expiresAt?:Date}> {
-    if(!Number.isSafeInteger(telegramUserId)||telegramUserId<=0 ||
+  async grantTrial(telegramUserId:number|string,product:Product,inviteToken?:string,deviceHash?:string):
+  Promise<{status:'GRANTED'|'PENDING'|'ALREADY_USED'|'DEVICE_ALREADY_USED'|'UNAVAILABLE';orderId?:string;expiresAt?:Date}> {
+    if(!(typeof telegramUserId==='number' && Number.isSafeInteger(telegramUserId) && telegramUserId>0 ||
+       typeof telegramUserId==='string' && uuid.test(telegramUserId)) ||
        !['vpn','smart_dns','bundle'].includes(product))throw new Error('Invalid trial request');
+    if(deviceHash!==undefined&&!/^[a-f0-9]{64}$/.test(deviceHash))
+      throw new Error('Invalid hashed browser trial claim');
     if(inviteToken!==undefined&&!/^[A-Za-z0-9_-]{16,24}$/.test(inviteToken))
       throw new Error('Invalid trial invite');
     const c=await this.pool.connect();
     try {
       await c.query('BEGIN');
-      const user=await c.query(
-        `INSERT INTO accounts(id,telegram_user_id) VALUES(gen_random_uuid(),$1)
-          ON CONFLICT(telegram_user_id) DO UPDATE
-          SET telegram_user_id=EXCLUDED.telegram_user_id RETURNING id`,[String(telegramUserId)]);
+      const byTelegram=typeof telegramUserId==='number';
+      const user=byTelegram
+        ?await c.query(
+          `INSERT INTO accounts(id,telegram_user_id) VALUES(gen_random_uuid(),$1)
+            ON CONFLICT(telegram_user_id) DO UPDATE
+            SET telegram_user_id=EXCLUDED.telegram_user_id RETURNING id,telegram_user_id`,
+           [String(telegramUserId)])
+        :await c.query('SELECT id,telegram_user_id FROM accounts WHERE id=$1',
+           [telegramUserId]);
+      if(user.rowCount!==1)throw new Error('Unknown authenticated account');
       const accountId=user.rows[0].id as string;
       await c.query('SELECT id FROM accounts WHERE id=$1 FOR UPDATE',[accountId]);
       const earlier=await c.query(
-        'SELECT order_id,product,activated_at FROM trial_grants WHERE telegram_user_id=$1',
-        [String(telegramUserId)]);
+        'SELECT order_id,product,activated_at FROM trial_grants WHERE account_id=$1',
+        [accountId]);
       if(earlier.rowCount){
         await c.query('COMMIT');
         return {status:earlier.rows[0].activated_at===null?'PENDING':'ALREADY_USED',
@@ -480,6 +489,18 @@ export class PgBillingStore {
         if(!referral.rowCount || referral.rows[0].referrer_account_id===accountId)
           throw new Error('Invalid or self-owned trial referral');
       }
+      if(deviceHash){
+        // This is a best-effort cookie-based guard. Database uniqueness
+        // serializes concurrent requests from DIFFERENT accounts in one browser.
+        const claim=await c.query(
+          `INSERT INTO trial_device_claims(device_hash,account_id) VALUES($1,$2)
+           ON CONFLICT(device_hash) DO NOTHING RETURNING account_id`,
+          [deviceHash,accountId]);
+        if(claim.rowCount!==1){
+          await c.query('COMMIT');
+          return {status:'DEVICE_ALREADY_USED'};
+        }
+      }
       const id=randomUUID();
       await c.query(
         `INSERT INTO orders(id,account_id,product,provider,amount_minor,currency,state)
@@ -488,7 +509,7 @@ export class PgBillingStore {
       await c.query(
         `INSERT INTO trial_grants(telegram_user_id,account_id,order_id,product,invite_token)
          VALUES($1,$2,$3,$4,$5)`,
-        [String(telegramUserId),accountId,id,product,inviteToken??null]);
+        [user.rows[0].telegram_user_id??null,accountId,id,product,inviteToken??null]);
       const products=product==='bundle'?['vpn','smart_dns']:[product];
       for(const subproduct of products) {
         const entitlementId=randomUUID();
