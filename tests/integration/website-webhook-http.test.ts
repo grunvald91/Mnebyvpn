@@ -147,7 +147,7 @@ test('webhook remains available when new checkout is disabled, and customer APIs
   assert.equal(checkout.status,401);
   assert.equal((await fetch('http://127.0.0.1:'+port+'/api/me')).status,401);
   const noSig=await fetch('http://127.0.0.1:'+port+'/webhooks/prodamus',{
-    method:'POST',body:form({payment_status:'success'}),
+    method:'POST',body:wireForm({payment_status:'success'},'multipart'),
   });
   assert.equal(noSig.status,401);
   const wrongContent=await fetch('http://127.0.0.1:'+port+'/webhooks/prodamus',{
