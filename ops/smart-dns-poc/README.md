@@ -12,15 +12,15 @@ From repository root:
 
 ~~~bash
 bash ops/smart-dns-poc/preflight.sh
-bash ops/smart-dns-poc/make-local-cert.sh
+sudo bash ops/smart-dns-poc/make-local-cert.sh
 docker compose -f ops/smart-dns-poc/compose.yaml config
 docker compose -f ops/smart-dns-poc/compose.yaml up -d
-bash ops/smart-dns-poc/smoke.sh
+python3 ops/smart-dns-poc/probe-dot.py
 docker compose -f ops/smart-dns-poc/compose.yaml stats --no-stream
 docker compose -f ops/smart-dns-poc/compose.yaml down
 ~~~
 
-The test certificate is self-signed, short-lived and for dns.test.invalid; **it cannot be used as an Android Private DNS hostname certificate**. The private key stays local, is ignored by Git and should be deleted after the test. Local test success requires a genuine TLS-authenticated kdig query; a green config/unit check alone is not proof. The Docker memory cap of 128 MiB is a safety boundary for this *test*, not a measured system requirement or a throughput guarantee.
+The test certificate is self-signed, short-lived and for dns.test.invalid; **it cannot be used as an Android Private DNS hostname certificate**. The private key stays local, is ignored by Git and should be deleted after the test. Local test success requires a real TLS-authenticated DNS query through `probe-dot.py` (including certificate-hostname rejection); a green config/unit check alone is not proof. The test image runs as nonroot UID 65532; its private key remains owner-read-only. The test does not validate a public Android service. The Docker memory cap of 128 MiB is a safety boundary for this *test*, not a measured system requirement or a throughput guarantee.
 
 ## Hard stops before a public/mobile test
 
