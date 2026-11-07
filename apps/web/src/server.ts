@@ -619,6 +619,9 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       setCookie(res,supportCookie,ticketId+'.'+ticketToken,60*60*24*30);
       json(res,200,{queued:true,webTicket:true});return;
     }
+    // A temporary Telegram failure must never erase the customer's only
+    // support route. Keep the durable PENDING ticket in the operator inbox.
+    let delivered=false;
     try{
       await telegramSupportSend(support,
         '✉️ MNEBYVPN — обращение с сайта\nЗаявка: '+ticketId+
@@ -627,15 +630,20 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
           [{text:'✍️ Ответить',callback_data:'support:reply:site:'+ticketId}],
           [{text:'📥 Входящие заявки',callback_data:'support:page:0'}],
         ]});
-      await pool.query("UPDATE website_support_tickets SET delivery_state='DELIVERED',delivered_at=clock_timestamp() WHERE id=$1",
-        [ticketId]);
-      setCookie(res,supportCookie,ticketId+'.'+ticketToken,60*60*24*30);
-      json(res,200,{delivered:true,webTicket:true});return;
+      delivered=true;
     }catch{
-      await pool.query("UPDATE website_support_tickets SET delivery_state='FAILED' WHERE id=$1 AND delivery_state='PENDING'",
-        [ticketId]).catch(()=>{});
-      json(res,503,{code:'SUPPORT_DELIVERY_UNCONFIRMED'});return;
+      // The Bot API did not confirm delivery. The operator can still find
+      // the ticket with the "Входящие заявки" button in the same bot.
     }
+    if(delivered){
+      // A database hiccup after confirmed delivery must not turn a delivered
+      // Telegram message into an apparent failed customer request.
+      await pool.query("UPDATE website_support_tickets SET delivery_state='DELIVERED',delivered_at=clock_timestamp() WHERE id=$1",
+        [ticketId]).catch(()=>{});
+    }
+    setCookie(res,supportCookie,ticketId+'.'+ticketToken,60*60*24*30);
+    json(res,200,delivered?{delivered:true,webTicket:true}:{queued:true,webTicket:true});
+    return;
   }
   if (req.method === 'GET' && url.pathname === '/healthz') {
     json(res, 200, { status: 'ok', component: 'web-cabinet' }); return;
