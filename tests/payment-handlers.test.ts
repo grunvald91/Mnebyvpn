@@ -119,6 +119,26 @@ test('multipart decoder handles official nested products syntax and rejects ambi
 });
 
 
+test('Prodamus URL-encoded parser preserves signed nested fields and rejects duplicates',async()=>{
+  const params=new URLSearchParams();
+  params.set('order_num',oid);
+  params.set('payment_status','success');
+  params.set('customer_email','customer+test@example.test');
+  params.set('products[0][name]','VPN · 15 дней');
+  params.set('products[0][price]','60.00');
+  const raw=Buffer.from(params.toString(),'utf8');
+  const parsed=await parseProdamusFormData('application/x-www-form-urlencoded',raw);
+  assert.equal(parsed.order_num,oid);
+  assert.equal(parsed.customer_email,'customer+test@example.test');
+  assert.equal((parsed.products as Fields[])[0].name,'VPN · 15 дней');
+  assert.equal((parsed.products as Fields[])[0].price,'60.00');
+  const duplicate=Buffer.from('order_num=a&order_num=b');
+  await assert.rejects(()=>parseProdamusFormData('application/x-www-form-urlencoded',duplicate));
+  const polluted=Buffer.from('products%5B0%5D%5B__proto__%5D=1');
+  await assert.rejects(()=>parseProdamusFormData('application/x-www-form-urlencoded',polluted));
+  await assert.rejects(()=>parseProdamusFormData('application/json',raw));
+});
+
 test('Prodamus ALL events: signed denied and cancelled callbacks return 200 without access',async()=>{
   const f=fakeStore(record('prodamus'));
   const base:Fields={
