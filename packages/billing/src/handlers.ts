@@ -299,7 +299,7 @@ export async function handleProdamusDelivery(
     // Never acknowledge a paid-order refund without revoking its entitlement.
     // The signed merchant callback must identify the original capture.
     if (typeof fields.order_num !== 'string' || typeof fields.order_id !== 'string' ||
-        fields.currency !== 'rub' || fields.order_id.length > 130)
+        (fields.currency !== undefined && fields.currency !== 'rub') || fields.order_id.length > 130)
       return {statusCode:400,text:'INVALID_REFUND'};
     const order=await db.order(fields.order_num);
     if (!order || order.provider!=='prodamus' || order.currency!=='RUB' ||
