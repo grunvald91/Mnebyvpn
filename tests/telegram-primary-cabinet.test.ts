@@ -62,7 +62,7 @@ test('support is reached by a button and replies to its prompt without slash com
  assert.equal(prompted.method,'sendMessage');
  assert.equal(prompted.reply_markup.force_reply,true);
  assert.match(prompted.text,/MNEBYVPN/);
- assert.doesNotMatch(prompted.text,/\\/(?:support|inbox)/);
+ assert.doesNotMatch(prompted.text,/\/(?:support|inbox)/);
  const reply=await update({update_id:201,message:{chat:{id:user,type:'private'},
   from:{id:user},text:'Помогите подключить VPN на телефон',
   reply_to_message:{from:{is_bot:true},text:prompted.text}}});
