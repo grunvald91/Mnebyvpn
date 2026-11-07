@@ -179,6 +179,7 @@ const css = await readFile(new URL('../public/site.css', import.meta.url));
 const neoCss = await readFile(new URL('../public/neo.css', import.meta.url));
 const brandAvatar = await readFile(new URL('../public/brand-avatar.webp', import.meta.url));
 const js = await readFile(new URL('../public/app.js', import.meta.url));
+const aboutJs = await readFile(new URL('../public/about.js', import.meta.url));
 const vpnInstallJs=await readFile(new URL('../public/vpn-install.js',import.meta.url));
 const workerProfileToken=process.env.VPN_WORKER_PROFILE_TOKEN??'';
 const policy = [
@@ -476,6 +477,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === 'GET' && url.pathname === '/app.js') {
     send(res, 200, js, 'text/javascript; charset=utf-8'); return;
+  }
+  if (req.method === 'GET' && url.pathname === '/about.js') {
+    send(res, 200, aboutJs, 'text/javascript; charset=utf-8'); return;
   }
   if(req.method==='GET' && url.pathname==='/vpn-install.js'){
     send(res,200,vpnInstallJs,'text/javascript; charset=utf-8');return;
