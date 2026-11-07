@@ -60,14 +60,19 @@ export function operatorWebsiteReply(message:unknown,operatorId:number):
   if(!found||!validSupportText(answer,1,1500))return null;
   return {ticketId:found[1],answer};
 }
+export type SupportReplyMarkup={inline_keyboard:Array<Array<{
+  text:string;callback_data?:string;url?:string
+}>>};
 export async function telegramSupportSend(
   config:SupportConfig,text:string,to:number=config.operatorId,
+  replyMarkup?:SupportReplyMarkup,
 ):Promise<void>{
   if(!text||text.length>3800)throw Error('Support message too long');
   const response=await fetch('https://api.telegram.org/bot'+config.botToken+'/sendMessage',{
     method:'POST',redirect:'error',signal:AbortSignal.timeout(7000),
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({chat_id:to,text,link_preview_options:{is_disabled:true}}),
+    body:JSON.stringify({chat_id:to,text,link_preview_options:{is_disabled:true},
+      ...(replyMarkup?{reply_markup:replyMarkup}:{})}),
   });
   if(!response.ok)throw Error('Support Telegram delivery failed');
   const payload:unknown=await response.json();
