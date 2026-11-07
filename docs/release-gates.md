@@ -24,7 +24,7 @@
 |---|---|---|
 | P1-DNS-AUTH | **DEFERRED; PAID SNI BLOCKED** | Не продавать прозрачный платный SNI как DNS-only. Авторизованный CONNECT/SOCKS либо VPN — отдельный транспорт; bearer IPv6 остаётся экспериментом. [Проверки](smart-dns-access-gate.md) |
 | P1-ORDER | См. P0-ORDER | Сохранён как алиас исторических review, не независимый чеклист |
-| P1-NODES | CODED; E2E BLOCKED | Каталог узлов, фильтр кандидатов и pending-бронь добавлены отдельно от runtime; multi-node revoke, подписки и проверки клиентов не реализованы. [Этап 1](node-management.md) |
+| P1-NODES | CODED; E2E BLOCKED | Каталог узлов, фильтр кандидатов и pending-бронь (этап 1); per-node reconcile, отзыв и закрытый генератор списка подтверждённых профилей реализованы только в коде (этап 2). Живой worker, клиентское переключение и второй физический узел не проверены. [Этап 1](node-management.md), [этап 2](node-fanout.md) |
 | P1-LOAD | DEFERRED | Scale-out не входит в MVP. Доказать разгрузку живых клиентов и обновление подписок до включения. [Контракт](scale-out-contract.md) |
 | P1-BUDGET | DEFERRED | Автоматическое создание VPS запрещено. Перед включением: атомарное резервирование, UnknownOutcome, hard cap, manual approval. [Контракт](scale-out-contract.md) |
 | P1-OFFLINE | См. P0-OFFLINE | Алиас исторического review |
