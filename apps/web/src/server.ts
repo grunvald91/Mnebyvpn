@@ -23,7 +23,7 @@ import {
 import { loadDashboard } from '../../../packages/web/src/dashboard.ts';
 import {normalizeLoginEmail} from '../../../packages/web/src/email-otp.ts';
 import {beginEmailCode,verifyEmailCode} from '../../../packages/web/src/email-auth-service.ts';
-import { parseProdamusFormData } from '../../../packages/billing/src/multipart.ts';
+import { parseProdamusFormData, isProdamusContentType } from '../../../packages/billing/src/multipart.ts';
 import { handleProdamusDelivery } from '../../../packages/billing/src/handlers.ts';
 
 const required = (name: string): string => {
@@ -680,10 +680,9 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     if (typeof sign!=='string' || !/^[0-9a-f]{64}$/i.test(sign)) {
       send(res,401,'UNSIGNED','text/plain; charset=utf-8');return;
     }
-    // The Prodamus payload parser accepts multipart ONLY. Do not advertise
-    // urlencoded input that would otherwise fail with a misleading HTTP 503.
-    if (typeof ct!=='string' ||
-        !/^multipart\/form-data;\s*boundary=/i.test(ct)) {
+    // Prodamus sends application/x-www-form-urlencoded. Accept its
+    // documented delivery format and supported multipart callbacks only.
+    if (typeof ct!=='string' || !isProdamusContentType(ct)) {
       send(res,415,'UNSUPPORTED_MEDIA_TYPE','text/plain; charset=utf-8');return;
     }
     try {
