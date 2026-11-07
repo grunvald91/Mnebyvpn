@@ -329,3 +329,44 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 #email-verify-form{margin-top:14px}
 #email-status{margin:10px 0 0}
 @media(max-width:420px){.email-auth-panel{padding:12px}.email-fields .button{flex:1 1 100%}}
+
+
+/* Project story: compact, accessible modal, never interrupts purchase. */
+.about-trigger{flex:none;padding:9px 13px;border-radius:12px;border:1px solid rgba(125,205,246,.35);background:rgba(17,29,60,.75);color:#d9eaff;font:inherit;font-weight:700;font-size:12px;white-space:nowrap}
+.about-trigger:hover,.footer-about:hover{color:#7dfdfb;border-color:#7dfdfb}
+.footer-about{background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer}
+.about-dialog{position:fixed;margin:auto;inset:0;width:min(520px,calc(100% - 26px));max-height:min(85vh,850px);max-height:min(85dvh,850px);padding:0;color:#f5f7ff;background:linear-gradient(145deg,#111d3a,#11142c 80%);border:1px solid rgba(119,184,240,.4);border-radius:22px;box-shadow:0 30px 120px rgba(0,0,0,.7);overflow:auto;overscroll-behavior:contain}
+.about-dialog::backdrop{background:rgba(2,5,20,.82);backdrop-filter:blur(6px)}
+.about-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:19px 22px 9px}
+.about-eyebrow{font-size:10px;letter-spacing:1.8px;color:#7bddea;font-weight:750}
+.about-dialog h2{font-size:22px;line-height:1.2;margin:3px 0 0}
+.about-close{display:grid;place-items:center;width:36px;height:36px;flex:none;background:rgba(100,139,210,.13);border:1px solid rgba(118,162,220,.25);border-radius:12px;color:#e9f6ff;font-size:26px;line-height:1;cursor:pointer}
+.about-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin:11px 16px 5px;padding:5px;background:rgba(3,13,38,.7);border:1px solid rgba(112,147,215,.2);border-radius:12px}
+.about-tabs button{border:0;border-radius:9px;padding:10px 1px;background:none;color:#b8c6e5;font:inherit;font-weight:700;font-size:12px;cursor:pointer}
+.about-tabs button[aria-selected="true"]{background:linear-gradient(125deg,rgba(14,202,238,.29),rgba(128,75,233,.32));color:#f9ffff}
+.about-tab-panel{padding:14px 22px 11px;min-height:215px}
+.about-tab-panel[hidden]{display:none!important}
+.about-tab-panel h3{font-size:20px;letter-spacing:-.5px;line-height:1.25;margin:6px 0 13px}
+.about-tab-panel p{font-size:13px;line-height:1.65;color:#d1dcf3;margin:0 0 12px}
+.about-principles{border:1px solid rgba(107,159,229,.22);border-radius:14px;padding:11px 14px;margin:12px 0;background:rgba(8,27,55,.56)}
+.about-principles p{margin:5px 0}
+.about-principles strong,.about-roadmap strong{color:#f5fbff}
+.about-tab-panel p.about-muted{color:#9daecd;font-size:11px;margin:13px 0 0}
+.about-tab-panel .about-share{width:100%;margin-top:4px;min-height:43px;padding:10px;font-size:13px}
+.about-policy-link{display:inline-block;margin-top:11px;text-decoration:underline;color:#9deefa;font-weight:700;font-size:13px;text-underline-offset:3px}
+.about-roadmap{list-style:none;margin:0;padding:0;display:grid;gap:10px;counter-reset:stage}
+.about-roadmap li{counter-increment:stage;position:relative;padding:10px 12px 10px 45px;background:rgba(11,32,59,.54);border:1px solid rgba(111,159,222,.18);border-radius:11px}
+.about-roadmap li::before{content:counter(stage);position:absolute;left:13px;top:11px;display:grid;place-items:center;width:22px;height:22px;background:rgba(43,163,217,.19);border-radius:7px;color:#8fe4fa;font-size:12px;font-weight:800}
+.about-roadmap li strong{display:block;font-size:13px;margin-bottom:2px}
+.about-roadmap li span{display:block;color:#a9b9d6;font-size:11px;line-height:1.55}
+.about-dialog-foot{border-top:1px solid rgba(110,152,216,.21);padding:12px 22px 18px}
+.about-dialog-foot a{display:block;text-align:center;background:linear-gradient(100deg,#06e8ed,#5c91ff,#a948ff);color:white;font-weight:750;padding:13px;border-radius:12px}
+@media(max-width:680px){
+ .about-trigger{font-size:11px;padding:8px 10px}
+ .header-inner{gap:8px}
+ .about-dialog-head{padding:16px 16px 7px}
+ .about-tab-panel{padding:11px 16px}
+ .about-dialog-foot{padding:11px 16px 15px}
+ .about-tabs{margin-left:12px;margin-right:12px}
+ .about-tabs button{font-size:11px}
+}
