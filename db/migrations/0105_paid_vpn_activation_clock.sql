@@ -11,6 +11,12 @@ CREATE TABLE vpn_release_flags (
 INSERT INTO vpn_release_flags(feature,enabled)
   VALUES ('paid_vpn_clock_on_node',false);
 REVOKE ALL ON vpn_release_flags FROM PUBLIC;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='mnebyvpn_site_pay') THEN
+    GRANT SELECT ON public.vpn_release_flags TO mnebyvpn_site_pay;
+  END IF;
+END $$;
 CREATE OR REPLACE FUNCTION settle_verified_payment(
   p_order_id uuid,
   p_provider text,
