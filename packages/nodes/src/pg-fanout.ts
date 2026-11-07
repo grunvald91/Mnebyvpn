@@ -165,11 +165,11 @@ export class PgNodeFanoutStore implements NodeFanoutStore {
          latest.enabled!==observedEnabled){
         await client.query('ROLLBACK');return false;
       }
-      // A node unavailable for new connections is kept pending and cannot be
-      // published, even when a best-effort disable is observed.
-      const next=observedEnabled?'active':
-        r.entitlement_state==='ACTIVE'&&validTime(r.expires_at)?.getTime()!>Date.now()
-          ?'pending':'revoked';
+      // A verified disable is terminal at this node revision. Never
+      // automatically re-enable under the same revision: the Xray agent
+      // forbids opposite-state operations with an unchanged revision.
+      // A new entitlement revision may explicitly requeue the assignment.
+      const next=observedEnabled?'active':'revoked';
       await client.query(
         "UPDATE vpn_node_assignments SET applied_revision=$3,state=$4,"+
         "last_observed_at=clock_timestamp(),last_error_code=NULL,attempts=0,"+
