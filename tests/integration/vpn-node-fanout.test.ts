@@ -54,6 +54,8 @@ test('node-scoped access, subscription publication and refund revoke end-to-end 
     kind:'normal',capabilities:['vless-ws-tls'],maxClients:4,
    });
    await registry.recordProbe(nodeId,true);
+   await pool.query("UPDATE vpn_nodes SET state='testing' WHERE id=$1",[nodeId]);
+   await pool.query("UPDATE vpn_nodes SET state='canary' WHERE id=$1",[nodeId]);
    await pool.query(
     "UPDATE vpn_nodes SET state='verified',verified_at=clock_timestamp(),"+
     "verification_report_sha256=repeat('b',64),"+
@@ -108,19 +110,30 @@ test('node-scoped access, subscription publication and refund revoke end-to-end 
   assert.ok([...state.values()].every(x=>x.enabled&&x.revision===2));
   await pool.query("UPDATE entitlements SET state='ACTIVE' WHERE id=$1",[entitlement]);
   assert.ok((await pool.query('SELECT state FROM vpn_node_assignments WHERE entitlement_id=$1',[entitlement])).rows.every(x=>x.state==='active'));
+  assert.equal((await loadMultiNodeSubscription(pool,token,profiles))?.profiles.length,2,
+    'draining must keep existing clients visible until a confirmed revoke');
   await pool.query("UPDATE vpn_nodes SET state='verified',enabled_for_new=true WHERE id=$1",[nodeIds[0]]);
   // Disable one node while its upstream profile is being fetched. Its old
   // result must not be published even though the global revision is unchanged.
   const original=profiles.get(nodeIds[0])!;
   profiles.set(nodeIds[0],{profileFor:async(...args)=>{
-    await pool.query("UPDATE vpn_nodes SET state='disabled' WHERE id=$1",[nodeIds[0]]);
+    await pool.query("UPDATE vpn_nodes SET state='disabled',enabled_for_new=false WHERE id=$1",[nodeIds[0]]);
+    const actual=await pool.query('SELECT state FROM vpn_nodes WHERE id=$1',[nodeIds[0]]);
+    assert.equal(actual.rows[0].state,'disabled',
+      'real database transition is required; swallowed SQL exceptions are not proof');
     return original.profileFor(...args);
   }});
   const raced=await loadMultiNodeSubscription(pool,token,profiles);
   assert.equal(raced?.profiles.length,1);
   assert.ok(raced?.text.includes('vpn-1.example.test'));
   profiles.set(nodeIds[0],original);
-  await pool.query("UPDATE vpn_nodes SET state='verified' WHERE id=$1",[nodeIds[0]]);
+  assert.equal((await pool.query('SELECT state FROM vpn_nodes WHERE id=$1',[nodeIds[0]])).rows[0].state,'disabled');
+  const queuedDisable=await pool.query(
+    'SELECT state,desired_node_revision,applied_node_revision FROM vpn_node_assignments WHERE node_id=$1',
+    [nodeIds[0]]);
+  assert.equal(queuedDisable.rows[0].state,'revoking');
+  assert.ok(Number(queuedDisable.rows[0].desired_node_revision)>
+    Number(queuedDisable.rows[0].applied_node_revision));
 
   // When one node goes unhealthy, its profile disappears without revoking
   // the second healthy node's access.
@@ -139,7 +152,9 @@ test('node-scoped access, subscription publication and refund revoke end-to-end 
     'refund must enqueue revoke on every assigned node');
   const revoke=await reconcileAllAssignedNodes(entitlement,store,adapters);
   assert.deepEqual(revoke.map(x=>x.status),['synced','synced']);
-  assert.ok([...state.values()].every(x=>x.enabled===false&&x.revision===3));
+  assert.ok([...state.values()].every(x=>x.enabled===false&&x.revision>=3));
+  assert.ok((state.get(nodeIds[0])?.revision??0)>3,
+    'disabled node and refund each advance the independent node revision');
   const revoked=await pool.query(
     'SELECT state,applied_revision FROM vpn_node_assignments WHERE entitlement_id=$1',
     [entitlement]);

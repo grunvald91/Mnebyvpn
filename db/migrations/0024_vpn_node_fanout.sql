@@ -6,7 +6,7 @@ ALTER TABLE vpn_node_assignments
   ADD COLUMN last_error_code text,
   ADD COLUMN next_attempt_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   ADD COLUMN attempts integer NOT NULL DEFAULT 0 CHECK(attempts>=0),
-  ADD COLUMN desired_node_revision bigint,
+  ADD COLUMN desired_node_revision bigint NOT NULL DEFAULT 1,
   ADD COLUMN applied_node_revision bigint NOT NULL DEFAULT 0 CHECK(applied_node_revision>=0);
 UPDATE vpn_node_assignments
   SET desired_node_revision=GREATEST(1,desired_revision);
