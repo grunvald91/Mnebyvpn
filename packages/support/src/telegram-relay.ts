@@ -10,14 +10,13 @@ export function supportConfig(env:NodeJS.ProcessEnv=process.env):SupportConfig|n
   // Its addition to the private backend environment must be audited.
   const botToken=env.TELEGRAM_TOKEN_BOT??'';
   const operator=env.SUPPORT_TELEGRAM_OPERATOR_ID??'';
-  // Support is optional: a partial or invalid configuration must never
-  // crash the primary VPN bot, billing, or the public website.
-  if(!botToken||!operator)return null;
-  if(!/^[0-9]{5,20}:[A-Za-z0-9_-]{25,}$/.test(botToken)||
-     !/^[1-9][0-9]{0,15}$/.test(operator)||
-     !Number.isSafeInteger(Number(operator)))
-    return null;
-  return {botToken,operatorId:Number(operator)};
+  // The webhook can send one Bot API action in its JSON response without
+  // storing the bot token on the server. A token is needed ONLY for proactive
+  // messages (e.g. notifying the operator of a guest website ticket).
+  if(!/^[1-9][0-9]{0,15}$/.test(operator)||
+     !Number.isSafeInteger(Number(operator)))return null;
+  const usableToken=/^[0-9]{5,20}:[A-Za-z0-9_-]{25,}$/.test(botToken)?botToken:'';
+  return {botToken:usableToken,operatorId:Number(operator)};
 }
 export function validSupportText(raw:unknown,min=10,max=1500):raw is string {
   return typeof raw==='string'&&raw.trim().length>=min&&raw.trim().length<=max&&
