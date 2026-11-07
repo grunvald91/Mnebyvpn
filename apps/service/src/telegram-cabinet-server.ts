@@ -107,14 +107,15 @@ function respond(res:ServerResponse,status:number,payload:unknown){
   res.writeHead(status);
   res.end(payload===null?'':JSON.stringify(payload));
 }
-function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string;replyToSupport?:boolean}|null{
+function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string;currentText?:string;replyToSupport?:boolean}|null{
   const cb=update.callback_query;
   if(cb){
     if(!validId(cb.from?.id)||!cb.message||cb.message.chat?.type!=='private'||
       cb.message.chat.id!==cb.from.id||typeof cb.id!=='string'||!cb.id||
       typeof cb.data!=='string'||Buffer.byteLength(cb.data,'utf8')>64)return null;
     return {id:cb.from.id,messageId:cb.message.message_id,
-      callbackId:cb.id,data:cb.data};
+      callbackId:cb.id,data:cb.data,
+      currentText:typeof cb.message.text==='string'?cb.message.text:undefined};
   }
   const m=update.message;
   if(!m||!validId(m.from?.id)||m.chat?.type!=='private'||
@@ -342,7 +343,10 @@ async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
     return pool?deviceView(pool,id,data.slice('nav:device:'.length)):dbUnavailable();
   return info(data,id);
 }
-function oneAction(actor:{id:number;messageId?:number;callbackId?:string},view:ReturnType<typeof msg>){
+function oneAction(actor:{id:number;messageId?:number;callbackId?:string;currentText?:string},view:ReturnType<typeof msg>){
+  if(actor.callbackId&&actor.currentText===view.text)
+    return {method:'answerCallbackQuery',callback_query_id:actor.callbackId,
+      text:'Список без изменений.',show_alert:false};
   if(actor.callbackId&&validId(actor.messageId))
     return {method:'editMessageText',chat_id:actor.id,message_id:actor.messageId,...view};
   if(actor.callbackId)return {method:'answerCallbackQuery',callback_query_id:actor.callbackId,
@@ -388,7 +392,10 @@ async function handleOperatorReply(update:any){
           body:JSON.stringify({ticketId,message:answer}),
         });
         if(response.ok)return {method:'sendMessage',chat_id:support.operatorId,
-          text:'✅ Ответ сохранён. Посетитель увидит его на сайте.'};
+          text:'✅ Ответ сохранён. Посетитель увидит его на сайте.',
+          reply_markup:{inline_keyboard:[
+            [{text:'📥 К остальным заявкам',callback_data:'support:page:0'}],
+            [homeButton]]}};
         if(response.status===409)return {method:'sendMessage',chat_id:support.operatorId,
           text:'⚠️ На это обращение уже ответили или оно закрыто.'};
       }catch{/* Fail closed; do not report a successful reply. */}
@@ -465,7 +472,7 @@ async function sendSupportFromBot(id:number,updateId:number,message:string){
   }
 }
 async function operatorSupportInbox(
-  actor:{id:number;messageId?:number;callbackId?:string},offset:number,
+  actor:{id:number;messageId?:number;callbackId?:string;currentText?:string},offset:number,
 ){
   const back:Button[][]=[[{text:'🔄 Обновить',callback_data:'support:page:0'}],
     [homeButton]];
