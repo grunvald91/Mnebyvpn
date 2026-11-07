@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import {
   createLoginChallenge, consumeLoginChallenge, issueSession, readSession,
+  issueAccountSession, readAccountSession,
   csrfForSession, isValidCsrf, verifyTelegramIdToken,
 } from '../packages/web/src/security.ts';
 import { publicEntitlement } from '../packages/web/src/dashboard.ts';
+import {normalizeLoginEmail,otpHash,otpMatches,deliverEmailOtp} from '../packages/web/src/email-otp.ts';
 
 const secret = 'offline-web-session-secret-with-over-32-characters';
 const now = Date.UTC(2026,10,6,9,0,0);
@@ -29,6 +31,19 @@ test('authenticated session and CSRF are signed, time-bounded and account-specif
   assert.equal(readSession(s.slice(0,-1)+(s.endsWith('a')?'b':'a'),secret,now),null);
   assert.equal(isValidCsrf(csrfForSession(s,secret),s,secret),true);
   assert.equal(isValidCsrf(csrfForSession(s,secret),issueSession(2,secret,now),secret),false);
+});
+test('provider-specific PKCE and account session cannot be reused across identities',()=>{
+  const tg=createLoginChallenge(secret,now,'telegram');
+  const ya=createLoginChallenge(secret,now,'yandex');
+  assert.ok(consumeLoginChallenge(tg.cookie,tg.state,secret,now,'telegram'));
+  assert.equal(consumeLoginChallenge(tg.cookie,tg.state,secret,now,'yandex'),null);
+  assert.equal(consumeLoginChallenge(ya.cookie,ya.state,secret,now,'telegram'),null);
+  const id='11111111-1111-4111-8111-111111111111';
+  const raw=issueAccountSession(id,secret,now);
+  assert.equal(readAccountSession(raw,secret,now+60_000),id);
+  assert.equal(readAccountSession(raw,secret,now+12*60*60_000+1),null);
+  assert.equal(readAccountSession(raw+'x',secret,now),null);
+  assert.throws(()=>issueAccountSession('not-an-uuid',secret,now));
 });
 const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
 const jwk={...publicKey.export({format:'jwk'}),kid:'test-telegram-oidc',alg:'RS256',use:'sig'};
@@ -82,8 +97,8 @@ test('public website references the configured Telegram bot in navigation, hero 
   const {readFileSync}=await import('node:fs');
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
   const links=html.match(/https:\/\/t\.me\/MNEBYVPN_bot/g)||[];
-  assert.ok(links.length>=4);
-  assert.match(html,/id="trial-hero-button"/);
+  assert.ok(links.length>=2);
+  assert.match(html,/id="trial-hero-button"[^>]*aria-hidden="true"/);
   assert.match(html,/id="guest-trial-card"/);
   assert.match(html,/@MNEBYVPN_bot/);
   assert.match(html,/rel="noopener noreferrer"/);
@@ -95,6 +110,7 @@ test('web cabinet reserves OIDC login for explicit BotFather integration',async(
   const ui=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
   assert.match(backend,/WEB_TELEGRAM_OIDC_ENABLED/);
   assert.match(backend,/TELEGRAM_LOGIN_NOT_READY/);
+  assert.match(backend,/WEB_EMAIL_LOGIN_ENABLED/);
   assert.match(backend,/loginEnabled.*checkoutEnabled|checkoutEnabled.*loginEnabled/s);
   assert.match(ui,/syncLoginLinks/);
   assert.match(ui,/cabinet-login-link/);
@@ -132,7 +148,7 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
   assert.ok(avatar.byteLength > 1000 && avatar.byteLength < 20000);
   assert.match(html,/В тариф входит/);
   assert.match(html,/VPN-подключение<\/span><strong id="selected-quota">Входит/);
-  assert.doesNotMatch(html,/Не входит|↗|→/);
+  assert.doesNotMatch(html,/Не входит/);
   assert.doesNotMatch(client,/Перейти к оплате →|Не входит/);
   assert.match(css,/\.hero-art,\.hero-actions,\.hero-notes,\.features\{display:none\}/);
   assert.match(client,/const inDevelopment=state\.product!=='vpn'/);
@@ -141,21 +157,84 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
 });
 
 
-test('mobile hero trial CTA stays hidden while tariff-card trial remains visible',async()=>{
+test('trial is behind email OTP or Telegram OAuth, never an anonymous cookie',async()=>{
   const {readFileSync}=await import('node:fs');
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
+  const backend=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
+  const ui=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
   const skin=readFileSync(new URL('../apps/web/public/neo.css',import.meta.url),'utf8');
-  const base=readFileSync(new URL('../apps/web/public/site.css',import.meta.url),'utf8');
-  assert.match(html,/id="trial-hero-button"[^>]*aria-hidden="true"/);
+  assert.doesNotMatch(html,/id="trial-hero-button"/);
   assert.match(html,/id="trial-button"/);
-  assert.match(base,/\.hero-art,\.hero-actions,\.hero-notes,\.features\{display:none\}/);
-  const mobileFix=skin.slice(skin.lastIndexOf('Mobile trial CTA:'));
-  assert.ok(mobileFix.includes('@media (max-width: 680px)'));
-  assert.match(mobileFix,/\.hero \.hero-actions\s*\{\s*display:\s*none/);
-  assert.match(mobileFix,/#trial-button\.trial-button\s*\{\s*display:\s*flex/);
-  assert.match(mobileFix,/min-height:\s*44px/);
-  // neo.css loads after site.css: the last mobile rule overrides both hide rules.
-  assert.ok(html.indexOf('href="/site.css"')<html.indexOf('href="/neo.css"'));
+  assert.match(html,/id="email-start-form"/);
+  assert.match(html,/id="cabinet-login-link"/);
+  assert.match(html,/id="guest-trial-card"/);
+  assert.match(html,/Скачайте приложение/);
+  assert.match(html,/Добавьте подписку/);
+  assert.match(html,/Импорт из URL/);
+  assert.match(skin,/\.hero\{overflow:visible;min-height:100px/);
+  assert.match(backend,/AUTH_REQUIRED_FOR_TRIAL/);
+  assert.doesNotMatch(backend,/guestWorker\(/);
+  assert.match(backend,/await authorized\(req\)/);
+  assert.match(backend,/grantTrial\(auth.accountId/);
+  assert.match(backend,/issueAccountSession\(/);
+  assert.match(backend,/issueSubscriptionLinkForAccount\(/);
+  assert.match(backend,/\/api\/auth\/email\/start/);
+  assert.match(backend,/\/auth\/callback/);
+  assert.doesNotMatch(backend,/process\.env\.YANDEX_OAUTH_CLIENT_SECRET/);
+  assert.doesNotMatch(ui,/api\/guest\/trial/);
+  assert.doesNotMatch(ui,/api\/guest\/status/);
+  assert.match(ui,/api\/vpn\/subscription/);
+});
+
+
+test('email OTP is normalized, constant-time-checked and delivered only via signed ServGo HTTPS gateway',async()=>{
+  assert.equal(normalizeLoginEmail('  User+trial@Example.COM  '),'user+trial@example.com');
+  for(const invalid of ['not-an-email','bad\r\nBcc:fake@example.org','a@b','a@@example.org',null]){
+    assert.equal(normalizeLoginEmail(invalid),null);
+  }
+  const email='user@example.org',code='003021';
+  const hashed=otpHash(email,code,secret);
+  assert.match(hashed,/^[a-f0-9]{64}$/);
+  assert.equal(otpMatches(hashed,email,code,secret),true);
+  assert.equal(otpMatches(hashed,email,'003022',secret),false);
+  assert.equal(otpMatches(hashed,email,'003021','wrong-secret'),false);
+  let dispatched=false;
+  const fake=async(url:unknown,opts?:RequestInit)=>{
+    assert.equal(url,'https://servgo.ru/api/auth/mnebyvpn/email-code');
+    assert.equal(opts?.method,'POST');
+    assert.equal(opts?.redirect,'error');
+    const headers=opts?.headers as Record<string,string>;
+    const payload=JSON.parse(opts?.body as string);
+    assert.deepEqual(payload,{email,code});
+    assert.match(headers['X-Mnebyvpn-Signature'],/^[a-f0-9]{64}$/);
+    assert.equal(headers['Content-Type'],'application/json');
+    dispatched=true;
+    return {status:200} as Response;
+  };
+  assert.equal(await deliverEmailOtp(email,code,secret,fake as typeof fetch),true);
+  assert.equal(dispatched,true);
+  await assert.rejects(deliverEmailOtp('bad@example.org\r\nBcc:malicious',code,secret,
+    fake as typeof fetch));
+});
+test('website requires email sign-in, explicit Telegram link, and a per-browser trial claim',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const backend=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
+  const ui=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
+  const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
+  const billing=readFileSync(new URL('../packages/billing/src/store.ts',import.meta.url),'utf8');
+  assert.match(html,/mnebyvpn@servgo\.ru/);
+  assert.match(html,/id="email-start-form"/);
+  assert.match(html,/id="email-verify-form"/);
+  assert.match(html,/id="link-telegram"/);
+  assert.doesNotMatch(html,/id="yandex-login-link"/);
+  assert.match(backend,/WEB_EMAIL_LOGIN_ENABLED/);
+  assert.match(backend,/\/api\/auth\/email\/start/);
+  assert.match(backend,/\/api\/auth\/email\/verify/);
+  assert.match(backend,/BROWSER_VERIFICATION_REQUIRED/);
+  assert.match(backend,/createHash\('sha256'\)\.update\('trial-device-v1:'/);
+  assert.match(backend,/SELECT id FROM accounts WHERE telegram_user_id=\$1/);
+  assert.match(billing,/DEVICE_ALREADY_USED/);
+  assert.match(ui,/EMAIL_RATE_LIMIT/);
 });
 
 test('website keeps support form accessible without Telegram login and brands it MNEBYVPN',async()=>{
