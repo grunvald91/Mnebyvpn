@@ -154,13 +154,20 @@ class MerchantTransport implements PayformLinkTransport {
     const target = new URL(signedUrl), merchant = new URL(payform.formUrl);
     if (target.origin !== merchant.origin || target.pathname !== merchant.pathname ||
         target.protocol !== 'https:') throw new Error('Unapproved merchant request');
-    const response = await fetch(target, {
-      method: 'GET', redirect: 'error', signal: AbortSignal.timeout(8000),
-      headers: { Accept: 'text/plain' },
-    });
-    if (!response.ok) throw new Error('Merchant checkout unavailable');
-    const data = await response.text();
-    if (data.length > 2048) throw new Error('Merchant response too large');
+    let response: Response;
+    try {
+      response = await fetch(target, {
+        method: 'GET', redirect: 'error', signal: AbortSignal.timeout(8000),
+        headers: { Accept: 'text/plain' },
+      });
+    } catch {
+      throw new Error('PAYMENT_PROVIDER_UNAVAILABLE');
+    }
+    if (!response.ok) throw new Error('PAYMENT_PROVIDER_UNAVAILABLE');
+    let data: string;
+    try { data = await response.text(); }
+    catch { throw new Error('PAYMENT_PROVIDER_UNAVAILABLE'); }
+    if (data.length > 2048) throw new Error('PAYMENT_PROVIDER_INVALID_LINK');
     return data;
   }
 }
@@ -749,13 +756,38 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
            !/^[A-Za-z0-9_-]{16,24}$/.test(body.inviteToken)))) {
       json(res,400,{code:'INVALID_CHECKOUT'});return;
     }
-    const purchase = await prepareWebsiteProdamusCheckout({
-      accountId: auth.accountId, planId: body.planId,
-      requestId: 'web:' + body.requestId,
-      inviteToken: body.inviteToken as string|undefined,
-      renewalTargetId: isRenewal ? body.renewalTargetId as string : undefined,
-    },store,payform,new MerchantTransport());
-    json(res,200,{orderId:purchase.orderId,paymentUrl:purchase.paymentUrl});
+    try {
+      const purchase = await prepareWebsiteProdamusCheckout({
+        accountId: auth.accountId, planId: body.planId,
+        requestId: 'web:' + body.requestId,
+        inviteToken: body.inviteToken as string|undefined,
+        renewalTargetId: isRenewal ? body.renewalTargetId as string : undefined,
+      },store,payform,new MerchantTransport());
+      json(res,200,{orderId:purchase.orderId,paymentUrl:purchase.paymentUrl});
+    } catch (error) {
+      const reason=error instanceof Error?error.message:'';
+      // Only stable, safe codes go to the browser. Never expose DB details,
+      // payment provider responses, account IDs or signed checkout URLs.
+      if (reason==='PENDING_CHECKOUT_RATE_LIMIT') {
+        json(res,429,{code:'CHECKOUT_RETRY_LIMIT'});return;
+      }
+      if (reason==='PAYMENT_PROVIDER_UNAVAILABLE') {
+        console.warn('MNEBYVPN_CHECKOUT_PROVIDER_UNAVAILABLE');
+        json(res,502,{code:'PAYMENT_PROVIDER_UNAVAILABLE'});return;
+      }
+      if (reason==='PAYMENT_PROVIDER_INVALID_LINK' ||
+          reason==='Unsafe Prodamus payment link' ||
+          reason==='Invalid Prodamus response' ||
+          reason==='Invalid URL') {
+        console.warn('MNEBYVPN_CHECKOUT_PROVIDER_INVALID_LINK');
+        json(res,502,{code:'PAYMENT_PROVIDER_INVALID_LINK'});return;
+      }
+      const sqlstate=(error as {code?:unknown})?.code;
+      if (typeof sqlstate==='string' && /^[0-9A-Z]{5}$/.test(sqlstate))
+        console.error('MNEBYVPN_CHECKOUT_DB_ERROR_SQLSTATE_'+sqlstate);
+      else console.error('MNEBYVPN_CHECKOUT_SERVICE_ERROR');
+      json(res,503,{code:'CHECKOUT_SERVICE_ERROR'});
+    }
     return;
   }
   json(res,404,{code:'NOT_FOUND'});
