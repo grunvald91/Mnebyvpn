@@ -72,6 +72,11 @@ test('node-scoped access, subscription publication and refund revoke end-to-end 
     enforcesHardExpiry:true,
     inspect:async()=>state.get(nodeId)??{revision:0,enabled:false,absent:true},
     apply:async(desired)=>{
+      const prior=state.get(nodeId);
+      if(prior&&desired.revision<prior.revision)return 'unknown';
+      if(prior&&desired.revision===prior.revision&&
+         desired.enabled!==prior.enabled)
+        throw Error('Xray agent rejects conflicting same-revision operation');
       state.set(nodeId,{revision:desired.revision,
        enabled:desired.enabled,expiresAt:desired.expiresAt});
       return 'applied';

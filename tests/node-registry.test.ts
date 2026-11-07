@@ -48,4 +48,5 @@ test('lifecycle disallows skipping canary or silently returning to verified',()=
   assert.throws(()=>assertNodeTransition('planned','verified'));
   assert.throws(()=>assertNodeTransition('degraded','verified'));
   assert.throws(()=>assertNodeTransition('disabled','verified'));
+  assert.doesNotThrow(()=>assertNodeTransition('draining','verified'));
 });

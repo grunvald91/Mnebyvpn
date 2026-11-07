@@ -36,12 +36,20 @@ function matches(observed:ObservedAccess,desired:DesiredAccess,now:Date):boolean
   if(actual===undefined||target===undefined||
      !Number.isFinite(actual)||!Number.isFinite(target)||actual<=now.getTime())
     return false;
+  // Before a trial is activated, every read computes a moving five-minute
+  // deadline. The node's observed hard deadline must be bounded, not exact.
+  if(desired.trialPendingActivation)return actual<=target+1000;
   return Math.abs(actual-target)<=1000;
 }
 
 function identical(a:DesiredAccess,b:DesiredAccess):boolean {
-  return a.revision===b.revision&&a.enabled===b.enabled&&
-    a.expiresAt?.getTime()===b.expiresAt?.getTime();
+  if(a.revision!==b.revision||a.enabled!==b.enabled||
+     a.trialPendingActivation!==b.trialPendingActivation)return false;
+  if(a.trialPendingActivation&&b.trialPendingActivation){
+    const d=(a.expiresAt?.getTime()??NaN)-(b.expiresAt?.getTime()??NaN);
+    return Number.isFinite(d)&&Math.abs(d)<=2000;
+  }
+  return a.expiresAt?.getTime()===b.expiresAt?.getTime();
 }
 
 /** No global billing changes here: per-node state only. */

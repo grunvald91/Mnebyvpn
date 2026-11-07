@@ -31,10 +31,16 @@ interface Row {
   entitlement_revision:unknown;
   entitlement_state:string;
   expires_at:Date|null;
+  starts_at:Date|null;
+  trial_order_id:string|null;
+  trial_activated_at:Date|null;
   quota_state:string;
   assignment_state:string;
   desired_revision:unknown;
   applied_revision:unknown;
+  desired_node_revision:unknown;
+  applied_node_revision:unknown;
+  allow_special:boolean;
   fencing_token:unknown;
   node_state:string;
   node_kind:string;
@@ -50,8 +56,10 @@ interface Row {
 }
 const SELECT= `SELECT
   e.id AS entitlement_id,e.revision AS entitlement_revision,
-  e.state AS entitlement_state,e.expires_at,e.quota_state,
-  a.state AS assignment_state,a.desired_revision,a.applied_revision,a.fencing_token,
+  e.state AS entitlement_state,e.expires_at,e.starts_at,e.quota_state,
+  t.order_id AS trial_order_id,t.activated_at AS trial_activated_at,
+  a.state AS assignment_state,a.desired_revision,a.applied_revision,
+  a.desired_node_revision,a.applied_node_revision,a.allow_special,a.fencing_token,
   n.state AS node_state,n.kind AS node_kind,
   n.verified_at AS node_verified_at,n.operator_approved_at AS node_approved_at,
   n.verification_report_sha256 AS node_report_sha256,
@@ -63,11 +71,15 @@ const SELECT= `SELECT
   FROM vpn_node_assignments a
   JOIN entitlements e ON e.id=a.entitlement_id AND e.product='vpn'
   JOIN vpn_nodes n ON n.id=a.node_id
+  LEFT JOIN trial_grants t ON t.order_id=e.source_order_id
   WHERE a.entitlement_id=$1 AND a.node_id=$2`;
 
 function desiredFromRow(r:Row,now:Date):DesiredAccess {
-  const revision=safeNumber(r.entitlement_revision);
-  const deadline=validTime(r.expires_at);
+  const revision=safeNumber(r.desired_node_revision);
+  const trialPendingActivation=r.trial_order_id!==null&&r.trial_activated_at===null&&
+    r.starts_at===null&&r.expires_at===null;
+  const deadline=trialPendingActivation
+    ?new Date(now.getTime()+5*60*1000):validTime(r.expires_at);
   const entitled=['ACTIVE','PAID_PENDING_PROVISIONING','PROVISIONING_FAILED'].includes(r.entitlement_state)&&
     r.quota_state==='AVAILABLE'&&deadline!==null&&deadline.getTime()>now.getTime();
   const previouslyActive=r.assignment_state==='active'&&
@@ -86,10 +98,12 @@ function desiredFromRow(r:Row,now:Date):DesiredAccess {
     Number.isFinite(healthyTime)&&healthyTime<=now.getTime()&&
     now.getTime()-healthyTime<=120000&&
     Number.isSafeInteger(max)&&count>0&&count<=max&&
-    r.node_kind!=='special'; // Special nodes require a separate opt-in.
+    (r.node_kind!=='special'||r.allow_special===true); // Explicit opt-in persisted at placement.
+  const liveNode=r.node_state!=='disabled'&&r.node_state!=='planned'&&
+    r.node_state!=='testing'&&r.node_state!=='canary';
   return {entitlementId:r.entitlement_id,revision,
-    enabled:entitled&&(previouslyActive||readyNew),
-    expiresAt:deadline};
+    enabled:entitled&&liveNode&&(previouslyActive||readyNew),
+    expiresAt:deadline,trialPendingActivation,isTrial:r.trial_order_id!==null};
 }
 
 export class PgNodeFanoutStore implements NodeFanoutStore {
@@ -159,7 +173,8 @@ export class PgNodeFanoutStore implements NodeFanoutStore {
       }
       const r=rows[0] as Row;
       const latest=desiredFromRow(r,new Date());
-      if(safeNumber(r.desired_revision)!==revision||
+      if(safeNumber(r.desired_revision)!==safeNumber(r.entitlement_revision)||
+         safeNumber(r.desired_node_revision)!==revision||
          latest.revision!==revision||
          safeNumber(r.fencing_token)!==fence||
          latest.enabled!==observedEnabled){
@@ -171,10 +186,10 @@ export class PgNodeFanoutStore implements NodeFanoutStore {
       // A new entitlement revision may explicitly requeue the assignment.
       const next=observedEnabled?'active':'revoked';
       await client.query(
-        "UPDATE vpn_node_assignments SET applied_revision=$3,state=$4,"+
+        "UPDATE vpn_node_assignments SET applied_revision=$3,applied_node_revision=$4,state=$5,"+
         "last_observed_at=clock_timestamp(),last_error_code=NULL,attempts=0,"+
         "updated_at=clock_timestamp() WHERE entitlement_id=$1 AND node_id=$2",
-        [entitlementId,nodeId,revision,next]);
+        [entitlementId,nodeId,safeNumber(r.entitlement_revision),revision,next]);
       await client.query('COMMIT');
       return true;
     }catch(error){

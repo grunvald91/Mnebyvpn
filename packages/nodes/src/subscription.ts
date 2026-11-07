@@ -68,14 +68,22 @@ export async function loadMultiNodeSubscription(
      !(expiresAt instanceof Date)||expiresAt.getTime()<=Date.now())
     return null;
 
-  const eligibleNodesSql=`SELECT n.id,n.client_host,n.client_port,n.client_sni,n.client_ws_path
+  const eligibleNodesSql=`SELECT n.id,n.client_host,n.client_port,n.client_sni,n.client_ws_path,
+              a.applied_node_revision
        FROM vpn_node_assignments a
        JOIN vpn_nodes n ON n.id=a.node_id
+       JOIN entitlements e ON e.id=a.entitlement_id
       WHERE a.entitlement_id=$1
         AND a.state='active'
         AND a.applied_revision=$2 AND a.desired_revision=$2
+        AND a.applied_node_revision=a.desired_node_revision
+        AND a.applied_node_revision>0
         AND a.last_observed_at IS NOT NULL
-        AND n.state='verified' AND n.operator_approved_at IS NOT NULL
+        AND e.revision=$2 AND e.state='ACTIVE'
+        AND e.quota_state='AVAILABLE' AND e.expires_at>clock_timestamp()
+        AND n.state IN ('verified','draining')
+        AND (n.kind<>'special' OR a.allow_special=true)
+        AND n.operator_approved_at IS NOT NULL
         AND n.verified_at IS NOT NULL AND n.verification_report_sha256 IS NOT NULL
         AND n.last_probe_ok = true
         AND n.last_probe_at >= clock_timestamp() - interval '120 seconds'
@@ -90,7 +98,7 @@ export async function loadMultiNodeSubscription(
     const provider=providers.get(String(n.id));
     if(!provider)continue;
     let profile:string|null;
-    try{profile=await provider.profileFor(entitlementId,expectedRevision,expiresAt);}
+    try{profile=await provider.profileFor(entitlementId,Number(n.applied_node_revision),expiresAt);}
     catch{continue;}
     const host=String(n.client_host),port=Number(n.client_port);
     const sni=String(n.client_sni),wsPath=String(n.client_ws_path);
@@ -98,7 +106,7 @@ export async function loadMultiNodeSubscription(
       continue;
     }
     if(!profile)continue;
-    const endpoint=[host,port,sni,wsPath].join(':');
+    const endpoint=[host,port,sni,wsPath,Number(n.applied_node_revision)].join(':');
     if(endpoints.has(endpoint))continue;
     endpoints.add(endpoint);
     candidates.push({nodeId:String(n.id),profile,endpoint});
@@ -110,6 +118,7 @@ export async function loadMultiNodeSubscription(
        JOIN entitlements e ON e.id=l.entitlement_id
       WHERE l.token_sha256=$1 AND l.revoked_at IS NULL
         AND e.id=$2 AND e.revision=$3 AND e.state='ACTIVE'
+        AND e.quota_state='AVAILABLE'
         AND e.expires_at>clock_timestamp() LIMIT 1`,
     [digest,entitlementId,expectedRevision]);
   if(recent.rows.length!==1)return null;
@@ -117,7 +126,8 @@ export async function loadMultiNodeSubscription(
   // Recheck assignments/health/routes after slow upstream profile retrieval.
   const stillEligible=await pool.query(eligibleNodesSql,[entitlementId,expectedRevision]);
   const allowed=new Map(stillEligible.rows.map(n=>[String(n.id),
-    [String(n.client_host),Number(n.client_port),String(n.client_sni),String(n.client_ws_path)].join(':')]));
+    [String(n.client_host),Number(n.client_port),String(n.client_sni),
+      String(n.client_ws_path),Number(n.applied_node_revision)].join(':')]));
   const profiles=candidates.filter(c=>allowed.get(c.nodeId)===c.endpoint).map(c=>c.profile);
   if(!profiles.length||Date.now()>=expiresAt.getTime())return null;
   return {entitlementId,expiresAt,profiles,text:subscriptionText(profiles)};

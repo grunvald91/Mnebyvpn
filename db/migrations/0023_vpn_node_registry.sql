@@ -43,6 +43,7 @@ CREATE TABLE vpn_node_assignments (
   node_id uuid NOT NULL REFERENCES vpn_nodes(id) ON DELETE RESTRICT,
   state text NOT NULL DEFAULT 'pending'
     CHECK (state IN ('pending','active','revoking','revoked','failed')),
+  allow_special boolean NOT NULL DEFAULT false,
   desired_revision bigint NOT NULL CHECK (desired_revision >= 0),
   applied_revision bigint NOT NULL DEFAULT 0
     CHECK (applied_revision >= 0 AND applied_revision <= desired_revision),
@@ -54,5 +55,36 @@ CREATE INDEX vpn_node_assignments_node_state_idx
   ON vpn_node_assignments (node_id, state);
 CREATE INDEX vpn_nodes_new_candidates_idx
   ON vpn_nodes (state, enabled_for_new, last_healthy_at);
+
+-- These transitions are binding for direct SQL writes too. When returning
+-- to testing, a node must be re-attested before verified can be restored.
+CREATE FUNCTION validate_vpn_node_transition() RETURNS trigger LANGUAGE plpgsql AS $node_guard$
+BEGIN
+  IF NEW.state IS DISTINCT FROM OLD.state THEN
+    IF NOT (
+      (OLD.state='planned' AND NEW.state IN ('testing','disabled')) OR
+      (OLD.state='testing' AND NEW.state IN ('canary','disabled')) OR
+      (OLD.state='canary' AND NEW.state IN ('verified','testing','disabled')) OR
+      (OLD.state='verified' AND NEW.state IN ('degraded','draining','disabled')) OR
+      (OLD.state='degraded' AND NEW.state IN ('testing','draining','disabled')) OR
+      (OLD.state='draining' AND NEW.state IN ('verified','degraded','disabled')) OR
+      (OLD.state='disabled' AND NEW.state='testing')
+    ) THEN
+      RAISE EXCEPTION 'Invalid VPN node lifecycle transition % -> %',OLD.state,NEW.state;
+    END IF;
+    IF NEW.state='testing' THEN
+      NEW.verified_at=NULL;
+      NEW.operator_approved_at=NULL;
+      NEW.verification_report_sha256=NULL;
+      NEW.enabled_for_new=false;
+    END IF;
+  END IF;
+  NEW.updated_at=clock_timestamp();
+  RETURN NEW;
+END;
+$node_guard$;
+CREATE TRIGGER vpn_node_lifecycle_guard
+  BEFORE UPDATE ON vpn_nodes
+  FOR EACH ROW EXECUTE FUNCTION validate_vpn_node_transition();
 
 COMMIT;
