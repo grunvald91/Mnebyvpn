@@ -2,7 +2,6 @@
 # The docker port is deliberately published on HOST loopback only.
 tls://.:8853 {
     tls /certs/dns.test.invalid.crt /certs/dns.test.invalid.key
-    errors
     cache 30
     forward . tls://9.9.9.9 {
         tls_servername dns.quad9.net
