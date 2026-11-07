@@ -175,7 +175,7 @@ function renderAccess(accesses) {
        a.state==='ACTIVE' && a.secondsRemaining!==null && a.secondsRemaining>0){
       const setup=node('button','button button-secondary setup-button','Подключить VPN');
       setup.type='button';
-      setup.addEventListener('click',loadSubscription);
+      setup.addEventListener('click',()=>loadSubscription(a.id));
       item.append(setup);
     }
     const durations=state.plans.filter(p=>p.product===a.product);
@@ -464,13 +464,13 @@ function renderVpnSetup(data){
   byId('guest-subscription-url').value=url;
   card.scrollIntoView({behavior:'smooth',block:'center'});
 }
-async function loadSubscription(){
+async function loadSubscription(entitlementId){
   if(state.setupLoading||!state.loggedIn)return;
   state.setupLoading=true;
   try{
     const data=await api('/api/vpn/subscription',{method:'POST',
       headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
-      body:'{}'});
+      body:JSON.stringify({entitlementId})});
     renderVpnSetup(data);
   }catch(error){
     toast(error.message==='VPN_NOT_ACTIVE'?
@@ -525,8 +525,11 @@ async function finishEmail(event){
   try{
     await api('/api/auth/email/verify',{method:'POST',
       headers:{'Content-Type':'application/json'},body:JSON.stringify({email:pendingEmail,code})});
-    pendingEmail=null;
-    location.assign('/#account');
+    pendingEmail=null;state.emailLinkMode=false;
+    byId('email-verify-form').classList.add('hidden');
+    await refresh();
+    await consumePendingTrial();
+    byId('account').scrollIntoView({behavior:'smooth'});
   }catch(error){
     text('email-status',error.message==='EMAIL_ALREADY_LINKED'?
       'Этот email уже привязан к другой учётной записи. Слияние не выполнено.':
@@ -629,7 +632,7 @@ byId('email-start-form').addEventListener('submit',beginEmail);
 byId('email-verify-form').addEventListener('submit',finishEmail);
 byId('link-email').addEventListener('click',openEmailLink);
 applyLinkOptions();
-Promise.all([loadCatalog(),refresh()]).then(async()=>{
+async function consumePendingTrial(){
   if(state.loggedIn && state.trialOffers.includes('vpn')){
     let pending=false;
     try{pending=sessionStorage.getItem('mnebyvpn-pending-trial')==='1';
@@ -637,7 +640,8 @@ Promise.all([loadCatalog(),refresh()]).then(async()=>{
     }catch{}
     if(pending)await claimTrial();
   }
-});
+}
+Promise.all([loadCatalog(),refresh()]).then(consumePendingTrial);
 // Payment verification and provisioning can complete after the user returns.
 setInterval(()=>{if(document.visibilityState==='visible' && state.loggedIn)refresh();},15000);
 document.addEventListener('visibilitychange',()=>{

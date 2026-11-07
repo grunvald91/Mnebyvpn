@@ -89,3 +89,31 @@ test('Smart DNS renewal adds purchased quota without resetting spent bytes',asyn
   assert.equal(afterRenew.rows[0].quota_limit_bytes,'2097152');
   assert.equal(afterRenew.rows[0].quota_used_bytes,'131072');
 });
+
+test('first paid trial renewal keeps the same entitlement and refund preserves unused free time',async()=>{
+ const account=randomUUID(),planId='trial-renew-'+suffix;
+ await pool.query('INSERT INTO accounts(id) VALUES($1)',[account]);
+ await pool.query("INSERT INTO trial_offers(product,enabled,duration_seconds) VALUES('vpn',true,86400) ON CONFLICT(product) DO UPDATE SET enabled=true");
+ await pool.query("INSERT INTO billing_plans(id,product,title,duration_seconds,rub_minor,enabled) VALUES($1,'vpn','Trial renewal',86400,9900,true)",[planId]);
+ const trial=await store.grantTrial(account,'vpn');
+ assert.equal(trial.status,'GRANTED');
+ const e=(await pool.query('SELECT id FROM entitlements WHERE source_order_id=$1',[trial.orderId])).rows[0].id;
+ await assert.rejects(store.createWebsiteOrder(account,planId,'unactivated-'+suffix,undefined,e),/not active yet/);
+ await pool.query("UPDATE trial_grants SET activated_at=now()-interval '1 hour',access_expires_at=now()+interval '23 hours' WHERE order_id=$1",[trial.orderId]);
+ await pool.query("UPDATE entitlements e SET starts_at=t.activated_at,expires_at=t.access_expires_at,state='ACTIVE' FROM trial_grants t WHERE e.id=$1 AND t.order_id=e.source_order_id",[e]);
+ const before=(await pool.query('SELECT expires_at FROM entitlements WHERE id=$1',[e])).rows[0].expires_at as Date;
+ const renewal=await store.createWebsiteOrder(account,planId,'trial-paid-'+suffix,undefined,e);
+ const charge='trial-charge-'+suffix;
+ assert.equal(await capture(renewal.id,charge,9900),'APPLIED');
+ assert.equal(await capture(renewal.id,charge,9900),'DUPLICATE_EVENT');
+ assert.equal((await pool.query('SELECT count(*)::int AS n FROM entitlements WHERE account_id=$1',[account])).rows[0].n,1);
+ const afterPaid=(await pool.query('SELECT expires_at FROM entitlements WHERE id=$1',[e])).rows[0].expires_at as Date;
+ assert.equal(afterPaid.getTime()-before.getTime(),86400_000);
+ assert.equal((await pool.query('SELECT count(*)::int AS n FROM entitlement_credits WHERE entitlement_id=$1',[e])).rows[0].n,2);
+ assert.equal(await store.applyVerifiedRefund({provider:'prodamus',orderId:renewal.id,transactionId:charge,
+   refundEventId:'refund:'+charge,payloadHash:'d'.repeat(64),amount:9900,currency:'RUB'}),'APPLIED');
+ const restored=(await pool.query('SELECT expires_at,state FROM entitlements WHERE id=$1',[e])).rows[0];
+ assert.equal(restored.expires_at.getTime(),before.getTime());
+ assert.equal(restored.state,'PAID_PENDING_PROVISIONING');
+ await pool.query('UPDATE billing_plans SET enabled=false WHERE id=$1',[planId]);
+});

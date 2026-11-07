@@ -327,21 +327,23 @@ export class PgBillingStore {
    * owner, the latest revision was acknowledged and the expiry is still live.
    * No subscription bearer URL is ever stored in the billing database.
    */
-  async confirmedVpnProfile(telegramUserId:number):Promise<{
+  async confirmedVpnProfile(telegramUserId:number,entitlementId?:string):Promise<{
     entitlementId:string; expiresAt:Date; revision:number;
   }|null> {
     if(!Number.isSafeInteger(telegramUserId)||telegramUserId<=0)
       throw new Error('Invalid Telegram actor');
+    if(entitlementId!==undefined&&!uuid.test(entitlementId))return null;
     const {rows}=await this.pool.query(
       `SELECT e.id,e.expires_at,e.revision
         FROM entitlements e
         JOIN accounts a ON a.id=e.account_id
         JOIN provisioning_state p ON p.entitlement_id=e.id
           AND p.adapter='vpn'
-       WHERE a.telegram_user_id=$1 AND e.product='vpn' AND e.state='ACTIVE'
+       WHERE a.telegram_user_id=$1 AND ($2::uuid IS NULL OR e.id=$2)
+         AND e.product='vpn' AND e.state='ACTIVE'
          AND e.expires_at>clock_timestamp()
          AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL
-       ORDER BY e.expires_at DESC LIMIT 1`,[String(telegramUserId)]);
+       ORDER BY e.expires_at DESC LIMIT 1`,[String(telegramUserId),entitlementId??null]);
     if(!rows.length)return null;
     return {entitlementId:String(rows[0].id),expiresAt:rows[0].expires_at as Date,
       revision:Number(rows[0].revision)};
