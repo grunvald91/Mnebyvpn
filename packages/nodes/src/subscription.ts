@@ -29,7 +29,7 @@ function isExpectedVless(value:string,expected:{
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         decodeURIComponent(url.username))&&
       url.password===''&&url.hostname===expected.host.toLowerCase()&&
-      Number(url.port||(url.protocol==='https:'?'443':'0'))===expected.port&&
+      Number(url.port)===expected.port&&
       url.searchParams.get('security')==='tls'&&
       url.searchParams.get('encryption')==='none'&&
       url.searchParams.get('type')==='ws'&&
