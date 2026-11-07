@@ -91,7 +91,7 @@ export class PgVpnNodeRegistry {
       if(entitlement.rows.length!==1){
         await client.query('ROLLBACK');return 'ineligible';
       }
-      const node=await client.query(nodeSql+'WHERE n.id=$1 FOR UPDATE',[nodeId]);
+      const node=await client.query('SELECT * FROM vpn_nodes WHERE id=$1 FOR UPDATE',[nodeId]);
       if(node.rows.length!==1){
         await client.query('ROLLBACK');return 'unavailable';
       }
@@ -101,7 +101,11 @@ export class PgVpnNodeRegistry {
       if(existing.rows.length){
         await client.query('COMMIT');return 'already';
       }
-      if(!isNodeEligible(record(node.rows[0]),request)){
+      const occupied=await client.query(
+        "SELECT count(*)::int AS count FROM vpn_node_assignments WHERE node_id=$1 "+
+        "AND state IN ('pending','active','revoking')",[nodeId]);
+      const current=record({...node.rows[0],allocated_clients:occupied.rows[0].count});
+      if(!isNodeEligible(current,{...request,now:new Date()})){
         await client.query('ROLLBACK');return 'unavailable';
       }
       await client.query(
