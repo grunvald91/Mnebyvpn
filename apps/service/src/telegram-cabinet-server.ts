@@ -43,6 +43,12 @@ const pool=process.env.DATABASE_URL ? new Pool({
 }) : null;
 const store=pool?new PgBillingStore(pool):null;
 const support=supportConfig();
+const bridgeSecret=process.env.SUPPORT_BRIDGE_SECRET??'';
+const supportAuthKey=/^[a-f0-9]{64}$/.test(bridgeSecret)
+  ?bridgeSecret:(support?.botToken??'');
+const supportWebsitePort=Number(process.env.SUPPORT_WEBSITE_PORT??'8792');
+const supportWebsiteReady=Number.isSafeInteger(supportWebsitePort)&&
+  supportWebsitePort>0&&supportWebsitePort<=65535;
 const supportRate=supportLimiter(3,15*60_000);
 const supportGlobalRate=supportLimiter(120,60_000);
 const deliveredUpdates=new Set<number>();
@@ -357,51 +363,26 @@ async function handleOperatorReply(update:any){
     const siteTicket=operatorWebsiteReply(m,support.operatorId);
     if(siteTicket){
       const {ticketId,answer}=siteTicket;
-      if(!support.botToken){
-        // Same webhook bot, tokenless mode: the operator's private reply
-        // updates the same PostgreSQL ticket visible to its browser owner.
-        if(!pool)return {method:'sendMessage',chat_id:support.operatorId,
-          text:'⚠️ База обращений временно недоступна.'};
-        try{
-          const result=await pool.query(
-            "UPDATE website_support_tickets SET answer=$2,answered_at=clock_timestamp() "+
-            "WHERE id=$1 AND answer IS NULL AND delivery_state<>'FAILED' RETURNING id",
-            [ticketId,answer]);
-          return {method:'sendMessage',chat_id:support.operatorId,
-            text:result.rowCount===1
-              ?'✅ Ответ сохранён. Посетитель увидит его на сайте.'
-              :'⚠️ Обращение не найдено или ответ уже сохранён.'};
-        }catch{return {method:'sendMessage',chat_id:support.operatorId,
-          text:'⚠️ Сохранение ответа не подтверждено. Попробуйте позже.'};}
-      }
-      const webPort=Number(process.env.SUPPORT_WEBSITE_PORT??'8792');
-      if(!Number.isSafeInteger(webPort)||webPort<1||webPort>65535)
-        return {method:'sendMessage',chat_id:support.operatorId,
-          text:'Не настроен внутренний канал ответов на сайт.'};
-      const payload=JSON.stringify({ticketId,message:answer});
-      const signature=createHmac('sha256',support.botToken)
+      if(!supportAuthKey||!supportWebsiteReady)return {method:'sendMessage',
+        chat_id:support.operatorId,
+        text:'⚠️ Внутренний канал поддержки ещё не настроен.'};
+      const signature=createHmac('sha256',supportAuthKey)
         .update('MNEBYVPN-support\n'+ticketId+'\n'+answer).digest('hex');
-      // Try co-located website first; if site and bot are deployed on
-      // different hosts, use the fixed public HTTPS origin with the same
-      // HMAC authentication. Do not allow an arbitrary destination URL.
-      const origins=['http://127.0.0.1:'+webPort,'https://mnebyvpn.site'];
-      for(const origin of origins){
-        try{
-          const response=await fetch(origin+'/api/support/operator-reply',{
-            method:'POST',redirect:'error',signal:AbortSignal.timeout(6000),
-            headers:{'Content-Type':'application/json',
-              'X-MNEBYVPN-Support-Signature':signature},
-            body:payload,
-          });
-          if(response.ok){
-            return {method:'sendMessage',chat_id:support.operatorId,
-              text:'✅ Ответ сохранён в обращении. Посетитель увидит его на сайте.'};
-          }
-          if(response.status===409)break; // already answered or closed
-        }catch{/* Next known origin, no fabricated success. */}
-      }
+      try{
+        const response=await fetch(
+          'http://127.0.0.1:'+supportWebsitePort+'/api/support/operator-reply',{
+          method:'POST',redirect:'error',signal:AbortSignal.timeout(6000),
+          headers:{'Content-Type':'application/json',
+            'X-MNEBYVPN-Support-Signature':signature},
+          body:JSON.stringify({ticketId,message:answer}),
+        });
+        if(response.ok)return {method:'sendMessage',chat_id:support.operatorId,
+          text:'✅ Ответ сохранён. Посетитель увидит его на сайте.'};
+        if(response.status===409)return {method:'sendMessage',chat_id:support.operatorId,
+          text:'⚠️ На это обращение уже ответили или оно закрыто.'};
+      }catch{/* Fail closed; do not report a successful reply. */}
       return {method:'sendMessage',chat_id:support.operatorId,
-        text:'⚠️ Сайт не подтвердил сохранение ответа. Проверьте обращение, прежде чем повторять.'};
+        text:'⚠️ Сайт не подтвердил сохранение ответа. Проверьте заявку.'};
     }
     if(typeof quoted==='string'&&quoted.startsWith('✉️ MNEBYVPN — обращение с сайта')){
       return {method:'sendMessage',chat_id:support.operatorId,
@@ -467,24 +448,32 @@ async function sendSupportFromBot(id:number,updateId:number,message:string){
   }
 }
 async function operatorSupportInbox(id:number){
-  if(!pool)return {method:'sendMessage',chat_id:id,
-    text:'⚠️ База обращений с сайта временно недоступна.'};
+  if(!supportAuthKey||!supportWebsiteReady)return {method:'sendMessage',chat_id:id,
+    text:'⚠️ Внутренний канал обращений сайта ещё не настроен.'};
+  const stamp=String(Math.floor(Date.now()/1000));
+  const signature=createHmac('sha256',supportAuthKey)
+    .update('MNEBYVPN-inbox-v1\n'+stamp).digest('hex');
   try{
-    const {rows}=await pool.query(
-      "SELECT id,contact,question FROM website_support_tickets "+
-      "WHERE answer IS NULL AND delivery_state IN ('PENDING','DELIVERED') "+
-      "ORDER BY created_at ASC LIMIT 1");
-    if(!rows.length)return {method:'sendMessage',chat_id:id,
+    const response=await fetch(
+      'http://127.0.0.1:'+supportWebsitePort+'/api/support/operator-inbox',{
+      method:'GET',redirect:'error',signal:AbortSignal.timeout(5000),
+      headers:{'X-MNEBYVPN-Support-Ts':stamp,
+        'X-MNEBYVPN-Support-Signature':signature},
+    });
+    if(!response.ok)throw Error('Website inbox unavailable');
+    const result=await response.json() as {ticket?:{
+      id:string;contact:string;question:string}|null};
+    const ticket=result.ticket;
+    if(!ticket)return {method:'sendMessage',chat_id:id,
       text:'📥 Новых обращений с сайта пока нет.',
       reply_markup:{inline_keyboard:[[{text:'🔄 Проверить ещё',callback_data:'support:next'}]]}};
-    const ticket=rows[0] as {id:string;contact:string;question:string};
     return {method:'sendMessage',chat_id:id,
       text:'✉️ MNEBYVPN — обращение с сайта\nЗаявка: '+ticket.id+
         '\nКонтакт: '+ticket.contact+'\n\nСообщение:\n'+ticket.question+
         '\n\nОтветьте на это сообщение. Ответ появится на сайте.',
       reply_markup:{inline_keyboard:[[{text:'📥 Следующее обращение',callback_data:'support:next'}]]}};
   }catch{return {method:'sendMessage',chat_id:id,
-    text:'⚠️ Не удалось загрузить обращения. Попробуйте позже.'};}
+    text:'⚠️ Не удалось загрузить обращения с сайта. Попробуйте позже.'};}
 }
 async function processUpdate(update:any){
   if(update.message?.successful_payment||update.message?.refunded_payment||
