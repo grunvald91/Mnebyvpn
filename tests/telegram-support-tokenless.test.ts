@@ -72,7 +72,7 @@ test('main webhook bot relays private support requests and operator replies with
     assert.notEqual(invalid.text,response.text);
     const inbox=await update({update_id:1904,message:{
       chat:{id:operator,type:'private'},from:{id:operator},text:'/inbox'}});
-    assert.match((await inbox.json() as any).text,/База обращений с сайта временно недоступна/);
+    assert.match((await inbox.json() as any).text,/Внутренний канал обращений сайта ещё не настроен/);
     const ordinary=await update({update_id:1905,message:{
       chat:{id:operator,type:'private'},from:{id:operator},text:'/start'}});
     assert.match((await ordinary.json() as any).text,/MNEBYVPN/);
