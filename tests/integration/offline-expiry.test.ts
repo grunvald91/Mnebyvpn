@@ -31,6 +31,9 @@ test('simulated VPN node enforces deadline for new and existing sessions while d
  const worker=new PgOutboxDispatcher(pool,{vpn:node});
  const first=await worker.processOnce();
  assert.equal(first.status,'synced');
+ const finalized=await worker.processOnce();
+ assert.equal(finalized.status,'synced','paid node must apply the final hard expiry');
+ rows[0].expires_at=(await pool.query('SELECT expires_at FROM entitlements WHERE id=$1',[rows[0].id])).rows[0].expires_at;
  const session=node.connect(rows[0].id);
  assert.ok(session);
  assert.equal(node.transfer(session!),true);
