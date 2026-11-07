@@ -1,5 +1,9 @@
 name: Remove legacy slash menu from the existing MNEBYVPN Telegram bot
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mnebyvpn-hide-slash-commands.yml'
   workflow_dispatch:
 permissions:
   contents: read
