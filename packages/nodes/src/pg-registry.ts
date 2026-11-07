@@ -41,7 +41,8 @@ const nodeSql=
   'FROM vpn_nodes n ';
 
 export class PgVpnNodeRegistry {
-  constructor(private readonly pool:Pool) {}
+  private readonly pool:Pool;
+  constructor(pool:Pool) { this.pool=pool; }
   async registerPlanned(node:PlannedNode):Promise<void> {
     if(!UUID.test(node.id))throw Error('Invalid VPN node ID');
     assertNodeCode(node.code);
