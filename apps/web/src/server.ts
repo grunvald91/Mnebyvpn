@@ -79,8 +79,15 @@ const trialEnabled = loginEnabled && networkVerified &&
 // Anonymous guest claims cannot prove a stable user identity.
 // Deprecated WEB_GUEST_TRIAL_ENABLED is deliberately ignored. No anonymous grant routes.
 const meteringVerified = networkVerified && process.env.WEB_DNS_METERING_VERIFIED === 'yes';
+// Brochure/support data remains isolated from the real VPN billing ledger.
+// Public checkout, signed callbacks and paid entitlements MUST use the
+// canonical VPN node database with an independent least-privilege role.
 const pool = new Pool({ connectionString: required('DATABASE_URL'), max: 5, connectionTimeoutMillis: 3000 });
-const store = new PgBillingStore(pool);
+const billingDbUrl=process.env.WEB_BILLING_DATABASE_URL;
+const billingPool=billingDbUrl
+  ?new Pool({connectionString:billingDbUrl,max:4,connectionTimeoutMillis:3000})
+  :pool;
+const store = new PgBillingStore(billingPool);
 // Public website and Telegram bot have independent databases. Never silently
 // look up a Telegram subscription token in the public website's database.
 // Only subscription routes may use the private read connection to the bot DB.
@@ -115,9 +122,11 @@ function sameCanonicalPostgresDb(writer:string,reader:string|undefined):boolean{
       a.search===''&&b.search===''&&a.hash===''&&b.hash==='';
   }catch{return false;}
 }
-if((trialEnabled||checkoutEnabled) &&
-   !sameCanonicalPostgresDb(required('DATABASE_URL'),subscriptionDbUrl))
-  throw Error('Live VPN trial/checkout requires the canonical shared billing database');
+if(!offline && (trialEnabled||checkoutEnabled||webhookEnabled) &&
+   !sameCanonicalPostgresDb(billingDbUrl??'',subscriptionDbUrl))
+  throw Error('Live VPN paid checkout and webhooks require the canonical least-privilege billing database');
+if(!offline && billingDbUrl && !sameCanonicalPostgresDb(billingDbUrl,subscriptionDbUrl))
+  throw Error('Invalid configured VPN billing database target');
 let payform: ProdamusConfig | undefined;
 if (webhookEnabled) {
   payform = {
@@ -627,7 +636,7 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   if (req.method === 'GET' && url.pathname === '/api/plans') {
     const plans = await store.plans('prodamus');
     const trialOffers = trialEnabled
-      ? (await pool.query('SELECT product FROM trial_offers WHERE enabled=true')).rows.map(r=>r.product as string)
+      ? (await billingPool.query('SELECT product FROM trial_offers WHERE enabled=true')).rows.map(r=>r.product as string)
       : [];
     json(res,200,{ loginEnabled, telegramLoginEnabled, emailLoginEnabled,
       checkoutEnabled, trialOffers,
