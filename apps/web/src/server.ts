@@ -95,6 +95,7 @@ if (webhookEnabled) {
     successUrl: required('PRODAMUS_SUCCESS_URL'),
     returnUrl: required('PRODAMUS_RETURN_URL'),
     secret: required('PRODAMUS_SIGN_SECRET'),
+    sys:process.env.PRODAMUS_SYS || undefined,
   };
   if (new URL(payform.notificationUrl).toString() !== publicOrigin + '/webhooks/prodamus')
     throw new Error('Notification URL must target the website signed webhook route');

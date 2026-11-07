@@ -19,8 +19,8 @@ BEGIN
  END IF;
  IF EXISTS(SELECT 1 FROM pricing_drafts WHERE product='vpn' AND
    (duration_seconds,stars) NOT IN (
-     (15*86400::bigint,34::bigint),(30*86400::bigint,56::bigint),
-     (60*86400::bigint,112::bigint),(90*86400::bigint,141::bigint)
+     (15*86400::bigint,40::bigint),(30*86400::bigint,60::bigint),
+     (60*86400::bigint,110::bigint),(90*86400::bigint,140::bigint)
    )) THEN
   RAISE EXCEPTION 'VPN XTR draft price must match approved fixed Stars matrix';
  END IF;

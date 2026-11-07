@@ -203,7 +203,7 @@ PR #146 по Яндексу закрыт; почтовая интеграция 
 - В MNEBYVPN хранится только HMAC-хеш кода, не сам код. Новая авторизация
   по email не требует пароля и не зависит от Telegram.
 - `WEB_EMAIL_LOGIN_ENABLED=yes` включать только **после** миграции
-  `db/migrations/0023_email_otp_and_trial_devices.sql`, проверки SMTP From,
+  `db/migrations/0101_email_otp_and_trial_devices.sql`, проверки SMTP From,
   SPF/DKIM/DMARC и установки секретов. Маршрут ServGo требует миграции
   `migrations/add_mnebyvpn_email_gateway.sql` до включения.
   Перед выпуском проверить что nginx ServGo маршрутизирует точный путь на API.

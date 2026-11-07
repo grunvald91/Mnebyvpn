@@ -52,7 +52,7 @@ test('Prodamus signed retry after committed payment never creates second entitle
    formUrl:'https://merchant.payform.ru/',notificationUrl:'https://example.test/notify',
    successUrl:'https://example.test/success',returnUrl:'https://example.test/return',secret:key};
  const form={order_num:record.id,order_id:'pd-charge-1',domain:'merchant.payform.ru',
-   sum:'99.00',payment_status:'success',attempt:'1'};
+   sum:'99.00',currency:'rub',payment_status:'success',attempt:'1'};
  const first=await handleProdamusDelivery(form,signProdamus(form,key),store,config);
  assert.equal(first.statusCode,200);
  assert.equal(first.text,'OK');
