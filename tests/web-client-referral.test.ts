@@ -134,5 +134,5 @@ test('401 during auto-refresh clears private DOM and session state',async()=>{
   await vm.runInContext('refresh()',client.context);
   assert.equal(vm.runInContext('state.loggedIn',client.context),false);
   assert.equal(vm.runInContext('state.csrf',client.context),'');
-  assert.equal(client.elements.get('auth-link').href,'https://t.me/MnebyVPN_bot');
+  assert.equal(client.elements.get('auth-link').href,'#account');
 });
