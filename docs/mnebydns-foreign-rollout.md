@@ -22,8 +22,8 @@ The MNEBYDNS test is independent of any subscription to, or internals of, Aetern
 ## Phase B — per-service routing
 
 - Start from an **empty enabled allowlist**. Build a service-domain inventory from controlled client observations, not by guessing or wildcarding all google.com or googleapis.com.
-- `packages/dns-policy/src/domain-routing.ts` classifies exact domain rules; it is an **offline admission model**, not a CoreDNS plugin or proxy.
-- Every route must pass independent DNS-RR and client HTTPS tests for IPv4, IPv6, CNAME, HTTPS/SVCB, QUIC/ECH, certificate verification, source egress, and compatibility with VPN mode. Unverified domains stay direct.
+- `packages/dns-policy/src/domain-routing.ts` classifies exact domain rules; it is an **offline admission model**, not a CoreDNS plugin or proxy. A **verified** proxy-only domain becomes `blocked` when route revision/ingress/security checks fail; it must not silently fall back to a direct foreign-IP disclosure. Unlisted/testing/disabled domains remain direct.
+- Every route must pass independent DNS-RR and client HTTPS tests for IPv4, IPv6, CNAME, HTTPS/SVCB, QUIC/ECH, certificate verification, source egress, and compatibility with VPN mode. Unverified domains stay direct. **Crucially: the `blocked` result is only a policy result today. DNS alone cannot prevent a client reusing cached addresses, contacting origin by IP or using application-native DNS; enforceable no-fallback needs a cooperating client/system route policy and on-device leak tests.**
 - Ingress must independently authenticate paid entitlements and enforce quota and revoke; DNS tokens cannot themselves authenticate TCP connections. No public/paid SNI access until this is demonstrated.
 - Initial *candidate services* for a later experiment: Google Gemini and Google AI Studio, but no claim their complete domain inventory is known or their traffic is already routed.
 
