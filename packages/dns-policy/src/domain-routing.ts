@@ -26,6 +26,7 @@ export interface RouteAdmitContext {
 }
 export type RouteDecision =
   | { route: 'direct'; reason: string }
+  | { route: 'blocked'; domain: string; reason: string }
   | { route: 'proxy-candidate'; domain: string; policyRevision: number };
 
 function canonicalDomain(raw: string): string {
@@ -64,7 +65,9 @@ export function compileDomainRoutes(rules: readonly DomainRouteRule[]): Readonly
 
 /**
  * Only allow verified exact domain + matching policy revision + independent
- * network and security gates. Default is direct; never proxy an unknown name.
+ * network and security gates. Unknown or unverified domains stay direct;
+ * a verified proxy-only rule MUST NOT silently downgrade to direct on failure.
+ * A live resolver/ingress must enforce "blocked" on the wire, including cache.
  */
 export function decideDomainRoute(
   requestedDomain: string,
@@ -79,11 +82,11 @@ export function decideDomainRoute(
   if (rule.status !== 'verified') return { route: 'direct', reason: 'not-verified' };
   if (!Number.isSafeInteger(context.policyRevision) ||
       context.policyRevision !== rule.verifiedPolicyRevision) {
-    return { route: 'direct', reason: 'stale-or-unverified-policy' };
+    return { route: 'blocked', domain, reason: 'stale-or-unverified-policy' };
   }
   if (!context.ingressHealthy || !context.e2eVerified || !context.rrPolicyVerified ||
       !context.ingressAuthorizationVerified) {
-    return { route: 'direct', reason: 'network-or-security-gate-failed' };
+    return { route: 'blocked', domain, reason: 'network-or-security-gate-failed' };
   }
   return { route: 'proxy-candidate', domain, policyRevision: context.policyRevision };
 }
