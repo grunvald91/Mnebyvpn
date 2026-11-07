@@ -11,6 +11,8 @@ export interface DesiredAccess {
   expiresAt: Date | null;
   /** Unstarted free trial; apply only through an adapter with hard expiry. */
   trialPendingActivation?: boolean;
+  /** First observed paid node activation; enforce a short provisional deadline. */
+  provisionalActivation?:boolean;
   isTrial?: boolean;
 }
 
@@ -62,7 +64,7 @@ const matches = (a: ObservedAccess,d: DesiredAccess,clock:Date):boolean => {
   const actual=a.expiresAt?.getTime(),target=d.expiresAt?.getTime();
   if(actual===undefined||target===undefined||
      !Number.isFinite(actual)||!Number.isFinite(target))return false;
-  if(d.trialPendingActivation){
+  if(d.trialPendingActivation||d.provisionalActivation){
     // Never confirm a supposedly enabled provisional credential whose
     // observed node-side hard deadline is absent, elapsed or too distant.
     return actual>clock.getTime()&&actual<=target+1000;
