@@ -96,7 +96,7 @@ async function post(fields:Fields,valid=true){
 test('live HTTP loopback: reject spoofed signature, settle signed Prodamus multipart, de-dupe redelivery',async()=>{
   const fields:Fields={
     order_num:payment.id,order_id:payment.txn,domain:'merchant.payform.ru',
-    sum:'119.00',payment_status:'success',attempt:'1',
+    sum:'119.00',currency:'rub',payment_status:'success',attempt:'1',
   };
   const invalid=await post(fields,false);
   assert.equal(invalid.status,401);
