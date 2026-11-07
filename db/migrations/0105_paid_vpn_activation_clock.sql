@@ -2,6 +2,15 @@
 -- All renewals, existing ACTIVE access and DNS behavior retain prior semantics.
 -- The provisional node expiry is never a free permanent credential.
 BEGIN;
+-- An old node worker cannot provision a NULL paid deadline. Start in
+-- compatibility mode and enable only after the new verified worker is live.
+CREATE TABLE vpn_release_flags (
+  feature text PRIMARY KEY,
+  enabled boolean NOT NULL DEFAULT false
+);
+INSERT INTO vpn_release_flags(feature,enabled)
+  VALUES ('paid_vpn_clock_on_node',false);
+REVOKE ALL ON vpn_release_flags FROM PUBLIC;
 CREATE OR REPLACE FUNCTION settle_verified_payment(
   p_order_id uuid,
   p_provider text,
@@ -167,8 +176,10 @@ BEGIN
       state, revision, starts_at, expires_at, quota_limit_bytes)
     VALUES(v_id, o.account_id, p_order_id, v_product,
       'PAID_PENDING_PROVISIONING', 1,
-      CASE WHEN v_product='vpn' THEN NULL ELSE v_start END,
-      CASE WHEN v_product='vpn' THEN NULL
+      CASE WHEN v_product='vpn' AND (SELECT enabled FROM vpn_release_flags
+        WHERE feature='paid_vpn_clock_on_node') THEN NULL ELSE v_start END,
+      CASE WHEN v_product='vpn' AND (SELECT enabled FROM vpn_release_flags
+        WHERE feature='paid_vpn_clock_on_node') THEN NULL
         ELSE v_start + make_interval(secs => p_duration_seconds::double precision) END,
       CASE WHEN v_product = 'smart_dns' THEN p_dns_quota_bytes ELSE NULL END);
     INSERT INTO entitlement_credits(entitlement_id,order_id,credit_sequence,
