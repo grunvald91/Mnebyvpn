@@ -20,6 +20,8 @@ import {RemnawaveProvisioningAdapter}
 import {PgOutboxDispatcher,type Product} from '../../../packages/provisioning/src/pg-worker.ts';
 import {PgVpnExpiryReminderQueue,TelegramBotReminderSender,processVpnExpiryReminders,
   type ReminderSender} from '../../../packages/notifications/src/vpn-expiry.ts';
+import {PgVpnPurchaseNoticeQueue,TelegramBotPurchaseSender,processVpnPurchaseNotices,
+  type PurchaseNoticeSender} from '../../../packages/notifications/src/vpn-purchase.ts';
 
 export interface VpnDispatcher {
   expireDue():Promise<number>;
@@ -97,6 +99,27 @@ export async function runVpnExpiryReminderLoop(
   }
 }
 
+
+/** Purchase notices use a separate, retryable queue. Never delay VPN provisioning. */
+export async function runVpnPurchaseNoticeLoop(
+  queue:PgVpnPurchaseNoticeQueue,sender:PurchaseNoticeSender,signal:AbortSignal,
+  wait:(ms:number,signal:AbortSignal)=>Promise<void>=
+    async(ms,s)=>{await sleep(ms,undefined,{signal:s});},
+):Promise<void>{
+  while(!signal.aborted){
+    try{
+      const result=await processVpnPurchaseNotices(queue,sender);
+      if(Object.values(result).some(Boolean))
+        process.stdout.write('vpn-purchase-notifications '+JSON.stringify(result)+'\n');
+    }catch{
+      process.stderr.write('vpn-purchase-notifications retry after transient failure\n');
+    }
+    if(signal.aborted)break;
+    try{await wait(60_000,signal);}catch{
+      if(!signal.aborted)throw Error('Purchase notice worker delay failed');
+    }
+  }
+}
 function configured(name:string):string{
   const value=process.env[name];
   if(!value||!value.trim())throw Error('Missing required VPN worker setting: '+name);
@@ -252,12 +275,18 @@ async function main():Promise<void>{
         ?new TelegramBotReminderSender(configured('TELEGRAM_BOT_TOKEN')):null;
       const notificationLoop=reminders?runVpnExpiryReminderLoop(
         new PgVpnExpiryReminderQueue(pool),reminders,abort.signal):null;
+      const purchasesEnabled=process.env.VPN_PURCHASE_NOTIFICATIONS_ENABLED==='yes';
+      const purchaseSender=purchasesEnabled
+        ?new TelegramBotPurchaseSender(configured('TELEGRAM_BOT_TOKEN')):null;
+      const purchaseLoop=purchaseSender?runVpnPurchaseNoticeLoop(
+        new PgVpnPurchaseNoticeQueue(pool),purchaseSender,abort.signal):null;
       try{
         await runVpnWorker(new PgOutboxDispatcher(pool,{vpn:adapter}),
           abort.signal,undefined,()=>{lastCycleSuccess=Date.now();});
       }finally{
         abort.abort();
         if(notificationLoop)await notificationLoop;
+        if(purchaseLoop)await purchaseLoop;
       }
     }finally{
       await new Promise<void>(resolve=>health.close(()=>resolve()));
