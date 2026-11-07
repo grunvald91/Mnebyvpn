@@ -9,7 +9,7 @@ async function incrementRate(client:PoolClient,key:string,cap:number,
   const previous=await client.query(
     'SELECT attempts,window_start FROM web_email_rate_limits WHERE subject_hash=$1 FOR UPDATE',[hash]);
   const now=new Date();
-  if(previous.rowCount===0){
+  if(!previous.rowCount){
     await client.query('INSERT INTO web_email_rate_limits(subject_hash,window_start,attempts) VALUES($1,$2,1)',[hash,now]);
     return true;
   }
