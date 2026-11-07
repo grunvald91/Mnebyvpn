@@ -53,7 +53,7 @@ test('different web and bot databases share only signed localhost support inbox/
     WEB_TELEGRAM_OIDC_ENABLED:'no',
   });
   let bot:ChildProcess|null=null;
-  let ticketId='';
+  let ticketId='',secondTicketId='';
   const update=(body:object)=>fetch(botBase+'/webhooks/telegram',{
     method:'POST',headers:{'Content-Type':'application/json',
       'X-Telegram-Bot-Api-Secret-Token':secret},body:JSON.stringify(body),
@@ -86,6 +86,18 @@ test('different web and bot databases share only signed localhost support inbox/
     assert.equal(stored.rowCount,1);
     ticketId=stored.rows[0].id;
     assert.equal(stored.rows[0].delivery_state,'PENDING');
+
+    const secondContact='second_'+Date.now()+'@example.com';
+    const secondCreate=await fetch(base+'/api/support',{
+      method:'POST',headers:{Origin:base,'Content-Type':'application/json'},
+      body:JSON.stringify({contact:secondContact,
+        message:'Вторая заявка для проверки кнопки Далее',website:''}),
+    });
+    assert.equal(secondCreate.status,200);
+    const secondRow=await pool.query(
+      'SELECT id FROM website_support_tickets WHERE contact=$1',[secondContact]);
+    assert.equal(secondRow.rowCount,1);
+    secondTicketId=secondRow.rows[0].id;
 
     const unsigned=await fetch(base+'/api/support/operator-inbox');
     assert.equal(unsigned.status,403);
@@ -120,6 +132,43 @@ test('different web and bot databases share only signed localhost support inbox/
     assert.equal(notice.chat_id,owner);
     assert.match(notice.text,new RegExp('Заявка: '+ticketId));
     assert.match(notice.text,/После оплаты VPN/);
+    const nextButton=notice.reply_markup.inline_keyboard.flat()
+      .find((button:any)=>button.text.includes('Далее'));
+    assert.equal(nextButton.callback_data,'support:page:1');
+    const secondPage=await update({update_id:4330,callback_query:{
+      id:'next-ticket',from:{id:owner},
+      message:{chat:{id:owner,type:'private'},message_id:101},
+      data:nextButton.callback_data,
+    }});
+    const secondCard=await secondPage.json() as any;
+    assert.equal(secondCard.method,'editMessageText');
+    assert.match(secondCard.text,new RegExp('Заявка: '+secondTicketId));
+    assert.match(secondCard.text,/Вторая заявка/);
+    const previous=secondCard.reply_markup.inline_keyboard.flat()
+      .find((button:any)=>button.text.includes('Назад'));
+    assert.equal(previous.callback_data,'support:page:0');
+
+    // A signature for page 0 cannot be reused to read later pages.
+    const reused=createHmac('sha256',bridgeSecret)
+      .update('MNEBYVPN-inbox-v1\\n'+now).digest('hex');
+    const notAuthorized=await fetch(base+'/api/support/operator-inbox?offset=1',{
+      headers:{'X-MNEBYVPN-Support-Ts':now,
+        'X-MNEBYVPN-Support-Signature':reused}});
+    assert.equal(notAuthorized.status,403);
+    const correct=createHmac('sha256',bridgeSecret)
+      .update('MNEBYVPN-inbox-v2\\n'+now+'\\n1').digest('hex');
+    const authorized=await fetch(base+'/api/support/operator-inbox?offset=1',{
+      headers:{'X-MNEBYVPN-Support-Ts':now,
+        'X-MNEBYVPN-Support-Signature':correct}});
+    assert.equal(authorized.status,200);
+    assert.equal((await authorized.json() as any).ticket.id,secondTicketId);
+
+    const firstPage=await update({update_id:4331,callback_query:{
+      id:'previous-ticket',from:{id:owner},
+      message:{chat:{id:owner,type:'private'},message_id:101},
+      data:previous.callback_data,
+    }});
+    assert.match((await firstPage.json() as any).text,new RegExp('Заявка: '+ticketId));
     const answerButton=notice.reply_markup.inline_keyboard.flat()
       .find((button:any)=>button.text.includes('Ответить'));
     assert.equal(answerButton.callback_data,'support:reply:site:'+ticketId);
@@ -169,8 +218,8 @@ test('different web and bot databases share only signed localhost support inbox/
   }finally{
     web.kill('SIGTERM');
     bot?.kill('SIGTERM');
-    if(ticketId)await pool.query(
-      'DELETE FROM website_support_tickets WHERE id=$1',[ticketId]).catch(()=>{});
+    for(const id of [ticketId,secondTicketId].filter(Boolean))
+      await pool.query('DELETE FROM website_support_tickets WHERE id=$1',[id]).catch(()=>{});
     await pool.end();
   }
 });
