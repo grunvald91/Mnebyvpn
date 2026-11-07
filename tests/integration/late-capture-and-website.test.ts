@@ -70,7 +70,7 @@ test('independent website Prodamus referral checkout and late signed capture',as
  assert.equal(ref.rows[0].invite_token,offer.token);
  await pool.query("UPDATE orders SET state='CANCELLED' WHERE id=$1",[checkout.orderId]);
  const fields={order_num:checkout.orderId,order_id:'capture-pd-'+suffix,
-  domain:'merchant.payform.ru',sum:'199.00',payment_status:'success',attempt:'1'};
+  domain:'merchant.payform.ru',currency:'rub',sum:'199.00',payment_status:'success',attempt:'1'};
  const verified=verifyProdamusPayment(fields,signProdamus(fields,secret),{
   id:checkout.orderId,provider:'prodamus',currency:'RUB',amountMinor:19900,state:'CANCELLED',
  },payform);

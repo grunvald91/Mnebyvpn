@@ -19,10 +19,10 @@ test('owner approved 15/30/60/90 day VPN offers are exactly 60/99/199/249 RUB fo
   assert.deepEqual(plans.rows.map(p=>Number(p.duration_seconds)/86400),[15,30,60,90]);
   assert.deepEqual(plans.rows.map(p=>Number(p.rub_minor)),[6000,9900,19900,24900]);
   assert.ok(plans.rows.every(p=>p.enabled===true&&p.device_limit===1));
-  // XTR amounts are separate fixed owner prices, based on an 18% buyer cost markup.
-  assert.deepEqual(plans.rows.map(p=>Number(p.stars)),[34,56,112,141]);
+  // XTR amounts are separate fixed prices explicitly approved by the owner.
+  assert.deepEqual(plans.rows.map(p=>Number(p.stars)),[40,60,110,140]);
   const listed=await new PgBillingStore(pool).plans('telegram_stars');
-  assert.deepEqual(listed.filter(p=>p.planId.endsWith('_1device')).sort((a,b)=>a.durationSeconds-b.durationSeconds).map(p=>p.stars),[34,56,112,141]);
+  assert.deepEqual(listed.filter(p=>p.planId.endsWith('_1device')).sort((a,b)=>a.durationSeconds-b.durationSeconds).map(p=>p.stars),[40,60,110,140]);
   const others=await pool.query(`SELECT count(*)::int AS n FROM billing_plans
     WHERE product='vpn' AND enabled=true
       AND duration_seconds IN (15*86400,30*86400,60*86400,90*86400)
@@ -48,12 +48,12 @@ test('owner approved 15/30/60/90 day VPN offers are exactly 60/99/199/249 RUB fo
     'test-owner-stars-'+randomUUID());
   assert.equal(starsOrder.provider,'telegram_stars');
   assert.equal(starsOrder.currency,'XTR');
-  assert.equal(starsOrder.amount,56);
+  assert.equal(starsOrder.amount,60);
   assert.equal(starsOrder.durationSeconds,30*86400);
   const starsInvoice=buildStarsInvoice(starsOrderFromDB(starsOrder),
     pricedPlanForOrder(starsOrder),'a'.repeat(48));
   assert.equal(starsInvoice.currency,'XTR');
-  assert.equal(starsInvoice.prices[0].amount,56);
+  assert.equal(starsInvoice.prices[0].amount,60);
   assert.equal(parseStarsPayload(starsInvoice.payload,'a'.repeat(48)),starsOrder.id);
   const starsTerms=await pool.query('SELECT device_limit FROM order_terms WHERE order_id=$1',
     [starsOrder.id]);

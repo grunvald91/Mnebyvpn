@@ -74,7 +74,7 @@ test('Stars successful payment settles only for matching sender and charge',asyn
 test('signed Prodamus webhook repeat after PAID is eligible for SQL idempotency',async()=>{
   const f=fakeStore(record('prodamus','PAID'));
   const body:Fields={order_id:'capture1',order_num:oid,domain:'merchant.payform.ru',
-    sum:'99.00',attempt:'2',payment_status:'success'};
+    sum:'99.00',currency:'rub',attempt:'2',payment_status:'success'};
   const result=await handleProdamusDelivery(body,signProdamus(body,key),f.db,pd);
   assert.equal(result.statusCode,200);
   assert.equal(f.captures[0].providerTransactionId,'capture1');
@@ -114,10 +114,46 @@ test('Prodamus ALL events: signed denied and cancelled callbacks return 200 with
     assert.equal(outcome.text,'EVENT_ACCEPTED_NO_PAYMENT');
   }
   assert.equal(f.captures.length,0);
+  const wrongCurrency={...base,currency:'usd',payment_status:'success'};
+  assert.equal((await handleProdamusDelivery(wrongCurrency,signProdamus(wrongCurrency,key),f.db,pd)).statusCode,400);
   const invalid={...base,domain:'other.payform.ru'};
   assert.equal((await handleProdamusDelivery(invalid,signProdamus(invalid,key),f.db,pd)).statusCode,400);
   assert.equal((await handleProdamusDelivery(base,'0'.repeat(64),f.db,pd)).statusCode,401);
   const truncated={...base,payment_status:''};
   assert.equal((await handleProdamusDelivery(truncated,signProdamus(truncated,key),f.db,pd)).statusCode,400);
   assert.equal(f.captures.length,0);
+});
+
+
+test('Prodamus verified refund revokes only original captured order and retries if DB refuses',async()=>{
+ const f=fakeStore(record('prodamus','PAID'));
+ const refunds:unknown[]=[];
+ (f.db as unknown as {applyVerifiedRefund:(x:unknown)=>Promise<'APPLIED'>}).applyVerifiedRefund=async x=>{
+  refunds.push(x);return 'APPLIED';
+ };
+ const fields:Fields={order_id:'capture1',order_num:oid,domain:'merchant.payform.ru',
+  sum:'99.00',currency:'rub',payment_status:'refunded',attempt:'1'};
+ const reply=await handleProdamusDelivery(fields,signProdamus(fields,key),f.db,pd);
+ assert.equal(reply.statusCode,200);
+ assert.equal(reply.text,'REFUND_PROCESSED');
+ assert.equal(refunds.length,1);
+ assert.deepEqual((refunds[0] as {orderId:string;transactionId:string;amount:number}).orderId,oid);
+ assert.equal((refunds[0] as {transactionId:string}).transactionId,'capture1');
+ const underpaid={...fields,sum:'49.00'};
+ assert.equal((await handleProdamusDelivery(underpaid,signProdamus(underpaid,key),f.db,pd)).statusCode,409);
+ assert.equal(refunds.length,1);
+ (f.db as unknown as {applyVerifiedRefund:(x:unknown)=>Promise<'APPLIED'>}).applyVerifiedRefund=async()=>{
+  throw new Error('failed to revoke');
+ };
+ await assert.rejects(()=>handleProdamusDelivery(fields,signProdamus(fields,key),f.db,pd));
+});
+
+test('Prodamus capture never acknowledges a failed database settlement',async()=>{
+ const f=fakeStore(record('prodamus'));
+ (f.db as unknown as {settleVerified:()=>Promise<string>}).settleVerified=async()=> 'DENY_MISMATCH';
+ const fields:Fields={order_id:'capture1',order_num:oid,domain:'merchant.payform.ru',
+  sum:'99.00',currency:'rub',payment_status:'success',attempt:'1'};
+ const r=await handleProdamusDelivery(fields,signProdamus(fields,key),f.db,pd);
+ assert.equal(r.statusCode,503);
+ assert.equal(r.text,'SETTLEMENT_NOT_CONFIRMED');
 });

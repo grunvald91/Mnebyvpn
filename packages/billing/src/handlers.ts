@@ -7,8 +7,9 @@ import {
   parseStarsPayload, validateStarsPreCheckout, validateStarsSuccess, buildStarsInvoice,
   type TelegramPreCheckout, type TelegramSuccessfulPayment,
 } from './stars.ts';
+import {createHash} from 'node:crypto';
 import {
-  verifyProdamus, verifyProdamusPayment, type Fields, type ProdamusConfig,
+  canonicalProdamusJson,verifyProdamus, verifyProdamusPayment, type Fields, type ProdamusConfig,
 } from './prodamus.ts';
 import {
   PgBillingStore, prodamusOrderFromDB, starsOrderFromDB, starsPaymentHash, pricedPlanForOrder,
@@ -294,10 +295,28 @@ export async function handleProdamusDelivery(
   if (typeof fields.payment_status !== 'string' ||
       fields.payment_status.trim().length===0 || fields.payment_status.length>64)
     return {statusCode:400,text:'INVALID_PAYMENT_STATUS'};
+  if (['refund','refunded','order_refunded'].includes(fields.payment_status)) {
+    // Never acknowledge a paid-order refund without revoking its entitlement.
+    // The signed merchant callback must identify the original capture.
+    if (typeof fields.order_num !== 'string' || typeof fields.order_id !== 'string' ||
+        fields.currency !== 'rub' || fields.order_id.length > 130)
+      return {statusCode:400,text:'INVALID_REFUND'};
+    const order=await db.order(fields.order_num);
+    if (!order || order.provider!=='prodamus' || order.currency!=='RUB' ||
+        (typeof fields.sum!=='string' || !/^[0-9]{1,12}\.[0-9]{2}$/.test(fields.sum) ||
+         order.amount!==Number(fields.sum.replace('.',''))) ||
+        order.id!==fields.order_num)
+      return {statusCode:409,text:'UNKNOWN_REFUND'};
+    const hash=createHash('sha256').update(canonicalProdamusJson(fields)).digest('hex');
+    await db.applyVerifiedRefund({
+      provider:'prodamus',orderId:order.id,transactionId:fields.order_id,
+      refundEventId:'refund:'+fields.order_id,
+      payloadHash:hash,amount:order.amount,currency:'RUB',
+    });
+    return {statusCode:200,text:'REFUND_PROCESSED'};
+  }
   if (fields.payment_status !== 'success') {
-    // No DB mutation and no entitlement for denied/cancelled/unknown statuses.
-    // Refunds of already-settled orders still require a separate, independently
-    // verified refund reconciliation path before access can be revoked.
+    // Signed non-paid statuses must not provision access.
     return {statusCode:200,text:'EVENT_ACCEPTED_NO_PAYMENT'};
   }
   if (typeof fields.order_num !== 'string')
@@ -315,8 +334,9 @@ export async function handleProdamusDelivery(
     currency:'RUB',
     payloadHash: checked.capture.payloadSha256,
   });
-  return {
-    statusCode:200,
-    text: outcome === 'APPLIED' ? 'OK' : 'ALREADY_PROCESSED',
-  };
+  if(outcome==='APPLIED')return {statusCode:200,text:'OK'};
+  if(outcome==='DUPLICATE_EVENT'||outcome==='DUPLICATE_CAPTURE')
+    return {statusCode:200,text:'ALREADY_PROCESSED'};
+  // Never acknowledge a provider capture that wasn't durably credited.
+  return {statusCode:503,text:'SETTLEMENT_NOT_CONFIRMED'};
 }
