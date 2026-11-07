@@ -93,3 +93,32 @@ test('31-second foreign-node clock skew is compensated for exact 24h deadline',a
  assert.equal(await api.profileFor(entitlement,7,desired.expiresAt),
    makeVpnImportUri(credential));
 });
+
+
+test('a separately configured node keeps HMAC and client route isolated',async()=>{
+ const alternate={
+   controlUrl:'https://control.example.test/v1/provision',
+   publicHost:'edge.example.test',publicPort:443,
+   tlsServerName:'edge.example.test',wsPath:'/private/vpn',
+   label:'MNEBYVPN EU',
+ };
+ const mock:typeof fetch=async(input,opts)=>{
+   assert.equal(String(input),alternate.controlUrl);
+   const body=String(opts?.body);
+   const headers=opts?.headers as Record<string,string>;
+   assert.equal(headers['X-Mnebyvpn-Signature'],
+     createHmac('sha256',Buffer.from(key,'hex')).update(body).digest('hex'));
+   return Response.json({revision:0,enabled:false,expiresAt:null},
+     {headers:{Date:new Date().toUTCString()}});
+ };
+ const other=new SignedXrayNodeApi(key,mock,alternate);
+ assert.equal((await other.inspect(entitlement)).enabled,false);
+ const uri=makeVpnImportUri(credential,alternate);
+ assert.ok(uri.includes('@edge.example.test:443?'));
+ assert.ok(uri.includes('path=%2Fprivate%2Fvpn'));
+ assert.ok(uri.endsWith('#MNEBYVPN%20EU'));
+ assert.throws(()=>new SignedXrayNodeApi(key,mock,
+   {...alternate,controlUrl:'http://public.example.test/v1/provision'}));
+ assert.throws(()=>makeVpnImportUri(credential,
+   {...alternate,wsPath:'/vpn?bad=1'}));
+});

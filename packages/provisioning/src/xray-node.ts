@@ -8,8 +8,44 @@ import {createHmac} from 'node:crypto';
 import type {DesiredAccess,ObservedAccess,ProvisioningAdapter} from './reconciler.ts';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const FIXED_NODE_URL='http://10.66.77.1:18944/v1/provision';
-const WEB_PROFILE_HOST='cdn.servgo.ru';
+/** Optional route for a separately verified VPN node.
+ * Existing deployments retain the fixed legacy route until explicitly configured.
+ */
+export interface XrayNodeRoute {
+  controlUrl:string;
+  publicHost:string;
+  publicPort:number;
+  tlsServerName:string;
+  wsPath:string;
+  label:string;
+}
+const DEFAULT_ROUTE:XrayNodeRoute={
+  controlUrl:'http://10.66.77.1:18944/v1/provision',
+  publicHost:'cdn.servgo.ru',publicPort:8443,
+  tlsServerName:'cdn.servgo.ru',wsPath:'/mnebyvpn-vpn/ws',
+  label:'MNEBYVPN',
+};
+export function validateXrayNodeRoute(route:XrayNodeRoute):XrayNodeRoute {
+  const control=new URL(route.controlUrl);
+  const ipv4=/^[0-9]{1,3}(?:\.[0-9]{1,3}){3}$/.test(control.hostname);
+  const octets=control.hostname.split('.').map(Number);
+  const privateIpv4=ipv4&&octets.every(x=>x<=255)&&(
+    octets[0]===10||octets[0]===127||
+    (octets[0]===192&&octets[1]===168)||
+    (octets[0]===172&&octets[1]>=16&&octets[1]<=31));
+  if(control.username||control.password||control.search||control.hash||
+     control.pathname!=='/v1/provision'||
+     !(control.protocol==='https:'||(control.protocol==='http:'&&privateIpv4)))
+    throw Error('Unsafe VPN node control endpoint');
+  const host=/^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/i;
+  if(!host.test(route.publicHost)||!host.test(route.tlsServerName)||
+     !route.publicHost.includes('.')||!route.tlsServerName.includes('.')||
+     !Number.isSafeInteger(route.publicPort)||route.publicPort<1||route.publicPort>65535||
+     !/^\/[a-z0-9/_-]{1,100}$/i.test(route.wsPath)||
+     !/^[\p{L}\p{N} _-]{1,48}$/u.test(route.label))
+    throw Error('Unsafe VPN node client profile');
+  return {...route};
+}
 export interface NodeRecord extends ObservedAccess {
   credential?:string|null;
 }
@@ -30,32 +66,37 @@ export function parseNodeRecord(value:unknown):NodeRecord{
   return {revision:Number(v.revision),enabled:v.enabled,
     expiresAt,credential:v.enabled?String(v.credential):null};
 }
-export function makeVpnImportUri(credential:string):string {
+export function makeVpnImportUri(
+  credential:string,route:XrayNodeRoute=DEFAULT_ROUTE,
+):string {
   const id=uuid(credential);
+  const safe=validateXrayNodeRoute(route);
   const query=new URLSearchParams({
     encryption:'none',security:'tls',type:'ws',
-    host:WEB_PROFILE_HOST,sni:WEB_PROFILE_HOST,path:'/mnebyvpn-vpn/ws',
+    host:safe.publicHost,sni:safe.tlsServerName,path:safe.wsPath,
   });
-  return 'vless://'+id+'@'+WEB_PROFILE_HOST+':8443?'+query+
-    '#'+encodeURIComponent('MNEBYVPN');
+  return 'vless://'+id+'@'+safe.publicHost+':'+safe.publicPort+'?'+query+
+    '#'+encodeURIComponent(safe.label);
 }
 export class SignedXrayNodeApi implements ProvisioningAdapter {
   /** The actual isolated Xray agent enforces expiry locally without Panel. */
   readonly enforcesHardExpiry=true as const;
   private readonly key:Buffer;
   private readonly fetcher:typeof fetch;
+  private readonly route:XrayNodeRoute;
   /** Foreign node clock minus database/server clock, rounded to whole seconds. */
   private clockOffsetMs=0;
-  constructor(keyHex:string,fetcher:typeof fetch=fetch){
+  constructor(keyHex:string,fetcher:typeof fetch=fetch,route:XrayNodeRoute=DEFAULT_ROUTE){
     if(!/^[0-9a-f]{64}$/i.test(keyHex))throw Error('Invalid node signing key');
     this.key=Buffer.from(keyHex,'hex');
     this.fetcher=fetcher;
+    this.route=validateXrayNodeRoute(route);
   }
   private async action(body:Record<string,unknown>):Promise<Record<string,unknown>>{
     const raw=JSON.stringify({...body,ts:Math.floor(Date.now()/1000)});
     const mac=createHmac('sha256',this.key).update(raw,'utf8').digest('hex');
     const sentAt=Date.now();
-    const reply=await this.fetcher(FIXED_NODE_URL,{
+    const reply=await this.fetcher(this.route.controlUrl,{
       method:'POST',redirect:'error',signal:AbortSignal.timeout(7000),
       headers:{'Content-Type':'application/json','X-Mnebyvpn-Signature':mac},
       body:raw,
@@ -116,6 +157,6 @@ export class SignedXrayNodeApi implements ProvisioningAdapter {
       !Number.isFinite(expiresAt.getTime())||expiresAt.getTime()<=Date.now()||
       Math.abs(observed.expiresAt.getTime()-expiresAt.getTime())>1000)
       return null;
-    return makeVpnImportUri(observed.credential);
+    return makeVpnImportUri(observed.credential,this.route);
   }
 }
