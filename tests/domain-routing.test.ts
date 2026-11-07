@@ -21,15 +21,15 @@ test('unknown and unverified sites stay direct; no vendor-wide wildcard or suffi
     {route:'direct',reason:'unlisted-domain'});
   assert.throws(() => compileDomainRoutes([{domain:'*.example.test',status:'verified'}]), /exact/);
 });
-test('canary candidate only after ALL independently verified gates', () => {
+test('canary candidate only after ALL independently verified gates; no direct fallback', () => {
   assert.deepEqual(decideDomainRoute('AI.EXAMPLE.TEST.', rules, safe),
     {route:'proxy-candidate',domain:'ai.example.test',policyRevision:3});
   for (const gate of ['ingressHealthy','e2eVerified','rrPolicyVerified','ingressAuthorizationVerified'] as const) {
-    assert.equal(decideDomainRoute('ai.example.test', rules, {...safe,[gate]:false}).route,
-      'direct',gate);
+    assert.deepEqual(decideDomainRoute('ai.example.test', rules, {...safe,[gate]:false}),
+      {route:'blocked',domain:'ai.example.test',reason:'network-or-security-gate-failed'},gate);
   }
   assert.deepEqual(decideDomainRoute('ai.example.test', rules, {...safe,policyRevision:4}),
-    {route:'direct',reason:'stale-or-unverified-policy'});
+    {route:'blocked',domain:'ai.example.test',reason:'stale-or-unverified-policy'});
 });
 test('duplicate or malformed domain rules are rejected rather than ambiguously applied', () => {
   assert.throws(() => compileDomainRoutes([
@@ -46,4 +46,17 @@ test('candidate is NOT an ingress authorization or a live DNS rewrite', () => {
   assert.equal(decision.route, 'proxy-candidate');
   assert.equal('destinationIPv6' in decision,false);
   assert.equal('subscriptionId' in decision,false);
+});
+
+test('revoked or unavailable egress cannot expose verified service via a direct route', () => {
+  const outage = {...safe, ingressHealthy:false};
+  const denied = decideDomainRoute('ai.example.test', rules, outage);
+  assert.deepEqual(denied, {
+    route:'blocked', domain:'ai.example.test', reason:'network-or-security-gate-failed'
+  });
+  // Other, not-enabled sites continue to resolve normally.
+  assert.deepEqual(decideDomainRoute('mail.example.test', rules, outage),
+    {route:'direct',reason:'not-verified'});
+  assert.deepEqual(decideDomainRoute('maps.example.test', rules, outage),
+    {route:'direct',reason:'unlisted-domain'});
 });
