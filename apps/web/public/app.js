@@ -7,6 +7,7 @@ const state = {
   inviteToken: null, refreshing: false, renewalTargetId: null,
   telegramLoginEnabled:false,emailLoginEnabled:false,emailLinkMode:false,
   trialStatus:'NONE',guestSubscriptionUrl:null,setupLoading:false,
+  purchaseIntent:null,
 };
 const productNames = { vpn:'VPN', smart_dns:'Smart DNS', bundle:'VPN + Smart DNS' };
 const stateNames = {
@@ -210,6 +211,46 @@ function renderOrders(orders) {
     row.append(left,node('div','order-price',amount));list.append(row);
   }
 }
+
+function readPurchaseIntent() {
+  try {
+    const raw=sessionStorage.getItem('mnebyvpn-purchase-intent');
+    const parsed=raw?JSON.parse(raw):null;
+    return parsed && typeof parsed.orderId==='string' &&
+      /^[0-9a-f-]{36}$/i.test(parsed.orderId)?parsed:null;
+  } catch {return null;}
+}
+function renderPurchaseResult(payload) {
+  const notice=byId('purchase-result');
+  const intent=state.purchaseIntent||readPurchaseIntent();
+  const order=intent && (payload.orders||[]).find(o=>o.id===intent.orderId);
+  if(!order || order.provider==='internal_trial') {
+    notice.classList.add('hidden');
+    return;
+  }
+  const access=(payload.access||[]).find(a=>
+    a.product==='vpn' &&
+    (a.sourceOrderId===order.id ||
+      (intent.renewalTargetId && a.id===intent.renewalTargetId)));
+  const verified=order.state==='PAID';
+  const ready=verified&&access?.state==='ACTIVE'&&access.secondsRemaining>0;
+  notice.classList.remove('hidden');
+  text('purchase-result-title',!verified?
+    (order.state==='PENDING'?'⏳ Проверяем оплату':
+      'Состояние заказа: '+(stateNames[order.state]||order.state)):
+    ready?'✅ Ваш VPN готов!':'✅ Оплата подтверждена');
+  text('purchase-result-text',!verified?
+    'Пока нет подтверждения оплаты от Prodamus. Если деньги списаны, не оплачивайте повторно — проверьте статус или напишите в поддержку.':
+    ready?'Подключите VPN в несколько нажатий. Выберите приложение для своего устройства.':
+    'Деньги получены. VPN-сервер готовит подключение. Инструкция появится после подтверждения активации.');
+  text('purchase-result-details',
+    (order.title||productNames[order.product]||'VPN')+
+    ' · '+(order.currency==='RUB'?formatMoney(order.amountMinor):String(order.amountMinor)+' ⭐'));
+  const connect=byId('purchase-connect');
+  connect.classList.toggle('hidden',!ready);
+  connect.dataset.entitlementId=ready?access.id:'';
+  byId('purchase-refresh').classList.toggle('hidden',ready);
+}
 function renderAccount(payload) {
   state.loggedIn=true;state.csrf=payload.csrf;
   byId('login-prompt').classList.add('hidden');
@@ -226,6 +267,7 @@ function renderAccount(payload) {
   text('days-left',timed.length?remaining(timed[0].secondsRemaining):'—');
   text('days-hint',timed.length?'До ближайшего окончания':'Нет активных подписок');
   renderAccess(accesses);renderOrders(payload.orders||[]);
+  renderPurchaseResult(payload);
   byId('link-email').classList.toggle('hidden',!state.emailLoginEnabled||payload.identity?.emailLinked);
   byId('link-telegram').classList.toggle('hidden',!state.telegramLoginEnabled||payload.identity?.telegramLinked);
   if(!state.emailLinkMode)byId('email-auth-panel').classList.add('hidden');
@@ -239,7 +281,7 @@ function renderAccount(payload) {
     card.classList.remove('hidden');
     byId('guest-trial-title').textContent='Подключаем VPN';
     byId('guest-trial-status').textContent=
-      'Заявка принята. Пробные 24 часа начнутся только после подтверждения активации сервером.';
+      'Оплата подтверждена. VPN-сервер готовит подключение. Проверьте статус в личном кабинете.';
     if(!state.guestSubscriptionUrl)byId('guest-trial-ready').classList.add('hidden');
   }
   renderPlan();
@@ -266,6 +308,7 @@ function renderLoggedOut() {
   // a shared browser screen. Keep the public catalog and selected product.
   state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;
   byId('guest-trial-card').classList.add('hidden');
+  byId('purchase-result').classList.add('hidden');
   byId('link-email').classList.add('hidden');
   byId('link-telegram').classList.add('hidden');
   state.renewalTargetId=null;state.requestId=null;
@@ -349,8 +392,9 @@ function applyLinkOptions() {
   saveSelection();
   if(url.searchParams.get('login')==='failed')
     toast('Вход не завершён. Попробуйте вход по email или повторите Telegram.');
+  state.purchaseIntent=readPurchaseIntent();
   if(url.searchParams.get('payment')==='returned')
-    toast('Возврат из оплаты — не подтверждение платежа. Статус появится после проверки уведомления.');
+    toast('Проверяем уведомление Prodamus. Вернуться на сайт — ещё не значит оплатить.');
 }
 async function purchase() {
   const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
@@ -382,6 +426,8 @@ async function purchase() {
     // A visible, user-clickable fallback matters for WebViews that refuse
     // programmatic navigation after an asynchronous request.
     showPaymentLink(target.toString());
+    state.purchaseIntent={orderId:result.orderId,renewalTargetId:state.renewalTargetId||null};
+    try{sessionStorage.setItem('mnebyvpn-purchase-intent',JSON.stringify(state.purchaseIntent));}catch{}
     consumeReferral();
     state.requestId=null;
     location.assign(target.toString());
@@ -621,6 +667,11 @@ refreshSupportTicket();
 setInterval(()=>{if(document.visibilityState==='visible')refreshSupportTicket();},15000);
 byId('buy-button').addEventListener('click',purchase);
 byId('trial-button').addEventListener('click',claimTrial);
+byId('purchase-refresh').addEventListener('click',refresh);
+byId('purchase-connect').addEventListener('click',()=>{
+  const id=byId('purchase-connect').dataset.entitlementId;
+  if(id)loadSubscription(id);
+});
 byId('guest-copy-subscription').addEventListener('click',copyGuestSubscription);
 byId('cancel-renewal-button').addEventListener('click',()=>{
   state.renewalTargetId=null;
