@@ -1,0 +1,50 @@
+name: Remove legacy slash menu from the existing MNEBYVPN Telegram bot
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  remove-legacy-commands:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PRIMARY_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN_BOT || secrets.TELEGRAM_BOT_TOKEN }}
+    steps:
+      - name: Confirm the original VPN bot and remove only its displayed command list
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PRIMARY_BOT_TOKEN" || { echo 'Original Bot API secret is unavailable'; exit 2; }
+          python3 - <<'PY'
+          import json,os,urllib.request
+          token=os.environ['PRIMARY_BOT_TOKEN']
+          base='https://api.telegram.org/bot'+token+'/'
+          def call(method,data):
+              body=json.dumps(data).encode('utf-8')
+              request=urllib.request.Request(
+                  base+method,data=body,method='POST',
+                  headers={'Content-Type':'application/json'})
+              with urllib.request.urlopen(request,timeout=12) as response:
+                  result=json.load(response)
+              if result.get('ok') is not True:
+                  raise RuntimeError('Telegram rejected '+method)
+              return result['result']
+          bot=call('getMe',{})
+          if bot.get('username','').lower()!='mnebyvpn_bot':
+              raise RuntimeError('Wrong bot identity; command menu unchanged')
+          print('existing_bot_identity_verified=true')
+          removed=0
+          for kind in ('default','all_private_chats'):
+              for language in ('','ru','en'):
+                  args={'scope':{'type':kind},'language_code':language}
+                  previous=call('getMyCommands',args)
+                  if previous:
+                      call('deleteMyCommands',args)
+                      removed+=len(previous)
+                  commands=call('getMyCommands',args)
+                  if commands:
+                      raise RuntimeError('A command list remains for scope '+kind)
+          print('legacy_slash_commands_removed='+str(removed))
+          print('default_and_private_menu_empty=true')
+          print('bot_token_logged=false')
+          PY
