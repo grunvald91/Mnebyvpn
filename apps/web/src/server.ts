@@ -91,8 +91,23 @@ const subscriptionPool=subscriptionDbUrl
 // Trial and paid provisioning must write to the SAME canonical billing DB as
 // the VPN node worker. A separate web-only account cannot activate a VPN.
 // Do not enable trial/checkout while the data stores are isolated.
+function sameCanonicalPostgresDb(writer:string,reader:string|undefined):boolean{
+  // Reader and writer may use DIFFERENT DB users/passwords for least privilege.
+  // Require the identical database network endpoint, not identical credentials.
+  if(!reader)return false;
+  try{
+    const a=new URL(writer),b=new URL(reader);
+    const valid=(u:URL)=>['postgresql:','postgres:'].includes(u.protocol) &&
+      !!u.hostname && /^\/[A-Za-z0-9_-]{1,63}$/.test(u.pathname);
+    const port=(u:URL)=>u.port||'5432';
+    return valid(a)&&valid(b)&&a.protocol===b.protocol &&
+      a.hostname.toLowerCase()===b.hostname.toLowerCase() &&
+      port(a)===port(b)&&a.pathname===b.pathname &&
+      a.search===''&&b.search===''&&a.hash===''&&b.hash==='';
+  }catch{return false;}
+}
 if((trialEnabled||checkoutEnabled) &&
-   (!subscriptionDbUrl || subscriptionDbUrl!==process.env.DATABASE_URL))
+   !sameCanonicalPostgresDb(required('DATABASE_URL'),subscriptionDbUrl))
   throw Error('Live VPN trial/checkout requires the canonical shared billing database');
 let payform: ProdamusConfig | undefined;
 if (webhookEnabled) {
