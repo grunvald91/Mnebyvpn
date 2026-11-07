@@ -88,6 +88,15 @@ const subscriptionDbUrl=process.env.VPN_SUBSCRIPTION_DATABASE_URL;
 const subscriptionPool=subscriptionDbUrl
   ?new Pool({connectionString:subscriptionDbUrl,max:3,connectionTimeoutMillis:3000})
   :offline?pool:null;
+// Login identities must live in the same canonical DB as the VPN node.
+// Never give the brochure site the bot's unrestricted writer credentials.
+const authDbUrl=process.env.WEB_AUTH_DATABASE_URL;
+if(loginEnabled&&!offline &&
+   (!authDbUrl||!sameCanonicalPostgresDb(authDbUrl,subscriptionDbUrl)))
+  throw Error('Live website authentication requires a canonical least-privilege auth database');
+const authPool=authDbUrl
+  ?new Pool({connectionString:authDbUrl,max:3,connectionTimeoutMillis:3000})
+  :pool;
 // Trial and paid provisioning must write to the SAME canonical billing DB as
 // the VPN node worker. A separate web-only account cannot activate a VPN.
 // Do not enable trial/checkout while the data stores are isolated.
@@ -195,7 +204,7 @@ async function authorized(req:IncomingMessage):Promise<{
   const accountId=readAccountSession(raw,sessionSecret);
   if(!accountId||!raw)return null;
   // Each request verifies its signed account-scoped bearer against revocable DB state.
-  const {rows}=await pool.query(`SELECT a.id,a.telegram_user_id,a.email_address
+  const {rows}=await authPool.query(`SELECT a.id,a.telegram_user_id,a.email_address
     FROM website_sessions s JOIN accounts a ON a.id=s.account_id
     WHERE s.token_sha256=$1 AND s.account_id=$2
       AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()`,
@@ -267,7 +276,7 @@ async function emailStart(req:IncomingMessage,res:ServerResponse):Promise<void>{
   }
   const current=body.link===true?await authorized(req):null;
   if(body.link===true&&!current){json(res,401,{code:'LOGIN_REQUIRED'});return;}
-  const result=await beginEmailCode(pool,{
+  const result=await beginEmailCode(authPool,{
     email,ip:sourceAddress(req),linkAccountId:current?.accountId??null,
     secret:sessionSecret,gatewaySecret:mailGatewaySecret,
   });
@@ -286,7 +295,7 @@ async function emailVerify(req:IncomingMessage,res:ServerResponse):Promise<void>
     json(res,400,{code:'INVALID_EMAIL_CODE'});return;
   }
   const current=await authorized(req);
-  const result=await verifyEmailCode(pool,{
+  const result=await verifyEmailCode(authPool,{
     email,code:body.code,currentAccountId:current?.accountId??null,secret:sessionSecret,
   });
   if(result.status!=='SIGNED_IN'||!result.accountId){
@@ -295,7 +304,7 @@ async function emailVerify(req:IncomingMessage,res:ServerResponse):Promise<void>
     });return;
   }
   const token=issueAccountSession(result.accountId,sessionSecret);
-  await pool.query(
+  await authPool.query(
     'INSERT INTO website_sessions(token_sha256,account_id,expires_at) VALUES($1,$2,$3)',
     [sessionHash(token),result.accountId,new Date(Date.now()+12*60*60_000)]);
   setCookie(res,sessionCookie,token,12*60*60);
@@ -353,7 +362,7 @@ async function callback(req:IncomingMessage,res:ServerResponse,url:URL){
       const current=await authorized(req);
       if(!current||current.accountId!==linkAccountId)
         throw Error('Account linking requires the same authenticated session');
-      const updated=await pool.query(
+      const updated=await authPool.query(
         'UPDATE accounts SET telegram_user_id=$1 WHERE id=$2 '+
         'AND (telegram_user_id IS NULL OR telegram_user_id=$1) RETURNING id',
         [subject,linkAccountId]);
@@ -362,7 +371,7 @@ async function callback(req:IncomingMessage,res:ServerResponse,url:URL){
       accountId=linkAccountId;
     }else{
       // Unlinked Telegram subjects cannot mint independent free trial accounts.
-      const account=await pool.query(
+      const account=await authPool.query(
         'SELECT id FROM accounts WHERE telegram_user_id=$1',[subject]);
       if(account.rowCount!==1){
         redirect(res,'/?login=email-first#account');return;
@@ -371,7 +380,7 @@ async function callback(req:IncomingMessage,res:ServerResponse,url:URL){
     }
     const now=Date.now();
     const raw=issueAccountSession(accountId,sessionSecret,now);
-    await pool.query(
+    await authPool.query(
       'INSERT INTO website_sessions(token_sha256,account_id,expires_at) VALUES($1,$2,$3)',
       [sessionHash(raw),accountId,new Date(now+12*60*60_000)]);
     setCookie(res,sessionCookie,raw,12*60*60);
@@ -629,12 +638,12 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   const auth = await authorized(req);
   if (!auth) { json(res, 401, { code: 'LOGIN_REQUIRED' }); return; }
   if (req.method === 'GET' && url.pathname === '/api/me') {
-    const dashboard = await loadDashboard(pool, auth.accountId, meteringVerified);
+    const dashboard = await loadDashboard(authPool, auth.accountId, meteringVerified);
     json(res,200,{ ...dashboard, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
   }
   if (req.method === 'POST' && url.pathname === '/api/logout') {
     if (!csrfAllowed(req,auth.raw)) { json(res,403,{code:'FORBIDDEN'});return; }
-    await pool.query(`UPDATE website_sessions SET revoked_at=clock_timestamp()
+    await authPool.query(`UPDATE website_sessions SET revoked_at=clock_timestamp()
       WHERE token_sha256=$1 AND revoked_at IS NULL`,[sessionHash(auth.raw)]);
     setCookie(res,sessionCookie,'',0);
     json(res,200,{ok:true});return;

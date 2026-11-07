@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import {
   createLoginChallenge, consumeLoginChallenge, issueSession, readSession,
@@ -249,4 +250,15 @@ test('website keeps support form accessible without Telegram login and brands it
   assert.match(js,/submitSupport/);
   assert.doesNotMatch(html,/Мне бы VPN|МНЕ БЫ|MnebyVPN/);
   assert.match(html,/<title>MNEBYVPN/);
+});
+
+test('production email login uses canonical narrowly scoped auth DB, not public brochure DB',async()=>{
+  const backend=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
+  assert.match(backend,/WEB_AUTH_DATABASE_URL/);
+  assert.match(backend,/sameCanonicalPostgresDb\(authDbUrl,subscriptionDbUrl\)/);
+  assert.match(backend,/beginEmailCode\(authPool,/);
+  assert.match(backend,/verifyEmailCode\(authPool,/);
+  assert.match(backend,/loadDashboard\(authPool,/);
+  assert.match(backend,/FROM website_sessions s JOIN accounts a/);
+  assert.match(backend,/const store = new PgBillingStore\(pool\)/);
 });
