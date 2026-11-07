@@ -10,6 +10,9 @@ services:
     volumes:
       - "./Corefile:/etc/coredns/Corefile:ro"
       - "./certs:/certs:ro"
+    # Test cert/key are mode 0600; local-only UID 0 reads them in a read-only mount.
+    # Production must use dedicated nonroot cert provisioning, not this lab profile.
+    user: "0:0"
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     read_only: true
