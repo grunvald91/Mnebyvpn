@@ -18,7 +18,7 @@
     <div class="shell header-inner">
       <a href="/" class="brand" aria-label="MNEBYVPN — главная">
         <img class="brand-avatar" src="/brand-avatar.webp" alt="" width="34" height="34" decoding="async">
-        <span class="brand-text">Mneby <span>VPN</span></span>
+        <span class="brand-text">MNEBY<span>VPN</span></span>
       </a>
       <nav class="desktop-nav" aria-label="Основные разделы">
         <a href="#features">Возможности</a>
@@ -184,9 +184,23 @@
         <p class="section-desc">Один вход — ваши подписки и платежи в одном месте.</p>
       </div>
       <div class="account-panel">
-        <div class="account-toolbar"><div class="account-heading"><span class="avatar">M</span><div><strong id="account-name">Личный кабинет</strong><p id="account-subtitle">Войдите, чтобы увидеть данные</p></div></div><button id="logout-button" type="button" class="text-button hidden">Выйти</button></div>
+        <div class="account-toolbar"><div class="account-heading"><span class="avatar">M</span><div><strong id="account-name">Личный кабинет</strong><p id="account-subtitle">Войдите, чтобы увидеть данные</p></div></div><div class="account-tools"><button id="link-email" type="button" class="text-button hidden">Привязать email</button><a id="link-telegram" href="/auth/login?link=1" class="text-button hidden">Привязать Telegram</a><button id="logout-button" type="button" class="text-button hidden">Выйти</button></div></div>
         <div id="login-prompt" class="login-prompt">
-          <div class="prompt-symbol" aria-hidden="true">◈</div><h3>Ваш доступ — под рукой</h3><p id="login-prompt-copy">Вход в кабинет пока подключается. Связаться с проектом можно через Telegram-бота.</p><a href="https://t.me/MNEBYVPN_bot" class="button button-primary" id="cabinet-login-link">Открыть Telegram-бота</a>
+          <div class="prompt-symbol" aria-hidden="true">◈</div><h3>Вход в MNEBYVPN</h3><p id="login-prompt-copy">Введите email, получите одноразовый код и войдите без пароля.</p><p class="login-help" id="login-help">Уже привязали Telegram? Тогда можно войти через него.</p>
+          <div class="login-options"><a href="/auth/login" class="button button-secondary" id="cabinet-login-link">Войти через Telegram</a></div>
+        </div>
+        <div id="email-auth-panel" class="email-auth-panel hidden">
+          <form id="email-start-form" autocomplete="on">
+            <label for="email-input">Ваш email</label>
+            <div class="email-fields"><input id="email-input" type="email" required autocomplete="email" inputmode="email" maxlength="254" placeholder="email@example.com">
+              <button type="submit" class="button button-primary" id="email-send-button">Получить код</button></div>
+          </form>
+          <form id="email-verify-form" class="hidden" autocomplete="one-time-code">
+            <label for="email-code-input">Код из письма</label>
+            <div class="email-fields"><input id="email-code-input" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="6 цифр">
+              <button type="submit" class="button button-primary" id="email-verify-button">Подтвердить</button></div>
+          </form>
+          <p id="email-status" class="login-help" role="status" aria-live="polite">Код придёт от mnebyvpn@servgo.ru. Никому его не сообщайте.</p>
         </div>
         <div id="account-content" class="hidden">
           <div class="metric-cards">
