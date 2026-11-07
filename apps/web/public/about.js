@@ -5,7 +5,7 @@
   if (!dialog || typeof dialog.showModal !== 'function') return;
   const tabs = Array.from(dialog.querySelectorAll('[data-about-tab]'));
   const panels = Array.from(dialog.querySelectorAll('[data-about-panel]'));
-  const names = new Set(['about', 'bonus', 'roadmap']);
+  const names = new Set(['about', 'security', 'bonus', 'roadmap']);
   function selectTab(name, focus = false) {
     if (!names.has(name)) return;
     tabs.forEach(tab => {
