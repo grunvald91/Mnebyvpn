@@ -538,6 +538,11 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   }
   if(req.method==='GET'&&url.pathname==='/api/support/operator-inbox'){
     if(!support||!supportAuthKey){json(res,503,{code:'SUPPORT_NOT_CONFIGURED'});return;}
+    const page=url.searchParams.get('offset')??'0';
+    if(!/^(0|[1-9][0-9]{0,2})$/.test(page)||Number(page)>199){
+      json(res,400,{code:'INVALID_INBOX_PAGE'});return;
+    }
+    const offset=Number(page);
     const stamp=req.headers['x-mnebyvpn-support-ts'];
     const signature=req.headers['x-mnebyvpn-support-signature'];
     if(typeof stamp!=='string'||!/^[0-9]{9,12}$/.test(stamp)||
@@ -546,16 +551,17 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       json(res,403,{code:'FORBIDDEN'});return;
     }
     const expected=createHmac('sha256',supportAuthKey)
-      .update('MNEBYVPN-inbox-v1\n'+stamp).digest('hex');
+      .update(offset===0?'MNEBYVPN-inbox-v1\n'+stamp:
+        'MNEBYVPN-inbox-v2\n'+stamp+'\n'+offset).digest('hex');
     if(!timingSafeEqual(Buffer.from(signature,'hex'),Buffer.from(expected,'hex'))){
       json(res,403,{code:'FORBIDDEN'});return;
     }
     const result=await pool.query(
       "SELECT id,contact,question FROM website_support_tickets "+
       "WHERE answer IS NULL AND delivery_state IN ('PENDING','DELIVERED') "+
-      "ORDER BY created_at ASC LIMIT 1");
+      "ORDER BY created_at ASC, id ASC LIMIT 2 OFFSET $1",[offset]);
     res.setHeader('Cache-Control','no-store');
-    json(res,200,{ticket:result.rows[0]??null});return;
+    json(res,200,{ticket:result.rows[0]??null,hasNext:result.rows.length>1});return;
   }
   if(req.method==='POST'&&url.pathname==='/api/support/operator-reply'){
     if(!support||!supportAuthKey){json(res,503,{code:'SUPPORT_NOT_CONFIGURED'});return;}
