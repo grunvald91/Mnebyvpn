@@ -10,7 +10,7 @@ import { Pool } from 'pg';
 import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
   from '../../../packages/support/src/telegram-relay.ts';
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
-import {subscriptionOwner,subscriptionLink}
+import {subscriptionOwner,subscriptionLink,issueSubscriptionLink,issueSubscriptionLinkForAccount}
   from '../../../packages/provisioning/src/subscription-links.ts';
 import {
   prepareWebsiteProdamusCheckout, type PayformLinkTransport,
@@ -18,9 +18,11 @@ import {
 import type { ProdamusConfig } from '../../../packages/billing/src/prodamus.ts';
 import {
   consumeLoginChallenge, createLoginChallenge, csrfForSession, isValidCsrf,
-  issueSession, readSession, verifyTelegramIdToken, type Jwks,
+  issueAccountSession, readAccountSession, verifyEnvelope, verifyTelegramIdToken, type Jwks,
 } from '../../../packages/web/src/security.ts';
 import { loadDashboard } from '../../../packages/web/src/dashboard.ts';
+import {normalizeLoginEmail} from '../../../packages/web/src/email-otp.ts';
+import {beginEmailCode,verifyEmailCode} from '../../../packages/web/src/email-auth-service.ts';
 import { parseProdamusFormData } from '../../../packages/billing/src/multipart.ts';
 import { handleProdamusDelivery } from '../../../packages/billing/src/handlers.ts';
 
@@ -47,15 +49,23 @@ const sessionSecret = required('WEB_SESSION_SECRET');
 if (sessionSecret.length < 32) throw new Error('WEB_SESSION_SECRET too short');
 // A public informational site can be deployed before BotFather issues OIDC
 // credentials. Login is unavailable until explicitly enabled with real keys.
-const loginEnabled = process.env.WEB_TELEGRAM_OIDC_ENABLED === 'yes';
+const telegramLoginEnabled = process.env.WEB_TELEGRAM_OIDC_ENABLED === 'yes';
+const emailLoginEnabled = process.env.WEB_EMAIL_LOGIN_ENABLED === 'yes';
+const mailGatewaySecret = process.env.MNEBYVPN_MAIL_GATEWAY_SECRET ?? '';
+if(emailLoginEnabled && mailGatewaySecret.length<32)
+  throw Error('MNEBYVPN email OTP requires a configured private ServGo mail gateway secret');
+const loginEnabled = telegramLoginEnabled || emailLoginEnabled;
 const clientId = process.env.TELEGRAM_OIDC_CLIENT_ID ?? '';
 const clientSecret = process.env.TELEGRAM_OIDC_CLIENT_SECRET ?? '';
-if (loginEnabled && (!/^[0-9]{5,20}$/.test(clientId) || clientSecret.length < 16))
+if (telegramLoginEnabled && (!/^[0-9]{5,20}$/.test(clientId) || clientSecret.length < 16))
   throw new Error('Invalid Telegram OIDC client configuration');
 
 const tls = base.protocol === 'https:';
 const sessionCookie = tls ? '__Host-mnebyvpn_session' : 'mnebyvpn_session';
 const challengeCookie = tls ? '__Host-mnebyvpn_oidc' : 'mnebyvpn_oidc';
+const deviceCookie = tls ? '__Host-mnebyvpn_device' : 'mnebyvpn_device';
+const supportCookie=tls?'__Host-mnebyvpn_support':'mnebyvpn_support';
+const supportCookiePattern=/^([0-9a-f-]{36})\.([A-Za-z0-9_-]{43})$/;
 const networkVerified = process.env.WEB_NETWORK_PROVISIONING_VERIFIED === 'yes';
 // Never stop receiving previously-created payment notifications merely
 // because new sales were disabled. Both flags default to fail-closed.
@@ -66,8 +76,8 @@ const checkoutEnabled = loginEnabled && webhookEnabled && networkVerified &&
   process.env.WEB_LEGAL_PAGES_PUBLISHED === 'yes';
 const trialEnabled = loginEnabled && networkVerified &&
   process.env.WEB_TRIAL_ENABLED === 'yes';
-// Website guest trial is independent of Telegram OAuth and paid checkout.
-const guestTrialEnabled=process.env.WEB_GUEST_TRIAL_ENABLED==='yes';
+// Anonymous guest claims cannot prove a stable user identity.
+// Deprecated WEB_GUEST_TRIAL_ENABLED is deliberately ignored. No anonymous grant routes.
 const meteringVerified = networkVerified && process.env.WEB_DNS_METERING_VERIFIED === 'yes';
 const pool = new Pool({ connectionString: required('DATABASE_URL'), max: 5, connectionTimeoutMillis: 3000 });
 const store = new PgBillingStore(pool);
@@ -78,6 +88,12 @@ const subscriptionDbUrl=process.env.VPN_SUBSCRIPTION_DATABASE_URL;
 const subscriptionPool=subscriptionDbUrl
   ?new Pool({connectionString:subscriptionDbUrl,max:3,connectionTimeoutMillis:3000})
   :offline?pool:null;
+// Trial and paid provisioning must write to the SAME canonical billing DB as
+// the VPN node worker. A separate web-only account cannot activate a VPN.
+// Do not enable trial/checkout while the data stores are isolated.
+if((trialEnabled||checkoutEnabled) &&
+   (!subscriptionDbUrl || subscriptionDbUrl!==process.env.DATABASE_URL))
+  throw Error('Live VPN trial/checkout requires the canonical shared billing database');
 let payform: ProdamusConfig | undefined;
 if (webhookEnabled) {
   payform = {
@@ -119,12 +135,6 @@ const brandAvatar = await readFile(new URL('../public/brand-avatar.webp', import
 const js = await readFile(new URL('../public/app.js', import.meta.url));
 const vpnInstallJs=await readFile(new URL('../public/vpn-install.js',import.meta.url));
 const workerProfileToken=process.env.VPN_WORKER_PROFILE_TOKEN??'';
-if(guestTrialEnabled&&(!/^[a-f0-9]{64}$/i.test(workerProfileToken)||!subscriptionPool))
-  throw Error('Guest VPN trial requires the isolated authenticated node worker');
-const guestCookie=tls?'__Host-mnebyvpn_guest':'mnebyvpn_guest';
-const guestPattern=/^[A-Za-z0-9_-]{43}$/;
-const supportCookie=tls?'__Host-mnebyvpn_support':'mnebyvpn_support';
-const supportCookiePattern=/^([0-9a-f-]{36})\.([A-Za-z0-9_-]{43})$/;
 const policy = [
   "default-src 'none'", "script-src 'self'", "style-src 'self'",
   "connect-src 'self'", "img-src 'self' data:", "font-src 'self'",
@@ -163,17 +173,24 @@ function setCookie(res: ServerResponse, name: string, value: string, maxAge: num
 }
 const sessionHash = (raw:string):string =>
   createHash('sha256').update(raw).digest('hex');
-async function authorized(req:IncomingMessage):Promise<{userId:number;raw:string}|null> {
+async function authorized(req:IncomingMessage):Promise<{
+  accountId:string;telegramUserId:number|null;email:string|null;raw:string
+}|null> {
   const raw=cookie(req,sessionCookie);
-  const userId=readSession(raw,sessionSecret);
-  if(!userId||!raw)return null;
-  // Statelessly signed cookies alone are NOT enough for logout/revocation.
-  const {rowCount}=await pool.query(`SELECT 1 FROM website_sessions s
-    JOIN accounts a ON a.id=s.account_id
-    WHERE s.token_sha256=$1 AND a.telegram_user_id=$2
+  const accountId=readAccountSession(raw,sessionSecret);
+  if(!accountId||!raw)return null;
+  // Each request verifies its signed account-scoped bearer against revocable DB state.
+  const {rows}=await pool.query(`SELECT a.id,a.telegram_user_id,a.email_address
+    FROM website_sessions s JOIN accounts a ON a.id=s.account_id
+    WHERE s.token_sha256=$1 AND s.account_id=$2
       AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()`,
-    [sessionHash(raw),String(userId)]);
-  return rowCount===1 ? {userId,raw} : null;
+    [sessionHash(raw),accountId]);
+  if(rows.length!==1)return null;
+  const tg=rows[0].telegram_user_id;
+  const telegramUserId=tg===null?null:Number(tg);
+  if(telegramUserId!==null&&(!Number.isSafeInteger(telegramUserId)||telegramUserId<=0))
+    return null;
+  return {accountId,telegramUserId,email:rows[0].email_address??null,raw};
 }
 function csrfAllowed(req: IncomingMessage, raw: string): boolean {
   return req.headers.origin === publicOrigin &&
@@ -214,60 +231,138 @@ async function readRemoteJson(url: string, init?: RequestInit): Promise<Record<s
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Invalid provider response');
   return data as Record<string,any>;
 }
-async function login(req: IncomingMessage, res: ServerResponse) {
-  const challenge = createLoginChallenge(sessionSecret);
-  setCookie(res, challengeCookie, challenge.cookie, 300);
-  const oauth = new URL('https://oauth.telegram.org/auth');
-  oauth.searchParams.set('client_id', clientId);
-  oauth.searchParams.set('redirect_uri', publicOrigin + '/auth/callback');
-  oauth.searchParams.set('response_type', 'code');
-  oauth.searchParams.set('scope', 'openid profile');
-  oauth.searchParams.set('state', challenge.state);
-  oauth.searchParams.set('code_challenge', challenge.codeChallenge);
-  oauth.searchParams.set('code_challenge_method', 'S256');
-  redirect(res, oauth.toString());
+
+function sourceAddress(req:IncomingMessage):string{
+  const socketIp=req.socket.remoteAddress??'unknown';
+  const supplied=req.headers['x-real-ip'];
+  // X-Real-IP must be set by the local reverse proxy, which strips inbound copies.
+  if((socketIp==='127.0.0.1'||socketIp==='::1'||socketIp==='::ffff:127.0.0.1')&&
+     typeof supplied==='string'&&/^[a-f0-9:.]{3,45}$/i.test(supplied))return supplied;
+  return socketIp;
 }
-async function callback(req: IncomingMessage, res: ServerResponse, url: URL) {
-  const verifier = consumeLoginChallenge(
-    cookie(req, challengeCookie), url.searchParams.get('state'), sessionSecret);
-  setCookie(res, challengeCookie, '', 0);
-  const code = url.searchParams.get('code');
-  if (!verifier || !code || code.length > 2048) {
-    redirect(res, '/?login=failed'); return;
+async function emailStart(req:IncomingMessage,res:ServerResponse):Promise<void>{
+  if(!emailLoginEnabled){json(res,503,{code:'EMAIL_LOGIN_NOT_READY'});return;}
+  if(req.headers.origin!==publicOrigin||!req.headers['content-type']?.startsWith('application/json')){
+    json(res,403,{code:'FORBIDDEN'});return;
   }
-  try {
-    const params = new URLSearchParams({
-      grant_type: 'authorization_code',
-      code, redirect_uri: publicOrigin + '/auth/callback',
-      client_id: clientId, code_verifier: verifier,
-    });
-    const token = await readRemoteJson('https://oauth.telegram.org/token', {
-      method: 'POST', headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': 'Basic ' + Buffer.from(clientId + ':' + clientSecret).toString('base64'),
-      }, body: params.toString(),
-    });
-    if (typeof token.id_token !== 'string') throw new Error('Missing verified identity');
-    const jwks = await readRemoteJson('https://oauth.telegram.org/.well-known/jwks.json');
-    const telegramId = verifyTelegramIdToken(token.id_token, jwks as Jwks, clientId);
-    // Link the existing Telegram bot's account, never accept accountId from a browser.
-    const account=await pool.query(`INSERT INTO accounts(id,telegram_user_id) VALUES(gen_random_uuid(),$1)
-      ON CONFLICT(telegram_user_id) DO UPDATE
-      SET telegram_user_id=EXCLUDED.telegram_user_id RETURNING id`,
-      [String(telegramId)]);
-    const issuedAt=Date.now();
-    const raw=issueSession(telegramId,sessionSecret,issuedAt);
-    await pool.query(`INSERT INTO website_sessions(token_sha256,account_id,expires_at)
-      VALUES($1,$2,$3)`,
-      [sessionHash(raw),account.rows[0].id,new Date(issuedAt+12*60*60_000)]);
-    setCookie(res, sessionCookie, raw, 12*60*60);
-    redirect(res, '/#account');
-  } catch {
-    // Do not disclose OIDC codes, token claims or provider secrets.
-    redirect(res, '/?login=failed');
+  const body=await bodyJson(req);
+  const email=normalizeLoginEmail(body.email);
+  if(!email || (body.link!==undefined&&typeof body.link!=='boolean')){
+    json(res,400,{code:'INVALID_EMAIL'});return;
   }
+  const current=body.link===true?await authorized(req):null;
+  if(body.link===true&&!current){json(res,401,{code:'LOGIN_REQUIRED'});return;}
+  const result=await beginEmailCode(pool,{
+    email,ip:sourceAddress(req),linkAccountId:current?.accountId??null,
+    secret:sessionSecret,gatewaySecret:mailGatewaySecret,
+  });
+  if(result==='RATE_LIMIT'){json(res,429,{code:'EMAIL_RATE_LIMIT'});return;}
+  if(result==='FAILED'){json(res,503,{code:'EMAIL_NOT_SENT'});return;}
+  json(res,200,{status:'CODE_SENT',expiresInSeconds:600});
+}
+async function emailVerify(req:IncomingMessage,res:ServerResponse):Promise<void>{
+  if(!emailLoginEnabled){json(res,503,{code:'EMAIL_LOGIN_NOT_READY'});return;}
+  if(req.headers.origin!==publicOrigin||!req.headers['content-type']?.startsWith('application/json')){
+    json(res,403,{code:'FORBIDDEN'});return;
+  }
+  const body=await bodyJson(req);
+  const email=normalizeLoginEmail(body.email);
+  if(!email||typeof body.code!=='string'||!/^[0-9]{6}$/.test(body.code)){
+    json(res,400,{code:'INVALID_EMAIL_CODE'});return;
+  }
+  const current=await authorized(req);
+  const result=await verifyEmailCode(pool,{
+    email,code:body.code,currentAccountId:current?.accountId??null,secret:sessionSecret,
+  });
+  if(result.status!=='SIGNED_IN'||!result.accountId){
+    json(res,result.status==='CONFLICT'?409:401,{
+      code:result.status==='CONFLICT'?'EMAIL_ALREADY_LINKED':'INVALID_OR_EXPIRED_CODE',
+    });return;
+  }
+  const token=issueAccountSession(result.accountId,sessionSecret);
+  await pool.query(
+    'INSERT INTO website_sessions(token_sha256,account_id,expires_at) VALUES($1,$2,$3)',
+    [sessionHash(token),result.accountId,new Date(Date.now()+12*60*60_000)]);
+  setCookie(res,sessionCookie,token,12*60*60);
+  json(res,200,{status:'SIGNED_IN'});
 }
 
+async function login(req:IncomingMessage,res:ServerResponse,query:URL){
+  if(!telegramLoginEnabled){json(res,503,{code:'TELEGRAM_LOGIN_NOT_READY'});return;}
+  const linking=query.searchParams.get('link')==='1';
+  const current=linking?await authorized(req):null;
+  if(linking&&!current){redirect(res,'/#account');return;}
+  const challenge=createLoginChallenge(sessionSecret,Date.now(),'telegram',
+    current?.accountId??null);
+  setCookie(res,challengeCookie,challenge.cookie,300);
+  // Telegram official OIDC confirmation, no message from VPN bot required.
+  const oauth=new URL('https://oauth.telegram.org/auth');
+  oauth.searchParams.set('client_id',clientId);
+  oauth.searchParams.set('redirect_uri',publicOrigin+'/auth/callback');
+  oauth.searchParams.set('response_type','code');
+  oauth.searchParams.set('scope','openid profile');
+  oauth.searchParams.set('state',challenge.state);
+  oauth.searchParams.set('code_challenge',challenge.codeChallenge);
+  oauth.searchParams.set('code_challenge_method','S256');
+  redirect(res,oauth.toString());
+}
+async function callback(req:IncomingMessage,res:ServerResponse,url:URL){
+  const rawChallenge=cookie(req,challengeCookie);
+  const challengeData=verifyEnvelope(rawChallenge,sessionSecret);
+  const verifier=consumeLoginChallenge(rawChallenge,url.searchParams.get('state'),
+    sessionSecret,Date.now(),'telegram');
+  setCookie(res,challengeCookie,'',0);
+  const code=url.searchParams.get('code');
+  if(!verifier||!code||code.length>2048){
+    redirect(res,'/?login=failed#account');return;
+  }
+  try{
+    const params=new URLSearchParams({
+      grant_type:'authorization_code',code,
+      redirect_uri:publicOrigin+'/auth/callback',
+      client_id:clientId,code_verifier:verifier,
+    });
+    const token=await readRemoteJson('https://oauth.telegram.org/token',{
+      method:'POST',headers:{
+        'Content-Type':'application/x-www-form-urlencoded',
+        'Authorization':'Basic '+Buffer.from(clientId+':'+clientSecret).toString('base64'),
+      },body:params.toString(),
+    });
+    if(typeof token.id_token!=='string')throw Error('Missing verified identity');
+    const jwks=await readRemoteJson('https://oauth.telegram.org/.well-known/jwks.json');
+    const subject=String(verifyTelegramIdToken(token.id_token,jwks as Jwks,clientId));
+    const linkAccountId=challengeData?.linkAccountId;
+    let accountId:string;
+    if(linkAccountId!==null&&linkAccountId!==undefined){
+      if(typeof linkAccountId!=='string')throw Error('Invalid account link');
+      const current=await authorized(req);
+      if(!current||current.accountId!==linkAccountId)
+        throw Error('Account linking requires the same authenticated session');
+      const updated=await pool.query(
+        'UPDATE accounts SET telegram_user_id=$1 WHERE id=$2 '+
+        'AND (telegram_user_id IS NULL OR telegram_user_id=$1) RETURNING id',
+        [subject,linkAccountId]);
+      if(updated.rowCount!==1)
+        throw Error('Telegram is already linked to another account');
+      accountId=linkAccountId;
+    }else{
+      // Unlinked Telegram subjects cannot mint independent free trial accounts.
+      const account=await pool.query(
+        'SELECT id FROM accounts WHERE telegram_user_id=$1',[subject]);
+      if(account.rowCount!==1){
+        redirect(res,'/?login=email-first#account');return;
+      }
+      accountId=account.rows[0].id as string;
+    }
+    const now=Date.now();
+    const raw=issueAccountSession(accountId,sessionSecret,now);
+    await pool.query(
+      'INSERT INTO website_sessions(token_sha256,account_id,expires_at) VALUES($1,$2,$3)',
+      [sessionHash(raw),accountId,new Date(now+12*60*60_000)]);
+    setCookie(res,sessionCookie,raw,12*60*60);
+    redirect(res,'/#account');
+  }catch{redirect(res,'/?login=failed#account');}
+}
 async function liveVpnProfile(owner:{
   telegramUserId:number|null;entitlementId:string;
 }):Promise<string>{
@@ -288,24 +383,6 @@ async function liveVpnProfile(owner:{
      !/^vless:\/\/[0-9a-f-]{36}@cdn\.servgo\.ru:8443\?/.test(profile))
     throw Error('Unexpected VPN node configuration');
   return profile;
-}
-async function guestWorker(path:'/guest-trial'|'/guest-status',token:string):
-  Promise<Record<string,unknown>>{
-  if(!guestPattern.test(token)||!/^[a-f0-9]{64}$/i.test(workerProfileToken))
-    throw Error('Guest trial backend not available');
-  const response=await fetch('http://127.0.0.1:8794'+path,{
-    method:'POST',redirect:'error',signal:AbortSignal.timeout(8000),
-    headers:{Authorization:'Bearer '+workerProfileToken,
-      'Content-Type':'application/json'},
-    body:JSON.stringify({guestToken:token}),
-  });
-  if(!response.ok)throw Error('Guest VPN node not ready');
-  const raw=await response.text();
-  if(raw.length>4096)throw Error('Oversized guest response');
-  const data:unknown=JSON.parse(raw);
-  if(!data||typeof data!=='object'||Array.isArray(data))
-    throw Error('Invalid guest response');
-  return data as Record<string,unknown>;
 }
 
 function installHtml(subUrl:string,client:'incy'|'karing'):string {
@@ -331,6 +408,9 @@ function installHtml(subUrl:string,client:'incy'|'karing'):string {
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', publicOrigin);
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+    const device=cookie(req,deviceCookie);
+    if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
+      setCookie(res,deviceCookie,randomBytes(32).toString('base64url'),365*24*60*60);
     send(res, 200, html, 'text/html; charset=utf-8'); return;
   }
   if (req.method === 'GET' && url.pathname === '/site.css') {
@@ -381,7 +461,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       'text/html; charset=utf-8');
     return;
   }
-  if(req.method==='GET'&&url.pathname==='/api/support/status'){
+if(req.method==='GET'&&url.pathname==='/api/support/status'){
     let ready=false;
     if(support){
       try{
@@ -478,13 +558,20 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       ...(checkoutEnabled ? [] : ['PAYMENT_PROVIDER_NOT_VERIFIED']),
     ] }); return;
   }
-  if (req.method === 'GET' && url.pathname === '/auth/login') {
-    if (!loginEnabled) { json(res,503,{code:'TELEGRAM_LOGIN_NOT_READY'});return; }
-    await login(req,res); return;
+  if(req.method==='POST' && url.pathname==='/api/auth/email/start'){
+    await emailStart(req,res);return;
   }
-  if (req.method === 'GET' && url.pathname === '/auth/callback') {
-    if (!loginEnabled) { json(res,503,{code:'TELEGRAM_LOGIN_NOT_READY'});return; }
-    await callback(req,res,url); return;
+  if(req.method==='POST' && url.pathname==='/api/auth/email/verify'){
+    await emailVerify(req,res);return;
+  }
+  if(req.method==='GET' && url.pathname==='/auth/login'){
+    await login(req,res,url);return;
+  }
+  if(req.method==='GET' && url.pathname==='/auth/callback'){
+    if(!telegramLoginEnabled){
+      json(res,503,{code:'TELEGRAM_LOGIN_NOT_READY'});return;
+    }
+    await callback(req,res,url);return;
   }
   // Prodamus's server-to-server POST is the ONLY payment proof, never /success.
   // The original FormData and Sign header are verified before SQL settlement.
@@ -511,8 +598,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const trialOffers = trialEnabled
       ? (await pool.query('SELECT product FROM trial_offers WHERE enabled=true')).rows.map(r=>r.product as string)
       : [];
-    json(res,200,{ loginEnabled, checkoutEnabled, guestTrialEnabled,
-      trialOffers:guestTrialEnabled?Array.from(new Set([...trialOffers,'vpn'])):trialOffers,
+    json(res,200,{ loginEnabled, telegramLoginEnabled, emailLoginEnabled,
+      checkoutEnabled, trialOffers,
       plans: plans.map(p => ({
       id: p.planId, title: p.title, product: p.product,
       durationDays: p.durationSeconds / 86400, rubMinor: p.rubMinor,
@@ -520,52 +607,15 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       dnsQuotaBytes: p.dnsQuotaBytes?.toString() ?? null,
     })) }); return;
   }
-  // Guest website VPN trial: one opaque browser cookie and no Telegram access.
-  // The signed-in OIDC flow below remains unchanged for existing accounts.
-  if(req.method==='POST'&&url.pathname==='/api/guest/trial'){
-    if(!guestTrialEnabled){
-      json(res,503,{code:'TRIAL_NOT_AVAILABLE'});return;
-    }
-    if(req.headers.origin!==publicOrigin||
-       !req.headers['content-type']?.startsWith('application/json')){
-      json(res,403,{code:'INVALID_ORIGIN'});return;
-    }
-    const body=await bodyJson(req);
-    if(Object.keys(body).some(k=>k!=='product') ||
-       body.product!=='vpn'){
-      json(res,400,{code:'INVALID_TRIAL'});return;
-    }
-    let guest=cookie(req,guestCookie);
-    if(!guest||!guestPattern.test(guest)){
-      guest=randomBytes(32).toString('base64url');
-      setCookie(res,guestCookie,guest,365*24*3600);
-    }
-    try{
-      const result=await guestWorker('/guest-trial',guest);
-      if(!['GRANTED','PENDING','ALREADY_USED','UNAVAILABLE'].includes(String(result.status)))
-        throw Error('Unexpected guest trial response');
-      json(res,200,{status:result.status});return;
-    }catch{
-      json(res,503,{code:'GUEST_TRIAL_RETRY_LATER'});return;
-    }
-  }
-  if(req.method==='GET'&&url.pathname==='/api/guest/status'){
-    const guest=cookie(req,guestCookie);
-    if(!guest||!guestPattern.test(guest)){
-      json(res,200,{status:'NONE'});return;
-    }
-    try{
-      const info=await guestWorker('/guest-status',guest);
-      json(res,200,info);return;
-    }catch{
-      json(res,503,{code:'GUEST_STATUS_RETRY_LATER'});return;
-    }
+  // Reject every anonymous trial request, even if a stale operator flag remains enabled.
+  if(url.pathname.startsWith('/api/guest/')){
+    json(res,403,{code:'AUTH_REQUIRED_FOR_TRIAL'});return;
   }
   const auth = await authorized(req);
   if (!auth) { json(res, 401, { code: 'LOGIN_REQUIRED' }); return; }
   if (req.method === 'GET' && url.pathname === '/api/me') {
-    const dashboard = await loadDashboard(pool, auth.userId, meteringVerified);
-    json(res,200,{ ...dashboard, csrf: csrfForSession(auth.raw,sessionSecret) }); return;
+    const dashboard = await loadDashboard(pool, auth.accountId, meteringVerified);
+    json(res,200,{ ...dashboard, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
   }
   if (req.method === 'POST' && url.pathname === '/api/logout') {
     if (!csrfAllowed(req,auth.raw)) { json(res,403,{code:'FORBIDDEN'});return; }
@@ -585,9 +635,26 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
          !/^[A-Za-z0-9_-]{16,24}$/.test(body.inviteToken)))) {
       json(res,400,{code:'INVALID_TRIAL'});return;
     }
-    const result = await store.grantTrial(auth.userId,
-      body.product as 'vpn'|'smart_dns'|'bundle',body.inviteToken as string|undefined);
+    const device=cookie(req,deviceCookie);
+    if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device)){
+      json(res,403,{code:'BROWSER_VERIFICATION_REQUIRED'});return;
+    }
+    const result = await store.grantTrial(auth.accountId,
+      body.product as 'vpn'|'smart_dns'|'bundle',body.inviteToken as string|undefined,
+      createHash('sha256').update('trial-device-v1:').update(device).digest('hex'));
     json(res,200,{status:result.status,expiresAt:result.expiresAt?.toISOString()??null});
+    return;
+  }
+  if(req.method==='POST' && url.pathname==='/api/vpn/subscription'){
+    if(!csrfAllowed(req,auth.raw)){json(res,403,{code:'FORBIDDEN'});return;}
+    if(!networkVerified||!subscriptionPool){json(res,503,{code:'VPN_NOT_READY'});return;}
+    let link=await issueSubscriptionLinkForAccount(subscriptionPool,auth.accountId);
+    // Separate private bot DB can hold the verified Telegram identity with a
+    // different UUID. Never accept a telegram user ID from the browser.
+    if(!link && auth.telegramUserId!==null)
+      link=await issueSubscriptionLink(subscriptionPool,auth.telegramUserId);
+    if(!link){json(res,409,{code:'VPN_NOT_ACTIVE'});return;}
+    json(res,200,{subscriptionUrl:link.link,expiresAt:link.expiresAt.toISOString()});
     return;
   }
   if (req.method === 'POST' && (url.pathname === '/api/checkout' || url.pathname === '/api/renew')) {
@@ -609,10 +676,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
            !/^[A-Za-z0-9_-]{16,24}$/.test(body.inviteToken)))) {
       json(res,400,{code:'INVALID_CHECKOUT'});return;
     }
-    const owner = await pool.query('SELECT id FROM accounts WHERE telegram_user_id=$1',[String(auth.userId)]);
-    if (owner.rowCount !== 1) { json(res,401,{code:'LOGIN_REQUIRED'});return; }
     const purchase = await prepareWebsiteProdamusCheckout({
-      accountId: owner.rows[0].id as string, planId: body.planId,
+      accountId: auth.accountId, planId: body.planId,
       requestId: 'web:' + body.requestId,
       inviteToken: body.inviteToken as string|undefined,
       renewalTargetId: isRenewal ? body.renewalTargetId as string : undefined,
