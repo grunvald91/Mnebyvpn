@@ -10,6 +10,8 @@ test('Smart DNS test container stays loopback-only and away from production port
   assert.doesNotMatch(compose, /(?:0\.0\.0\.0:|["']853:853|["']443:443|["']53:53)/);
   assert.match(compose, /read_only:\s*true/);
   assert.match(compose, /cap_drop:\s*\["ALL"\]/);
+  assert.match(compose, /cap_add:\s*\["NET_BIND_SERVICE"\]/);
+  assert.doesNotMatch(compose, /cap_add:\s*\["ALL"\]/);
   assert.match(compose, /no-new-privileges:true/);
   assert.match(compose, /restart:\s*["']no["']/);
   assert.match(compose, /image:\s*coredns\/coredns:1\.15\.0/);
