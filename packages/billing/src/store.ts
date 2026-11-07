@@ -49,7 +49,6 @@ function mapOrder(row: Row): OrderRecord {
     id: row.id, accountId: row.account_id, provider: row.provider, currency: row.currency,
     amount, product: row.product, planId: row.plan_id, planTitle: row.plan_title,
     durationSeconds: safeInt(row.duration_seconds),
-    deviceLimit: row.device_limit === null || row.device_limit === undefined ? 1 : safeInt(row.device_limit),
     dnsQuotaBytes: row.dns_quota_bytes === null ? null : BigInt(row.dns_quota_bytes),
     state: row.state, expiresAt: row.expires_at, telegramUserId,
   };
@@ -65,6 +64,7 @@ function mapPlan(row: Row): PricedPlan {
   return {
     planId: row.id, product: row.product, title: row.title,
     durationSeconds: safeInt(row.duration_seconds),
+    deviceLimit: row.device_limit === null || row.device_limit === undefined ? 1 : safeInt(row.device_limit),
     rubMinor: row.rub_minor === null ? null : safeInt(row.rub_minor),
     stars: row.stars === null ? null : safeInt(row.stars),
     dnsQuotaBytes: row.dns_quota_bytes === null ? null : BigInt(row.dns_quota_bytes),
