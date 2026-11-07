@@ -16,6 +16,8 @@ CREATE TABLE vpn_nodes (
   control_url text,
   client_host text,
   client_port integer CHECK (client_port BETWEEN 1 AND 65535),
+  client_sni text,
+  client_ws_path text,
   verified_at timestamptz,
   verification_report_sha256 text CHECK (
     verification_report_sha256 IS NULL OR
