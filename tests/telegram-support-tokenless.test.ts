@@ -57,6 +57,16 @@ test('main webhook bot relays private support requests and operator replies with
     assert.match(notice.text,/ID Telegram: 33334444/);
     assert.match(notice.text,/Не могу подключить VPN/);
     assert.doesNotMatch(notice.text,/отправлено|доставлено/);
+    // Retried updates must still go to the operator: Telegram does not
+    // confirm the first webhook reply's sendMessage delivery.
+    const retry=await update({update_id:1901,message:{
+      chat:{id:user,type:'private'},from:{id:user},text:question,
+      reply_to_message:{from:{is_bot:true},text:prompt.text}}});
+    const retryNotice=await retry.json() as any;
+    assert.equal(retryNotice.method,'sendMessage');
+    assert.equal(retryNotice.chat_id,operator);
+    assert.equal(retryNotice.text,notice.text);
+    assert.deepEqual(retryNotice.reply_markup,notice.reply_markup);
     const replyButton=notice.reply_markup.inline_keyboard.flat()
       .find((b:any)=>b.text.includes('Ответить'));
     assert.equal(replyButton.callback_data,'support:reply:bot:'+user);

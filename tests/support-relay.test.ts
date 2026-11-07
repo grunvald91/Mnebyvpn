@@ -89,6 +89,13 @@ test('confirm Telegram Bot API ok before reporting delivery',async()=>{
     await telegramSupportSend(config,'Проверочное обращение');
     assert.deepEqual(lastPayload,{chat_id:123,text:'Проверочное обращение',
       link_preview_options:{is_disabled:true}});
+    const keyboard={inline_keyboard:[
+      [{text:'✍️ Ответить',callback_data:'support:reply:bot:999123'}],
+      [{text:'📥 Входящие',callback_data:'support:page:0'}],
+    ]};
+    await telegramSupportSend(config,'Вопрос клиента',789,keyboard);
+    assert.deepEqual(lastPayload,{chat_id:789,text:'Вопрос клиента',
+      link_preview_options:{is_disabled:true},reply_markup:keyboard});
     globalThis.fetch=async()=>new Response(JSON.stringify({ok:false}),{status:200});
     await assert.rejects(telegramSupportSend(config,'Проверочное обращение'));
     globalThis.fetch=async()=>new Response('Unavailable',{status:503});

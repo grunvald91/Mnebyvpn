@@ -622,7 +622,11 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     try{
       await telegramSupportSend(support,
         '✉️ MNEBYVPN — обращение с сайта\nЗаявка: '+ticketId+
-        '\nКонтакт: '+contact+'\n\nСообщение:\n'+message);
+        '\nКонтакт: '+contact+'\n\nСообщение:\n'+message,support.operatorId,
+        {inline_keyboard:[
+          [{text:'✍️ Ответить',callback_data:'support:reply:site:'+ticketId}],
+          [{text:'📥 Входящие заявки',callback_data:'support:page:0'}],
+        ]});
       await pool.query("UPDATE website_support_tickets SET delivery_state='DELIVERED',delivered_at=clock_timestamp() WHERE id=$1",
         [ticketId]);
       setCookie(res,supportCookie,ticketId+'.'+ticketToken,60*60*24*30);
