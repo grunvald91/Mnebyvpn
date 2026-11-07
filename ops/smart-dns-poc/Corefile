@@ -1,0 +1,12 @@
+# DNS-over-TLS only; no rewrite, no ingress, no public listeners.
+# The docker port is deliberately published on HOST loopback only.
+tls://.:8853 {
+    tls /certs/dns.test.invalid.crt /certs/dns.test.invalid.key
+    errors
+    cache 30
+    forward . tls://9.9.9.9 {
+        tls_servername dns.quad9.net
+        health_check 5s
+        max_concurrent 64
+    }
+}
