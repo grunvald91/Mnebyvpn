@@ -45,17 +45,11 @@ if (sessionSecret.length < 32) throw new Error('WEB_SESSION_SECRET too short');
 // A public informational site can be deployed before BotFather issues OIDC
 // credentials. Login is unavailable until explicitly enabled with real keys.
 const telegramLoginEnabled = process.env.WEB_TELEGRAM_OIDC_ENABLED === 'yes';
-// Yandex sign-in is intentionally retired in favor of email OTP.
-const yandexLoginEnabled = false;
 const emailLoginEnabled = process.env.WEB_EMAIL_LOGIN_ENABLED === 'yes';
 const mailGatewaySecret = process.env.MNEBYVPN_MAIL_GATEWAY_SECRET ?? '';
 if(emailLoginEnabled && mailGatewaySecret.length<32)
   throw Error('MNEBYVPN email OTP requires a configured private ServGo mail gateway secret');
 const loginEnabled = telegramLoginEnabled || emailLoginEnabled;
-// Reuse the existing ServGo OAuth app through its fixed registered callback.
-// No Yandex Client Secret is copied to this VPN server.
-const servgoBrokerStart = 'https://servgo.ru/api/auth/yandex/mnebyvpn/start';
-const servgoBrokerExchange = 'https://servgo.ru/api/auth/yandex/mnebyvpn/exchange';
 const clientId = process.env.TELEGRAM_OIDC_CLIENT_ID ?? '';
 const clientSecret = process.env.TELEGRAM_OIDC_CLIENT_SECRET ?? '';
 if (telegramLoginEnabled && (!/^[0-9]{5,20}$/.test(clientId) || clientSecret.length < 16))
@@ -172,13 +166,13 @@ function setCookie(res: ServerResponse, name: string, value: string, maxAge: num
 const sessionHash = (raw:string):string =>
   createHash('sha256').update(raw).digest('hex');
 async function authorized(req:IncomingMessage):Promise<{
-  accountId:string;telegramUserId:number|null;yandexUserId:string|null;email:string|null;raw:string
+  accountId:string;telegramUserId:number|null;email:string|null;raw:string
 }|null> {
   const raw=cookie(req,sessionCookie);
   const accountId=readAccountSession(raw,sessionSecret);
   if(!accountId||!raw)return null;
   // Each request verifies its signed account-scoped bearer against revocable DB state.
-  const {rows}=await pool.query(`SELECT a.id,a.telegram_user_id,a.yandex_user_id,a.email_address
+  const {rows}=await pool.query(`SELECT a.id,a.telegram_user_id,a.email_address
     FROM website_sessions s JOIN accounts a ON a.id=s.account_id
     WHERE s.token_sha256=$1 AND s.account_id=$2
       AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()`,
@@ -188,7 +182,7 @@ async function authorized(req:IncomingMessage):Promise<{
   const telegramUserId=tg===null?null:Number(tg);
   if(telegramUserId!==null&&(!Number.isSafeInteger(telegramUserId)||telegramUserId<=0))
     return null;
-  return {accountId,telegramUserId,yandexUserId:rows[0].yandex_user_id??null,email:rows[0].email_address??null,raw};
+  return {accountId,telegramUserId,email:rows[0].email_address??null,raw};
 }
 function csrfAllowed(req: IncomingMessage, raw: string): boolean {
   return req.headers.origin === publicOrigin &&
@@ -285,26 +279,15 @@ async function emailVerify(req:IncomingMessage,res:ServerResponse):Promise<void>
   json(res,200,{status:'SIGNED_IN'});
 }
 
-async function login(req: IncomingMessage, res: ServerResponse,
-  provider:'telegram'|'yandex', query:URL) {
-  if(provider==='telegram'&&!telegramLoginEnabled ||
-     provider==='yandex'&&!yandexLoginEnabled) {
-    json(res,503,{code:'LOGIN_PROVIDER_NOT_READY'});return;
-  }
+async function login(req:IncomingMessage,res:ServerResponse,query:URL){
+  if(!telegramLoginEnabled){json(res,503,{code:'TELEGRAM_LOGIN_NOT_READY'});return;}
   const linking=query.searchParams.get('link')==='1';
   const current=linking?await authorized(req):null;
   if(linking&&!current){redirect(res,'/#account');return;}
-  const challenge=createLoginChallenge(sessionSecret,Date.now(),provider,
+  const challenge=createLoginChallenge(sessionSecret,Date.now(),'telegram',
     current?.accountId??null);
   setCookie(res,challengeCookie,challenge.cookie,300);
-  if(provider==='yandex'){
-    const broker=new URL(servgoBrokerStart);
-    broker.searchParams.set('state',challenge.state);
-    broker.searchParams.set('code_challenge',challenge.codeChallenge);
-    redirect(res,broker.toString());return;
-  }
-  // Telegram OAuth is confirmed in the official Telegram client, not by a
-  // message from the MNEBYVPN bot.
+  // Telegram official OIDC confirmation, no message from VPN bot required.
   const oauth=new URL('https://oauth.telegram.org/auth');
   oauth.searchParams.set('client_id',clientId);
   oauth.searchParams.set('redirect_uri',publicOrigin+'/auth/callback');
@@ -315,47 +298,31 @@ async function login(req: IncomingMessage, res: ServerResponse,
   oauth.searchParams.set('code_challenge_method','S256');
   redirect(res,oauth.toString());
 }
-async function callback(req: IncomingMessage,res: ServerResponse,
-  url:URL,provider:'telegram'|'yandex') {
+async function callback(req:IncomingMessage,res:ServerResponse,url:URL){
   const rawChallenge=cookie(req,challengeCookie);
   const challengeData=verifyEnvelope(rawChallenge,sessionSecret);
   const verifier=consumeLoginChallenge(rawChallenge,url.searchParams.get('state'),
-    sessionSecret,Date.now(),provider);
+    sessionSecret,Date.now(),'telegram');
   setCookie(res,challengeCookie,'',0);
   const code=url.searchParams.get('code');
   if(!verifier||!code||code.length>2048){
     redirect(res,'/?login=failed#account');return;
   }
   try{
-    let subject:string;
-    if(provider==='telegram'){
-      const params=new URLSearchParams({
-        grant_type:'authorization_code',code,
-        redirect_uri:publicOrigin+'/auth/callback',
-        client_id:clientId,code_verifier:verifier,
-      });
-      const token=await readRemoteJson('https://oauth.telegram.org/token',{
-        method:'POST',headers:{
-          'Content-Type':'application/x-www-form-urlencoded',
-          'Authorization':'Basic '+Buffer.from(clientId+':'+clientSecret).toString('base64'),
-        },body:params.toString(),
-      });
-      if(typeof token.id_token!=='string')throw Error('Missing verified identity');
-      const jwks=await readRemoteJson('https://oauth.telegram.org/.well-known/jwks.json');
-      subject=String(verifyTelegramIdToken(token.id_token,jwks as Jwks,clientId));
-    }else{
-      // Back-channel redemption of one-use PKCE ticket at trusted ServGo.
-      // The Yandex OAuth token never leaves ServGo.
-      if(!/^[A-Za-z0-9_-]{43}$/.test(code))
-        throw Error('Invalid ServGo broker code');
-      const profile=await readRemoteJson(servgoBrokerExchange,{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({code,code_verifier:verifier}),
-      });
-      if(typeof profile.yandexId!=='string'||!/^[0-9]{1,32}$/.test(profile.yandexId))
-        throw Error('Unverified Yandex broker identity');
-      subject=profile.yandexId;
-    }
+    const params=new URLSearchParams({
+      grant_type:'authorization_code',code,
+      redirect_uri:publicOrigin+'/auth/callback',
+      client_id:clientId,code_verifier:verifier,
+    });
+    const token=await readRemoteJson('https://oauth.telegram.org/token',{
+      method:'POST',headers:{
+        'Content-Type':'application/x-www-form-urlencoded',
+        'Authorization':'Basic '+Buffer.from(clientId+':'+clientSecret).toString('base64'),
+      },body:params.toString(),
+    });
+    if(typeof token.id_token!=='string')throw Error('Missing verified identity');
+    const jwks=await readRemoteJson('https://oauth.telegram.org/.well-known/jwks.json');
+    const subject=String(verifyTelegramIdToken(token.id_token,jwks as Jwks,clientId));
     const linkAccountId=challengeData?.linkAccountId;
     let accountId:string;
     if(linkAccountId!==null&&linkAccountId!==undefined){
@@ -363,44 +330,31 @@ async function callback(req: IncomingMessage,res: ServerResponse,
       const current=await authorized(req);
       if(!current||current.accountId!==linkAccountId)
         throw Error('Account linking requires the same authenticated session');
-      const col=provider==='telegram'?'telegram_user_id':'yandex_user_id';
       const updated=await pool.query(
-        `UPDATE accounts SET ${col}=$1 WHERE id=$2
-            AND (${col} IS NULL OR ${col}=$1) RETURNING id`,
+        'UPDATE accounts SET telegram_user_id=$1 WHERE id=$2 '+
+        'AND (telegram_user_id IS NULL OR telegram_user_id=$1) RETURNING id',
         [subject,linkAccountId]);
-      if(updated.rowCount!==1)throw Error('Provider already linked to another account');
+      if(updated.rowCount!==1)
+        throw Error('Telegram is already linked to another account');
       accountId=linkAccountId;
     }else{
-      if(provider==='telegram'){
-        // A first-time visitor verifies email and explicitly links Telegram.
-        // Existing Telegram-bot accounts retain direct Telegram sign-in.
-        const account=await pool.query(
-          'SELECT id FROM accounts WHERE telegram_user_id=$1',[subject]);
-        if(account.rowCount!==1){
-          redirect(res,'/?login=email-first#account');return;
-        }
-        accountId=account.rows[0].id as string;
-      }else{
-        // Retained only for historic Yandex migrations; the public provider is disabled.
-        const account=await pool.query(
-          'SELECT id FROM accounts WHERE yandex_user_id=$1',[subject]);
-        if(account.rowCount!==1)throw Error('Unregistered provider account');
-        accountId=account.rows[0].id as string;
+      // Unlinked Telegram subjects cannot mint independent free trial accounts.
+      const account=await pool.query(
+        'SELECT id FROM accounts WHERE telegram_user_id=$1',[subject]);
+      if(account.rowCount!==1){
+        redirect(res,'/?login=email-first#account');return;
       }
+      accountId=account.rows[0].id as string;
     }
     const now=Date.now();
     const raw=issueAccountSession(accountId,sessionSecret,now);
-    await pool.query(`INSERT INTO website_sessions(token_sha256,account_id,expires_at)
-      VALUES($1,$2,$3)`,
+    await pool.query(
+      'INSERT INTO website_sessions(token_sha256,account_id,expires_at) VALUES($1,$2,$3)',
       [sessionHash(raw),accountId,new Date(now+12*60*60_000)]);
     setCookie(res,sessionCookie,raw,12*60*60);
     redirect(res,'/#account');
-  }catch{
-    // No leaked access tokens, identity claims, state or authorization codes.
-    redirect(res,'/?login=failed#account');
-  }
+  }catch{redirect(res,'/?login=failed#account');}
 }
-
 async function liveVpnProfile(owner:{
   telegramUserId:number|null;entitlementId:string;
 }):Promise<string>{
@@ -516,19 +470,14 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if(req.method==='POST' && url.pathname==='/api/auth/email/verify'){
     await emailVerify(req,res);return;
   }
-  if(req.method==='GET' && (url.pathname==='/auth/login' ||
-       url.pathname==='/auth/yandex')){
-    await login(req,res,url.pathname==='/auth/login'?'telegram':'yandex',url);
-    return;
+  if(req.method==='GET' && url.pathname==='/auth/login'){
+    await login(req,res,url);return;
   }
-  if(req.method==='GET' && (url.pathname==='/auth/callback' ||
-       url.pathname==='/auth/yandex/callback')){
-    const provider=url.pathname==='/auth/callback'?'telegram':'yandex';
-    if(provider==='telegram'&&!telegramLoginEnabled ||
-       provider==='yandex'&&!yandexLoginEnabled){
-      json(res,503,{code:'LOGIN_PROVIDER_NOT_READY'});return;
+  if(req.method==='GET' && url.pathname==='/auth/callback'){
+    if(!telegramLoginEnabled){
+      json(res,503,{code:'TELEGRAM_LOGIN_NOT_READY'});return;
     }
-    await callback(req,res,url,provider);return;
+    await callback(req,res,url);return;
   }
   // Prodamus's server-to-server POST is the ONLY payment proof, never /success.
   // The original FormData and Sign header are verified before SQL settlement.
@@ -555,7 +504,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const trialOffers = trialEnabled
       ? (await pool.query('SELECT product FROM trial_offers WHERE enabled=true')).rows.map(r=>r.product as string)
       : [];
-    json(res,200,{ loginEnabled, telegramLoginEnabled, emailLoginEnabled, yandexLoginEnabled,
+    json(res,200,{ loginEnabled, telegramLoginEnabled, emailLoginEnabled,
       checkoutEnabled, trialOffers,
       plans: plans.map(p => ({
       id: p.planId, title: p.title, product: p.product,
