@@ -25,3 +25,5 @@ jobs:
           echo "server188_direct_ssh_available=${SERVER188_PASSWORD_AVAILABLE}" >> "$GITHUB_STEP_SUMMARY"
           echo "legacy_ssh_credentials_available=$([ "$LEGACY_SSH_KEY_AVAILABLE" = true ] && [ "$LEGACY_SSH_HOST_AVAILABLE" = true ] && [ "$LEGACY_SSH_USER_AVAILABLE" = true ] && echo true || echo false)" >> "$GITHUB_STEP_SUMMARY"
           echo 'No secret value was read or transferred.' >> "$GITHUB_STEP_SUMMARY"
+          # Only public true/false values are printed; never print any token.
+          cat "$GITHUB_STEP_SUMMARY"
