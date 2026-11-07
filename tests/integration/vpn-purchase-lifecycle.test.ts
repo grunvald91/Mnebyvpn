@@ -46,6 +46,12 @@ test('Prodamus receipt is queued once; node-ready notice only after final node-a
   assert.equal(before.provisionalActivation,true);
   assert.ok(before.expiresAt);
   assert.ok(before.expiresAt!.getTime()-Date.now()<=5*60_000+2000);
+  // A transient provisioning error must not strand an unstarted paid order.
+  await pool.query("UPDATE entitlements SET state='PROVISIONING_FAILED' WHERE id=$1",[id]);
+  const retryDesired=await new PgReconcileStore(pool).readDesired(id);
+  assert.equal(retryDesired.enabled,true);
+  assert.equal(retryDesired.provisionalActivation,true);
+  await pool.query("UPDATE entitlements SET state='PAID_PENDING_PROVISIONING' WHERE id=$1",[id]);
   const fence=(await pool.query("SELECT claim_provisioning_fence($1,'vpn') AS fence",[id])).rows[0].fence;
   assert.equal((await pool.query("SELECT acknowledge_provisioning($1,'vpn',1,$2,true) AS ok",
     [id,fence])).rows[0].ok,true);
