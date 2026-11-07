@@ -23,5 +23,5 @@ test('PoC speaks TLS both ways with upstream identity checking and no rewriting'
   assert.match(corefile, /forward\s+\.\s+tls:\/\/9\.9\.9\.9\s*\{/);
   assert.match(corefile, /tls_servername\s+dns\.quad9\.net/);
   assert.match(corefile, /max_concurrent\s+64/);
-  assert.doesNotMatch(corefile, /^\s*(?:rewrite|template|hosts|log)\s+/m);
+  assert.doesNotMatch(corefile, /^\s*(?:rewrite|template|hosts|log|errors)\s+/m);
 });
