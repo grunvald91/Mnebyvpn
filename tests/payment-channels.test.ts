@@ -115,7 +115,7 @@ test('Prodamus creates signed request using trusted RUB amount and title', () =>
 
 test('Prodamus webhook requires signed success, order_num, sum, domain and capture', () => {
   const body: Fields = {
-    payment_status: 'success', order_id: 'capture-123', order_num: orderId,
+    payment_status: 'success', currency:'rub',order_id: 'capture-123', order_num: orderId,
     domain: 'merchant.payform.ru', sum: '199.00', attempt: '1',
   };
   const sig = signProdamus(body, key);
@@ -126,6 +126,8 @@ test('Prodamus webhook requires signed success, order_num, sum, domain and captu
     assert.equal(result.capture.amountMinor, 19900);
   }
   assert.equal(verifyProdamusPayment({ ...body, sum: '1.00' }, sig, rubOrder, config).ok, false);
+  const wrongCurrency={...body,currency:'usd'};
+  assert.equal(verifyProdamusPayment(wrongCurrency,signProdamus(wrongCurrency,key),rubOrder,config).ok,false);
   const wrong = { ...body, sum: '1.00' };
   assert.equal(verifyProdamusPayment(wrong, signProdamus(wrong, key), rubOrder, config).ok, false);
   const canceled = { ...body, payment_status: 'order_canceled' };
