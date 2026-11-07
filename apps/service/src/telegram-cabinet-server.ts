@@ -357,7 +357,7 @@ async function handleOperatorReply(update:any){
     const siteTicket=operatorWebsiteReply(m,support.operatorId);
     if(siteTicket){
       const {ticketId,answer}=siteTicket;
-      const webPort=Number(process.env.WEB_PORT??'8791');
+      const webPort=Number(process.env.SUPPORT_WEBSITE_PORT??'8792');
       if(!Number.isSafeInteger(webPort)||webPort<1||webPort>65535)
         return {method:'sendMessage',chat_id:support.operatorId,
           text:'Не настроен внутренний канал ответов на сайт.'};
