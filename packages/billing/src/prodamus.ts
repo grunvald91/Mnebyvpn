@@ -53,9 +53,12 @@ export interface ProdamusConfig {
    * must be configured in the merchant dashboard; Prodamus ignores overrides. */
   sys?:string;
 }
-function httpsUrl(value: string): URL {
+function httpsUrl(value: string, allowFragment = false): URL {
   const url = new URL(value);
-  if (url.protocol !== 'https:' || url.username || url.password || url.hash)
+  // Redirect targets may contain a browser-only anchor (#account, #plans).
+  // Merchant and notification endpoints must remain fragment-free.
+  if (url.protocol !== 'https:' || url.username || url.password ||
+      (!allowFragment && url.hash))
     throw new Error('HTTPS URL required');
   return url;
 }
@@ -69,8 +72,8 @@ export function buildProdamusLinkRequest(order: ProdamusOrder, title: string, cf
       !/^[0-9a-f-]{36}$/i.test(order.id) || !title.trim()) throw new Error('Invalid Prodamus order');
   const url = httpsUrl(cfg.formUrl);
   httpsUrl(cfg.notificationUrl);
-  httpsUrl(cfg.successUrl);
-  httpsUrl(cfg.returnUrl);
+  httpsUrl(cfg.successUrl, true);
+  httpsUrl(cfg.returnUrl, true);
   // Prodamus documents that urlNotification works only together with a
   // merchant-approved integration code (sys). Never send an empty sys while
   // claiming per-order notification is enabled.
