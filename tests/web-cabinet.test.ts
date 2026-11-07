@@ -264,3 +264,17 @@ test('production email login uses canonical narrowly scoped auth DB, not public 
   assert.match(backend,/WEB_BILLING_DATABASE_URL/);
   assert.match(backend,/sameCanonicalPostgresDb\(billingDbUrl/);
 });
+
+test('checkout provides actionable errors and a manual Prodamus link if WebView navigation fails',()=>{
+  const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
+  const ui=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
+  const backend=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
+  assert.match(html,/id="checkout-error"[^>]*role="alert"/);
+  assert.match(html,/id="payment-link"/);
+  assert.match(ui,/showPaymentLink\(target\.toString\(\)\)/);
+  assert.match(ui,/checkoutError\(message\)/);
+  assert.match(ui,/state\.requestId \|\|= newRequestId\(\)/);
+  assert.match(backend,/code:'PAYMENT_PROVIDER_UNAVAILABLE'/);
+  assert.match(backend,/code:'CHECKOUT_RETRY_LIMIT'/);
+  assert.match(backend,/MNEBYVPN_CHECKOUT_DB_ERROR_SQLSTATE_/);
+});
