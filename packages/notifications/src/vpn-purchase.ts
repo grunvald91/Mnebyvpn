@@ -26,7 +26,8 @@ const readyFor = `EXISTS (
 )`;
 
 export class PgVpnPurchaseNoticeQueue {
-  constructor(private readonly pool:Pick<Pool,'query'>){}
+  private readonly pool:Pick<Pool,'query'>;
+  constructor(pool:Pick<Pool,'query'>){this.pool=pool;}
   /** Discovery is idempotent and observes only verified provider captures. */
   async discover():Promise<number>{
     const common=` FROM orders o
@@ -149,7 +150,11 @@ export function purchaseNoticeMessage(job:PurchaseNotice):{text:string;reply_mar
 }
 
 export class TelegramBotPurchaseSender implements PurchaseNoticeSender {
-  constructor(private readonly token:string,private readonly fetcher:typeof fetch=fetch){
+  private readonly token:string;
+  private readonly fetcher:typeof fetch;
+  constructor(token:string,fetcher:typeof fetch=fetch){
+    this.token=token;
+    this.fetcher=fetcher;
     if(!/^[0-9]{5,20}:[A-Za-z0-9_-]{30,}$/.test(token))
       throw Error('Invalid Telegram bot token');
   }
