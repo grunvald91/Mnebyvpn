@@ -1,0 +1,27 @@
+name: Check existing support token and direct server access
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mnebyvpn-support-token-preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      BOT_TOKEN_AVAILABLE: ${{ secrets.TELEGRAM_TOKEN_BOT != '' || secrets.TELEGRAM_BOT_TOKEN != '' }}
+      SERVER188_PASSWORD_AVAILABLE: ${{ secrets.SERVER188_SSH_PASSWORD != '' }}
+      LEGACY_SSH_KEY_AVAILABLE: ${{ secrets.MNEBYVPN_DEPLOY_SSH_KEY != '' }}
+      LEGACY_SSH_HOST_AVAILABLE: ${{ secrets.MNEBYVPN_DEPLOY_HOST != '' }}
+      LEGACY_SSH_USER_AVAILABLE: ${{ secrets.MNEBYVPN_DEPLOY_USER != '' }}
+    steps:
+      - name: Report presence only, never extract or print any secret
+        run: |
+          set -eu
+          echo "existing_bot_token_available=${BOT_TOKEN_AVAILABLE}" >> "$GITHUB_STEP_SUMMARY"
+          echo "server188_direct_ssh_available=${SERVER188_PASSWORD_AVAILABLE}" >> "$GITHUB_STEP_SUMMARY"
+          echo "legacy_ssh_credentials_available=$([ "$LEGACY_SSH_KEY_AVAILABLE" = true ] && [ "$LEGACY_SSH_HOST_AVAILABLE" = true ] && [ "$LEGACY_SSH_USER_AVAILABLE" = true ] && echo true || echo false)" >> "$GITHUB_STEP_SUMMARY"
+          echo 'No secret value was read or transferred.' >> "$GITHUB_STEP_SUMMARY"
