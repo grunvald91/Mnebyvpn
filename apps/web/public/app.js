@@ -555,13 +555,15 @@ async function submitSupport(event){
   send.textContent='Отправляем…';
   result.textContent='';
   try{
-    await api('/api/support',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    const submitted=await api('/api/support',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       contact:byId('support-contact').value,
       message:byId('support-message').value,
       website:byId('support-website').value,
     })});
     byId('support-message').value='';
-    result.textContent='✅ Обращение отправлено оператору MNEBYVPN.';
+    result.textContent=submitted.queued
+      ?'✅ Обращение сохранено. Оператор ответит здесь после просмотра заявки в боте.'
+      :'✅ Обращение передано оператору MNEBYVPN.';
     await refreshSupportTicket();
   }catch(error){
     result.textContent=error.status===429
