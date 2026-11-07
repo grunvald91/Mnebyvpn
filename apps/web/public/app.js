@@ -276,12 +276,18 @@ function renderAccount(payload) {
     state.guestSubscriptionUrl=null;
     byId('guest-trial-card').classList.add('hidden');
   }
-  if(accesses.some(a=>a.product==='vpn' && a.state==='PAID_PENDING_PROVISIONING')){
+  const pendingVpn=accesses.filter(a=>a.product==='vpn' &&
+    a.state==='PAID_PENDING_PROVISIONING');
+  if(pendingVpn.length){
+    const isPaid=pendingVpn.some(a=>(payload.orders||[]).some(o=>
+      o.id===a.sourceOrderId && o.state==='PAID'));
     const card=byId('guest-trial-card');
     card.classList.remove('hidden');
-    byId('guest-trial-title').textContent='Подключаем VPN';
-    byId('guest-trial-status').textContent=
-      'Оплата подтверждена. VPN-сервер готовит подключение. Проверьте статус в личном кабинете.';
+    byId('guest-trial-title').textContent=isPaid?
+      'Подключаем оплаченный VPN':'Подключаем пробный VPN';
+    byId('guest-trial-status').textContent=isPaid?
+      'Оплата подтверждена. VPN-сервер готовит подключение. Проверьте статус в личном кабинете.':
+      'Пробные 24 часа начнутся только после подтверждения активации сервером.';
     if(!state.guestSubscriptionUrl)byId('guest-trial-ready').classList.add('hidden');
   }
   renderPlan();
