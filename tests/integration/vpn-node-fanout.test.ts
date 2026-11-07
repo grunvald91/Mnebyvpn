@@ -134,6 +134,16 @@ test('node-scoped access, subscription publication and refund revoke end-to-end 
   assert.equal(queuedDisable.rows[0].state,'revoking');
   assert.ok(Number(queuedDisable.rows[0].desired_node_revision)>
     Number(queuedDisable.rows[0].applied_node_revision));
+  // The independent node revision must revoke access now, even if the
+  // commercial subscription has NOT been refunded or changed.
+  const operatorDisable=await reconcileAllAssignedNodes(entitlement,store,adapters);
+  assert.deepEqual(operatorDisable.map(x=>x.status),['synced','synced']);
+  assert.equal(state.get(nodeIds[0])?.enabled,false);
+  assert.equal(state.get(nodeIds[0])?.revision,3);
+  assert.equal(state.get(nodeIds[1])?.enabled,true);
+  assert.equal((await pool.query(
+    'SELECT state FROM vpn_node_assignments WHERE node_id=$1',
+    [nodeIds[0]])).rows[0].state,'revoked');
 
   // When one node goes unhealthy, its profile disappears without revoking
   // the second healthy node's access.
@@ -146,19 +156,22 @@ test('node-scoped access, subscription publication and refund revoke end-to-end 
     "UPDATE entitlements SET state='REFUNDED',revision=revision+1 "+
     'WHERE id=$1',[entitlement]);
   const queued=await pool.query(
-    'SELECT state,desired_revision FROM vpn_node_assignments WHERE entitlement_id=$1',
+    'SELECT node_id,state,desired_revision FROM vpn_node_assignments WHERE entitlement_id=$1',
     [entitlement]);
-  assert.deepEqual(queued.rows.map(x=>x.state),['revoking','revoking'],
-    'refund must enqueue revoke on every assigned node');
+  assert.equal(queued.rows.find(x=>x.node_id===nodeIds[0])?.state,'revoked',
+    'already verified revoked node must not be re-enabled by a refund');
+  assert.equal(queued.rows.find(x=>x.node_id===nodeIds[1])?.state,'revoking',
+    'live node must be queued for refund revoke');
   const revoke=await reconcileAllAssignedNodes(entitlement,store,adapters);
-  assert.deepEqual(revoke.map(x=>x.status),['synced','synced']);
+  assert.deepEqual(revoke.map(x=>x.status),['synced']);
   assert.ok([...state.values()].every(x=>x.enabled===false&&x.revision>=3));
-  assert.ok((state.get(nodeIds[0])?.revision??0)>3,
-    'disabled node and refund each advance the independent node revision');
+  assert.equal(state.get(nodeIds[0])?.revision,3,
+    'operator disable already revoked the node without a billing update');
   const revoked=await pool.query(
-    'SELECT state,applied_revision FROM vpn_node_assignments WHERE entitlement_id=$1',
+    'SELECT node_id,state,applied_revision FROM vpn_node_assignments WHERE entitlement_id=$1',
     [entitlement]);
-  assert.ok(revoked.rows.every(x=>x.state==='revoked'&&Number(x.applied_revision)===3));
+  assert.ok(revoked.rows.every(x=>x.state==='revoked'));
+  assert.equal(Number(revoked.rows.find(x=>x.node_id===nodeIds[1])?.applied_revision),3);
   assert.equal(await loadMultiNodeSubscription(pool,token,profiles),null);
  }finally{
   await pool.query('DELETE FROM vpn_subscription_links WHERE entitlement_id=$1',

@@ -49,18 +49,27 @@ test('paid renewal cannot exceed capacity when it reopens a revoked assignment',
       "UPDATE vpn_node_assignments SET state='revoked',applied_revision=2,"+
       "applied_node_revision=desired_node_revision WHERE node_id=$1 AND entitlement_id=$2",
       [node,a]);
-    assert.equal(await registry.reserve(b,node,{capability:'vless-ws-tls'}),'reserved');
-    // The renewal is committed as a business entitlement even though its
-    // previous node has no capacity: fail allocation safely, never overbook.
-    await db.query(
-      "UPDATE entitlements SET state='PAID_PENDING_PROVISIONING',revision=3,"+
-      "expires_at=expires_at+interval '1 day' WHERE id=$1",[a]);
+    // Race renewal against a competing reservation: both acquire the same
+    // node row lock, so precisely one allocation may occupy capacity=1.
+    const [renewal,admission]=await Promise.all([
+      db.query(
+        "UPDATE entitlements SET state='PAID_PENDING_PROVISIONING',revision=3,"+
+        "expires_at=expires_at+interval '1 day' WHERE id=$1",[a]),
+      registry.reserve(b,node,{capability:'vless-ws-tls'}),
+    ]);
+    assert.equal(renewal.rowCount,1);
+    assert.ok(['reserved','unavailable'].includes(admission));
     const {rows}=await db.query(
       'SELECT entitlement_id,state,last_error_code,desired_node_revision FROM vpn_node_assignments WHERE node_id=$1 ORDER BY entitlement_id',
       [node]);
-    assert.equal(rows.find(x=>x.entitlement_id===a)?.state,'failed');
-    assert.equal(rows.find(x=>x.entitlement_id===a)?.last_error_code,'node_capacity');
-    assert.equal(rows.find(x=>x.entitlement_id===b)?.state,'pending');
+    if(admission==='reserved'){
+      assert.equal(rows.find(x=>x.entitlement_id===a)?.state,'failed');
+      assert.equal(rows.find(x=>x.entitlement_id===a)?.last_error_code,'node_capacity');
+      assert.equal(rows.find(x=>x.entitlement_id===b)?.state,'pending');
+    }else{
+      assert.equal(rows.find(x=>x.entitlement_id===a)?.state,'pending');
+      assert.equal(rows.find(x=>x.entitlement_id===b),undefined);
+    }
     assert.equal((await db.query(
       "SELECT state FROM entitlements WHERE id=$1",[a])).rows[0].state,
       'PAID_PENDING_PROVISIONING');
