@@ -26,7 +26,7 @@ test('each accessible tab controls exactly one labeled panel',()=>{
 });
 test('privacy copy does not make unverified no-logs or universal-access guarantees',()=>{
   assert.match(index,/не заявляем о подтверждённой политике/);
-  assert.match(index,/не гарантированн|не обещаем абсолютную анонимность/);
+  assert.match(index,/не обещаем абсолютную анонимность/i);
   assert.match(privacy,/состав собираемых сетевых метаданных/);
   assert.match(privacy,/не заявляет проверенную политику/);
   assert.match(index,/пока дни или деньги за приглашение не начисляются/);
