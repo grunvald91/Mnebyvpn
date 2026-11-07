@@ -163,7 +163,7 @@ test('trial is behind email OTP or Telegram OAuth, never an anonymous cookie',as
   const backend=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
   const ui=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
   const skin=readFileSync(new URL('../apps/web/public/neo.css',import.meta.url),'utf8');
-  assert.doesNotMatch(html,/id="trial-hero-button"/);
+  assert.match(html,/id="trial-hero-button"[^>]*aria-hidden="true"/);
   assert.match(html,/id="trial-button"/);
   assert.match(html,/id="email-start-form"/);
   assert.match(html,/id="cabinet-login-link"/);
