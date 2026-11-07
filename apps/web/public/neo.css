@@ -210,13 +210,7 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 /* Mobile trial CTA: earlier compact-layout rules hid BOTH the hero CTA and
    the tariff-card CTA. The free-day request must remain visible and tappable. */
 @media (max-width: 680px) {
-  .hero .hero-actions {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: stretch;
-    gap: 0;
-    margin-top: 11px;
-  }
+  .hero .hero-actions{display:none}
   .hero .hero-actions > :not(#trial-hero-button) { display: none; }
   .hero .hero-actions #trial-hero-button {
     display: inline-flex;
@@ -235,3 +229,37 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
   }
   .hero { overflow: visible; }
 }
+
+/* Compact hero: reveal the full brand mark without the duplicate trial CTA. */
+@media(max-width:680px){
+  .hero{overflow:visible;min-height:100px;padding:10px 0 14px}
+  .portal-art{top:13px;right:0;height:88px}
+  .portal-avatar{top:8px}
+  .portal-art .portal-orbit{top:40px}
+}
+@media(max-width:360px){.hero{min-height:101px}.portal-art{top:13px;right:0}}
+.login-options{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.login-options .button{flex:1 1 170px;min-height:44px;text-align:center}
+.login-options a[aria-disabled="true"]{opacity:.48;pointer-events:none;cursor:not-allowed}
+.account-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.setup-steps{display:grid;gap:8px;margin:12px 0}
+.setup-steps p{display:flex;flex-direction:column;gap:2px;margin:0;padding:10px 12px;border-radius:12px;background:rgba(13,29,65,.6)}
+.setup-steps b{color:#f5f8ff}
+.setup-steps span{color:#acbfdc}
+.guest-trial-apps a{min-height:40px}
+
+/* Compact passwordless MNEBYVPN email sign-in, shared with Telegram linking. */
+.email-auth-panel{margin:14px 0;padding:16px;border:1px solid rgba(69,203,235,.28);
+  background:linear-gradient(135deg,rgba(8,37,65,.62),rgba(31,24,70,.52));
+  border-radius:18px}
+.email-auth-panel label{display:block;font-size:13px;font-weight:650;
+  color:#cfeaff;margin-bottom:7px}
+.email-fields{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap}
+.email-fields input{flex:1 1 165px;min-width:0;height:47px;padding:0 13px;
+  font-size:16px;color:#f9fbff;background:rgba(8,21,50,.68);
+  border:1px solid rgba(121,205,238,.35);border-radius:12px}
+.email-fields input:focus-visible{outline:2px solid #42d8f4;outline-offset:1px}
+.email-fields .button{flex:0 1 auto;min-height:46px}
+#email-verify-form{margin-top:14px}
+#email-status{margin:10px 0 0}
+@media(max-width:420px){.email-auth-panel{padding:12px}.email-fields .button{flex:1 1 100%}}
