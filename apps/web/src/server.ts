@@ -166,6 +166,8 @@ class MerchantTransport implements PayformLinkTransport {
 }
 
 const html = await readFile(new URL('../public/index.html', import.meta.url));
+const termsHtml = await readFile(new URL('../public/terms.html',import.meta.url));
+const privacyHtml = await readFile(new URL('../public/privacy.html',import.meta.url));
 const css = await readFile(new URL('../public/site.css', import.meta.url));
 const neoCss = await readFile(new URL('../public/neo.css', import.meta.url));
 const brandAvatar = await readFile(new URL('../public/brand-avatar.webp', import.meta.url));
@@ -449,6 +451,12 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
       setCookie(res,deviceCookie,randomBytes(32).toString('base64url'),365*24*60*60);
     send(res, 200, html, 'text/html; charset=utf-8'); return;
+  }
+  if (req.method === 'GET' && (url.pathname === '/terms' || url.pathname === '/terms.html')) {
+    send(res,200,termsHtml,'text/html; charset=utf-8');return;
+  }
+  if (req.method === 'GET' && (url.pathname === '/privacy' || url.pathname === '/privacy.html')) {
+    send(res,200,privacyHtml,'text/html; charset=utf-8');return;
   }
   if (req.method === 'GET' && url.pathname === '/site.css') {
     send(res, 200, css, 'text/css; charset=utf-8'); return;
