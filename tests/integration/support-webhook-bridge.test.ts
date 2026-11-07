@@ -102,20 +102,43 @@ test('different web and bot databases share only signed localhost support inbox/
       'X-MNEBYVPN-Support-Signature':staleSignature,
     }})).status,403);
 
-    const inbox=await update({update_id:4311,message:{
-      from:{id:owner},chat:{id:owner,type:'private'},text:'/inbox',
+    const ownerMenu=await update({update_id:4309,message:{
+      from:{id:owner},chat:{id:owner,type:'private'},text:'/start',
+    }});
+    const home=await ownerMenu.json() as any;
+    const entry=home.reply_markup.inline_keyboard.flat().find(
+      (button:any)=>button.text.includes('Входящие'));
+    assert.equal(entry.callback_data,'support:page:0');
+    const inbox=await update({update_id:4311,callback_query:{
+      id:'owner-inbox',from:{id:owner},
+      message:{chat:{id:owner,type:'private'},message_id:101},
+      data:entry.callback_data,
     }});
     assert.equal(inbox.status,200);
     const notice=await inbox.json() as any;
-    assert.equal(notice.method,'sendMessage');
+    assert.equal(notice.method,'editMessageText');
     assert.equal(notice.chat_id,owner);
     assert.match(notice.text,new RegExp('Заявка: '+ticketId));
     assert.match(notice.text,/После оплаты VPN/);
+    const answerButton=notice.reply_markup.inline_keyboard.flat()
+      .find((button:any)=>button.text.includes('Ответить'));
+    assert.equal(answerButton.callback_data,'support:reply:site:'+ticketId);
+
+    const replyPromptResponse=await update({update_id:4315,callback_query:{
+      id:'reply-to-guest',from:{id:owner},
+      message:{chat:{id:owner,type:'private'},message_id:101},
+      data:answerButton.callback_data,
+    }});
+    const replyPrompt=await replyPromptResponse.json() as any;
+    assert.equal(replyPrompt.method,'sendMessage');
+    assert.equal(replyPrompt.chat_id,owner);
+    assert.equal(replyPrompt.reply_markup.force_reply,true);
+    assert.match(replyPrompt.text,new RegExp('Заявка: '+ticketId));
 
     const answer='Проверьте новый VPN-профиль, затем повторите подключение.';
     const reply=await update({update_id:4312,message:{
       from:{id:owner},chat:{id:owner,type:'private'},text:answer,
-      reply_to_message:{from:{is_bot:true},text:notice.text},
+      reply_to_message:{from:{is_bot:true},text:replyPrompt.text},
     }});
     assert.equal(reply.status,200);
     const result=await reply.json() as any;
@@ -140,7 +163,7 @@ test('different web and bot databases share only signed localhost support inbox/
 
     const repeat=await update({update_id:4314,message:{
       from:{id:owner},chat:{id:owner,type:'private'},text:answer,
-      reply_to_message:{from:{is_bot:true},text:notice.text},
+      reply_to_message:{from:{is_bot:true},text:replyPrompt.text},
     }});
     assert.match((await repeat.json() as any).text,/уже ответили|закрыто/);
   }finally{
