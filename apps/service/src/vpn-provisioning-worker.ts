@@ -197,7 +197,7 @@ async function main():Promise<void>{
              !/^[0-9a-f]{8}-[0-9a-f-]{27,40}$/i.test(requestedId)))
             throw Error('Invalid requested entitlement');
           const allowed=isTelegram
-            ?await billing.confirmedVpnProfile(userId as number)
+            ?await billing.confirmedVpnProfile(userId as number,requestedId as string|undefined)
             :await (async()=>{
                 // Also support authenticated Yandex-only account profiles.
                 // The caller is a loopback-only server-to-server bridge with

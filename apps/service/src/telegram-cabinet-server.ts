@@ -247,9 +247,13 @@ async function receiveStars(update:any){
     }
   }
   const m=update.message;
-  if(!validId(m?.from?.id)||m.chat?.type!=='private'||m.chat.id!==m.from.id)
-    throw new Error('Untrusted Telegram payment actor');
+  // Refund service messages may omit from. The signed webhook, private chat,
+  // original order and charge bind refunds to their owner. Captures still need from.
+  if(m?.chat?.type!=='private'||!validId(m.chat.id))
+    throw new Error('Untrusted Telegram payment chat');
   if(m.successful_payment){
+    if(!validId(m.from?.id)||m.chat.id!==m.from.id)
+      throw new Error('Untrusted Telegram payment actor');
     const payment=m.successful_payment;
     const oid=parseStarsPayload(payment.invoice_payload,starsSecret);
     const record=oid?await store.order(oid):null;
@@ -275,7 +279,7 @@ async function receiveStars(update:any){
     const oid=parseStarsPayload(refund.invoice_payload,starsSecret);
     const record=oid?await store.order(oid):null;
     if(!record||record.provider!=='telegram_stars'||record.currency!=='XTR'||
-       record.telegramUserId!==m.from.id||refund.currency!=='XTR'||
+       record.telegramUserId!==m.chat.id||refund.currency!=='XTR'||
        refund.total_amount!==record.amount||
        typeof refund.telegram_payment_charge_id!=='string'||
        !refund.telegram_payment_charge_id||
@@ -289,7 +293,7 @@ async function receiveStars(update:any){
       amount:record.amount,currency:'XTR',
     });
     if(status==='APPLIED')
-      return {method:'sendMessage',chat_id:m.from.id,
+      return {method:'sendMessage',chat_id:m.chat.id,
         text:'↩️ Возврат Stars зарегистрирован. Доступ пересчитывается. Проверьте «Мои подключения».'};
     return null;
   }

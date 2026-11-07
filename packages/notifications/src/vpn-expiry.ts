@@ -42,7 +42,11 @@ export class PgVpnExpiryReminderQueue {
       'AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL '+
       "AND EXISTS (SELECT 1 FROM entitlement_credits c JOIN orders paid ON paid.id=c.order_id " +
       "WHERE c.entitlement_id=e.id AND c.refunded_at IS NULL AND paid.state='PAID') "+
-      'AND ('+dueWindow+') ORDER BY e.expires_at,e.id LIMIT $1 '+
+      'AND ('+dueWindow+') '+
+      'AND NOT EXISTS (SELECT 1 FROM vpn_expiry_reminders existing '+
+      'WHERE existing.entitlement_id=e.id AND existing.expires_at=e.expires_at '+
+      "AND existing.days_before=CASE WHEN e.expires_at>clock_timestamp()+interval '48 hours' THEN 3 ELSE 1 END) "+
+      'ORDER BY e.expires_at,e.id LIMIT $1 '+
       'ON CONFLICT(entitlement_id,days_before,expires_at) DO NOTHING',
       [limit]);
     return result.rowCount??0;

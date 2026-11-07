@@ -10,7 +10,7 @@ import { Pool } from 'pg';
 import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
   from '../../../packages/support/src/telegram-relay.ts';
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
-import {subscriptionOwner,subscriptionLink,issueSubscriptionLink,issueSubscriptionLinkForAccount}
+import {subscriptionOwner,subscriptionLink,issueSubscriptionLinkForAccount}
   from '../../../packages/provisioning/src/subscription-links.ts';
 import {
   prepareWebsiteProdamusCheckout, type PayformLinkTransport,
@@ -728,11 +728,13 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   if(req.method==='POST' && url.pathname==='/api/vpn/subscription'){
     if(!csrfAllowed(req,auth.raw)){json(res,403,{code:'FORBIDDEN'});return;}
     if(!networkVerified||!subscriptionPool){json(res,503,{code:'VPN_NOT_READY'});return;}
-    let link=await issueSubscriptionLinkForAccount(subscriptionPool,auth.accountId);
-    // Separate private bot DB can hold the verified Telegram identity with a
-    // different UUID. Never accept a telegram user ID from the browser.
-    if(!link && auth.telegramUserId!==null)
-      link=await issueSubscriptionLink(subscriptionPool,auth.telegramUserId);
+    const body=await bodyJson(req);
+    const requestedId=body.entitlementId;
+    if(requestedId!==undefined&&(typeof requestedId!=='string'||
+       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedId))){
+      json(res,400,{code:'INVALID_ENTITLEMENT'});return;
+    }
+    const link=await issueSubscriptionLinkForAccount(authPool,auth.accountId,requestedId as string|undefined);
     if(!link){json(res,409,{code:'VPN_NOT_ACTIVE'});return;}
     json(res,200,{subscriptionUrl:link.link,expiresAt:link.expiresAt.toISOString()});
     return;

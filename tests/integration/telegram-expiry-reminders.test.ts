@@ -171,3 +171,25 @@ test('24-hour free trial is not sent a paid-subscription expiry reminder at acti
     await pool.end();
   }
 });
+
+test('discovery pages past already queued deadlines instead of starving later customers',async()=>{
+ const pool=new Pool({...pg,max:1});
+ try{
+  await pool.query('BEGIN');
+  // Rollback-only isolation from other integration fixtures in this shared DB.
+  await pool.query("UPDATE entitlements SET state='SUSPENDED' WHERE state='ACTIVE'");
+  for(let i=0;i<3;i++){
+   const account=randomUUID(),order=randomUUID(),entitlement=randomUUID();
+   await pool.query('INSERT INTO accounts(id,telegram_user_id) VALUES($1,$2)',[account,String(943112310+i)]);
+   await pool.query("INSERT INTO orders(id,account_id,product,provider,amount_minor,currency,state) VALUES($1,$2,'vpn','prodamus',9900,'RUB','PAID')",[order,account]);
+   await pool.query("INSERT INTO entitlements(id,account_id,source_order_id,product,state,revision,starts_at,expires_at) VALUES($1,$2,$3,'vpn','ACTIVE',2,now()-interval '1 day',now()+interval '20 hours')",[entitlement,account,order]);
+   await pool.query("INSERT INTO provisioning_state(entitlement_id,adapter,applied_revision,last_observed_at) VALUES($1,'vpn',2,now())",[entitlement]);
+   await pool.query("INSERT INTO entitlement_credits(entitlement_id,order_id,credit_sequence,starts_at,ends_at,duration_seconds) SELECT id,$2,0,starts_at,expires_at,158400 FROM entitlements WHERE id=$1",[entitlement,order]);
+  }
+  const queue=new PgVpnExpiryReminderQueue(pool);
+  assert.equal(await queue.discover(1),1);
+  assert.equal(await queue.discover(1),1);
+  assert.equal(await queue.discover(1),1);
+  assert.equal(await queue.discover(1),0);
+ }finally{await pool.query('ROLLBACK');await pool.end();}
+});

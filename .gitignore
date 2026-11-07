@@ -11,8 +11,12 @@
 *.pfx
 *.jks
 *.crt
-*.sqlite
-*.sqlite3
+*.sql
+!db/migrations/*.sql
+!db/tests/*.sqlite
+*.sql
+!db/migrations/*.sql
+!db/tests/*.sqlite3
 *.db
 *.log
 *.bak
@@ -21,6 +25,8 @@
 *.zip
 *.dump
 *.sql
+!db/migrations/*.sql
+!db/tests/*.sql
 *secret*
 *credentials*
 id_rsa*

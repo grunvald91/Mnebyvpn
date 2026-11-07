@@ -17,7 +17,7 @@ function openPage(href:string,stored:Map<string,string>,authenticated=false){
         handlers, dataset:{}, classList:{toggle:()=>{},remove:()=>{},add:()=>{}},
         textContent:'',disabled:false,style:{},
         addEventListener:(type:string,fn:()=>void)=>{handlers.set(type,fn);},
-        setAttribute:()=>{},scrollIntoView:()=>{},append:()=>{},replaceChildren:()=>{},
+        setAttribute:()=>{},removeAttribute:()=>{},focus:()=>{},scrollIntoView:()=>{},append:()=>{},replaceChildren:()=>{},
       });
     }
     return elements.get(id);
@@ -35,6 +35,11 @@ function openPage(href:string,stored:Map<string,string>,authenticated=false){
     if(path==='/api/me')return authState.value
       ?{ok:true,json:async()=>({csrf:'csrf-test',access:[],orders:[]})}
       :{ok:false,status:401,json:async()=>({code:'LOGIN_REQUIRED'})};
+    if(path==='/api/auth/email/start')return {ok:true,json:async()=>({status:'CODE_SENT'})};
+    if(path==='/api/auth/email/verify'){
+      authState.value=true;
+      return {ok:true,json:async()=>({status:'SIGNED_IN'})};
+    }
     if(path==='/api/trial'){
       posts.push({path,body:JSON.parse(options?.body||'{}')});
       return {ok:true,json:async()=>({status:'GRANTED'})};
@@ -135,4 +140,22 @@ test('401 during auto-refresh clears private DOM and session state',async()=>{
   assert.equal(vm.runInContext('state.loggedIn',client.context),false);
   assert.equal(vm.runInContext('state.csrf',client.context),'');
   assert.equal(client.elements.get('auth-link').href,'#account');
+});
+
+test('email OTP sign-in refreshes the same document and consumes pending trial once',async()=>{
+  const session=new Map<string,string>();
+  const client=openPage('https://vpn.example/#account',session);
+  await settle();
+  client.elements.get('trial-button').handlers.get('click')();
+  vm.runInContext("byId('email-input').value='buyer@example.test'",client.context);
+  await vm.runInContext('beginEmail({preventDefault(){}})',client.context);
+  vm.runInContext("byId('email-code-input').value='123456'",client.context);
+  await vm.runInContext('finishEmail({preventDefault(){}})',client.context);
+  assert.equal(vm.runInContext('state.loggedIn',client.context),true);
+  assert.equal(vm.runInContext('state.csrf',client.context),'csrf-test');
+  assert.equal(client.posts.filter(p=>p.path==='/api/trial').length,1);
+  assert.equal(session.has('mnebyvpn-pending-trial'),false);
+  await vm.runInContext('consumePendingTrial()',client.context);
+  assert.equal(client.posts.filter(p=>p.path==='/api/trial').length,1);
+  assert.equal(client.location.redirect,null,'hash navigation cannot establish login state');
 });

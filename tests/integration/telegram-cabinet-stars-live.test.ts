@@ -107,6 +107,19 @@ test('production cabinet: Stars invoice, checked payment, durable settlement and
     const after=await pool.query(
       'SELECT count(*)::int AS n FROM entitlements WHERE source_order_id=$1',[orderId]);
     assert.equal(after.rows[0].n,1);
+    const refund={update_id:81007,message:{chat:{id:user,type:'private'},
+      refunded_payment:{currency:'XTR',total_amount:17,invoice_payload:invoice.payload,
+        telegram_payment_charge_id:'live-test-charge-'+orderId}}};
+    const foreign=await post({...refund,message:{...refund.message,chat:{id:user+1,type:'private'}}});
+    assert.equal(foreign.resp.status,503);
+    assert.equal((await pool.query('SELECT state FROM orders WHERE id=$1',[orderId])).rows[0].state,'PAID');
+    const refunded=await post(refund);
+    assert.equal(refunded.resp.status,200);
+    assert.equal(JSON.parse(refunded.data).chat_id,user);
+    assert.equal((await pool.query('SELECT state FROM orders WHERE id=$1',[orderId])).rows[0].state,'REFUNDED');
+    assert.equal((await pool.query('SELECT state FROM entitlements WHERE source_order_id=$1',[orderId])).rows[0].state,'REFUNDED');
+    assert.equal((await post({...refund,update_id:81008})).data,'');
+
   }finally{
     child.kill('SIGTERM');
     // The shared disposable CI database is reused by later integration files.
