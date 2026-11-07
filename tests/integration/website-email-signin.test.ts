@@ -97,7 +97,8 @@ test('email code verification creates a real session; OTP is consumed and logout
   assert.equal(correct.status,200);
   assert.equal((await correct.json() as {status:string}).status,'SIGNED_IN');
   const cookie=correct.headers.get('set-cookie')?.split(';')[0];
-  assert.ok(cookie?.startsWith('mnebyvpn_session='));
+  if(!cookie)throw new Error('Missing signed session cookie');
+  assert.ok(cookie.startsWith('mnebyvpn_session='));
   assert.equal((await verify(otp)).status,401,'One-time code cannot be reused');
 
   const me=await fetch(base+'/api/me',{headers:{cookie}});
