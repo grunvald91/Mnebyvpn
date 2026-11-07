@@ -76,9 +76,9 @@ export function isNodeEligible(node:NodeRecord,request:PlacementRequest):boolean
   if(!node.capabilities.includes(request.capability))return false;
   if(!Number.isSafeInteger(node.allocatedClients)||node.allocatedClients<0)
     return false;
-  if(node.maxClients!==null&&
-     (!Number.isSafeInteger(node.maxClients)||node.maxClients<=0||
-      node.allocatedClients>=node.maxClients))return false;
+  // Unknown capacity must not mean unlimited public admission.
+  if(node.maxClients===null||!Number.isSafeInteger(node.maxClients)||
+     node.maxClients<=0||node.allocatedClients>=node.maxClients)return false;
   return true;
 }
 export function eligibleNodes(nodes:readonly NodeRecord[],
