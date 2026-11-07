@@ -1,0 +1,19 @@
+# Isolated opt-in DNS-over-TLS laboratory; NOT a public Android Private DNS.
+# Never add 0.0.0.0/public port publishing or a live 853 listener here.
+name: mnebyvpn-dns-poc
+services:
+  resolver:
+    image: coredns/coredns:1.15.0
+    command: ["-conf", "/etc/coredns/Corefile"]
+    ports:
+      - "127.0.0.1:1853:8853/tcp"
+    volumes:
+      - "./Corefile:/etc/coredns/Corefile:ro"
+      - "./certs:/certs:ro"
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.5
+    restart: "no"
