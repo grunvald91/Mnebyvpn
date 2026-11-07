@@ -334,9 +334,9 @@ export async function handleProdamusDelivery(
     currency:'RUB',
     payloadHash: checked.capture.payloadSha256,
   });
-  return {
-    statusCode:200,
-    text: outcome === 'APPLIED' ? 'OK' :
-      ['DUPLICATE_EVENT','DUPLICATE_CAPTURE'].includes(outcome)?'ALREADY_PROCESSED':'UNEXPECTED_SETTLEMENT',
-  };
+  if(outcome==='APPLIED')return {statusCode:200,text:'OK'};
+  if(outcome==='DUPLICATE_EVENT'||outcome==='DUPLICATE_CAPTURE')
+    return {statusCode:200,text:'ALREADY_PROCESSED'};
+  // Never acknowledge a provider capture that wasn't durably credited.
+  return {statusCode:503,text:'SETTLEMENT_NOT_CONFIRMED'};
 }
