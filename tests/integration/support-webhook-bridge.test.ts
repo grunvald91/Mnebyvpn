@@ -150,13 +150,13 @@ test('different web and bot databases share only signed localhost support inbox/
 
     // A signature for page 0 cannot be reused to read later pages.
     const reused=createHmac('sha256',bridgeSecret)
-      .update('MNEBYVPN-inbox-v1\\n'+now).digest('hex');
+      .update('MNEBYVPN-inbox-v1\n'+now).digest('hex');
     const notAuthorized=await fetch(base+'/api/support/operator-inbox?offset=1',{
       headers:{'X-MNEBYVPN-Support-Ts':now,
         'X-MNEBYVPN-Support-Signature':reused}});
     assert.equal(notAuthorized.status,403);
     const correct=createHmac('sha256',bridgeSecret)
-      .update('MNEBYVPN-inbox-v2\\n'+now+'\\n1').digest('hex');
+      .update('MNEBYVPN-inbox-v2\n'+now+'\n1').digest('hex');
     const authorized=await fetch(base+'/api/support/operator-inbox?offset=1',{
       headers:{'X-MNEBYVPN-Support-Ts':now,
         'X-MNEBYVPN-Support-Signature':correct}});
