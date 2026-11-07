@@ -10,9 +10,9 @@ services:
     volumes:
       - "./Corefile:/etc/coredns/Corefile:ro"
       - "./certs:/certs:ro"
-    # Test cert/key are mode 0600; local-only UID 0 reads them in a read-only mount.
-    # Production must use dedicated nonroot cert provisioning, not this lab profile.
-    user: "0:0"
+    # Test key is mode 0600 and owned by CoreDNS's unprivileged UID 65532.
+    # The test certificate is provisioned on the host; no privileges needed to read it.
+    user: "65532:65532"
     # CoreDNS image contains file capability cap_net_bind_service=ep;
     # dropping even this bound causes exec /coredns: operation not permitted.
     cap_drop: ["ALL"]
