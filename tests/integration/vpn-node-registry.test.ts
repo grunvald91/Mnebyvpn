@@ -45,10 +45,14 @@ test('multi-node inventory stays dormant until separately approved and healthy',
       "operator_approved_at=clock_timestamp(),enabled_for_new=true WHERE id=$1",
       [nodeId]);
     assert.equal((await registry.candidates(request)).length,1);
-    assert.equal(await registry.reserve(entitlement,nodeId,request),'reserved');
-    assert.equal(await registry.reserve(entitlement,nodeId,request),'already');
-    assert.equal(await registry.reserve(second,nodeId,request),'unavailable',
-      'capacity 1 must block a second entitlement');
+    const [first,other]=await Promise.all([
+      registry.reserve(entitlement,nodeId,request),
+      registry.reserve(second,nodeId,request),
+    ]);
+    assert.deepEqual([first,other].sort(),['reserved','unavailable'],
+      'concurrent reservations must not exceed capacity 1');
+    const winner=first==='reserved'?entitlement:second;
+    assert.equal(await registry.reserve(winner,nodeId,request),'already');
     const rows=await pool.query(
       'SELECT state,applied_revision FROM vpn_node_assignments WHERE node_id=$1',[nodeId]);
     assert.equal(rows.rows.length,1);
