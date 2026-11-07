@@ -2,12 +2,18 @@ import type { Fields, Field } from './prodamus.ts';
 
 const SAFE = /^[a-zA-Z0-9_]{1,64}$/;
 /**
- * Rebuilds PHP-style nested multipart/form-data:
- * products[0][price] -> {products:[{price:'...'}]}.
- * Parsing is bounded by the HTTP server BEFORE invoking this.
+ * Prodamus delivers signed callbacks as application/x-www-form-urlencoded.
+ * Keep accepting multipart/form-data for older integrations and tests.
+ * Both formats are decoded with FormData before rebuilding PHP-style nested
+ * fields: products[0][price] -> {products:[{price:'...'}]}.
+ * The HTTP server bounds the raw request before parsing or verifying Sign.
  */
+export function isProdamusContentType(contentType: string): boolean {
+  return /^multipart\/form-data;\s*boundary=/i.test(contentType) ||
+    /^application\/x-www-form-urlencoded(?:\s*;\s*charset="?utf-8"?)?\s*$/i.test(contentType);
+}
 export async function parseProdamusFormData(contentType: string, raw: Uint8Array): Promise<Fields> {
-  if (!/^multipart\/form-data;\s*boundary=/i.test(contentType)) throw new Error('Expected multipart/form-data');
+  if (!isProdamusContentType(contentType)) throw new Error('Unsupported Prodamus content type');
   const request = new Request('http://localhost/notifications', {
     method: 'POST', headers: { 'content-type': contentType }, body: raw,
   });

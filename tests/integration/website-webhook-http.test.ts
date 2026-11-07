@@ -77,42 +77,66 @@ after(async()=>{
   website?.kill('SIGTERM');
   await pool.end();
 });
-function form(fields:Fields):FormData{
-  const fd=new FormData();
-  for(const [key,value] of Object.entries(fields)){
-    if(typeof value!=='string')throw new Error('Expected scalar test field');
-    fd.append(key,value);
-  }
-  return fd;
+function wireForm(fields:Fields,encoding:'multipart'|'urlencoded'){
+  const body=encoding==='multipart'?new FormData():new URLSearchParams();
+  const walk=(path:string,value:Fields[string]):void=>{
+    if(Array.isArray(value)){value.forEach((v,i)=>walk(path+'['+i+']',v));return;}
+    if(value!==null && typeof value==='object'){
+      for(const [k,v] of Object.entries(value))walk(path+'['+k+']',v);
+      return;
+    }
+    body.append(path,String(value));
+  };
+  for(const [key,value] of Object.entries(fields))walk(key,value);
+  return body;
 }
-async function post(fields:Fields,valid=true){
+async function post(fields:Fields,valid=true,encoding:'multipart'|'urlencoded'='multipart'){
   const sig=signProdamus(fields,secret);
   return fetch('http://127.0.0.1:'+port+'/webhooks/prodamus',{
     method:'POST',
-    body:form(fields),
+    body:wireForm(fields,encoding),
     headers:{Sign:valid?sig:'0'.repeat(64)},
   });
 }
-test('live HTTP loopback: reject spoofed signature, settle signed Prodamus multipart, de-dupe redelivery',async()=>{
+test('live HTTP: signed Prodamus URL-encoded success, multipart retry and de-duplication',async()=>{
   const fields:Fields={
     order_num:payment.id,order_id:payment.txn,domain:'merchant.payform.ru',
-    // The official Prodamus signed callback sample does not include currency.
-    sum:'119.00',payment_status:'success',attempt:'1',
+    // Live Prodamus notifications omit currency and use URL-encoded fields.
+    sum:'119.00',payment_status:'success',attempt:'23',
+    customer_email:'customer@example.test',
+    payment_status_description:'Успешно завершён',
+    products:[{name:'VPN • 15 дней',price:'119.00',quantity:'1',sum:'119.00'}],
   };
-  const invalid=await post(fields,false);
+  const invalid=await post(fields,false,'urlencoded');
   assert.equal(invalid.status,401);
   assert.equal((await pool.query('SELECT state FROM orders WHERE id=$1',[payment.id])).rows[0].state,'PENDING');
-  const good=await post(fields);
+  const good=await post(fields,true,'urlencoded');
   assert.equal(good.status,200);
   assert.equal(await good.text(),'OK');
   assert.equal((await pool.query('SELECT state FROM orders WHERE id=$1',[payment.id])).rows[0].state,'PAID');
-  const redelivery=await post({...fields,attempt:'2'});
+  const redelivery=await post({...fields,attempt:'24'},true,'multipart');
   assert.equal(redelivery.status,200);
   assert.equal(await redelivery.text(),'ALREADY_PROCESSED');
+  const secondEncodedRetry=await post({...fields,attempt:'25'},true,'urlencoded');
+  assert.equal(secondEncodedRetry.status,200);
+  assert.equal(await secondEncodedRetry.text(),'ALREADY_PROCESSED');
   const result=await pool.query(
     'SELECT count(*)::int AS n FROM entitlement_credits WHERE order_id=$1',[payment.id]);
   assert.equal(result.rows[0].n,1);
 });
+test('URL-encoded Prodamus notifications reject wrong signed amount and currency',async()=>{
+  const base:Fields={
+    order_num:payment.id,order_id:payment.txn,domain:'merchant.payform.ru',
+    sum:'99.00',payment_status:'success',attempt:'26',
+  };
+  const wrongAmount=await post(base,true,'urlencoded');
+  assert.equal(wrongAmount.status,400);
+  assert.equal(await wrongAmount.text(),'ORDER_MISMATCH');
+  const wrongCurrency=await post({...base,sum:'119.00',currency:'usd'},true,'urlencoded');
+  assert.equal(wrongCurrency.status,400);
+  assert.equal(await wrongCurrency.text(),'ORDER_MISMATCH');
+});
+
 test('webhook remains available when new checkout is disabled, and customer APIs remain protected',async()=>{
   const plans=await fetch('http://127.0.0.1:'+port+'/api/plans');
   assert.equal(plans.status,200);
@@ -123,7 +147,7 @@ test('webhook remains available when new checkout is disabled, and customer APIs
   assert.equal(checkout.status,401);
   assert.equal((await fetch('http://127.0.0.1:'+port+'/api/me')).status,401);
   const noSig=await fetch('http://127.0.0.1:'+port+'/webhooks/prodamus',{
-    method:'POST',body:form({payment_status:'success'}),
+    method:'POST',body:wireForm({payment_status:'success'},'multipart'),
   });
   assert.equal(noSig.status,401);
   const wrongContent=await fetch('http://127.0.0.1:'+port+'/webhooks/prodamus',{
