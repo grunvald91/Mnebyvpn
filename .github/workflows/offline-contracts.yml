@@ -102,6 +102,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0020_vpn_stars_prices.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0021_vpn_expiry_reminders.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0022_vpn_stars_owner_update.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0100_site_provider_identities.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0101_email_otp_and_trial_devices.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0002_billing_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0003_ipv6_claims_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0005_outbox_contract.sql
@@ -109,6 +111,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/tests/0008_pricing_drafts_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0009_trial_activation_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0011_invoice_dispatch_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0018_site_auth_trials_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0019_email_device_contract.sql
       - name: Payment integration with disposable PostgreSQL
         env:
           PGPASSWORD: test

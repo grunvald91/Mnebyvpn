@@ -11,7 +11,7 @@ import {readFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 import {Pool} from 'pg';
 import {PgBillingStore} from '../../../packages/billing/src/store.ts';
-import {claimGuestVpnTrial,guestVpnState,confirmedGuestEntitlement}
+import {claimGuestVpnTrial,guestVpnState}
   from '../../../packages/provisioning/src/web-guest-trials.ts';
 import {SignedXrayNodeApi} from '../../../packages/provisioning/src/xray-node.ts';
 import {RemnawaveApi} from '../../../packages/provisioning/src/remnawave-api.ts';
@@ -198,7 +198,24 @@ async function main():Promise<void>{
             throw Error('Invalid requested entitlement');
           const allowed=isTelegram
             ?await billing.confirmedVpnProfile(userId as number)
-            :await confirmedGuestEntitlement(pool,requestedId as string);
+            :await (async()=>{
+                // Also support authenticated Yandex-only account profiles.
+                // The caller is a loopback-only server-to-server bridge with
+                // a private bearer secret. The public /sub route separately
+                // verifies the opaque link and its active entitlement owner.
+                const result=await pool.query(
+                  `SELECT e.id,e.revision,e.expires_at FROM entitlements e
+                   JOIN provisioning_state p ON p.entitlement_id=e.id AND p.adapter='vpn'
+                   WHERE e.id=$1 AND e.product='vpn' AND e.state='ACTIVE'
+                     AND e.expires_at>clock_timestamp()
+                     AND p.applied_revision=e.revision
+                     AND p.last_observed_at IS NOT NULL LIMIT 1`,
+                  [requestedId]);
+                if(result.rows.length!==1)return null;
+                return {entitlementId:String(result.rows[0].id),
+                  revision:Number(result.rows[0].revision),
+                  expiresAt:result.rows[0].expires_at as Date};
+              })();
           // A previously shared subscription URL must not accidentally reveal
           // another entitlement belonging to the same Telegram account.
           const profile=allowed&&
