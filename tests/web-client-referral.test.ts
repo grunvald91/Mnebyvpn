@@ -30,7 +30,7 @@ function openPage(href:string,stored:Map<string,string>,authenticated=false){
     if(path==='/api/plans')return {ok:true,json:async()=>({
       plans:[{id:'vpn-30',title:'VPN 30 days',product:'vpn',
         durationDays:30,rubMinor:9900,dnsQuotaBytes:null}],
-      checkoutEnabled:true,loginEnabled:true,telegramLoginEnabled:true,yandexLoginEnabled:true,trialOffers:['vpn'],
+      checkoutEnabled:true,loginEnabled:true,telegramLoginEnabled:true,emailLoginEnabled:true,trialOffers:['vpn'],
     })};
     if(path==='/api/me')return authState.value
       ?{ok:true,json:async()=>({csrf:'csrf-test',access:[],orders:[]})}
@@ -56,7 +56,7 @@ function openPage(href:string,stored:Map<string,string>,authenticated=false){
 async function settle(){
   await new Promise<void>(resolve=>setImmediate(resolve));
 }
-test('trial referral survives Telegram OIDC redirect and arrives in authenticated request',async()=>{
+test('trial referral survives email or Telegram sign-in and arrives in authenticated request',async()=>{
   const session=new Map<string,string>();
   const first=openPage('https://vpn.example/?ref='+token+'&product=vpn&days=30',session);
   await settle();
@@ -65,7 +65,8 @@ test('trial referral survives Telegram OIDC redirect and arrives in authenticate
   assert.equal(first.location.redirect,null);
   assert.equal(session.get('mnebyvpn-pending-trial'),'1');
   assert.equal(first.elements.get('cabinet-login-link').href,'/auth/login');
-  assert.equal(first.elements.get('yandex-login-link').href,'/auth/yandex');
+  assert.ok(first.elements.get('email-start-form').handlers.get('submit'));
+  assert.ok(first.elements.get('cabinet-login-link').href==='/auth/login');
   const saved=JSON.parse(session.get('mnebyvpn-selection')||'{}');
   assert.equal(saved.inviteToken,token);
   assert.equal(saved.days,30);
