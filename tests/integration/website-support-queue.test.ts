@@ -25,6 +25,7 @@ test('website accepts a queued support request without a runtime Telegram token 
       WEB_BASE_URL:origin,WEB_SESSION_SECRET:'a'.repeat(48),
       DATABASE_URL:dbUrl,TELEGRAM_TOKEN_BOT:'',
       SUPPORT_TELEGRAM_OPERATOR_ID:'111111',
+      SUPPORT_BRIDGE_SECRET:'c'.repeat(64),
       WEB_GUEST_TRIAL_ENABLED:'no',WEB_TELEGRAM_OIDC_ENABLED:'no'},
   });
   let errors='';
