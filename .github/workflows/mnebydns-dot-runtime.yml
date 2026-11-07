@@ -1,0 +1,49 @@
+name: MNEBYDNS isolated real DoT runtime smoke
+on:
+  push:
+    branches:
+      - 'feature/smart-dns-dot-isolated-poc-20261107'
+    paths:
+      - '.github/workflows/mnebydns-dot-runtime.yml'
+      - 'ops/smart-dns-poc/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/mnebydns-dot-runtime.yml'
+      - 'ops/smart-dns-poc/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mnebydns-dot-runtime-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  isolated-dns:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate test scripts and Docker Compose
+        run: |
+          set -euo pipefail
+          bash -n ops/smart-dns-poc/make-local-cert.sh
+          bash -n ops/smart-dns-poc/run-foreign-smoke.sh
+          bash -n ops/smart-dns-poc/preflight.sh
+          python3 -m py_compile ops/smart-dns-poc/probe-dot.py
+          docker compose -f ops/smart-dns-poc/compose.yaml config -q
+      - name: Start loopback-only DoT service with an ephemeral test certificate
+        run: |
+          set -euo pipefail
+          bash ops/smart-dns-poc/make-local-cert.sh
+          docker compose -f ops/smart-dns-poc/compose.yaml up -d --pull missing
+      - name: Validate real DoT responses and reject incorrect TLS hostname
+        run: python3 ops/smart-dns-poc/probe-dot.py
+      - name: Inspect bounded resource use
+        if: success()
+        run: docker compose -f ops/smart-dns-poc/compose.yaml stats --no-stream
+      - name: Show startup diagnostics on failure
+        if: failure()
+        run: docker compose -f ops/smart-dns-poc/compose.yaml logs --no-color --tail 40 || true
+      - name: Always stop ephemeral DNS service
+        if: always()
+        run: docker compose -f ops/smart-dns-poc/compose.yaml down --timeout 10 || true
