@@ -479,9 +479,9 @@ async function operatorSupportInbox(id:number){
       reply_markup:{inline_keyboard:[[{text:'🔄 Проверить ещё',callback_data:'support:next'}]]}};
     const ticket=rows[0] as {id:string;contact:string;question:string};
     return {method:'sendMessage',chat_id:id,
-      text:'✉️ MNEBYVPN — обращение с сайта\\nЗаявка: '+ticket.id+
-        '\\nКонтакт: '+ticket.contact+'\\n\\nСообщение:\\n'+ticket.question+
-        '\\n\\nОтветьте на это сообщение. Ответ появится на сайте.',
+      text:'✉️ MNEBYVPN — обращение с сайта\nЗаявка: '+ticket.id+
+        '\nКонтакт: '+ticket.contact+'\n\nСообщение:\n'+ticket.question+
+        '\n\nОтветьте на это сообщение. Ответ появится на сайте.',
       reply_markup:{inline_keyboard:[[{text:'📥 Следующее обращение',callback_data:'support:next'}]]}};
   }catch{return {method:'sendMessage',chat_id:id,
     text:'⚠️ Не удалось загрузить обращения. Попробуйте позже.'};}
@@ -499,7 +499,7 @@ async function processUpdate(update:any){
   const text=actor.text?.trim()??'';
   if(support&&actor.id===support.operatorId&&
      (actor.data==='nav:support'||actor.data==='support:next'||
-      (!actor.callbackId&&/^\\/(?:inbox|support)(?:@MnebyVPN_bot)?$/i.test(text))))
+      (!actor.callbackId&&/^\/(?:inbox|support)(?:@MnebyVPN_bot)?$/i.test(text))))
     return operatorSupportInbox(actor.id);
   const explicitSupport=/^\/support(?:@MnebyVPN_bot)?(?:\s+([\s\S]+))?$/i.exec(text);
   if(!actor.callbackId&&(explicitSupport?.[1]||actor.replyToSupport))
