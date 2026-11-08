@@ -1,0 +1,53 @@
+name: MNEBYDNS Gemini DNS record canary (isolated real DoT)
+on:
+  push:
+    branches: ['feature/gemini-smartdns-canary-20261108']
+    paths:
+      - '.github/workflows/mnebydns-gemini-rr-canary.yml'
+      - 'ops/smart-dns-poc/Corefile.gemini-canary'
+      - 'ops/smart-dns-poc/probe-gemini-canary.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dns-canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate full DNS A, AAAA, HTTPS/SVCB and normal upstream
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base="$GITHUB_WORKSPACE/ops/smart-dns-poc"
+          cd "$base"
+          python3 -m py_compile probe-gemini-canary.py
+          sudo bash make-local-cert.sh
+          sed -e 's@tls://.:853@tls://.:1853@'               -e 's@bind 89.125.90.101@bind 127.0.0.1@'               -e 's@/run/credentials/mnebydns-dot.service/fullchain.pem@certs/dns.test.invalid.crt@'               -e 's@/run/credentials/mnebydns-dot.service/privkey.pem@certs/dns.test.invalid.key@'               Corefile.gemini-canary > Corefile.gemini-ci
+          docker pull coredns/coredns:1.15.0
+          cid="$(docker create coredns/coredns:1.15.0)"
+          docker cp "$cid:/coredns" ./coredns
+          docker rm "$cid"
+          chmod 755 ./coredns
+          sudo chmod 755 "$GITHUB_WORKSPACE" "$(dirname "$base")" "$base"
+          sudo timeout --signal=TERM --kill-after=3s 90s             setpriv --reuid 65532 --regid 65532 --clear-groups --no-new-privs             ./coredns -conf Corefile.gemini-ci > /tmp/mnebydns-gemini-ci.log 2>&1 &
+          pid=$!
+          cleanup(){
+            sudo kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+            if [[ -n "$(ss -H -lnt 'sport = :1853')" ]]; then
+              echo 'dns_test_listener_cleanup_failed'
+              exit 1
+            fi
+          }
+          trap cleanup EXIT
+          for attempt in {1..50}; do
+            if ss -H -lnt 'sport = :1853' | grep -Fq '127.0.0.1:1853'; then break; fi
+            sleep 0.2
+          done
+          if [[ -z "$(ss -H -lnt 'sport = :1853')" ]]; then
+            cat /tmp/mnebydns-gemini-ci.log
+            exit 1
+          fi
+          python3 probe-gemini-canary.py --cafile certs/dns.test.invalid.crt
+          echo "Gemini_dns_full_live_RR_test=passed"
