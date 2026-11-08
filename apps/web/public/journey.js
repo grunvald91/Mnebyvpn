@@ -283,7 +283,7 @@
   el('journey-setup-slot').append(card);
   const ua=navigator.userAgent||'';
   if(/Android/i.test(ua))chosenPlatform='android';
-  else if(/iPhone|iPad|iPod/i.test(ua))chosenPlatform='ios';
+  else if(/iPhone|iPad|iPod/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1))chosenPlatform='ios';
   else if(/Windows/i.test(ua))chosenPlatform='windows';
   else if(/Mac OS X|Macintosh/i.test(ua))chosenPlatform='macos';
   else if(/Linux/i.test(ua))chosenPlatform='linux';
