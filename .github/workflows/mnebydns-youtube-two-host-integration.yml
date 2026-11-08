@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/mnebydns-youtube-two-host-integration.yml'
       - 'ops/smart-dns-poc/check-youtube-local-integration.py'
+      - 'ops/smart-dns-poc/probe-youtube-rr.py'
       - 'ops/smart-dns-poc/stage-youtube-exact-canary.py'
       - 'ops/smart-dns-poc/stage-ru-access-pilot.py'
   workflow_dispatch:
@@ -100,4 +101,5 @@ jobs:
             exit 1
           fi
           python3 check-youtube-local-integration.py verify
+          python3 probe-youtube-rr.py --cafile certs/dns.test.invalid.crt --port 1855
           echo "no_public_DNS_443_or_VPN_changed=yes"
