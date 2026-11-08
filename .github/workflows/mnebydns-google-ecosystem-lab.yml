@@ -55,7 +55,7 @@ jobs:
               rc=1
             fi
             rm -rf -- "$work"
-            rm -f "$base/Corefile.google-ecosystem-local" "$base/coredns"
+            rm -f "$base/Corefile.google-ecosystem-local" "$base/Corefile.google-origin-local" "$base/coredns"
             sudo rm -rf -- "$base/certs"
             exit "$rc"
           }
@@ -86,6 +86,8 @@ jobs:
           rm -f ecosystem-base-nginx.fixture ecosystem-base-core.fixture
           grep -Fq '        gemini.google.com 127.0.0.1:15443;' "$work/shared-nginx.staged"
           grep -Fq '        discord.com 127.0.0.1:15446;' "$work/shared-nginx.staged"
+          cp -- "$work/Corefile.origin-resolver" Corefile.google-origin-local
+          chmod 644 Corefile.google-origin-local
           nginx -t -c "$work/google-ecosystem.nginx.conf"
           sudo bash make-local-cert.sh
           sed \
@@ -114,7 +116,7 @@ jobs:
           done
           sudo timeout --signal=TERM --kill-after=3s 155s \
             setpriv --reuid 65532 --regid 65532 --clear-groups --no-new-privs \
-            ./coredns -conf "$work/Corefile.origin-resolver" > "$work/origin.log" 2>&1 &
+            ./coredns -conf Corefile.google-origin-local > "$work/origin.log" 2>&1 &
           origin_pid=$!
           sudo timeout --signal=TERM --kill-after=3s 155s \
             setpriv --reuid 65532 --regid 65532 --clear-groups --no-new-privs \
