@@ -1,3 +1,4 @@
+# 2026-11-09 read-only audit of 63-host timed canary; expected 3 Android candidates rerouted.
 # Post-cutover 2026-11-09 independent audit: verify all 34 Gemini hosts after live 60-host canary.
 name: MNEBYDNS Gemini Android live DNS-only gap audit
 on:
