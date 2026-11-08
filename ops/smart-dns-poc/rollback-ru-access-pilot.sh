@@ -40,7 +40,7 @@ if [[ -f "$unit" ]]; then
   systemctl daemon-reload
 fi
 if [[ -d "$confdir" ]]; then
-  grep -Fq '# MNEBYDNS six exact-host RU access TLS passthrough' "$confdir/nginx.conf" ||
+  grep -Fq '# MNEBYDNS exact-host RU access TLS passthrough' "$confdir/nginx.conf" ||
     { echo "config_ownership_changed"; exit 2; }
   rm -f -- "$confdir/nginx.conf"
   rmdir -- "$confdir"
