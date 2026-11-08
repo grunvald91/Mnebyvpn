@@ -70,3 +70,19 @@ Russian-vs-foreign VPS baseline: 0/4 selected YouTube names succeeded directly f
 6. Separate the Russian access-network issue from video-by-video regional licensing, advertising and monetization restrictions.
 
 Do not promote any route or advertise YouTube playback as solved until a measured end-to-end sample on an actual Russian-client network passes and existing Gemini/Discord/VPN routes remain healthy.
+
+## November 8: real two-host YouTube integration in isolated CI
+
+The first runnable two-host YouTube canary now has a [dedicated **passing** CoreDNS + Nginx integration run](https://github.com/grunvald91/Mnebyvpn/actions/runs/42478814801). Unlike the previous string-only policy tests, this launches actual CoreDNS 1.15.0 on a localhost DoT test listener and a separate Nginx stream sidecar on localhost, then verifies:
+
+- Exact YouTube A rewrite for www.youtube.com and youtubei.googleapis.com; compatible empty AAAA/CNAME/SVCB/HTTPS responses (including strict CA/hostname checks for the test DNS certificate).
+- Real TLSv1.3 origin certificates for BOTH YouTube domains via the local-only SNI proxy, without HTTP traffic inspection.
+- Existing four Gemini/Discord exact synthetic A policies survive in the same combined Corefile.
+- Unknown SNI fails closed. No public DNS, production nginx:443, VPN, Xray, certificate or subscriber is changed.
+- Six staging unit/security tests also passed.
+
+**NOT established:** Russian client-to-ingress reachability after an actual route promotion, DNS behavior on the user's Android device, QUIC/UDP, streamed video/CDN hosts or playback quality.
+
+The next release action is a separate *operator-controlled limited pilot* after an audited production configuration backup and rollback watchdog. Only www.youtube.com and youtubei.googleapis.com would be admitted initially, with TLS handshake validation from Russian ingress, existing Gemini/Discord health and recovery on any failing condition. In the first pilot, do NOT promise streaming or accelerate video CDNs; collect consented user playback measurements without individual video URLs or cookies.
+
+A single-time CI pass is not a production release gate. Recheck the branch and CI at current head before considering any rollout.
