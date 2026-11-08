@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict CA DoT responses for six exact multiservice domains; no login claims."""
+"""Strict CA DoT responses for three exact Discord domains; no app-login claims."""
 from __future__ import annotations
 import argparse, importlib.util, pathlib, socket, json
 p=pathlib.Path(__file__).resolve().parent
@@ -29,7 +29,7 @@ def main():
     assert rcode==0 and any(kind==1 and socket.inet_ntoa(raw)=='89.125.90.101'
                                   for kind,ttl,raw in answers)
     print('original_gemini_route=preserved')
-    for name in ['www.google.com','www.youtube.com','example.org','gosuslugi.ru']:
+    for name in ['www.google.com','www.youtube.com','www.instagram.com','example.org','gosuslugi.ru']:
         rcode,count,answers=probe.query(name,1,args.ip,args.port,args.hostname,args.cafile)
         assert rcode==0 and count>=1,(name,rcode,count)
         assert all(socket.inet_ntoa(raw)!='89.125.90.101'
