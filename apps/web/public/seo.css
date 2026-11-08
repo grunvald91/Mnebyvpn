@@ -1,0 +1,27 @@
+.seo-main{padding-top:36px;padding-bottom:72px;max-width:980px}
+.seo-breadcrumb{font-size:13px;color:var(--muted);margin-bottom:24px;overflow-wrap:anywhere}
+.seo-breadcrumb a{color:var(--teal)}
+.seo-article{max-width:800px;border:1px solid var(--line);border-radius:var(--radius);padding:clamp(24px,5vw,54px);background:rgba(16,27,46,.75);box-shadow:var(--shadow)}
+.seo-article h1{font-size:clamp(28px,4.5vw,48px);line-height:1.16;letter-spacing:-.035em;margin:12px 0 22px}
+.seo-lead{font-size:clamp(16px,2vw,19px);line-height:1.65;color:#d8e6f4;margin:0 0 32px}
+.seo-section{margin-top:30px}
+.seo-section h2{font-size:clamp(21px,3vw,27px);line-height:1.3;margin:0 0 14px}
+.seo-section p,.seo-section li{font-size:16px;line-height:1.75;color:#ced8e8}
+.seo-section p{margin:0 0 14px}
+.seo-section ul{padding-left:22px}
+.seo-section li{margin:9px 0}
+.seo-action{margin-top:36px;padding-top:26px;border-top:1px solid var(--line)}
+.seo-action p{color:var(--muted);margin-top:0;margin-bottom:16px}
+.seo-related{max-width:800px;padding:28px 12px}
+.seo-related h2{font-size:21px;margin-bottom:14px}
+.seo-related ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 24px;list-style:none;padding:0;margin:0}
+.seo-related li a{display:block;color:var(--teal);text-decoration:underline;text-underline-offset:4px;line-height:1.5;padding:4px 0}
+.seo-links{padding-top:40px;padding-bottom:60px}
+.seo-links .feature-card a{color:var(--teal);text-decoration:underline;text-underline-offset:4px}
+@media(max-width:640px){.seo-main{padding-top:22px;padding-bottom:42px}.seo-article{padding:24px 18px}.seo-related ul{grid-template-columns:1fr}.seo-links{padding-top:28px;padding-bottom:44px}}
+
+
+.seo-link-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.seo-link-grid a{display:flex;align-items:center;min-height:56px;padding:14px 20px;background:rgba(16,27,46,.8);border:1px solid var(--line);border-radius:16px;color:var(--teal);font-weight:650;text-decoration:none}
+.seo-link-grid a:hover,.seo-link-grid a:focus-visible{border-color:var(--teal);background:rgba(20,42,62,.95)}
+@media(max-width:640px){.seo-link-grid{grid-template-columns:1fr}}

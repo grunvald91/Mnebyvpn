@@ -5,6 +5,7 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { renderRobots,renderSitemap,renderSeoPage,seoPaths } from './seo.ts';
 import { createHash,createHmac,randomBytes,randomUUID,timingSafeEqual } from 'node:crypto';
 import { Pool } from 'pg';
 import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
@@ -177,6 +178,7 @@ const termsHtml = await readFile(new URL('../public/terms.html',import.meta.url)
 const privacyHtml = await readFile(new URL('../public/privacy.html',import.meta.url));
 const css = await readFile(new URL('../public/site.css', import.meta.url));
 const neoCss = await readFile(new URL('../public/neo.css', import.meta.url));
+const seoCss = await readFile(new URL('../public/seo.css', import.meta.url));
 const brandAvatar = await readFile(new URL('../public/brand-avatar.webp', import.meta.url));
 const js = await readFile(new URL('../public/app.js', import.meta.url));
 const vpnInstallJs=await readFile(new URL('../public/vpn-install.js',import.meta.url));
@@ -187,13 +189,24 @@ const policy = [
   "form-action 'self'", "base-uri 'none'", "frame-ancestors 'none'",
 ].join('; ');
 
-function send(res: ServerResponse, status: number, body: string|Buffer, type = 'application/json; charset=utf-8') {
-  res.setHeader('Cache-Control', 'no-store');
+// JSON-LD data is inert markup, but its inline script must match an exact CSP hash.
+function structuredDataPolicy(markup:string):string{
+  const hashes=[...markup.matchAll(/<script type="application\/ld\+json">([^<]*)<\/script>/g)]
+    .map(match=>"'sha256-"+createHash('sha256').update(match[1],'utf8').digest('base64')+"'");
+  return hashes.length===0?policy:policy.replace("script-src 'self'",
+    "script-src 'self' "+hashes.join(' '));
+}
+const homepagePolicy=structuredDataPolicy(html.toString('utf8'));
+
+function send(res: ServerResponse, status: number, body: string|Buffer,
+  type = 'application/json; charset=utf-8', contentPolicy = policy) {
+  res.setHeader('Cache-Control', res.getHeader('Cache-Control') ?? 'no-store');
+  if(status>=400)res.setHeader('X-Robots-Tag','noindex, nofollow, noarchive');
   res.setHeader('Content-Type', type);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Content-Security-Policy', policy);
+  res.setHeader('Content-Security-Policy', contentPolicy);
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.writeHead(status).end(body);
 }
@@ -520,11 +533,46 @@ function installHtml(subUrl:string,client:'incy'|'karing'):string {
 
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', publicOrigin);
-  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+  // Alias redirects prevent duplicate indexing and precede homepage cookies.
+  // Redirect only known public aliases; private subscription URLs stay untouched.
+  if(req.method==='GET'){
+    const alias:{[key:string]:string}={
+      '/index.html':'/','/terms.html':'/terms','/privacy.html':'/privacy',
+      '/terms/':'/terms','/privacy/':'/privacy',
+    };
+    const canonical=alias[url.pathname] ??
+      (url.pathname.endsWith('/') ? seoPaths().find(x=>x===url.pathname.slice(0,-1)):undefined);
+    if(canonical!==undefined){
+      res.setHeader('Location',canonical+url.search);
+      res.setHeader('Cache-Control','public, max-age=3600');
+      res.writeHead(301).end();return;
+    }
+  }
+  // These public URLs must not be indexed even if their bearer token leaks.
+  // robots.txt disallows crawler access; that alone cannot enforce noindex.
+  if (/^\/(?:api\/|auth\/|sub\/|install\/|webhooks\/|healthz$|readyz$)/.test(url.pathname))
+    res.setHeader('X-Robots-Tag','noindex, nofollow, noarchive');
+  if (req.method === 'GET' && url.pathname === '/') {
     const device=cookie(req,deviceCookie);
     if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
       setCookie(res,deviceCookie,randomBytes(32).toString('base64url'),365*24*60*60);
-    send(res, 200, html, 'text/html; charset=utf-8'); return;
+    send(res, 200, html, 'text/html; charset=utf-8',homepagePolicy); return;
+  }
+  if (req.method === 'GET' && url.pathname === '/robots.txt') {
+    res.setHeader('Cache-Control','public, max-age=3600');
+    send(res,200,renderRobots(publicOrigin),'text/plain; charset=utf-8');return;
+  }
+  if (req.method === 'GET' && url.pathname === '/sitemap.xml') {
+    res.setHeader('Cache-Control','public, max-age=3600');
+    send(res,200,renderSitemap(publicOrigin),'application/xml; charset=utf-8');return;
+  }
+  if (req.method === 'GET') {
+    const seoHtml=renderSeoPage(url.pathname,publicOrigin);
+    if(seoHtml!==null){
+      res.setHeader('Cache-Control','public, max-age=300');
+      send(res,200,seoHtml,'text/html; charset=utf-8',
+        structuredDataPolicy(seoHtml));return;
+    }
   }
   if (req.method === 'GET' && (url.pathname === '/terms' || url.pathname === '/terms.html')) {
     send(res,200,termsHtml,'text/html; charset=utf-8');return;
@@ -537,6 +585,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === 'GET' && url.pathname === '/neo.css') {
     send(res, 200, neoCss, 'text/css; charset=utf-8'); return;
+  }
+  if (req.method === 'GET' && url.pathname === '/seo.css') {
+    send(res, 200, seoCss, 'text/css; charset=utf-8'); return;
   }
   if (req.method === 'GET' && url.pathname === '/brand-avatar.webp') {
     send(res, 200, brandAvatar, 'image/webp'); return;
@@ -796,6 +847,11 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   // Reject every anonymous trial request, even if a stale operator flag remains enabled.
   if(url.pathname.startsWith('/api/guest/')){
     json(res,403,{code:'AUTH_REQUIRED_FOR_TRIAL'});return;
+  }
+  // Unknown public GET addresses must be genuine 404s, never a login wall.
+  // Protected API paths retain their existing 401/403 semantics.
+  if(req.method==='GET'&&!/^\/(?:api\/|auth\/|sub\/|install\/|webhooks\/)/.test(url.pathname)){
+    json(res,404,{code:'NOT_FOUND'});return;
   }
   const auth = await authorized(req);
   if (!auth) { json(res, 401, { code: 'LOGIN_REQUIRED' }); return; }

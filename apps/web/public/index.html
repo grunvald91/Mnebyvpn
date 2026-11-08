@@ -4,10 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#080c20">
-  <meta name="description" content="MNEBYVPN — проект простого VPN-подключения и понятного управления доступом. Начинаем с VPN, другие возможности развиваем и проверяем.">
-  <title>MNEBYVPN — VPN без лишних шагов</title>
+  <meta name="description" content="MNEBYVPN и MNEBYDNS — VPN, Smart DNS и совместные подключения. YouTube, Instagram, Telegram, Google Gemini, ChatGPT и другие сервисы: варианты настройки и ограничения.">
+  <meta name="robots" content="index,follow">
+  <title>MNEBYVPN — VPN для телефона, YouTube, Telegram и ИИ</title>
+  <link rel="canonical" href="https://mnebyvpn.site/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="MNEBYVPN">
+  <meta property="og:locale" content="ru_RU">
+  <meta property="og:url" content="https://mnebyvpn.site/">
+  <meta property="og:title" content="MNEBYVPN — VPN для телефона, YouTube, Telegram и ИИ">
+  <meta property="og:description" content="VPN-подключение и понятное управление доступом. О возможностях и ограничениях VPN, Smart DNS, YouTube и ИИ-сервисов.">
+  <meta property="og:image" content="https://mnebyvpn.site/brand-avatar.webp">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"MNEBYVPN","url":"https://mnebyvpn.site/"}</script>
   <link rel="stylesheet" href="/site.css">
   <link rel="stylesheet" href="/neo.css">
+  <link rel="stylesheet" href="/seo.css">
   <link rel="icon" type="image/webp" href="/brand-avatar.webp">
   <script src="/app.js" defer></script>
 </head>
@@ -34,10 +45,10 @@
   <main>
     <section class="hero shell">
       <div class="hero-copy">
-        <p class="eyebrow"><span class="eyebrow-line"></span> НА СТАРТЕ. ПРОЩЕ С КАЖДЫМ ШАГОМ.</p>
-        <h1>VPN без<span> лишних шагов</span></h1>
-        <p class="hero-lead">Подключение, управление и помощь — без технической путаницы. Мы создаём сервис, которым удобно пользоваться.</p>
-        <p class="hero-start"><strong>Мы только начинаем.</strong> <a href="#support">Поддержать проект</a> · <a href="#contact-support">Помощь</a></p>
+        <p class="eyebrow"><span class="eyebrow-line"></span> VPN + SMART DNS. ПРОСТО И ПОНЯТНО.</p>
+        <h1>VPN и Smart DNS<span> без лишних шагов</span></h1>
+        <p class="hero-lead">VPN для телефона и компьютера без технической путаницы. Рассказываем, что делать при ошибках YouTube, Instagram, Telegram и Google Gemini — без обещаний работы в любой сети.</p>
+        <p class="hero-start"><strong>Выбирайте удобный формат доступа.</strong> <a href="#support">Поддержать проект</a> · <a href="#contact-support">Помощь</a></p>
         <div class="hero-actions">
           <button class="button button-primary hidden" id="trial-hero-button" type="button" tabindex="-1" aria-hidden="true">Бесплатные 24 часа</button>
           <a class="button button-primary" href="#plans">Выбрать VPN</a>
@@ -56,27 +67,27 @@
 
     <section class="features shell" id="features">
       <div class="section-head">
-        <div><p class="eyebrow">ВОЗМОЖНОСТИ</p><h2>Начинаем с VPN. Идём к большему.</h2></div>
-        <p class="section-desc">Один понятный сервис для подключения и управления. Новые режимы появятся после проверки.</p>
+        <div><p class="eyebrow">ВОЗМОЖНОСТИ</p><h2>MNEBYVPN и MNEBYDNS — удобные решения для подключения.</h2></div>
+        <p class="section-desc">VPN, Smart DNS и совместный режим. Выберите подходящий способ и управляйте доступом в одном кабинете.</p>
       </div>
       <div class="feature-grid">
         <article class="feature-card"><span class="feature-icon">◈</span><h3>VPN</h3><p>Защищённый туннель для интернет-соединений через совместимый VPN-клиент.</p><span class="feature-meta">Отдельный VPN-доступ</span></article>
-        <article class="feature-card"><span class="feature-icon">◎</span><h3>Smart DNS</h3><p>Отдельный способ настройки DNS. Функция ещё разрабатывается и не продаётся.</p><span class="feature-meta">В разработке</span></article>
-        <article class="feature-card"><span class="feature-icon">⌘</span><h3>VPN + DNS</h3><p>Совместный вариант планируется после проверки совместимости.</p><span class="feature-meta">В разработке</span></article>
+        <article class="feature-card"><span class="feature-icon">◎</span><h3>Smart DNS</h3><p>Smart DNS для отдельных сетевых сценариев — без обязательного подключения полного VPN-туннеля.</p><span class="feature-meta">Отдельный DNS-доступ</span></article>
+        <article class="feature-card"><span class="feature-icon">⌘</span><h3>VPN + DNS</h3><p>VPN-туннель и DNS-сценарии в одной линейке подключений для разных задач.</p><span class="feature-meta">Совместный режим</span></article>
       </div>
     </section>
 
     <section class="plans-section" id="plans">
       <div class="shell">
         <div class="section-head">
-          <div><p class="eyebrow">ПОДПИСКИ</p><h2>Выберите тариф VPN</h2></div>
+          <div><p class="eyebrow">ПОДПИСКИ</p><h2>Выберите VPN или Smart DNS</h2></div>
           <p class="section-desc">1. Выберите срок. 2. Перейдите к оплате. Цены — только из опубликованных тарифов.</p>
         </div>
         <div class="plan-controls">
           <div class="tabs" role="group" aria-label="Тип доступа">
             <button class="tab selected" data-product="vpn" type="button" aria-pressed="true">VPN</button>
-            <button class="tab tab-soon" data-product="smart_dns" type="button" aria-pressed="false" disabled aria-disabled="true">DNS · скоро</button>
-            <button class="tab tab-soon" data-product="bundle" type="button" aria-pressed="false" disabled aria-disabled="true">VPN + DNS · скоро</button>
+            <button class="tab tab-soon" data-product="smart_dns" type="button" aria-pressed="false" disabled aria-disabled="true">MNEBYDNS</button>
+            <button class="tab tab-soon" data-product="bundle" type="button" aria-pressed="false" disabled aria-disabled="true">VPN + DNS</button>
           </div>
           <div class="days-tabs" role="group" aria-label="Срок тарифа">
             <button class="days-tab selected" data-days="15" type="button" aria-pressed="true">15 дней</button>
@@ -87,7 +98,7 @@
         </div>
         <div class="price-layout">
           <article class="price-card">
-            <div class="price-card-top"><span class="small-overline">ВАШ VPN</span><span class="pill">Без автосписаний</span></div>
+            <div class="price-card-top"><span class="small-overline">ВАШ ДОСТУП</span><span class="pill">Без автосписаний</span></div>
             <h3 id="selected-plan-name">VPN · 15 дней</h3>
             <div class="price-line"><strong id="selected-price">—</strong><span id="price-unit">₽ за период</span></div>
             <p class="price-sub" id="price-description">Проверяем доступные предложения…</p>
@@ -95,7 +106,7 @@
             <div class="price-divider"></div>
             <p class="price-includes-title">В тариф входит</p>
             <div class="price-info">
-              <div><span><i class="detail-icon" aria-hidden="true">✓</i> VPN-подключение</span><strong id="selected-quota">Входит</strong></div>
+              <div><span><i class="detail-icon" aria-hidden="true">✓</i> Тип доступа</span><strong id="selected-quota">Входит</strong></div>
               <div><span><i class="detail-icon" aria-hidden="true">◷</i> Срок доступа</span><strong id="selected-duration">15 дней</strong></div>
               <div><span><i class="detail-icon" aria-hidden="true">◎</i> Продление</span><strong>В личном кабинете</strong></div>
             </div>
@@ -137,8 +148,8 @@
           </aside>
         </div>
         <section class="coming-soon" aria-label="Что появится позже">
-          <h3 class="upcoming-heading">Скоро в проекте</h3>
-          <div class="coming-item coming-dns"><span class="coming-icon" aria-hidden="true"><span class="layered-icon"></span></span><p><strong>Smart DNS и тариф VPN + DNS</strong><span>В разработке. Станут доступны после проверки совместной работы.</span></p><span class="coming-status">В разработке</span></div>
+          <h3 class="upcoming-heading">Возможности и развитие</h3>
+          <div class="coming-item coming-dns"><span class="coming-icon" aria-hidden="true"><span class="layered-icon"></span></span><p><strong>MNEBYDNS и VPN + DNS</strong><span>DNS для выборочных сетевых сценариев и совместный вариант для пользователей VPN. Актуальные предложения — в каталоге тарифов.</span></p><span class="coming-status">MNEBYDNS</span></div>
           <div class="coming-item coming-network"><span class="coming-icon" aria-hidden="true"><span class="signal-icon">▂▅▇</span></span><p><strong>Обычный интернет при ограничениях мобильной сети</strong><span>Планируем отдельный режим для ситуаций, когда привычные сайты и приложения недоступны. Пока не работает; возможности зависят от сети и устройства.</span></p><span class="coming-status">Планируется</span></div>
         </section>
       </div>
@@ -146,14 +157,14 @@
 
     <section class="launch-support shell" id="support" aria-labelledby="launch-support-title">
       <div class="launch-support-copy">
-        <p class="eyebrow">ПРОЕКТ В НАЧАЛЕ ПУТИ</p>
+        <p class="eyebrow">КАК МЫ РАБОТАЕМ</p>
         <h2 id="launch-support-title">Делаем сложное простым</h2>
         <p>«MNEBYVPN» создаётся с одной идеей: технологии должны помогать, а не заставлять разбираться в настройках. Наши ориентиры — понятное подключение, быстрая и человеческая помощь, удобная работа на разных устройствах и больше функций в одном месте.</p>
-        <p class="launch-support-state">Сейчас сосредоточены на VPN. Smart DNS, совместный режим и другие возможности пока разрабатываются и не предлагаются как готовый доступ.</p>
+        <p class="launch-support-state">VPN и Smart DNS дополняют друг друга: VPN шифрует трафик в туннеле, а DNS отвечает за разрешение доменных имён и выбранные сетевые сценарии. Режимы и тарифы выбираются в каталоге.</p>
       </div>
       <div class="launch-support-action">
         <h3>Поддержите развитие проекта</h3>
-        <p>Если вам близка эта идея, поделитесь проектом и расскажите о нём тем, кому важно простое подключение. Так вы поможете нам найти первых пользователей.</p>
+        <p>Если вам близка эта идея, поделитесь проектом и расскажите о нём тем, кому важно простое подключение. Так другие пользователи узнают о MNEBYVPN и MNEBYDNS.</p>
         <div class="launch-support-buttons">
           <a class="button button-primary" href="https://t.me/share/url?url=https%3A%2F%2Ft.me%2FMNEBYVPN_bot" target="_blank" rel="noopener noreferrer">Поделиться проектом</a>
           <a class="button button-outline" href="https://t.me/MNEBYVPN_bot" target="_blank" rel="noopener noreferrer">Открыть бота</a>
@@ -228,6 +239,24 @@
           <p class="dashboard-disclaimer">Показания DNS-квоты доступны только после проверки реального серверного учёта трафика. Дата оплаты сама по себе не подтверждает активацию подключения.</p>
         </div>
       </div>
+    </section>
+    <section class="shell seo-links" id="guides" aria-labelledby="guides-title">
+      <div class="section-head">
+        <div><p class="eyebrow">ПОЛЕЗНЫЕ МАТЕРИАЛЫ</p><h2 id="guides-title">VPN, Smart DNS и доступность сервисов</h2></div>
+        <p class="section-desc">Что проверять, если сайт или приложение не открывается. Возможности и ограничения технологий.</p>
+      </div>
+      <nav class="seo-link-grid" aria-label="Материалы по работе интернет-сервисов">
+        <a href="/vpn">VPN для телефона и компьютера</a>
+        <a href="/smart-dns">Smart DNS и MNEBYDNS</a>
+        <a href="/vpn-android">Как подключить VPN на Android</a>
+        <a href="/vpn-iphone">Как подключить VPN на iPhone</a>
+        <a href="/private-dns-android">Private DNS на Android: настройка</a>
+        <a href="/youtube">YouTube не открывается</a>
+        <a href="/instagram">Instagram не загружается</a>
+        <a href="/telegram">Ошибки подключения Telegram</a>
+        <a href="/google-gemini">Google Gemini: регион и сеть</a>
+        <a href="/ai-services">ChatGPT, Claude и другие ИИ-сервисы</a>
+      </nav>
     </section>
   </main>
   <footer class="footer"><div class="shell footer-inner"><div class="brand footer-brand"><img class="brand-avatar" src="/brand-avatar.webp" alt="" width="34" height="34" decoding="async"><span class="brand-text">MNEBY<span>VPN</span></span></div><p>VPN и Smart DNS — разные режимы доступа. Доступность зависит от сети, устройства и выбранной конфигурации.</p><div class="footer-links"><a href="https://t.me/MNEBYVPN_bot" target="_blank" rel="noopener noreferrer" aria-label="Telegram-бот MNEBYVPN">@MNEBYVPN_bot</a><a href="https://github.com/grunvald91/Mnebyvpn" rel="noopener noreferrer" target="_blank">О проекте</a><a href="/terms">Условия покупки</a><a href="/privacy">Обработка данных</a></div></div></footer>

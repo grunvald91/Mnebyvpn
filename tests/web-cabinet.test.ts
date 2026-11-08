@@ -117,12 +117,12 @@ test('web cabinet reserves OIDC login for explicit BotFather integration',async(
   assert.match(ui,/cabinet-login-link/);
 });
 
-test('mobile VPN purchase is compact and unlaunched features are clearly unavailable',async()=>{
+test('mobile checkout remains compact while DNS purchases stay gated until release',async()=>{
   const {readFileSync}=await import('node:fs');
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
   const css=readFileSync(new URL('../apps/web/public/site.css',import.meta.url),'utf8');
   const client=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
-  assert.match(html,/Выберите тариф VPN/);
+  assert.match(html,/Выберите VPN или Smart DNS/);
   assert.match(html,/Обычный интернет при ограничениях мобильной сети/);
   assert.match(html,/Планируем отдельный режим для ситуаций/);
   assert.match(html,/data-product="smart_dns"[^>]*disabled/);
@@ -134,7 +134,7 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
   assert.match(server,/url\.pathname === '\/neo\.css'/);
   assert.match(neoCss,/\.portal-art/);
   assert.match(neoCss,/@media\(max-width:680px\)/);
-  assert.match(html,/<h1>VPN без<span> лишних шагов<\/span><\/h1>/);
+  assert.match(html,/<h1>VPN и Smart DNS<span> без лишних шагов<\/span><\/h1>/);
   assert.match(html,/<p class="hero-lead">/);
   assert.match(neoCss,/\.hero\{display:block;position:relative;min-height:82px;padding:10px 0 5px/);
   assert.match(neoCss,/\.portal-avatar/);
@@ -148,7 +148,7 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
   assert.equal(avatar.subarray(8,12).toString('ascii'),'WEBP');
   assert.ok(avatar.byteLength > 1000 && avatar.byteLength < 20000);
   assert.match(html,/В тариф входит/);
-  assert.match(html,/VPN-подключение<\/span><strong id="selected-quota">Входит/);
+  assert.match(html,/Тип доступа<\/span><strong id="selected-quota">Входит/);
   assert.doesNotMatch(html,/Не входит/);
   assert.doesNotMatch(client,/Перейти к оплате →|Не входит/);
   assert.match(css,/\.hero-art,\.hero-actions,\.hero-notes,\.features\{display:none\}/);
