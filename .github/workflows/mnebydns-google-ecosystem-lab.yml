@@ -1,0 +1,139 @@
+name: MNEBYDNS Google ecosystem Nginx SNI and CoreDNS DoT local lab
+on:
+  push:
+    branches: ['feature/mnebydns-google-youtube-instagram-lab-20261108']
+    paths:
+      - '.github/workflows/mnebydns-google-ecosystem-lab.yml'
+      - 'ops/smart-dns-poc/stage-google-ecosystem-suffix.py'
+      - 'ops/smart-dns-poc/test-google-ecosystem-suffix.py'
+      - 'ops/smart-dns-poc/probe-google-ecosystem-lab.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mnebydns-google-ecosystem-local
+  cancel-in-progress: true
+jobs:
+  local-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage broad Google suffix DNS + SNI; run real strict-TLS canaries
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -qq -y nginx libnginx-mod-stream
+          base="$GITHUB_WORKSPACE/ops/smart-dns-poc"
+          cd "$base"
+          python3 test-google-ecosystem-suffix.py
+          python3 -m py_compile stage-google-ecosystem-suffix.py probe-google-ecosystem-lab.py
+          work="/tmp/mnebydns-ci-$GITHUB_RUN_ID"
+          test ! -e "$work"
+          dns_pid=''
+          origin_pid=''
+          proxy_pid=''
+          cleanup(){
+            rc=$?
+            trap - EXIT
+            if [[ "$rc" -ne 0 ]]; then
+              cat "$work/main.log" "$work/origin.log" "$work/proxy.log" 2>/dev/null || true
+            fi
+            for pid in "$proxy_pid" "$dns_pid" "$origin_pid"; do
+              if [[ -n "$pid" ]]; then
+                sudo kill "$pid" >/dev/null 2>&1 || true
+                wait "$pid" >/dev/null 2>&1 || true
+              fi
+            done
+            for i in $(seq 1 30); do
+              [[ -z "$(ss -H -lntu '( sport = :5354 or sport = :1857 or sport = :15449 )')" ]] && break
+              sleep 0.2
+            done
+            if [[ -n "$(ss -H -lntu '( sport = :5354 or sport = :1857 or sport = :15449 )')" ]]; then
+              echo "unexpected_listening_port_after_cleanup=yes"
+              rc=1
+            fi
+            rm -rf -- "$work"
+            rm -f "$base/Corefile.google-ecosystem-local" "$base/coredns"
+            sudo rm -rf -- "$base/certs"
+            exit "$rc"
+          }
+          trap cleanup EXIT
+
+          # Build synthetic known-live map and exact Gemini+Discord DNS fixture.
+          python3 - <<'PY'
+          import importlib.util,json,pathlib
+          p=pathlib.Path('.')
+          spec=importlib.util.spec_from_file_location('d',p/'stage-ru-access-pilot.py')
+          d=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(d)
+          names=d.domains(json.loads((p/'ru-access-first-pilot.json').read_text()))
+          original=(
+              'stream {\n    map $ssl_preread_server_name $direct_mtproxy_backend {\n'
+              '        default 127.0.0.1:9443;\n'
+              '        gemini.google.com 127.0.0.1:15443;\n'
+              '        www.google.com 127.0.0.1:16444;\n'
+              '    }\n    server { listen 443; ssl_preread on;'
+              ' proxy_pass $direct_mtproxy_backend; }\n}\n'
+          )
+          pathlib.Path('ecosystem-base-nginx.fixture').write_text(d.render_sni(original,names))
+          pathlib.Path('ecosystem-base-core.fixture').write_text(d.render_dns(
+              pathlib.Path('Corefile.gemini-canary').read_text(),names))
+          PY
+          python3 stage-google-ecosystem-suffix.py \
+            ecosystem-base-nginx.fixture ecosystem-base-core.fixture "$work"
+          rm -f ecosystem-base-nginx.fixture ecosystem-base-core.fixture
+          grep -Fq '        gemini.google.com 127.0.0.1:15443;' "$work/shared-nginx.staged"
+          grep -Fq '        discord.com 127.0.0.1:15446;' "$work/shared-nginx.staged"
+          nginx -t -c "$work/google-ecosystem.nginx.conf"
+          sudo bash make-local-cert.sh
+          sed \
+            -e 's@tls://.:853@tls://.:1857@' \
+            -e 's@bind 89.125.90.101@bind 127.0.0.1@' \
+            -e 's@/run/credentials/mnebydns-dot.service/fullchain.pem@certs/dns.test.invalid.crt@' \
+            -e 's@/run/credentials/mnebydns-dot.service/privkey.pem@certs/dns.test.invalid.key@' \
+            "$work/Corefile.staged" > Corefile.google-ecosystem-local
+          pulled=0
+          for attempt in 1 2 3; do
+            if docker pull coredns/coredns:1.15.0 >/dev/null; then
+              pulled=1
+              break
+            fi
+            echo "::warning::Docker registry read unavailable, bounded retry $attempt"
+            sleep 2
+          done
+          test "$pulled" -eq 1
+          cid="$(docker create coredns/coredns:1.15.0)"
+          docker cp "$cid:/coredns" ./coredns
+          docker rm "$cid" >/dev/null
+          chmod 755 ./coredns
+          sudo chmod 755 "$GITHUB_WORKSPACE" "$(dirname "$base")" "$base"
+          for port in 5354 1857 15449; do
+            [[ -z "$(ss -H -lntu "sport = :$port")" ]]
+          done
+          sudo timeout --signal=TERM --kill-after=3s 155s \
+            setpriv --reuid 65532 --regid 65532 --clear-groups --no-new-privs \
+            ./coredns -conf "$work/Corefile.origin-resolver" > "$work/origin.log" 2>&1 &
+          origin_pid=$!
+          sudo timeout --signal=TERM --kill-after=3s 155s \
+            setpriv --reuid 65532 --regid 65532 --clear-groups --no-new-privs \
+            ./coredns -conf Corefile.google-ecosystem-local > "$work/main.log" 2>&1 &
+          dns_pid=$!
+          nginx -c "$work/google-ecosystem.nginx.conf" -g 'daemon off;' \
+            > "$work/proxy.log" 2>&1 &
+          proxy_pid=$!
+          for i in $(seq 1 60); do
+            if ss -H -lnu 'sport = :5354' | grep -Fq 127.0.0.1:5354 &&
+               ss -H -lnt 'sport = :1857' | grep -Fq 127.0.0.1:1857 &&
+               ss -H -lnt 'sport = :15449' | grep -Fq 127.0.0.1:15449; then
+              break
+            fi
+            sleep 0.2
+          done
+          ss -H -lnu 'sport = :5354' | grep -Fq 127.0.0.1:5354
+          ss -H -lnt 'sport = :1857' | grep -Fq 127.0.0.1:1857
+          ss -H -lnt 'sport = :15449' | grep -Fq 127.0.0.1:15449
+          python3 probe-google-ecosystem-lab.py
+          echo "only_real_localhost_listeners_used=yes"
+          echo "production_DNS_and_Nginx_not_modified=yes"
