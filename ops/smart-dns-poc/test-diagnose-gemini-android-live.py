@@ -58,6 +58,20 @@ class GeminiAndroidRouteTests(unittest.TestCase):
         self.assertIn("time.google.com",AUDIT.ANDROID_SYSTEM_HOSTS)
         self.assertTrue(set(AUDIT.EXISTING_CONTROLS).isdisjoint(set(AUDIT.GEMINI_HOSTS)))
 
+    def test_youtube_stitch_aistudio_are_separate_audit_groups(self):
+        self.assertIn("www.youtube.com",AUDIT.YOUTUBE_HOSTS)
+        self.assertIn("youtubei.googleapis.com",AUDIT.YOUTUBE_HOSTS)
+        self.assertIn("i.ytimg.com",AUDIT.YOUTUBE_HOSTS)
+        self.assertIn("stitch.withgoogle.com",AUDIT.STITCH_HOSTS)
+        self.assertIn("aistudio.google.com",AUDIT.AI_STUDIO_HOSTS)
+        self.assertIn("generativelanguage.googleapis.com",AUDIT.AI_STUDIO_HOSTS)
+        self.assertIn("googlevideo.com",AUDIT.DYNAMIC_VIDEO_SUFFIXES_NOT_VERIFIED)
+        self.assertEqual(len(AUDIT.YOUTUBE_HOSTS),len(set(AUDIT.YOUTUBE_HOSTS)))
+        self.assertEqual(len(AUDIT.STITCH_HOSTS),len(set(AUDIT.STITCH_HOSTS)))
+        self.assertEqual(len(AUDIT.AI_STUDIO_HOSTS),len(set(AUDIT.AI_STUDIO_HOSTS)))
+        self.assertFalse(any("*" in h for h in (
+            AUDIT.YOUTUBE_HOSTS+AUDIT.STITCH_HOSTS+AUDIT.AI_STUDIO_HOSTS)))
+
     def test_ssl_hostname_validation_is_not_disabled_and_no_mutations(self):
         source=(HERE/"diagnose-gemini-android-live.py").read_text()
         for forbidden in (
