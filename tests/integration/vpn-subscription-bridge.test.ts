@@ -95,10 +95,19 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
      '&pbk='+('A'.repeat(43))+'&sid=ab12cd34ef56a789&spx=%2F#MNEBYVPN%20FAST';
    const fallback=profile;
    profile=reality+'\n'+fallback;
-   const dual=await fetch(root+'/sub/'+issued!.token);
+   const legacyRefresh=await fetch(root+'/sub/'+issued!.token);
+   assert.equal(legacyRefresh.status,200);
+   assert.equal(Buffer.from((await legacyRefresh.text()).trim(),'base64')
+     .toString('utf8').trim(),fallback);
+   const dual=await fetch(root+'/sub/'+issued!.token+'?client=incy');
    assert.equal(dual.status,200);
    assert.equal(Buffer.from((await dual.text()).trim(),'base64').toString('utf8').trim(),
      reality+'\n'+fallback);
+   const safeKaring=await fetch(root+'/sub/'+issued!.token+'?client=karing');
+   assert.equal(safeKaring.status,200);
+   assert.equal(Buffer.from((await safeKaring.text()).trim(),'base64')
+     .toString('utf8').trim(),fallback);
+   assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=other')).status,400);
    // Never publish a profile from an unexpected node, even on an authenticated
    // internal response.
    profile=reality.replace('cdn.servgo.ru','wrong-host.example')+'\n'+fallback;
@@ -111,6 +120,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.match(page,/Открыть в INCY/);
    assert.match(page,/vpn-install\.js/);
    assert.ok(page.includes(issued!.link));
+   assert.match(page,/\?client=incy/);
    assert.equal((await fetch(root+'/install/'+issued!.token+'?client=bogus')).status,400);
    const script=await fetch(root+'/vpn-install.js');
    assert.equal(script.status,200);
