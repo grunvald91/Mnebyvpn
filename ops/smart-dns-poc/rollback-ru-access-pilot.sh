@@ -11,7 +11,8 @@ for suffix in nginx.before nginx.pilot dns.before dns.pilot; do
 done
 exec 9>/run/lock/mnebyvpn-public-route.lock
 flock -w 12 9 || { echo "rollback_lock_unavailable"; exit 2; }
-[[ -f "$map" && -f "$dns" && ! -L "$map" && ! -L "$dns" ]]
+test -f "$map" && test -f "$dns"
+test ! -L "$map" && test ! -L "$dns"
 if ! cmp -s "$map" "$base/nginx.pilot" && ! cmp -s "$map" "$base/nginx.before"; then
   echo "refuse_to_overwrite_newer_nginx_revision"; exit 2
 fi
