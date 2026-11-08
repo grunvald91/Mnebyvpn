@@ -14,6 +14,7 @@
 | Подпись клиента | Транспорт | Вход |
 | --- | --- | --- |
 | MNEBYVPN · Germany · REALITY Vision | VLESS/TCP + REALITY + XTLS Vision | `cdn.servgo.ru:2053` |
+| MNEBYVPN · Germany · REALITY Firefox (TEST) | VLESS/TCP + REALITY + XTLS Vision, uTLS `fp=firefox` | `cdn.servgo.ru:2053` |
 | MNEBYVPN · Germany · WebSocket TLS | VLESS/WS + TLS | `cdn.servgo.ru:8443` |
 
 Название страны — клиентская метка, основанная на регистрации IP-подсети;
@@ -65,3 +66,16 @@
 совпадают с базой, исходные UUID сохранены. В последующем выпуске возвращена
 строгая проверка точности срока `±1000` мс: бессрочных исключений для
 исторического рассогласования не остаётся.
+
+## Диагностика REALITY на Android (8 ноября 2026)
+
+Независимая внешняя проверка подтвердила HTTPS 200 через REALITY с `fp=chrome`
+и `fp=firefox`. Наличие пинга в INCY не доказывает, что все приложения
+маршрутизируются через VPN. В качестве безопасного A/B-теста добавлен
+**REALITY Firefox (TEST)** с тем же ключом, REALITY-сервером, XTLS Vision
+и сроком доступа, но альтернативным отпечатком ClientHello. Пользователь
+просто обновляет существующую подписку. Это не обещание, что вариант
+работает на каждом мобильном операторе: при отказе нужны логи клиента INCY.
+
+Проверки: [подлинный Xray E2E, Chrome и Firefox](https://github.com/grunvald91/telegram-proxy-infra/actions/runs/42478923279),
+[действующие ключи на обеих входящих конфигурациях](https://github.com/grunvald91/telegram-proxy-infra/actions/runs/42478828541).
