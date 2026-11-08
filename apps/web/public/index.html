@@ -29,6 +29,7 @@
         <a href="#contact-support">Поддержка</a>
         <a href="https://t.me/MNEBYVPN_bot" target="_blank" rel="noopener noreferrer">Telegram-бот</a>
       </nav>
+      <button class="about-trigger" type="button" data-about-open="about" aria-controls="about-dialog" aria-haspopup="dialog">О проекте</button>
       <a class="journey-header-account" href="#account" aria-label="Мой VPN">Мой VPN</a>
       <a class="button button-small button-outline" href="https://t.me/MNEBYVPN_bot" id="auth-link">Telegram-бот</a>
     </div>
@@ -284,7 +285,65 @@
       </div>
     </section>
   </main>
-  <footer class="footer"><div class="shell footer-inner"><div class="brand footer-brand"><img class="brand-avatar" src="/brand-avatar.webp" alt="" width="34" height="34" decoding="async"><span class="brand-text">MNEBY<span>VPN</span></span></div><p>VPN и Smart DNS — разные режимы доступа. Доступность зависит от сети, устройства и выбранной конфигурации.</p><div class="footer-links"><a href="https://t.me/MNEBYVPN_bot" target="_blank" rel="noopener noreferrer" aria-label="Telegram-бот MNEBYVPN">@MNEBYVPN_bot</a><a href="https://github.com/grunvald91/Mnebyvpn" rel="noopener noreferrer" target="_blank">О проекте</a><a href="/terms">Условия покупки</a><a href="/privacy">Обработка данных</a></div></div></footer>
+  <footer class="footer"><div class="shell footer-inner"><div class="brand footer-brand"><img class="brand-avatar" src="/brand-avatar.webp" alt="" width="34" height="34" decoding="async"><span class="brand-text">MNEBY<span>VPN</span></span></div><p>VPN и Smart DNS — разные режимы доступа. Доступность зависит от сети, устройства и выбранной конфигурации.</p><div class="footer-links"><a href="https://t.me/MNEBYVPN_bot" target="_blank" rel="noopener noreferrer" aria-label="Telegram-бот MNEBYVPN">@MNEBYVPN_bot</a><button class="footer-about" type="button" data-about-open="roadmap">Roadmap</button><a href="/terms">Условия покупки</a><a href="/privacy">Обработка данных</a></div></div></footer>
+  <dialog id="about-dialog" class="about-dialog" aria-labelledby="about-title" aria-modal="true">
+    <div class="about-dialog-head">
+      <div>
+        <span class="about-eyebrow">ЗНАКОМЬТЕСЬ</span>
+        <h2 id="about-title">MNEBYVPN</h2>
+      </div>
+      <button type="button" class="about-close" data-about-close aria-label="Закрыть информацию о проекте">×</button>
+    </div>
+    <div class="about-tabs" role="tablist" aria-label="Разделы о проекте">
+      <button type="button" role="tab" id="about-tab-about" aria-selected="true" aria-controls="about-panel-about" data-about-tab="about">О нас</button>
+      <button type="button" role="tab" id="about-tab-bonus" aria-selected="false" aria-controls="about-panel-bonus" data-about-tab="bonus" tabindex="-1">Бонусы</button>
+      <button type="button" role="tab" id="about-tab-security" aria-selected="false" aria-controls="about-panel-security" data-about-tab="security" tabindex="-1">Защита</button>
+      <button type="button" role="tab" id="about-tab-roadmap" aria-selected="false" aria-controls="about-panel-roadmap" data-about-tab="roadmap" tabindex="-1">Roadmap</button>
+    </div>
+    <section id="about-panel-about" class="about-tab-panel" role="tabpanel" aria-labelledby="about-tab-about" data-about-panel="about">
+      <h3>Подключил и не паришься.</h3>
+      <p>Мы создаём MNEBYVPN для тех, кому нужен простой VPN без технической путаницы. Выберите срок, оплатите и подключитесь — остальное стараемся сделать незаметным.</p>
+      <div class="about-principles">
+        <p><strong>Просто.</strong> Минимум действий и понятная помощь.</p>
+        <p><strong>Доступно.</strong> Стремимся держать народные цены без лишних услуг.</p>
+        <p><strong>Вместе.</strong> Хотим благодарить тех, кто делится сервисом с друзьями.</p>
+        <p><strong>Ответственно.</strong> Безопасность соединения и прозрачность обработки данных для нас — обязательные требования.</p>
+      </div>
+      <p class="about-muted">Наш ориентир — широкий и устойчивый доступ к интернет-сервисам. Работа отдельных сайтов и приложений может зависеть от сети, устройства и их собственных ограничений.</p>
+    </section>
+    <section id="about-panel-security" class="about-tab-panel" role="tabpanel" aria-labelledby="about-tab-security" data-about-panel="security" hidden>
+      <h3>Ваше доверие — наша ответственность</h3>
+      <p>Когда человек подключает VPN, он доверяет провайдеру передачу части своего интернет-трафика. Поэтому защита данных — не дополнительная функция, а основа MNEBYVPN.</p>
+      <div class="about-principles">
+        <p><strong>Защита канала.</strong> Мы используем VPN-туннель и стремимся исключить утечки DNS и незаметное переключение на незащищённое соединение. Эти свойства требуют проверки для конкретных устройств и режимов.</p>
+        <p><strong>Минимум данных.</strong> Наш принцип — обрабатывать только необходимое для аккаунта, оплаты, поддержки и работы сервиса; фактический состав и сроки хранения должны быть подробно раскрыты в политике.</p>
+        <p><strong>Прозрачность.</strong> Не обещаем абсолютную анонимность или недоступность трафика провайдеру. Обнаруженные ограничения и подтверждённые результаты проверок должны быть доступны пользователям.</p>
+      </div>
+      <p>VPN защищает участок соединения от устройства до VPN-сервера. Это не заменяет HTTPS и сквозное шифрование в приложениях.</p>
+      <p class="about-muted">Пока нет независимого аудита и полной проверки всех режимов, мы не заявляем о подтверждённой политике «без журналов» или гарантированном отсутствии утечек.</p>
+      <a class="about-policy-link" href="/privacy">Как мы обрабатываем данные</a>
+    </section>
+    <section id="about-panel-bonus" class="about-tab-panel" role="tabpanel" aria-labelledby="about-tab-bonus" data-about-panel="bonus" hidden>
+      <h3>Расскажите о MNEBYVPN</h3>
+      <p>У нас уже есть механизм учёта приглашений в боте. Реферальные бонусы за покупки друзей готовим отдельно: пока дни или деньги за приглашение не начисляются.</p>
+      <p>Планируем поощрять и пригласившего, и нового покупателя после подтверждённой первой оплаты. Размер награды и условия объявим до запуска.</p>
+      <a class="button button-secondary about-share" href="https://t.me/share/url?url=https%3A%2F%2Ft.me%2FMNEBYVPN_bot&amp;text=MNEBYVPN%20%E2%80%94%20%D0%BF%D1%80%D0%BE%D1%81%D1%82%D0%BE%D0%B9%20VPN" target="_blank" rel="noopener noreferrer">Поделиться ботом</a>
+      <p class="about-muted">Эта обычная ссылка на бота не является персональным реферальным кодом.</p>
+    </section>
+    <section id="about-panel-roadmap" class="about-tab-panel" role="tabpanel" aria-labelledby="about-tab-roadmap" data-about-panel="roadmap" hidden>
+      <h3>К чему идём</h3>
+      <ol class="about-roadmap">
+        <li><strong>Удобный VPN</strong><span>Развиваем подключение и личный кабинет.</span></li>
+        <li><strong>Smart DNS</strong><span>В разработке; пока не продаётся.</span></li>
+        <li><strong>VPN + Smart DNS одновременно</strong><span>Планируем совместную работу без ручного переключения.</span></li>
+        <li><strong>Более устойчивое соединение</strong><span>Исследуем запасные узлы и режимы для сложных сетевых условий.</span></li>
+        <li><strong>Собственное приложение</strong><span>Долгосрочная цель: единый удобный интерфейс для Android, iOS, Windows, macOS и Linux.</span></li>
+      </ol>
+      <p class="about-muted">Это направление развития, а не обещание конкретных сроков или доступности каждого интернет-сервиса.</p>
+    </section>
+    <div class="about-dialog-foot"><a href="#plans" data-about-close-link>Выбрать VPN</a></div>
+  </dialog>
+  <script src="/about.js" defer></script>
   <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
