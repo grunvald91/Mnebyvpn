@@ -22,12 +22,18 @@ test('public SEO pages have unique paths, titles and descriptions',()=>{
   assert.equal(renderSeoPage('/unknown',origin),null);
 });
 
-test('MNEBYDNS is not advertised as available for purchase',()=>{
-  for(const path of ['/smart-dns','/youtube','/google-gemini']){
+test('launch-ready product pages avoid unsupported universal guarantees or invented prices',()=>{
+  const dns=renderSeoPage('/smart-dns',origin)!;
+  assert.match(dns,/MNEBYDNS/);
+  assert.match(dns,/MNEBYVPN/);
+  assert.doesNotMatch(dns,/в разработке|ещё разрабатывается|скоро/);
+  assert.doesNotMatch(dns,/гарантируем (?:доступ|работу)/);
+  assert.doesNotMatch(dns,/[0-9]+ ?₽/);
+  for(const path of ['/youtube','/instagram','/telegram','/google-gemini','/ai-services']){
     const html=renderSeoPage(path,origin)!;
-    assert.match(html,/разработ/);
+    assert.ok(html.includes('MNEBYVPN'));
+    assert.doesNotMatch(html,/в разработке|ещё разрабатывается/);
   }
-  assert.doesNotMatch(renderSeoPage('/google-gemini',origin)!,/гарантируем доступ/);
 });
 
 test('sitemap contains canonical public pages but not private routes',()=>{
