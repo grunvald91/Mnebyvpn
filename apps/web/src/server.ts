@@ -420,7 +420,8 @@ function validNodeVpnProfile(value:unknown):value is string {
   for(const link of links){
     let uri:URL;
     try{uri=new URL(link);}catch{return false;}
-    if(uri.protocol!=='vless:'||uri.hostname!=='cdn.servgo.ru'||
+    if(uri.protocol!=='vless:'||
+       !['cdn.servgo.ru','89.125.90.101'].includes(uri.hostname)||
        !credentialPattern.test(uri.username)||uri.password||
        uri.searchParams.get('encryption')!=='none')return false;
     if(credential&&uri.username!==credential)return false;
@@ -430,7 +431,7 @@ function validNodeVpnProfile(value:unknown):value is string {
     if(keys.size!==p.size)return false;
     if(uri.port==='8443'){
       const expected=['encryption','security','type','host','sni','path'];
-      if(expected.some(k=>!keys.has(k))||keys.size!==expected.length||
+      if(uri.hostname!=='cdn.servgo.ru'||expected.some(k=>!keys.has(k))||keys.size!==expected.length||
          p.get('security')!=='tls'||p.get('type')!=='ws'||
          p.get('host')!=='cdn.servgo.ru'||p.get('sni')!=='cdn.servgo.ru'||
          p.get('path')!=='/mnebyvpn-vpn/ws')return false;
@@ -438,6 +439,8 @@ function validNodeVpnProfile(value:unknown):value is string {
     }else if(uri.port==='2053'){
       const expected=['encryption','security','type','flow','sni','fp','pbk','sid','spx'];
       if(expected.some(k=>!keys.has(k))||keys.size!==expected.length||
+         (p.get('fp')==='chrome'&&uri.hostname!=='89.125.90.101')||
+         (p.get('fp')==='firefox'&&uri.hostname!=='cdn.servgo.ru')||
          p.get('security')!=='reality'||p.get('type')!=='tcp'||
          p.get('flow')!=='xtls-rprx-vision'||
          p.get('sni')!=='www.cloudflare.com'||
