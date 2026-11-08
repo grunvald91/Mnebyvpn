@@ -48,7 +48,7 @@ test('24h Telegram trial is delivered automatically only after the final node re
   await pool.query("UPDATE reconcile_outbox SET handled_at=clock_timestamp() WHERE entitlement_id<>$1 AND handled_at IS NULL",[entitlement]);
   const worker=new PgOutboxDispatcher(pool,adapter);
   assert.equal((await worker.processOnce()).status,'synced');
-  assert.equal((await pool.query("SELECT revision,state FROM entitlements WHERE id=$1",[entitlement])).rows[0].revision, '2');
+  assert.equal(Number((await pool.query("SELECT revision,state FROM entitlements WHERE id=$1",[entitlement])).rows[0].revision),2);
   assert.equal((await processVpnTrialReadyNotices(queue,sender)).sent,0,
     'a provisional 5-minute credential is NOT proof that full 24 hours are on-node');
   assert.equal((await worker.processOnce()).status,'synced');
@@ -74,8 +74,8 @@ test('trial notifier rejects expired trial and disassociated Telegram owner',asy
   const user='937125770';
   await pool.query('INSERT INTO accounts(id,telegram_user_id) VALUES($1,$2)',[account,user]);
   await pool.query("INSERT INTO orders(id,account_id,product,provider,amount_minor,currency,state) VALUES($1,$2,'vpn','internal_trial',0,'XTR','TRIAL')",[order,account]);
-  await pool.query("INSERT INTO trial_grants(telegram_user_id,account_id,order_id,product,activated_at,access_expires_at) VALUES($1,$2,$3,'vpn',clock_timestamp()-interval '25 hours',clock_timestamp()-interval '1 hour')",[user,account,order]);
-  await pool.query("INSERT INTO entitlements(id,account_id,source_order_id,product,state,revision,starts_at,expires_at) VALUES($1,$2,$3,'vpn','EXPIRED',2,clock_timestamp()-interval '25 hours',clock_timestamp()-interval '1 hour')",[entitlement,account,order]);
+  await pool.query("INSERT INTO trial_grants(telegram_user_id,account_id,order_id,product,activated_at,access_expires_at) VALUES($1,$2,$3,'vpn',now()-interval '25 hours',now()-interval '1 hour')",[user,account,order]);
+  await pool.query("INSERT INTO entitlements(id,account_id,source_order_id,product,state,revision,starts_at,expires_at) VALUES($1,$2,$3,'vpn','EXPIRED',2,now()-interval '25 hours',now()-interval '1 hour')",[entitlement,account,order]);
   const queue=new PgVpnTrialReadyQueue(pool);
   const seen:VpnTrialReadyNotice[]=[];
   const result=await processVpnTrialReadyNotices(queue,{send:async(job)=>{seen.push(job);return {status:'sent'};}});
