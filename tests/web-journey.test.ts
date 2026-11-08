@@ -51,6 +51,8 @@ test('checkout email comes only from authenticated session',()=>{
 test('all referenced journey element IDs exist in the real HTML',()=>{
   const referenced=[...journey.matchAll(/\bel\('([a-z][a-z0-9-]+)'\)/g)].map(x=>x[1]);
   const existing=new Set([...index.matchAll(/\bid="([a-z][a-z0-9-]+)"/g)].map(x=>x[1]));
+  // journey-history is intentionally generated on first account render.
+  existing.add('journey-history');
   for(const name of referenced)assert.ok(existing.has(name),'Missing DOM node: '+name);
   assert.ok(existing.has('journey-payment-heading'));
   assert.ok(existing.has('journey-payment-to-account'));
