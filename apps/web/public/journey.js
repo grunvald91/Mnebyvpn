@@ -5,12 +5,13 @@
   'use strict';
   const el=id=>document.getElementById(id);
   const root=document.body;
-  const landing=el('journey-landing'),setup=el('journey-setup');
+  const landing=el('journey-landing'),setup=el('journey-setup'),paymentIntro=el('journey-payment-intro');
   if(!landing||!setup||typeof state==='undefined')return;
   const allViews=new Set(['plans','account','payment','setup','support']);
   let view='plans', lastAccount=null, chosenPlatform='android', installed=false;
+  const autoSetupOrders=new Set();
   const request=new URL(location.href);
-  const paymentReturn=request.searchParams.get('payment')==='returned' ||
+  const paymentReturn=['returned','return'].includes(request.searchParams.get('payment')) ||
     request.pathname==='/payment/success' || request.pathname==='/payment/return';
   let paymentLanding=paymentReturn;
   const urlOrder=request.searchParams.get('order');
@@ -33,6 +34,7 @@
     root.dataset.journeyView=next;
     landing.hidden=next!=='plans';
     setup.hidden=next!=='setup';
+    if(paymentIntro)paymentIntro.hidden=next!=='payment';
     if(writeHash){
       if(next!=='payment')paymentLanding=false;
       const hash=next==='payment'?'#account':next==='setup'?'#connect':
@@ -220,10 +222,38 @@
       setView('account');
     }
     if(view==='payment'){
-      const notice=el('purchase-result');
-      const heading=el('journey-payment-heading');
-      heading.textContent=notice.classList.contains('hidden')?
-        'Ожидаем подтверждения заказа':'Результат покупки';
+      const intent=state.purchaseIntent||readPurchaseIntent();
+      const order=intent&&(payload.orders||[]).find(item=>item.id===intent.orderId);
+      const heading=el('journey-payment-heading'),description=el('journey-payment-info');
+      if(!order){
+        heading.textContent='Проверяем ваш заказ';
+        description.textContent='Войдите в аккаунт, с которого оформляли заказ. Оплата и подключение проверяются сервером.';
+      }else if(order.state==='PAID'){
+        const ready=(payload.access||[]).some(a=>a.product==='vpn'&&a.state==='ACTIVE'&&a.secondsRemaining>0&&
+          (a.sourceOrderId===order.id || a.id===intent.renewalTargetId));
+        heading.textContent=ready?'VPN готов к подключению':'Оплата подтверждена';
+        description.textContent=ready?'Подготавливаем инструкцию для вашего устройства…':
+          'Платёж получен. Ожидаем подтверждения активации VPN на сервере.';
+      }else if(order.state==='REFUNDED'||order.state==='CANCELLED'){
+        heading.textContent='Оплаченного доступа нет';
+        description.textContent='Статус заказа: '+(stateNames[order.state]||order.state)+'. Проверьте историю или напишите в поддержку.';
+      }else{
+        heading.textContent='Проверяем оплату';
+        description.textContent='Подтверждения от Prodamus пока нет. Если деньги списаны, не создавайте повторный платёж.';
+      }
+    }
+    // Open the installer only after the verified PAID order has an ACTIVE
+    // entitlement. A redirect alone can never trigger provisioning.
+    if(paymentLanding){
+      const intent=state.purchaseIntent||readPurchaseIntent();
+      const order=intent&&(payload.orders||[]).find(o=>o.id===intent.orderId);
+      const entitlement=order?.state==='PAID'&&(payload.access||[]).find(a=>
+        a.product==='vpn'&&a.state==='ACTIVE'&&a.secondsRemaining>0&&
+        (a.sourceOrderId===order.id || a.id===intent.renewalTargetId));
+      if(entitlement&&!autoSetupOrders.has(order.id)){
+        autoSetupOrders.add(order.id);
+        void loadSubscription(entitlement.id);
+      }
     }
     if(pendingIntent())resumeCheckout();
   }
@@ -260,7 +290,11 @@
   }));
   el('journey-buy').addEventListener('click',beginCheckout);
   el('journey-trial').addEventListener('click',async()=>{
-    if(!state.loggedIn){setView('account',true);}
+    if(!state.loggedIn){
+      await claimTrial(); // Preserve the pending-trial intent during email login.
+      setView('account',true);
+      return;
+    }
     await claimTrial();
     setView('setup',true);
   });
@@ -271,6 +305,9 @@
   el('journey-copy').addEventListener('click',()=>void copyLink(el('journey-url').value));
   // Following My VPN from the payment wizard deliberately exits result-only mode.
   document.querySelector('.journey-header-account')?.addEventListener('click',event=>{
+    event.preventDefault();paymentLanding=false;setView('account',true);
+  });
+  document.querySelector('#journey-payment-to-account')?.addEventListener('click',event=>{
     event.preventDefault();paymentLanding=false;setView('account',true);
   });
   document.querySelector('.journey-back')?.addEventListener('click',event=>{
@@ -289,6 +326,7 @@
   else if(/Mac OS X|Macintosh/i.test(ua))chosenPlatform='macos';
   else if(/Linux/i.test(ua))chosenPlatform='linux';
   setPlatform(chosenPlatform);
+  if(state.product!=='vpn')setSelection('vpn',state.days);
   root.classList.add('journey-active');
   setView(getRoute());
   updatePlan();
