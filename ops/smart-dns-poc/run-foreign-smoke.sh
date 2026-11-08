@@ -12,7 +12,7 @@ docker compose version >/dev/null 2>&1 || { echo "docker compose missing"; exit 
 command -v openssl >/dev/null 2>&1 || { echo "openssl missing"; exit 2; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 missing"; exit 2; }
 command -v ss >/dev/null 2>&1 || { echo "ss missing"; exit 2; }
-test -f compose.yaml && test -f Corefile && test -f probe-dot.py
+test -f compose.foreign.yaml && test -f Corefile.foreign && test -f probe-dot.py
 test ! -e certs/dns.test.invalid.key || { echo "existing test key; refusing"; exit 2; }
 
 echo "location=foreign_vps"
@@ -35,21 +35,26 @@ if docker ps -a --filter "label=com.docker.compose.project=$project" --format '{
   exit 2
 fi
 cleanup() {
-  docker compose -p "$project" -f compose.yaml down --timeout 10 >/dev/null 2>&1 || true
+  docker compose -p "$project" -f compose.foreign.yaml down --timeout 10 >/dev/null 2>&1 || true
+  # The host profile holds an ephemeral certificate; remove only its exact files.
+  rm -f -- certs/dns.test.invalid.key certs/dns.test.invalid.crt
+  rmdir -- certs 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 bash make-local-cert.sh
-docker compose -p "$project" -f compose.yaml config -q
+docker compose -p "$project" -f compose.foreign.yaml config -q
 echo "config_valid=yes"
-timeout 100 docker compose -p "$project" -f compose.yaml up -d --pull missing
-container="$(docker compose -p "$project" -f compose.yaml ps -q resolver)"
+timeout 100 docker compose -p "$project" -f compose.foreign.yaml up -d --pull missing
+container="$(docker compose -p "$project" -f compose.foreign.yaml ps -q resolver)"
 test -n "$container"
-bound="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "8853/tcp") 0).HostIp}}:{{(index (index .NetworkSettings.Ports "8853/tcp") 0).HostPort}}' "$container")"
+mode="$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$container")"
+[[ "$mode" == "host" ]] || { echo "unexpected container network mode"; exit 1; }
+bound="$(ss -H -lnt 'sport = :1853' | awk '{print $4}')"
 if [[ "$bound" != "127.0.0.1:1853" ]]; then
   echo "UNSAFE: unexpected published address"
   exit 1
 fi
-echo "listener_binding=loopback_only"
+echo "listener_binding=coreDNS_host_loopback_only"
 python3 probe-dot.py
 docker stats --no-stream --format 'poc_mem={{.MemUsage}} poc_cpu={{.CPUPerc}}' "$container"
 echo "runtime_test=passed"
