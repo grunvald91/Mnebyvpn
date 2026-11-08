@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Transactional six-exact-host Smart DNS rollout; run on the foreign VPS.
+# Transactional three-exact-host Discord Smart DNS rollout; run on the foreign VPS.
 set -Eeuo pipefail
 (( EUID == 0 )) || exit 2
 [[ $# == 1 && "$1" =~ ^/tmp/mnebydns-ci-[0-9]+$ ]] || exit 2
@@ -21,7 +21,7 @@ for svc in nginx mnebydns-dot.service mnebydns-gemini.service xray.service; do
   systemctl is-active --quiet "$svc" || { echo "required_service_unavailable=$svc"; exit 2; }
 done
 nginx -t >/dev/null 2>&1
-test -f "$nginx" && test -f "$dns" && ! -L "$nginx" && ! -L "$dns"
+[[ -f "$nginx" && -f "$dns" && ! -L "$nginx" && ! -L "$dns" ]]
 [[ "$(ss -H -lnt 'sport = :853' | awk '{print $4}')" = 89.125.90.101:853 ]]
 test -z "$(ss -H -lnt 'sport = :15446')"
 test "$(awk '/^MemAvailable:/{print int($2/1024)}' /proc/meminfo)" -ge 700
@@ -45,11 +45,10 @@ n=b.joinpath('nginx.pilot').read_text()
 d=b.joinpath('dns.pilot').read_text()
 assert n.count('gemini.google.com 127.0.0.1:15443;')==1
 assert d.count('template IN A gemini.google.com {')==1
-for name in ('discord.com','gateway.discord.gg','cdn.discordapp.com',
-             'www.instagram.com','www.facebook.com','static.cdninstagram.com'):
+for name in ('discord.com','gateway.discord.gg','cdn.discordapp.com'):
     assert n.count(name+' 127.0.0.1:15446;')==1
     assert d.count('template IN A '+name+' {')==1
-print('live_pilot_additions=exactly_six_verified')
+print('live_pilot_additions=exactly_three_verified')
 PY
 # Start watchdog FIRST. If workflow is interrupted it restores both originals.
 watchdog="mnebydns-ru-access-watchdog-$runid"
@@ -81,8 +80,7 @@ for attempt in $(seq 1 40); do
   sleep 0.2
 done
 [[ "$(ss -H -lnt 'sport = :15446' | awk '{print $4}')" = 127.0.0.1:15446 ]]
-for domain in discord.com gateway.discord.gg cdn.discordapp.com \
-              www.instagram.com www.facebook.com static.cdninstagram.com; do
+for domain in discord.com gateway.discord.gg cdn.discordapp.com; do
   code="$(curl -4 --noproxy '*' --connect-timeout 5 --max-time 14 \
     -sS -o /dev/null -w '%{http_code}' \
     --connect-to "$domain:443:127.0.0.1:15446" "https://$domain/")"
@@ -128,7 +126,7 @@ systemctl is-active --quiet mnebydns-dot.service
 python3 "$work/probe-ru-access.py" --ip 89.125.90.101 \
   --port 853 --hostname dns.mnebyvpn.site
 systemctl enable mnebydns-ru-access.service >/dev/null
-echo "six_exact_domains_live_locally=yes"
+echo "three_discord_domains_live_locally=yes"
 echo "awaiting_external_Russian_path_validation=yes"
 trap - ERR
 flock -u 9
