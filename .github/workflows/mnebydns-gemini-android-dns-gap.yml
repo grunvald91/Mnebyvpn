@@ -1,0 +1,27 @@
+name: MNEBYDNS Gemini Android live DNS-only gap audit
+on:
+  push:
+    branches: ['feature/mnebydns-google-youtube-instagram-lab-20261108']
+    paths:
+      - '.github/workflows/mnebydns-gemini-android-dns-gap.yml'
+      - 'ops/smart-dns-poc/diagnose-gemini-android-live.py'
+      - 'ops/smart-dns-poc/test-diagnose-gemini-android-live.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read-only-public-dot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit official Gemini host and Android-system DoT policies without modifying production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd ops/smart-dns-poc
+          python3 test-diagnose-gemini-android-live.py
+          python3 -m py_compile diagnose-gemini-android-live.py
+          python3 diagnose-gemini-android-live.py
+          echo "no_credentials_or_HTTP_requests_in_audit=yes"
+          echo "server_reconfigurations_performed=no"
