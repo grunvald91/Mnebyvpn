@@ -81,7 +81,7 @@ export function buildProdamusLinkRequest(order: ProdamusOrder, title: string, cf
     throw new Error('Invalid merchant Prodamus integration code');
   // The email is taken only from the authenticated and verified site account.
   // A missing email is not silently replaced with a guessed address.
-  if(customerEmail!==undefined && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(customerEmail))
+  if(customerEmail!==undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail))
     throw new Error('Invalid verified customer email');
   const success=new URL(cfg.successUrl);
   success.searchParams.set('payment','returned');
