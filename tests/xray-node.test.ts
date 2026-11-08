@@ -100,6 +100,12 @@ test('node advertises validated REALITY profile first with safe WS fallback',asy
    expiresAt:expiry.toISOString(),credential,reality});
  assert.deepEqual(record.reality,reality);
  const fast=makeVpnRealityImportUri(credential,reality);
+ const uriFast=new URL(fast);
+ assert.equal(decodeURIComponent(uriFast.hash.slice(1)),
+   'MNEBYVPN · Germany · REALITY Vision');
+ const uriWs=new URL(makeVpnImportUri(credential));
+ assert.equal(decodeURIComponent(uriWs.hash.slice(1)),
+   'MNEBYVPN · Germany · WebSocket TLS');
  assert.match(fast,/security=reality/);
  assert.match(fast,/flow=xtls-rprx-vision/);
  assert.match(fast,/sni=www.cloudflare.com/);
@@ -118,21 +124,22 @@ test('node advertises validated REALITY profile first with safe WS fallback',asy
    expiresAt:expiry.toISOString(),credential,reality:invalid}));
 });
 
-test('NTP recovery does not break active 32-second-early legacy VPN profiles',async()=>{
+test('after forced NTP resync, reject any historical 32-second expiry mismatch',async()=>{
  const expiresAt=new Date(Date.now()+2*3600_000);
  const nodeExpiry=new Date(expiresAt.getTime()-32_000);
  const active:typeof fetch=async()=>Response.json({
    revision:8,enabled:true,expiresAt:nodeExpiry.toISOString(),credential,
  },{headers:{Date:new Date().toUTCString()}});
  const api=new SignedXrayNodeApi(key,active);
- assert.equal(await api.profileFor(entitlement,8,expiresAt),makeVpnImportUri(credential));
+ assert.equal(await api.profileFor(entitlement,8,expiresAt),null,
+   'old 32-second waiver must be removed after all test keys were reapplied');
  assert.equal(await api.profileFor(entitlement,9,expiresAt),null,
    'incorrect revision must fail closed');
  assert.equal(await api.profileFor(entitlement,8,
    new Date(expiresAt.getTime()+60_000)),null,
    'different entitlement deadline must fail closed');
 
- for(const offset of [-60_000,-40_000,-26_000,32_000]){
+ for(const offset of [-60_000,-40_000,-26_000,-32_000,32_000]){
    const wrong:typeof fetch=async()=>Response.json({
      revision:8,enabled:true,
      expiresAt:new Date(expiresAt.getTime()+offset).toISOString(),credential,

@@ -98,7 +98,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const legacyRefresh=await fetch(root+'/sub/'+issued!.token);
    assert.equal(legacyRefresh.status,200);
    assert.equal(Buffer.from((await legacyRefresh.text()).trim(),'base64')
-     .toString('utf8').trim(),fallback);
+     .toString('utf8').trim(),reality+'\n'+fallback);
    const dual=await fetch(root+'/sub/'+issued!.token+'?client=incy');
    assert.equal(dual.status,200);
    assert.equal(Buffer.from((await dual.text()).trim(),'base64').toString('utf8').trim(),

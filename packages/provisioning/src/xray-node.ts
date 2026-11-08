@@ -10,6 +10,10 @@ import type {DesiredAccess,ObservedAccess,ProvisioningAdapter} from './reconcile
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FIXED_NODE_URL='http://10.66.77.1:18944/v1/provision';
 const WEB_PROFILE_HOST='cdn.servgo.ru';
+// One physical egress node with distinct protocol entries for comparison.
+// The 89.125.90.0/24 IP registry records country DE; this is a display label,
+// not a geolocation-based access decision.
+const NODE_DISPLAY_NAME='MNEBYVPN · Germany';
 export interface RealityPublicConfig {
   publicKey:string;
   shortId:string;
@@ -58,7 +62,7 @@ export function makeVpnImportUri(credential:string):string {
     host:WEB_PROFILE_HOST,sni:WEB_PROFILE_HOST,path:'/mnebyvpn-vpn/ws',
   });
   return 'vless://'+id+'@'+WEB_PROFILE_HOST+':8443?'+query+
-    '#'+encodeURIComponent('MNEBYVPN');
+    '#'+encodeURIComponent(NODE_DISPLAY_NAME+' · WebSocket TLS');
 }
 export function makeVpnRealityImportUri(credential:string,config:RealityPublicConfig):string {
   const id=uuid(credential);
@@ -69,7 +73,7 @@ export function makeVpnRealityImportUri(credential:string,config:RealityPublicCo
     fp:'chrome',pbk:safe.publicKey,sid:safe.shortId,spx:'/',
   });
   return 'vless://'+id+'@'+WEB_PROFILE_HOST+':'+safe.port+'?'+query+
-    '#'+encodeURIComponent('MNEBYVPN FAST');
+    '#'+encodeURIComponent(NODE_DISPLAY_NAME+' · REALITY Vision');
 }
 export class SignedXrayNodeApi implements ProvisioningAdapter {
   /** The actual isolated Xray agent enforces expiry locally without Panel. */
@@ -93,9 +97,8 @@ export class SignedXrayNodeApi implements ProvisioningAdapter {
       body:raw,
     });
     if(!reply.ok)throw Error('VPN node request failed (HTTP '+reply.status+')');
-    // The dedicated node currently has unsynchronized NTP. Its Date header is
-    // authoritative for relative TTL. Do not ever extend a customer deadline
-    // by treating a foreign, 30-second-behind clock as our local clock.
+    // Observe the foreign-node wall clock from each signed response. Hard
+    // expiry remains anchored to the control-plane deadline after NTP repairs.
     const remoteDate=reply.headers.get('Date');
     const remoteMs=remoteDate?Date.parse(remoteDate):NaN;
     if(!Number.isFinite(remoteMs))throw Error('VPN node clock not observable');
@@ -146,22 +149,9 @@ export class SignedXrayNodeApi implements ProvisioningAdapter {
     if(!observed.enabled||observed.revision!==revision||
       !observed.expiresAt||!observed.credential||
       !Number.isFinite(expiresAt.getTime())||expiresAt.getTime()<=Date.now()||
-      observed.expiresAt.getTime()<=Date.now())
+      observed.expiresAt.getTime()<=Date.now()||
+      Math.abs(observed.expiresAt.getTime()-expiresAt.getTime())>1000)
       return null;
-    const expiryDeltaMs=observed.expiresAt.getTime()-expiresAt.getTime();
-    // Legacy node entitlements were written while the foreign clock ran
-    // ~32 seconds behind. After NTP recovery, existing stored deadlines
-    // remained ~32 seconds early, although the node confirms these users are
-    // active at the exact database revision. Do not block profile refreshes
-    // just because the previously issued deadline is short by 30-34 seconds.
-    //
-    // This is NOT a renewal or an extension of on-node access: Xray still
-    // enforces its earlier deadline until the next normal provisioning update.
-    // Allow this narrow exception ONLY after the foreign clock is synchronized.
-    const exactExpiry=Math.abs(expiryDeltaMs)<=1000;
-    const legacyPreSyncExpiry=this.clockOffsetMs>=-2000&&this.clockOffsetMs<=2000&&
-      expiryDeltaMs>=-34_000&&expiryDeltaMs<=-30_000;
-    if(!exactExpiry&&!legacyPreSyncExpiry)return null;
     const fallback=makeVpnImportUri(observed.credential);
     return observed.reality
       ?makeVpnRealityImportUri(observed.credential,observed.reality)+'\n'+fallback
