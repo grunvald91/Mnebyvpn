@@ -71,6 +71,25 @@ def main() -> None:
     if set(rows) != set(allowed):
         raise AssertionError("Manifest admission mismatch")
 
+    # Verify the one already-live exact Google SmartDNS rewrite independently.
+    # Do not require unrelated upstream Google or Russian domains to resolve
+    # before confirming that the synthetic Gemini rule is still intact.
+    code,count,answers = DOT.query(
+        "gemini.google.com", 1, DOT_IP, DOT_PORT, DOT_HOST, None
+    )
+    if code != 0 or count != 1 or not any(
+        kind == 1 and socket.inet_ntoa(data) == INGRESS_IP
+        for kind,_ttl,data in answers
+    ):
+        raise AssertionError("Existing Gemini exact A rule regressed")
+    for rrtype in (28,64,65):
+        code,num,_ = DOT.query(
+            "gemini.google.com", rrtype, DOT_IP, DOT_PORT, DOT_HOST, None
+        )
+        if code != 0 or num != 0:
+            raise AssertionError("Existing Gemini RR policy regressed")
+    print("existing_gemini_exact_A_AAAA_HTTPS_SVCB_preserved=yes", flush=True)
+
     counters: Counter[str] = Counter()
     inconclusive = []
     for hostname in allowed:
