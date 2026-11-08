@@ -1,0 +1,56 @@
+name: MNEBYDNS open DoT pilot isolated validation
+on:
+  push:
+    branches: ['feature/mnebydns-open-dot-pilot-20261108']
+    paths:
+      - '.github/workflows/mnebydns-open-dot-pilot.yml'
+      - 'ops/smart-dns-poc/Corefile.open-pilot'
+      - 'ops/smart-dns-poc/mnebydns-dot.service'
+      - 'ops/smart-dns-poc/test-open-dot-pilot.py'
+      - 'ops/smart-dns-poc/deploy-open-dot-pilot.sh'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Static and syntax guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ops/smart-dns-poc/test-open-dot-pilot.py
+          bash -n ops/smart-dns-poc/deploy-open-dot-pilot.sh
+          sed 's@ExecStart=/opt/mnebydns-dot/coredns -conf /opt/mnebydns-dot/Corefile@ExecStart=/usr/bin/true@' ops/smart-dns-poc/mnebydns-dot.service > /tmp/mnebydns-dot.service
+          systemd-analyze verify /tmp/mnebydns-dot.service
+      - name: Verify unfiltered DoT works locally with real TLS
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ops/smart-dns-poc
+          sudo bash make-local-cert.sh
+          sed -e 's@tls://.:853@tls://.:1853@' \
+              -e 's@bind 89.125.90.101@bind 127.0.0.1@' \
+              -e 's@/run/credentials/mnebydns-dot.service/fullchain.pem@certs/dns.test.invalid.crt@' \
+              -e 's@/run/credentials/mnebydns-dot.service/privkey.pem@certs/dns.test.invalid.key@' \
+              Corefile.open-pilot > Corefile.open-ci
+          docker pull coredns/coredns:1.15.0
+          cid="$(docker create coredns/coredns:1.15.0)"
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          docker cp "$cid:/coredns" ./coredns
+          chmod 755 coredns
+          sudo chmod 755 .
+          sudo setpriv --reuid 65532 --regid 65532 --clear-groups --no-new-privs \
+            ./coredns -conf Corefile.open-ci > /tmp/mnebydns-open-pilot.log 2>&1 &
+          pid=$!
+          trap 'sudo kill "$pid" >/dev/null 2>&1 || true; docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          for i in {1..25}; do
+            if ss -H -lnt 'sport = :1853' | grep -q 127.0.0.1; then break; fi
+            sleep 0.2
+          done
+          python3 probe-dot.py
+          sudo kill "$pid" >/dev/null 2>&1 || true
+          sleep 1
+          test -z "$(ss -H -lnt 'sport = :1853')"
