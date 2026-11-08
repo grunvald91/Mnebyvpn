@@ -111,6 +111,7 @@ def require_no_overlapping_google_exact(body: str) -> None:
             prefix = name[:-1].lower()
             samples = (
                 "www.google.com", "www.youtube.com", "www.googleapis.com",
+                "google.com", "youtube.com", "googlevideo.com",
                 "gemini.google.com", "i.ytimg.com",
             )
             if any(host.startswith(prefix) for host in samples):
