@@ -10,6 +10,8 @@
   <link rel="stylesheet" href="/neo.css">
   <link rel="icon" type="image/webp" href="/brand-avatar.webp">
   <script src="/app.js" defer></script>
+  <link rel="stylesheet" href="/journey.css">
+  <script src="/journey.js" defer></script>
 </head>
 <body>
   <div class="ambient ambient-a" aria-hidden="true"></div>
@@ -27,11 +29,63 @@
         <a href="#contact-support">Поддержка</a>
         <a href="https://t.me/MNEBYVPN_bot" target="_blank" rel="noopener noreferrer">Telegram-бот</a>
       </nav>
+      <a class="journey-header-account" href="#account" aria-label="Мой VPN">Мой VPN</a>
       <a class="button button-small button-outline" href="https://t.me/MNEBYVPN_bot" id="auth-link">Telegram-бот</a>
     </div>
   </header>
 
   <main>
+    <section class="journey-landing shell" id="journey-landing" aria-labelledby="journey-title" hidden>
+      <div class="journey-intro">
+        <p class="journey-kicker">MNEBYVPN · ПОДКЛЮЧИЛ И НЕ ПАРИШЬСЯ</p>
+        <h1 id="journey-title">VPN без лишних шагов</h1>
+        <p>Выберите срок доступа. Подключение покажем сразу после оплаты.</p>
+      </div>
+      <div class="journey-checkout">
+        <h2>Выберите тариф</h2>
+        <div class="journey-duration-grid" role="group" aria-label="Срок подписки">
+          <button type="button" data-journey-days="15" aria-pressed="true"><span>15 дней</span><strong data-journey-price="15">—</strong></button>
+          <button type="button" data-journey-days="30" aria-pressed="false"><span>30 дней</span><strong data-journey-price="30">—</strong></button>
+          <button type="button" data-journey-days="60" aria-pressed="false"><span>60 дней</span><strong data-journey-price="60">—</strong></button>
+          <button type="button" data-journey-days="90" aria-pressed="false"><span>90 дней</span><strong data-journey-price="90">—</strong></button>
+        </div>
+        <p class="journey-summary" id="journey-summary">Загрузка тарифов…</p>
+        <button type="button" class="button button-primary journey-primary" id="journey-buy" disabled>Загрузка…</button>
+        <p role="alert" class="journey-error" id="journey-error" aria-live="assertive"></p>
+        <button type="button" class="journey-trial" id="journey-trial" disabled>Бесплатные 24 часа</button>
+        <p class="journey-secondary">Без автосписаний. Оплата на защищённой странице Prodamus.</p>
+      </div>
+    </section>
+    <section class="journey-setup shell" id="journey-setup" aria-labelledby="journey-setup-title" hidden>
+      <p class="journey-kicker">MNEBYVPN · ПОДКЛЮЧЕНИЕ</p>
+      <h1 id="journey-setup-title">Подключите VPN</h1>
+      <p id="journey-setup-status" role="status" aria-live="polite">Подготавливаем ваш доступ…</p>
+      <div id="journey-setup-slot"></div>
+      <div id="journey-setup-controls" hidden>
+        <h2>1. На каком устройстве?</h2>
+        <div class="journey-platform-grid" role="group" aria-label="Устройство">
+          <button type="button" data-journey-platform="android">Android</button>
+          <button type="button" data-journey-platform="ios">iPhone</button>
+          <button type="button" data-journey-platform="windows">Windows</button>
+          <button type="button" data-journey-platform="macos">macOS</button>
+          <button type="button" data-journey-platform="linux">Linux</button>
+        </div>
+        <a class="button button-primary journey-primary" id="journey-download" target="_blank" rel="noopener noreferrer">Скачать приложение</a>
+        <button type="button" class="button button-outline journey-primary" id="journey-installed">Я установил приложение</button>
+        <div id="journey-import-step" hidden>
+          <h2>2. Добавьте подписку</h2>
+          <p>Нажмите кнопку и подтвердите импорт в VPN-приложении.</p>
+          <a id="journey-auto" class="button button-primary journey-primary" rel="nofollow noopener noreferrer">Открыть в приложении</a>
+          <details class="journey-manual">
+            <summary>Если автоматически не получилось</summary>
+            <p>В приложении выберите «Добавить подписку / Импорт из URL» и вставьте ссылку:</p>
+            <div class="journey-copy-field"><input id="journey-url" aria-label="Персональная ссылка подписки" type="text" readonly><button type="button" id="journey-copy">Копировать</button></div>
+            <p>Это персональная ссылка доступа. Не пересылайте её другим людям.</p>
+          </details>
+        </div>
+      </div>
+      <a class="journey-back" href="#account">← Мой VPN</a>
+    </section>
     <section class="hero shell">
       <div class="hero-copy">
         <p class="eyebrow"><span class="eyebrow-line"></span> НА СТАРТЕ. ПРОЩЕ С КАЖДЫМ ШАГОМ.</p>
