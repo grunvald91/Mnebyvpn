@@ -487,8 +487,10 @@ async function claimTrial(){
     await refresh();
     if(response.status==='ALREADY_USED')
       byId('account').scrollIntoView({behavior:'smooth'});
-    else if(['GRANTED','PENDING'].includes(response.status))
-      byId('guest-trial-card').scrollIntoView({behavior:'smooth',block:'center'});
+    else if(['GRANTED','PENDING'].includes(response.status)) {
+      if(window.MnebyvpnJourney)window.MnebyvpnJourney.show('setup',true);
+      else byId('guest-trial-card').scrollIntoView({behavior:'smooth',block:'center'});
+    }
     return response.status;
   }catch(error){
     toast(error.status===401?'Сессия истекла. Войдите повторно.':
