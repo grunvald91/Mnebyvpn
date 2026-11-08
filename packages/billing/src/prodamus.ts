@@ -67,7 +67,7 @@ function price(minor: number): string {
   return String(Math.floor(minor / 100)) + '.' + String(minor % 100).padStart(2, '0');
 }
 /** Signed request for Prodamus do=link. Requesting the URL from Payform returns the final short payment link. */
-export function buildProdamusLinkRequest(order: ProdamusOrder, title: string, cfg: ProdamusConfig): string {
+export function buildProdamusLinkRequest(order: ProdamusOrder, title: string, cfg: ProdamusConfig, customerEmail?: string): string {
   if (order.provider !== 'prodamus' || order.state !== 'PENDING' ||
       !/^[0-9a-f-]{36}$/i.test(order.id) || !title.trim()) throw new Error('Invalid Prodamus order');
   const url = httpsUrl(cfg.formUrl);
@@ -79,6 +79,13 @@ export function buildProdamusLinkRequest(order: ProdamusOrder, title: string, cf
   // claiming per-order notification is enabled.
   if (cfg.sys !== undefined && !/^[A-Za-z0-9_-]{2,64}$/.test(cfg.sys))
     throw new Error('Invalid merchant Prodamus integration code');
+  // The email is taken only from the authenticated and verified site account.
+  // A missing email is not silently replaced with a guessed address.
+  if(customerEmail!==undefined && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(customerEmail))
+    throw new Error('Invalid verified customer email');
+  const success=new URL(cfg.successUrl);
+  success.searchParams.set('payment','returned');
+  success.searchParams.set('order',order.id);
   const data: Fields = {
     do: 'link',
     order_id: order.id,
@@ -86,7 +93,8 @@ export function buildProdamusLinkRequest(order: ProdamusOrder, title: string, cf
     payments_limit: '1',
     products: [{ name: title, price: price(order.amountMinor), quantity: '1' }],
     ...(cfg.sys ? {sys:cfg.sys,urlNotification:cfg.notificationUrl} : {}),
-    urlSuccess: cfg.successUrl,
+    ...(customerEmail ? { customer_email: customerEmail } : {}),
+    urlSuccess: success.toString(),
     urlReturn: cfg.returnUrl,
   };
   const params = new URLSearchParams();
