@@ -51,12 +51,10 @@ export function deviceOptions():Button[][] {
   ];
 }
 function pending():BotMessage {
-  return build('⏳ Бесплатные сутки VPN\n\nЗапрос получен. '+
-    'Подключение ещё подтверждается сервером. '+
-    '24 часа начнутся только после реальной активации VPN.\n\n'+
-    'Нажмите «Проверить активацию».',
-    [[{text:'🔁 Проверить активацию',callback_data:'nav:connect'}],
-     [{text:'🔐 Мои подключения',callback_data:'nav:status'}],[home]]);
+  return build('⏳ Подключаем бесплатный VPN\n\n'+
+    'Как только сервер подтвердит активацию, бот автоматически пришлёт сообщение с выбором устройства. '+
+    'Срок 24 часа начнётся после активации. Нажимать «Проверить» не требуется.',
+    [[{text:'🔐 Мои подключения',callback_data:'nav:status'}],[home]]);
 }
 export async function activationView(pool:Pool,userId:number,
   confirmedOnly=false):Promise<BotMessage|null>{
