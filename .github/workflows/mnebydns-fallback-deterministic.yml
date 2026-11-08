@@ -61,10 +61,8 @@ jobs:
             -e 's@bind 89.125.90.101@bind 127.0.0.1@' \
             -e 's@/run/credentials/mnebydns-dot.service/fullchain.pem@certs/dns.test.invalid.crt@' \
             -e 's@/run/credentials/mnebydns-dot.service/privkey.pem@certs/dns.test.invalid.key@' \
-            -e 's@tls://9.9.9.9@tls://127.0.0.1:1553@' \
+            -e 's@tls://9.9.9.9 tls://149.112.112.112@tls://127.0.0.1:1553 tls://127.0.0.1:2553@' \
             -e 's@tls_servername dns.quad9.net@tls_servername dns.test.invalid@' \
-            -e 's@tls://1.1.1.1@tls://127.0.0.1:2553@' \
-            -e 's@tls_servername cloudflare-dns.com@tls_servername dns.test.invalid@' \
             "$work/Corefile.fallback.staged" > Corefile.fallback-mock-main
           docker pull coredns/coredns:1.15.0 >/dev/null
           cid="$(docker create coredns/coredns:1.15.0)"
