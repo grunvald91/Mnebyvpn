@@ -64,7 +64,8 @@ def main()->None:
     rcode,count,records=query('gemini.google.com',1,args.ip,args.port,args.hostname,args.cafile)
     assert rcode==0 and count==1,('A failed',rcode,count)
     assert records[0][0]==1 and socket.inet_ntoa(records[0][2])=='89.125.90.101'
-    assert records[0][1]==20
+    # Cached DNS replies count TTL down; 0..20 is valid, not a failure.
+    assert 0 <= records[0][1] <= 20, ('unexpected TTL',records[0][1])
     print('gemini_A_foreign_ingress=pass')
 
     for rr in [28,64,65]:
