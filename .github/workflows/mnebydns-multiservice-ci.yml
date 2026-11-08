@@ -1,0 +1,83 @@
+name: MNEBYDNS multiservice exact-host pilot CI
+on:
+  push:
+    branches: ['feature/mnebydns-multiservice-catalog-20261108']
+    paths:
+      - '.github/workflows/mnebydns-multiservice-ci.yml'
+      - 'packages/dns-policy/src/ru-access-candidates.ts'
+      - 'tests/ru-access-candidates.test.ts'
+      - 'ops/smart-dns-poc/ru-access-first-pilot.json'
+      - 'ops/smart-dns-poc/stage-ru-access-pilot.py'
+      - 'ops/smart-dns-poc/test-ru-access-pilot.py'
+      - 'ops/smart-dns-poc/probe-ru-access.py'
+      - 'ops/smart-dns-poc/mnebydns-ru-access.service'
+      - 'ops/smart-dns-poc/deploy-ru-access-pilot.sh'
+      - 'ops/smart-dns-poc/rollback-ru-access-pilot.sh'
+permissions:
+  contents: read
+jobs:
+  exact-host-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Security and admission tests
+        run: |
+          set -euo pipefail
+          python3 ops/smart-dns-poc/test-ru-access-pilot.py
+          bash -n ops/smart-dns-poc/deploy-ru-access-pilot.sh
+          bash -n ops/smart-dns-poc/rollback-ru-access-pilot.sh
+          node --experimental-strip-types --test tests/ru-access-candidates.test.ts
+          python3 -m py_compile ops/smart-dns-poc/probe-ru-access.py
+          sed 's@ExecStart=/usr/sbin/nginx -c /etc/mnebydns-ru-access/nginx.conf -g "daemon off;"@ExecStart=/usr/bin/true@' \
+            ops/smart-dns-poc/mnebydns-ru-access.service >/tmp/mnebydns-ru-access.service
+          systemd-analyze verify /tmp/mnebydns-ru-access.service
+      - name: Real CoreDNS DoT TLS 6-domain A/AAAA/HTTPS/SVCB checks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base="$GITHUB_WORKSPACE/ops/smart-dns-poc"
+          cd "$base"
+          cat > /tmp/shared.fixture <<'CONF'
+          stream {
+            map $ssl_preread_server_name $direct_mtproxy_backend {
+              default 127.0.0.1:9443;
+              gemini.google.com 127.0.0.1:15443;
+          CONF
+          for n in $(seq 1 26); do
+            printf '      legacy%d.example.test 127.0.0.1:%d;\n' "$n" "$((9500+n))" >> /tmp/shared.fixture
+          done
+          printf '    }\n  }\n' >> /tmp/shared.fixture
+          python3 stage-ru-access-pilot.py ru-access-first-pilot.json \
+            /tmp/shared.fixture Corefile.gemini-canary /tmp/mnebydns-ru-ci-stage
+          sudo bash make-local-cert.sh
+          sed -e 's@tls://.:853@tls://.:1853@' \
+            -e 's@bind 89.125.90.101@bind 127.0.0.1@' \
+            -e 's@/run/credentials/mnebydns-dot.service/fullchain.pem@certs/dns.test.invalid.crt@' \
+            -e 's@/run/credentials/mnebydns-dot.service/privkey.pem@certs/dns.test.invalid.key@' \
+            /tmp/mnebydns-ru-ci-stage/dns.pilot > Corefile.multi-ci
+          docker pull coredns/coredns:1.15.0 >/dev/null
+          cid="$(docker create coredns/coredns:1.15.0)"
+          docker cp "$cid:/coredns" ./coredns
+          docker rm "$cid" >/dev/null
+          chmod 755 ./coredns
+          sudo chmod 755 "$GITHUB_WORKSPACE" "$(dirname "$base")" "$base"
+          sudo timeout --signal=TERM --kill-after=3s 90s \
+            setpriv --reuid 65532 --regid 65532 --clear-groups --no-new-privs \
+            ./coredns -conf Corefile.multi-ci > /tmp/mnebydns-ru-multiservice.log 2>&1 &
+          pid=$!
+          cleanup() { sudo kill "$pid" >/dev/null 2>&1 || true; wait "$pid" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          for i in $(seq 1 50); do
+            ss -H -lnt 'sport = :1853' | grep -q 127.0.0.1:1853 && break
+            sleep 0.2
+          done
+          if ! ss -H -lnt 'sport = :1853' | grep -q 127.0.0.1:1853; then
+            cat /tmp/mnebydns-ru-multiservice.log
+            exit 1
+          fi
+          python3 probe-ru-access.py --cafile certs/dns.test.invalid.crt
+          echo "multiservice_real_tls_dns_ci=success"

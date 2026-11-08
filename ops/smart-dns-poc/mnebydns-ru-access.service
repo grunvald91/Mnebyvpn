@@ -1,0 +1,33 @@
+[Unit]
+Description=MNEBYDNS exact-host Russia access TLS passthrough pilot (loopback only)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/nginx -c /etc/mnebydns-ru-access/nginx.conf -g "daemon off;"
+DynamicUser=yes
+RuntimeDirectory=mnebydns-ru-access
+RuntimeDirectoryMode=0700
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_UNIX
+MemoryHigh=80M
+MemoryMax=120M
+CPUQuota=15%
+TasksMax=24
+LimitNOFILE=256
+Restart=on-failure
+RestartSec=4s
+TimeoutStopSec=8s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
