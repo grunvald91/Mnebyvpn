@@ -1,0 +1,52 @@
+name: MNEBYDNS native nonroot loopback smoke
+on:
+  push:
+    branches: ['feature/smart-dns-dot-isolated-poc-20261107']
+    paths:
+      - '.github/workflows/mnebydns-native-smoke.yml'
+      - 'ops/smart-dns-poc/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/mnebydns-native-smoke.yml'
+      - 'ops/smart-dns-poc/**'
+permissions:
+  contents: read
+concurrency:
+  group: mnebydns-native-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract version-pinned CoreDNS binary from Docker image on the runner only
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="/tmp/mnebydns-ci-${{ github.run_id }}"
+          mkdir -m 700 -- "$work"
+          docker pull coredns/coredns:1.15.0
+          container="$(docker create coredns/coredns:1.15.0)"
+          docker cp "$container:/coredns" "$work/coredns"
+          docker rm "$container"
+          chmod 755 "$work/coredns"
+          cp ops/smart-dns-poc/{Corefile.foreign,make-local-cert.sh,probe-dot.py,run-foreign-native-smoke.sh} "$work/"
+          echo "MNEBYDNS_TESTDIR=$work" >> "$GITHUB_ENV"
+      - name: Run native CoreDNS as UID 65532 with only 127.0.0.1:1853
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n "$MNEBYDNS_TESTDIR/run-foreign-native-smoke.sh"
+          cd "$MNEBYDNS_TESTDIR"
+          sudo bash run-foreign-native-smoke.sh
+      - name: Verify no leftover DNS listener
+        if: always()
+        shell: bash
+        run: |
+          if ss -H -lnt 'sport = :1853' | grep -q .; then
+            echo "unexpected leftover DNS listener"
+            exit 1
+          fi
+          echo "postcheck_listener_absent=yes"
