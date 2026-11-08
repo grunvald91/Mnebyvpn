@@ -37,8 +37,8 @@ def domains(manifest: dict[str,Any])->tuple[str,...]:
         if not isinstance(name,str) or name.lower()!=name or not HOST_PATTERN.fullmatch(name):
             raise ValueError("Invalid exact hostname")
         if name not in EXPECTED_HOSTS:raise ValueError("Unapproved or wildcard hostname: "+name)
-        if row["service"] not in ("discord","meta"):
-            raise ValueError("Unexpected service")
+        if row["service"] != "discord":
+            raise ValueError("Only reviewed Discord hosts are admitted")
         if row["foreignProbe"]!="tls_ok" or row["ruProbe"] not in ("tls_timeout","dns_error"):
             raise ValueError("Missing differential TLS evidence")
         if not isinstance(row["evidence"],str) or not row["evidence"].startswith("https://"):
