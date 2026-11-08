@@ -11,11 +11,13 @@ test -f "$map" && test -f /opt/mnebydns-dot/Corefile
 exec 9>/run/lock/mnebyvpn-public-route.lock
 flock -w 8 9 || exit 2
 # Never overwrite a new unrelated SNI change that happened after our deployment.
-if ! grep -Fq 'gemini.google.com 127.0.0.1:15443;' "$map"; then
+if ! cmp -s "$base/stream.before" "$map" &&
+   ! grep -Fq 'gemini.google.com 127.0.0.1:15443;' "$map"; then
   echo 'gemini_shared_map_no_longer_owned_by_this_stage'
   exit 2
 fi
-if ! grep -Fq '# MNEBYDNS Gemini-only canary.' /opt/mnebydns-dot/Corefile; then
+if ! cmp -s "$base/dns.before" /opt/mnebydns-dot/Corefile &&
+   ! grep -Fq '# MNEBYDNS Gemini-only canary.' /opt/mnebydns-dot/Corefile; then
   echo 'gemini_dns_corefile_no_longer_owned_by_this_stage'
   exit 2
 fi
