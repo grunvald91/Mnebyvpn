@@ -31,6 +31,7 @@ jobs:
           bash -n ops/smart-dns-poc/preflight.sh
           python3 -m py_compile ops/smart-dns-poc/probe-dot.py
           docker compose -f ops/smart-dns-poc/compose.yaml config -q
+          docker compose -f ops/smart-dns-poc/compose.foreign.yaml config -q
       - name: Start loopback-only DoT service with an ephemeral test certificate
         run: |
           set -euo pipefail
@@ -44,6 +45,17 @@ jobs:
       - name: Show startup diagnostics on failure
         if: failure()
         run: docker compose -f ops/smart-dns-poc/compose.yaml logs --no-color --tail 40 || true
-      - name: Always stop ephemeral DNS service
+      - name: Always stop initial bridge profile
         if: always()
         run: docker compose -f ops/smart-dns-poc/compose.yaml down --timeout 10 || true
+      - name: Test foreign VPS profile bound to host loopback only
+        if: success()
+        run: |
+          set -euo pipefail
+          docker compose -f ops/smart-dns-poc/compose.foreign.yaml up -d --pull missing
+          test "$(ss -H -lnt 'sport = :1853' | awk '{print $4}')" = "127.0.0.1:1853"
+          python3 ops/smart-dns-poc/probe-dot.py
+          docker compose -f ops/smart-dns-poc/compose.foreign.yaml stats --no-stream
+      - name: Always stop foreign host-loopback profile
+        if: always()
+        run: docker compose -f ops/smart-dns-poc/compose.foreign.yaml down --timeout 10 || true
