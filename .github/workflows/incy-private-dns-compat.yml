@@ -1,0 +1,24 @@
+name: INCY Private DNS compatibility opt-in pilot tests
+on:
+  push:
+    branches: ['feature/incy-private-dns-compat-pilot-20261108']
+    paths:
+      - '.github/workflows/incy-private-dns-compat.yml'
+      - 'packages/dns-policy/src/incy-compatibility.ts'
+      - 'tests/incy-compatibility.test.ts'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Test INCY preserve-existing-profile routing constraints
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types --test tests/incy-compatibility.test.ts
