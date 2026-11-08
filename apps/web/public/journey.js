@@ -277,6 +277,14 @@
     if(view==='setup')setView('account',true);
     else if(paymentLanding)setView('payment');
   }
+  const originalShowPaymentLink=window.showPaymentLink;
+  window.showPaymentLink=function(url){
+    const result=originalShowPaymentLink(url);
+    const link=el('journey-payment-link');
+    if(url){link.href=url;link.classList.remove('hidden');}
+    else{link.removeAttribute('href');link.classList.add('hidden');}
+    return result;
+  };
   const originalRenderPlan=window.renderPlan;
   const originalRenderAccount=window.renderAccount;
   const originalLoggedOut=window.renderLoggedOut;
