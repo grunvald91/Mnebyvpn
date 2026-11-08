@@ -200,7 +200,8 @@ const homepagePolicy=structuredDataPolicy(html.toString('utf8'));
 
 function send(res: ServerResponse, status: number, body: string|Buffer,
   type = 'application/json; charset=utf-8', contentPolicy = policy) {
-  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Cache-Control', res.getHeader('Cache-Control') ?? 'no-store');
+  if(status>=400)res.setHeader('X-Robots-Tag','noindex, nofollow, noarchive');
   res.setHeader('Content-Type', type);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -506,34 +507,43 @@ function installHtml(subUrl:string,client:'incy'|'karing'):string {
 
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', publicOrigin);
-  // Subscription and authentication URLs must never appear as search snippets.
-  if (/^\/(?:api\/|auth\/|sub\/|install\/|webhooks\/|healthz$|readyz$)/.test(url.pathname))
-    res.setHeader('X-Robots-Tag','noindex, nofollow, noarchive');
-  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
-    const device=cookie(req,deviceCookie);
-    if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
-      setCookie(res,deviceCookie,randomBytes(32).toString('base64url'),365*24*60*60);
-    send(res, 200, html, 'text/html; charset=utf-8',homepagePolicy); return;
-  }
-  // Normalize guide URLs so a trailing slash cannot create a duplicate page
-  // or fall through to an unrelated authenticated API error.
-  if(req.method==='GET'&&url.pathname.endsWith('/')&&url.pathname!=='/'){
-    const canonical=url.pathname.slice(0,-1);
-    if(seoPaths().includes(canonical)){
+  // Alias redirects prevent duplicate indexing and precede homepage cookies.
+  // Redirect only known public aliases; private subscription URLs stay untouched.
+  if(req.method==='GET'){
+    const alias:{[key:string]:string}={
+      '/index.html':'/','/terms.html':'/terms','/privacy.html':'/privacy',
+      '/terms/':'/terms','/privacy/':'/privacy',
+    };
+    const canonical=alias[url.pathname] ??
+      (url.pathname.endsWith('/') ? seoPaths().find(x=>x===url.pathname.slice(0,-1)):undefined);
+    if(canonical!==undefined){
       res.setHeader('Location',canonical+url.search);
       res.setHeader('Cache-Control','public, max-age=3600');
       res.writeHead(301).end();return;
     }
   }
+  // These public URLs must not be indexed even if their bearer token leaks.
+  // robots.txt disallows crawler access; that alone cannot enforce noindex.
+  if (/^\/(?:api\/|auth\/|sub\/|install\/|webhooks\/|healthz$|readyz$)/.test(url.pathname))
+    res.setHeader('X-Robots-Tag','noindex, nofollow, noarchive');
+  if (req.method === 'GET' && url.pathname === '/') {
+    const device=cookie(req,deviceCookie);
+    if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
+      setCookie(res,deviceCookie,randomBytes(32).toString('base64url'),365*24*60*60);
+    send(res, 200, html, 'text/html; charset=utf-8',homepagePolicy); return;
+  }
   if (req.method === 'GET' && url.pathname === '/robots.txt') {
+    res.setHeader('Cache-Control','public, max-age=3600');
     send(res,200,renderRobots(publicOrigin),'text/plain; charset=utf-8');return;
   }
   if (req.method === 'GET' && url.pathname === '/sitemap.xml') {
+    res.setHeader('Cache-Control','public, max-age=3600');
     send(res,200,renderSitemap(publicOrigin),'application/xml; charset=utf-8');return;
   }
   if (req.method === 'GET') {
     const seoHtml=renderSeoPage(url.pathname,publicOrigin);
     if(seoHtml!==null){
+      res.setHeader('Cache-Control','public, max-age=300');
       send(res,200,seoHtml,'text/html; charset=utf-8',
         structuredDataPolicy(seoHtml));return;
     }
