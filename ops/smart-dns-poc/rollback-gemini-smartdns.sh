@@ -5,6 +5,7 @@ set -Eeuo pipefail
 [[ $# == 1 && "$1" =~ ^/opt/mnebydns-gemini-backups/[0-9]+$ ]] || exit 2
 base="$1"
 test -s "$base/map.path" && test -f "$base/stream.before" && test -f "$base/dns.before"
+test -f "$base/stream.pilot" && test -f "$base/dns.pilot"
 map="$(cat "$base/map.path")"
 [[ "$map" =~ ^/etc/nginx/streams.d/[A-Za-z0-9_.-]+[.]conf$ ]] || exit 2
 test -f "$map" && test -f /opt/mnebydns-dot/Corefile
@@ -12,12 +13,12 @@ exec 9>/run/lock/mnebyvpn-public-route.lock
 flock -w 8 9 || exit 2
 # Never overwrite a new unrelated SNI change that happened after our deployment.
 if ! cmp -s "$base/stream.before" "$map" &&
-   ! grep -Fq 'gemini.google.com 127.0.0.1:15443;' "$map"; then
+   ! cmp -s "$base/stream.pilot" "$map"; then
   echo 'gemini_shared_map_no_longer_owned_by_this_stage'
   exit 2
 fi
 if ! cmp -s "$base/dns.before" /opt/mnebydns-dot/Corefile &&
-   ! grep -Fq '# MNEBYDNS Gemini-only canary.' /opt/mnebydns-dot/Corefile; then
+   ! cmp -s "$base/dns.pilot" /opt/mnebydns-dot/Corefile; then
   echo 'gemini_dns_corefile_no_longer_owned_by_this_stage'
   exit 2
 fi
