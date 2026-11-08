@@ -9,8 +9,7 @@ StartLimitBurst=3
 Type=simple
 ExecStart=/opt/mnebydns-dot/coredns -conf /opt/mnebydns-dot/Corefile
 WorkingDirectory=/opt/mnebydns-dot
-User=nobody
-Group=nogroup
+DynamicUser=yes
 Environment=GOMAXPROCS=1
 Environment=GOMEMLIMIT=96MiB
 LoadCredential=fullchain.pem:/etc/letsencrypt/live/dns.mnebyvpn.site/fullchain.pem
