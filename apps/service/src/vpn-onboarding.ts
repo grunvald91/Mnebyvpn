@@ -51,15 +51,39 @@ export function deviceOptions():Button[][] {
   ];
 }
 function pending():BotMessage {
-  return build('⏳ Подключаем бесплатный VPN\n\n'+
-    'Как только сервер подтвердит активацию, бот автоматически пришлёт сообщение с выбором устройства. '+
-    'Срок 24 часа начнётся после активации. Нажимать «Проверить» не требуется.',
+  return build('⏳ VPN подключается\n\n'+
+    'VPN-сервер ещё подтверждает подключение. '+
+    'Если вы запросили бесплатные 24 часа, бот сам пришлёт сообщение после активации. '+
+    'Пробное время не начнёт расходоваться до подтверждения сервером.\n\n'+
+    'Ничего дополнительно проверять не нужно.',
+    [[{text:'🔐 Мои подключения',callback_data:'nav:status'}],[home]]);
+}
+function noActiveVpn():BotMessage {
+  return build('🔐 Нет активного VPN-доступа\n\n'+
+    'Вы можете получить пробные 24 часа, если ещё не пользовались ими, '+
+    'или выбрать платный тариф.',
+    [[{text:'🎁 Бесплатные 24 часа',callback_data:'trial:vpn'}],
+     [{text:'🌐 Тарифы VPN',callback_data:'nav:vpn'}],[home]]);
+}
+function waitingForNode():BotMessage {
+  return build('⏳ Проверяем состояние VPN\n\n'+
+    'В кабинете есть VPN-подписка, но сервер пока не подтвердил её действующее подключение. '+
+    'Доступ не выдаётся повторно до подтверждения.',
     [[{text:'🔐 Мои подключения',callback_data:'nav:status'}],[home]]);
 }
 export async function activationView(pool:Pool,userId:number,
   confirmedOnly=false):Promise<BotMessage|null>{
-  const active=await new PgBillingStore(pool).confirmedVpnProfile(userId);
-  if(!active)return confirmedOnly?null:pending();
+  const store=new PgBillingStore(pool);
+  const active=await store.confirmedVpnProfile(userId);
+  if(!active){
+    if(confirmedOnly)return null;
+    const vpn=(await store.listUserPackages(userId)).filter(row=>row.product==='vpn');
+    if(vpn.some(row=>row.state==='PAID_PENDING_PROVISIONING'||
+      row.state==='PROVISIONING_FAILED'))return pending();
+    if(vpn.some(row=>row.state==='ACTIVE'&&row.expiresAt instanceof Date&&
+      row.expiresAt.getTime()>Date.now()))return waitingForNode();
+    return noActiveVpn();
+  }
   return build('✅ VPN активирован!\n\n'+
     'Подписка подтверждена VPN-сервером и действует до '+
     active.expiresAt.toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})+
