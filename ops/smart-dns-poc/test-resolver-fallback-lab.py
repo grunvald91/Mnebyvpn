@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline, exact-preservation tests for the staged fallback-only DoT resolver."""
+"""Offline preservation and cryptographic contracts for Quad9 DoT failover."""
 import importlib.util
 import pathlib
 import unittest
@@ -17,13 +17,14 @@ source=(HERE/"Corefile.gemini-canary").read_text()
 class FallbackTests(unittest.TestCase):
     def test_additive_and_only_on_servfail(self):
         result=lab.render(source)
-        self.assertIn("next SERVFAIL",result)
+        self.assertIn("failover SERVFAIL",result)
+        self.assertIn("policy sequential",result)
         self.assertNotIn("next NXDOMAIN",result)
-        self.assertNotIn("next REFUSED",result)
-        self.assertNotIn("tls://9.9.9.9",result.replace(lab.NEW,""))
+        self.assertNotIn("next SERVFAIL",result)
+        self.assertNotIn("failover NXDOMAIN",result)
+        self.assertIn("tls://9.9.9.9 tls://149.112.112.112",result)
         self.assertIn("tls_servername dns.quad9.net",result)
-        self.assertIn("tls://1.1.1.1",result)
-        self.assertIn("tls_servername cloudflare-dns.com",result)
+        self.assertEqual(result.count("    forward . tls://"),1)
         self.assertEqual(result.replace(lab.NEW,lab.OLD,1),source)
         for field in ("template IN A gemini.google.com",
                       "template IN AAAA gemini.google.com",
@@ -32,7 +33,7 @@ class FallbackTests(unittest.TestCase):
                       "cache 30"):
             self.assertIn(field,result)
 
-    def test_reject_replay_and_foreign_forward_configuration(self):
+    def test_reject_replay_and_altered_original(self):
         with self.assertRaises(ValueError):
             lab.render(lab.render(source))
         with self.assertRaises(ValueError):
@@ -41,15 +42,18 @@ class FallbackTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             lab.render(source.replace("template IN A gemini.google.com",
                                       "template IN A fake.example.com"))
+        with self.assertRaises(ValueError):
+            lab.render(source.replace("tls://9.9.9.9",
+                                      "tls://1.1.1.1"))
 
     def test_no_plaintext_fallback_or_dns_wildcard(self):
         result=lab.render(source)
-        self.assertNotIn("forward . 1.1.1.1",result)
+        self.assertNotIn("forward . 149.112.112.112",result)
+        self.assertNotIn("tls://1.1.1.1",result)
         self.assertNotIn("forward . 8.8.8.8",result)
         self.assertNotIn("proxy_pass",result)
         self.assertNotIn("*.google",result)
         self.assertNotIn("*.instagram",result)
-        self.assertNotIn("tls_servername dns.quad9.net\n        health_check 5s\n        max_concurrent 16\n        max_connect_attempts 2\n    }\n    forward",result)
 
 
 if __name__=="__main__":
