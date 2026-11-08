@@ -117,3 +117,36 @@ test('node advertises validated REALITY profile first with safe WS fallback',asy
  ])assert.throws(()=>parseNodeRecord({revision:3,enabled:true,
    expiresAt:expiry.toISOString(),credential,reality:invalid}));
 });
+
+test('NTP recovery does not break active 32-second-early legacy VPN profiles',async()=>{
+ const expiresAt=new Date(Date.now()+2*3600_000);
+ const nodeExpiry=new Date(expiresAt.getTime()-32_000);
+ const active:typeof fetch=async()=>Response.json({
+   revision:8,enabled:true,expiresAt:nodeExpiry.toISOString(),credential,
+ },{headers:{Date:new Date().toUTCString()}});
+ const api=new SignedXrayNodeApi(key,active);
+ assert.equal(await api.profileFor(entitlement,8,expiresAt),makeVpnImportUri(credential));
+ assert.equal(await api.profileFor(entitlement,9,expiresAt),null,
+   'incorrect revision must fail closed');
+ assert.equal(await api.profileFor(entitlement,8,
+   new Date(expiresAt.getTime()+60_000)),null,
+   'different entitlement deadline must fail closed');
+
+ for(const offset of [-60_000,-40_000,-26_000,32_000]){
+   const wrong:typeof fetch=async()=>Response.json({
+     revision:8,enabled:true,
+     expiresAt:new Date(expiresAt.getTime()+offset).toISOString(),credential,
+   },{headers:{Date:new Date().toUTCString()}});
+   assert.equal(await new SignedXrayNodeApi(key,wrong).profileFor(
+     entitlement,8,expiresAt),null,'unexpected expiry mismatch '+offset);
+ }
+ const inactive:typeof fetch=async()=>Response.json({
+   revision:8,enabled:false,expiresAt:null,credential:null,
+ },{headers:{Date:new Date().toUTCString()}});
+ assert.equal(await new SignedXrayNodeApi(key,inactive).profileFor(entitlement,8,expiresAt),null);
+ const expiredOnNode:typeof fetch=async()=>Response.json({
+   revision:8,enabled:true,
+   expiresAt:new Date(Date.now()-10_000).toISOString(),credential,
+ },{headers:{Date:new Date().toUTCString()}});
+ assert.equal(await new SignedXrayNodeApi(key,expiredOnNode).profileFor(entitlement,8,expiresAt),null);
+});
