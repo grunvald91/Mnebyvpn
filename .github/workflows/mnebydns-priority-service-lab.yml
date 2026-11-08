@@ -6,6 +6,7 @@ on:
       - '.github/workflows/mnebydns-priority-service-lab.yml'
       - 'ops/smart-dns-poc/priority-service-hosts.json'
       - 'ops/smart-dns-poc/priority-service-sni-lab.py'
+      - 'ops/smart-dns-poc/probe-priority-service-sni-lab.py'
       - 'ops/smart-dns-poc/test-priority-service-sni-lab.py'
   workflow_dispatch:
 permissions:
@@ -24,7 +25,8 @@ jobs:
           set -Eeuo pipefail
           python3 ops/smart-dns-poc/test-priority-service-sni-lab.py
           python3 -m py_compile ops/smart-dns-poc/priority-service-sni-lab.py
-      - name: Syntax-check generated Nginx TCP passthrough on CI runner only
+          python3 -m py_compile ops/smart-dns-poc/probe-priority-service-sni-lab.py
+      - name: Exercise real origin TLS with SNI through local TCP proxy
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -32,13 +34,46 @@ jobs:
           sudo apt-get install -qq -y nginx libnginx-mod-stream
           work="/tmp/mnebydns-ci-$GITHUB_RUN_ID"
           mkdir -m 700 -- "$work"
-          trap 'rm -rf -- "$work"' EXIT
+          proxy_pid=''
+          cleanup(){
+            rc=$?
+            trap - EXIT
+            if [[ -n "$proxy_pid" ]]; then
+              kill "$proxy_pid" >/dev/null 2>&1 || true
+              wait "$proxy_pid" >/dev/null 2>&1 || true
+            fi
+            for i in $(seq 1 25); do
+              test -z "$(ss -H -lnt 'sport = :15447')" && break
+              sleep 0.2
+            done
+            if [[ -n "$(ss -H -lnt 'sport = :15447')" ]]; then
+              echo "ephemeral_SNI_listener_cleanup_failed=yes"
+              rc=1
+            fi
+            rm -rf -- "$work"
+            exit "$rc"
+          }
+          trap cleanup EXIT
           python3 ops/smart-dns-poc/priority-service-sni-lab.py \
             ops/smart-dns-poc/priority-service-hosts.json \
             "$work/priority-nginx.conf"
-          sudo nginx -t -c "$work/priority-nginx.conf"
+          nginx -t -c "$work/priority-nginx.conf"
           test "$(grep -c '^        [a-z0-9.-]* [a-z0-9.-]*:443;$' "$work/priority-nginx.conf")" -eq 15
           grep -Fqx '        default 127.0.0.1:1;' "$work/priority-nginx.conf"
           grep -Fqx '        listen 127.0.0.1:15447;' "$work/priority-nginx.conf"
-          echo "nginx_stream_syntax=pass"
+          nginx -c "$work/priority-nginx.conf" -g 'daemon off;' \
+            > "$work/nginx.log" 2>&1 &
+          proxy_pid=$!
+          for i in $(seq 1 40); do
+            if ss -H -lnt 'sport = :15447' | grep -Fq 127.0.0.1:15447; then break; fi
+            sleep 0.25
+          done
+          if ! ss -H -lnt 'sport = :15447' | grep -Fq 127.0.0.1:15447; then
+            cat "$work/nginx.log"
+            exit 1
+          fi
+          python3 ops/smart-dns-poc/probe-priority-service-sni-lab.py \
+            ops/smart-dns-poc/priority-service-hosts.json
+          echo "live_tls_passthrough_egress_test=complete"
+          echo "this_is_GitHub_runner_network_NOT_Russian_or_Android_network"
           echo "production_untouched=yes"
