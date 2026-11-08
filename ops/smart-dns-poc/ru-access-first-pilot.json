@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "foreignIngressIPv4": "89.125.90.101",
+  "listener": "127.0.0.1:15446",
+  "purpose": "initial measured blocked-in-Russia pilot; exact hostnames only",
+  "entries": [
+    {
+      "domain": "discord.com",
+      "service": "discord",
+      "ruProbe": "tls_timeout",
+      "foreignProbe": "tls_ok",
+      "evidence": "https://explorer.ooni.org/findings/2025-russia-blocked-discord"
+    },
+    {
+      "domain": "gateway.discord.gg",
+      "service": "discord",
+      "ruProbe": "tls_timeout",
+      "foreignProbe": "tls_ok",
+      "evidence": "https://explorer.ooni.org/findings/2025-russia-blocked-discord"
+    },
+    {
+      "domain": "cdn.discordapp.com",
+      "service": "discord",
+      "ruProbe": "tls_timeout",
+      "foreignProbe": "tls_ok",
+      "evidence": "https://explorer.ooni.org/findings/2025-russia-blocked-discord"
+    },
+    {
+      "domain": "www.instagram.com",
+      "service": "meta",
+      "ruProbe": "dns_error",
+      "foreignProbe": "tls_ok",
+      "evidence": "https://www.top10vpn.com/research/websites-blocked-in-russia/"
+    },
+    {
+      "domain": "www.facebook.com",
+      "service": "meta",
+      "ruProbe": "dns_error",
+      "foreignProbe": "tls_ok",
+      "evidence": "https://www.top10vpn.com/research/websites-blocked-in-russia/"
+    },
+    {
+      "domain": "static.cdninstagram.com",
+      "service": "meta",
+      "ruProbe": "dns_error",
+      "foreignProbe": "tls_ok",
+      "evidence": "https://www.top10vpn.com/research/websites-blocked-in-russia/"
+    }
+  ]
+}
