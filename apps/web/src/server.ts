@@ -5,7 +5,7 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { renderRobots,renderSitemap,renderSeoPage } from './seo.ts';
+import { renderRobots,renderSitemap,renderSeoPage,seoPaths } from './seo.ts';
 import { createHash,createHmac,randomBytes,randomUUID,timingSafeEqual } from 'node:crypto';
 import { Pool } from 'pg';
 import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
@@ -514,6 +514,16 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
       setCookie(res,deviceCookie,randomBytes(32).toString('base64url'),365*24*60*60);
     send(res, 200, html, 'text/html; charset=utf-8',homepagePolicy); return;
+  }
+  // Normalize guide URLs so a trailing slash cannot create a duplicate page
+  // or fall through to an unrelated authenticated API error.
+  if(req.method==='GET'&&url.pathname.endsWith('/')&&url.pathname!=='/'){
+    const canonical=url.pathname.slice(0,-1);
+    if(seoPaths().includes(canonical)){
+      res.setHeader('Location',canonical+url.search);
+      res.setHeader('Cache-Control','public, max-age=3600');
+      res.writeHead(301).end();return;
+    }
   }
   if (req.method === 'GET' && url.pathname === '/robots.txt') {
     send(res,200,renderRobots(publicOrigin),'text/plain; charset=utf-8');return;
