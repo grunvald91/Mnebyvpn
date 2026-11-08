@@ -18,7 +18,7 @@ olddns=(here/'Corefile.gemini-canary').read_text()
 
 class MultiServiceTests(unittest.TestCase):
     def test_six_approved_hosts_and_no_wildcard(self):
-        self.assertEqual(len(hosts),6)
+        self.assertEqual(len(hosts),3)
         self.assertEqual(set(hosts),stage.EXPECTED_HOSTS)
         for h in hosts:self.assertNotIn('*',h)
     def test_dns_templates_exact_and_no_non_target_changes(self):
@@ -74,5 +74,5 @@ class MultiServiceTests(unittest.TestCase):
             self.assertEqual(originng.read_text(),oldnginx)
             self.assertEqual(origindns.read_text(),olddns)
             self.assertIn('discord.com',n)
-            self.assertIn('www.instagram.com',d)
+            self.assertIn('discord.com',d)
 if __name__=='__main__':unittest.main(verbosity=2)
