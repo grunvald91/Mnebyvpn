@@ -96,8 +96,15 @@ export class PgVpnTrialReadyQueue {
       `UPDATE vpn_trial_ready_notifications n
        SET status='SKIPPED',locked_until=NULL
        WHERE n.status IN ('PENDING','SENDING') AND NOT EXISTS (
-         SELECT 1 ${eligible}
-         AND t.order_id=n.order_id AND t.telegram_user_id::text=n.telegram_user_id)`);
+         SELECT 1 FROM trial_grants t
+         JOIN accounts a ON a.id=t.account_id
+         JOIN orders o ON o.id=t.order_id
+         WHERE t.order_id=n.order_id
+           AND t.telegram_user_id::text=n.telegram_user_id
+           AND a.telegram_user_id=t.telegram_user_id
+           AND o.provider='internal_trial' AND o.state='TRIAL'
+           AND t.product IN ('vpn','bundle')
+           AND t.access_expires_at>clock_timestamp())`);
     return r.rowCount??0;
   }
 }
@@ -161,19 +168,25 @@ export async function processVpnTrialReadyNotices(
     const job=await queue.reserve();
     if(!job)break;
     if(!await queue.stillEligible(job)){
-      await queue.finalize(job,'SKIPPED',0,'not_eligible');
-      skipped++;continue;
+      // A node revision mismatch, temporary profile drift or a concurrent
+      // reconciliation can make a VALID trial temporarily ineligible.
+      // Never irreversibly skip the notification on this transient observation:
+      // discardStale will close it only after expiry or ownership revocation.
+      await queue.finalize(job,'PENDING',30,'activation_rechecking');
+      retried++;continue;
     }
     const result=await sender.send(job);
     if(result.status==='sent'){
       await queue.finalize(job,'SENT');sent++;continue;
     }
-    if(result.status==='blocked'||job.attempt>=8){
-      await queue.finalize(job,'FAILED',0,
-        result.status==='blocked'?'telegram_chat_unavailable':'retry_limit');
+    if(result.status==='blocked'){
+      await queue.finalize(job,'FAILED',0,'telegram_chat_unavailable');
       failed++;continue;
     }
-    const backoff=Math.min(3600,10*2**Math.min(8,job.attempt-1));
+    // Trial access lasts 24h. Do not drop a valid user's sole ready message
+    // just because Telegram was unreachable for eight attempts. Retry with
+    // bounded backoff until expiry; expired jobs are cleared by discardStale.
+    const backoff=Math.min(3600,10*2**Math.min(9,job.attempt-1));
     await queue.finalize(job,'PENDING',Math.max(backoff,result.retryAfterSeconds??0),'delivery_retry');
     retried++;
   }
