@@ -46,3 +46,27 @@ No subscriber authentication, per-account quotas, wildcard routes or public comm
 4. Promote to production only after external E2E, a verified automatic rollback, and separate authorization for infrastructure mutation. This stage does NOT deploy itself and cannot fix client-network SNI filtering for Meta.
 
 An earlier local TLS fixture did not supply its self-signed CA to the internal CoreDNS upstream client. That was a fixture trust problem, not proof of a CoreDNS bug; the final test supplied the temporary local CA and passed.
+
+## YouTube: Russian-network throttling vs provider geoblocking (clarification)
+
+**Do not claim that YouTube generally geo-denies Russian viewers.** Our engineering priority is Russian-network slowing, selective interference and inconsistent DNS/TLS access; it is distinct from YouTube platform regional restrictions on particular content, ads and paid features.
+
+Independent references:
+- OONI: https://ooni.org/post/2024-russia-report
+- HRW: https://www.hrw.org/report/2025/07/30/disrupted-throttled-and-blocked/state-censorship-control-and-increasing-isolation
+- Carnegie: https://carnegieendowment.org/russia-eurasia/politika/2025/02/russia-youtube-block-attempt
+- Official YouTube video bandwidth: https://support.google.com/youtube/answer/78358
+- Official separate YouTube ads/monetization restriction: https://support.google.com/youtube/answer/1342206
+
+Russian-vs-foreign VPS baseline: 0/4 selected YouTube names succeeded directly from the sampled Russian VPS, while 4/4 succeeded from the foreign VPS. Two failed resolution and two timed out. This is one network observation, not proof of identical blocking at every Russian ISP. In Russian-to-foreign ingress screening TCP/443 succeeded but certificates did not match YouTube because their exact SNI routes were NOT enabled. Source: https://github.com/grunvald91/telegram-proxy-infra/actions/runs/42477498823.
+
+**Acceptance is actual video playback, not merely a loading web page.**
+
+1. Test page/auth/static, API, and actual media segments/CDN separately. The two-host staged canary for www.youtube.com and youtubei.googleapis.com does not cover playback.
+2. Investigate exact, dynamic per-session media CDN hostnames from consented client diagnostics. Store only hostnames, never full video URLs, videoplayback query parameters, signatures, tokens, cookies, identifiers, or browsing history. Never bulk rewrite the entire googlevideo.com wildcard to a single fixed IP.
+3. On a Russian-network Android phone compare direct access, Private DNS with VPN off, and VPN fallback. Measure initial load time, 5-10 minute buffering events, sustained video bitrate, 720p and 1080p playback, and stability on both mobile and home internet.
+4. YouTube documentation recommends sustained speeds of about 2.5 Mbps for HD 720p and 5 Mbps for 1080p. These figures are service requirements, NOT measured MNEBYDNS speeds.
+5. Test QUIC/HTTP3 UDP 443, IPv6, HTTPS/SVCB, browser DoH, and compatibility with Android system Private DNS. An Nginx TCP TLS/SNI passthrough does not automatically proxy or accelerate QUIC.
+6. Separate the Russian access-network issue from video-by-video regional licensing, advertising and monetization restrictions.
+
+Do not promote any route or advertise YouTube playback as solved until a measured end-to-end sample on an actual Russian-client network passes and existing Gemini/Discord/VPN routes remain healthy.
