@@ -38,4 +38,48 @@
   dialog.addEventListener('click', event => {
     if (event.target === dialog) dialog.close();
   });
+  // Personal invite: server binds token to the authenticated account.
+  // Attribution exists; no reward days or cash are credited by this button.
+  const inviteButton=dialog.querySelector('#about-personal-invite');
+  const inviteStatus=dialog.querySelector('#about-invite-status');
+  const inviteReady=dialog.querySelector('#about-invite-ready');
+  const inviteField=dialog.querySelector('#about-invite-url');
+  const inviteShare=dialog.querySelector('#about-invite-share');
+  inviteButton?.addEventListener('click',async()=>{
+    if(typeof state==='undefined'||!state.loggedIn){
+      dialog.close();
+      window.MnebyvpnJourney?.show?.('account',true);
+      return;
+    }
+    inviteButton.disabled=true;
+    inviteStatus.textContent='Получаем персональную ссылку…';
+    try{
+      const result=await api('/api/referral-link',{
+        method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
+        body:'{}',
+      });
+      const url=new URL(result.botUrl);
+      if(url.protocol!=='https:'||url.hostname!=='t.me'||
+         url.pathname!=='/MNEBYVPN_bot'||
+         !/^r[A-Za-z0-9_-]{16,24}$/.test(url.searchParams.get('start')||''))
+        throw Error('INVALID_REFERRAL_LINK');
+      inviteField.value=url.toString();
+      inviteShare.href='https://t.me/share/url?url='+encodeURIComponent(url.toString());
+      inviteReady.hidden=false;
+      inviteStatus.textContent='Приглашение на '+Number(result.days)+' дней VPN. Бонусы пока не начисляются.';
+    }catch{
+      inviteStatus.textContent='Не удалось получить ссылку. Попробуйте ещё раз после входа в кабинет.';
+    }finally{inviteButton.disabled=false;}
+  });
+  dialog.querySelector('#about-invite-copy')?.addEventListener('click',async()=>{
+    if(!inviteField.value)return;
+    try{
+      await navigator.clipboard.writeText(inviteField.value);
+      inviteStatus.textContent='Персональная ссылка скопирована.';
+    }catch{
+      inviteField.focus();inviteField.select();
+      inviteStatus.textContent='Скопируйте выделенную ссылку.';
+    }
+  });
+
 })();
