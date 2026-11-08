@@ -91,6 +91,35 @@ def main() -> None:
         print(f"public_DoT_checked_{service}={counters[service]}", flush=True)
     assert sum(counters.values()) == len(allowed) == 15
 
+    # Preserve the three already-live exact routes. This avoids treating
+    # unrelated direct-upstream SERVFAIL as a broken Discord deployment.
+    for hostname in ("discord.com", "gateway.discord.gg", "cdn.discordapp.com"):
+        rcode, count, answers = DOT.query(
+            hostname, 1, DOT_IP, DOT_PORT, DOT_HOST, None
+        )
+        if rcode != 0 or count != 1 or not any(
+            typ == 1 and socket.inet_ntoa(data) == INGRESS_IP
+            for typ, _ttl, data in answers
+        ):
+            raise AssertionError("Existing Discord exact A route regressed: " + hostname)
+        for qtype in (28, 64, 65):
+            code, num, _ = DOT.query(
+                hostname, qtype, DOT_IP, DOT_PORT, DOT_HOST, None
+            )
+            if code != 0 or num != 0:
+                raise AssertionError("Existing Discord RR policy regressed: " + hostname)
+        print("existing_discord_exact_host_preserved=" + hostname, flush=True)
+
+    # Ordinary domestic lookups should not silently be rewritten. Upstream
+    # SERVFAIL is reported independently, not misclassified as proxy admission.
+    for hostname in ("gosuslugi.ru", "example.org"):
+        codes = check(hostname)
+        if 2 in codes.values():
+            inconclusive.append(hostname)
+            print("domestic_direct_DNS_upstream_error=" + hostname, flush=True)
+        else:
+            print("domestic_or_control_route_unmodified=" + hostname, flush=True)
+
     for host in inconclusive:
         compare_upstream(host)
     print("strict_public_CA_and_DoT_hostname_validation=yes", flush=True)
