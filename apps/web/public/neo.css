@@ -387,3 +387,11 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 
 /* Keep the account and project controls usable on narrow phones. */
 @media(max-width:400px){.header .brand-text{display:none}.header-inner{gap:7px}.about-trigger{padding:8px 10px}.header #auth-link{padding:8px 10px;min-height:37px}}
+
+
+.about-invite{margin:13px 0;padding:13px;border:1px solid rgba(106,183,237,.25);border-radius:13px;background:rgba(10,28,60,.56)}
+.about-invite>.button{width:100%;min-height:43px;font-size:12px;padding:10px}
+.about-invite #about-invite-status{font-size:11px;color:#aebfda;margin:10px 0 0}
+.about-invite input{width:100%;min-height:43px;margin-top:12px;padding:10px 11px;min-width:0;border:1px solid rgba(91,181,227,.4);border-radius:10px;background:rgba(7,21,45,.8);color:#edfaff;font:inherit;font-size:12px}
+.about-invite-actions{display:flex;gap:8px;margin-top:9px}
+.about-invite-actions>*{flex:1 1 auto;min-height:43px;padding:10px;font-size:12px}
