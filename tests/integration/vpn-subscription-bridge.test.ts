@@ -90,10 +90,11 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    // A node-verified fast profile can be offered without removing existing
    // websocket access. Both links must belong to the same user credential.
    const reality='vless://'+credential+
-     '@cdn.servgo.ru:2053?encryption=none&security=reality&type=tcp'+
+     '@89.125.90.101:2053?encryption=none&security=reality&type=tcp'+
      '&flow=xtls-rprx-vision&sni=www.cloudflare.com&fp=chrome'+
      '&pbk='+('A'.repeat(43))+'&sid=ab12cd34ef56a789&spx=%2F#MNEBYVPN%20FAST';
    const firefox=reality.replace('&fp=chrome','&fp=firefox')
+     .replace('89.125.90.101:2053','cdn.servgo.ru:2053')
      .replace('#MNEBYVPN%20FAST','#MNEBYVPN%20Firefox%20TEST');
    const fallback=profile;
    profile=[reality,firefox,fallback].join('\n');
@@ -113,8 +114,10 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    // Never publish a profile from an unexpected node, even on an authenticated
    // internal response.
    profile=[
-     reality.replace('cdn.servgo.ru','wrong-host.example'),firefox,fallback,
+     reality.replace('89.125.90.101','wrong-host.example'),firefox,fallback,
    ].join('\n');
+   assert.equal((await fetch(root+'/sub/'+issued!.token)).status,503);
+   profile=[reality,firefox.replace('cdn.servgo.ru:2053','89.125.90.101:2053'),fallback].join('\n');
    assert.equal((await fetch(root+'/sub/'+issued!.token)).status,503);
    profile=[reality,firefox.replace('&fp=firefox','&fp=unsafe'),fallback].join('\n');
    assert.equal((await fetch(root+'/sub/'+issued!.token)).status,503);
