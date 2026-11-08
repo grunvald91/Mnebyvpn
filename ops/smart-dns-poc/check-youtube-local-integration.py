@@ -60,6 +60,15 @@ def prepare(directory: pathlib.Path) -> None:
         out.write(staged)
     dns_path.chmod(0o644)
 
+    # Foreign HTTPS origin resolution must never use plaintext DNS or the
+    # public synthetic DNS answers that would loop back to the ingress.
+    origin_path = HERE / "Corefile.youtube-origin-local"
+    if origin_path.exists() or origin_path.is_symlink():
+        raise ValueError("Refusing to overwrite original origin DNS fixture")
+    with origin_path.open("x", encoding="utf-8") as out:
+        out.write(YT.origin_dns())
+    origin_path.chmod(0o644)
+
     sidecar = YT.sidecar()
     old = "pid /run/mnebydns-youtube/nginx.pid;"
     if sidecar.count(old) != 1:
