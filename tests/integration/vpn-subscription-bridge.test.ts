@@ -16,7 +16,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
  const telegramUser=9148723127;
  const token='aa'.repeat(32);
  const credential='12222222-3333-4333-8333-555555555555';
- const profile='vless://'+credential+'@cdn.servgo.ru:8443?encryption=none&security=tls&type=ws&host=cdn.servgo.ru&sni=cdn.servgo.ru&path=%2Fmnebyvpn-vpn%2Fws#Me';
+ let profile='vless://'+credential+'@cdn.servgo.ru:8443?encryption=none&security=tls&type=ws&host=cdn.servgo.ru&sni=cdn.servgo.ru&path=%2Fmnebyvpn-vpn%2Fws#Me';
  const worker=createServer(async(req,res)=>{
    if(req.url!=='/profile'||req.method!=='POST'||
       req.headers.authorization!=='Bearer '+token){
@@ -87,6 +87,32 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.equal(response.headers.get('cache-control'),'no-store');
    const decoded=Buffer.from((await response.text()).trim(),'base64').toString('utf8').trim();
    assert.equal(decoded,profile);
+   // A node-verified fast profile can be offered without removing existing
+   // websocket access. Both links must belong to the same user credential.
+   const reality='vless://'+credential+
+     '@cdn.servgo.ru:2053?encryption=none&security=reality&type=tcp'+
+     '&flow=xtls-rprx-vision&sni=www.cloudflare.com&fp=chrome'+
+     '&pbk='+('A'.repeat(43))+'&sid=ab12cd34ef56a789&spx=%2F#MNEBYVPN%20FAST';
+   const fallback=profile;
+   profile=reality+'\n'+fallback;
+   const legacyRefresh=await fetch(root+'/sub/'+issued!.token);
+   assert.equal(legacyRefresh.status,200);
+   assert.equal(Buffer.from((await legacyRefresh.text()).trim(),'base64')
+     .toString('utf8').trim(),fallback);
+   const dual=await fetch(root+'/sub/'+issued!.token+'?client=incy');
+   assert.equal(dual.status,200);
+   assert.equal(Buffer.from((await dual.text()).trim(),'base64').toString('utf8').trim(),
+     reality+'\n'+fallback);
+   const safeKaring=await fetch(root+'/sub/'+issued!.token+'?client=karing');
+   assert.equal(safeKaring.status,200);
+   assert.equal(Buffer.from((await safeKaring.text()).trim(),'base64')
+     .toString('utf8').trim(),fallback);
+   assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=other')).status,400);
+   // Never publish a profile from an unexpected node, even on an authenticated
+   // internal response.
+   profile=reality.replace('cdn.servgo.ru','wrong-host.example')+'\n'+fallback;
+   assert.equal((await fetch(root+'/sub/'+issued!.token)).status,503);
+   profile=fallback;
    assert.equal((await fetch(root+'/sub/'+'B'.repeat(43))).status,404);
    const installer=await fetch(root+'/install/'+issued!.token+'?client=incy');
    assert.equal(installer.status,200);
@@ -94,6 +120,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.match(page,/Открыть в INCY/);
    assert.match(page,/vpn-install\.js/);
    assert.ok(page.includes(issued!.link));
+   assert.match(page,/\?client=incy/);
    assert.equal((await fetch(root+'/install/'+issued!.token+'?client=bogus')).status,400);
    const script=await fetch(root+'/vpn-install.js');
    assert.equal(script.status,200);

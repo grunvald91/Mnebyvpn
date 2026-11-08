@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
-import {SignedXrayNodeApi,makeVpnImportUri,parseNodeRecord}
+import {SignedXrayNodeApi,makeVpnImportUri,makeVpnRealityImportUri,parseNodeRecord}
   from '../packages/provisioning/src/xray-node.ts';
 
 const key='1f'.repeat(32);
@@ -92,4 +92,28 @@ test('31-second foreign-node clock skew is compensated for exact 24h deadline',a
  assert.equal((await api.inspect(entitlement)).revision,7);
  assert.equal(await api.profileFor(entitlement,7,desired.expiresAt),
    makeVpnImportUri(credential));
+});
+
+test('node advertises validated REALITY profile first with safe WS fallback',async()=>{
+ const reality={publicKey:'A'.repeat(43),shortId:'ab12cd34ef56a789',port:2053 as const};
+ const record=parseNodeRecord({revision:3,enabled:true,
+   expiresAt:expiry.toISOString(),credential,reality});
+ assert.deepEqual(record.reality,reality);
+ const fast=makeVpnRealityImportUri(credential,reality);
+ assert.match(fast,/security=reality/);
+ assert.match(fast,/flow=xtls-rprx-vision/);
+ assert.match(fast,/sni=www.cloudflare.com/);
+ assert.match(fast,/sid=ab12cd34ef56a789/);
+ const fetcher:typeof fetch=async()=>Response.json({revision:3,enabled:true,
+   expiresAt:expiry.toISOString(),credential,reality},
+   {headers:{Date:new Date().toUTCString()}});
+ const api=new SignedXrayNodeApi(key,fetcher);
+ assert.equal(await api.profileFor(entitlement,3,expiry),
+   fast+'\n'+makeVpnImportUri(credential));
+ for(const invalid of [
+   {...reality,shortId:'x'},
+   {...reality,publicKey:'malformed'},
+   {...reality,port:8443},
+ ])assert.throws(()=>parseNodeRecord({revision:3,enabled:true,
+   expiresAt:expiry.toISOString(),credential,reality:invalid}));
 });

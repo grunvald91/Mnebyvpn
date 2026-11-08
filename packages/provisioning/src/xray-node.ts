@@ -10,8 +10,24 @@ import type {DesiredAccess,ObservedAccess,ProvisioningAdapter} from './reconcile
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FIXED_NODE_URL='http://10.66.77.1:18944/v1/provision';
 const WEB_PROFILE_HOST='cdn.servgo.ru';
+export interface RealityPublicConfig {
+  publicKey:string;
+  shortId:string;
+  port:2053;
+}
 export interface NodeRecord extends ObservedAccess {
   credential?:string|null;
+  reality?:RealityPublicConfig;
+}
+function parseRealityConfig(value:unknown):RealityPublicConfig {
+  if(!value||typeof value!=='object'||Array.isArray(value))
+    throw Error('Invalid REALITY node configuration');
+  const r=value as Record<string,unknown>;
+  if(typeof r.publicKey!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(r.publicKey)||
+     typeof r.shortId!=='string'||!/^[0-9a-f]{16}$/.test(r.shortId)||
+     r.port!==2053)
+    throw Error('Unsafe REALITY node configuration');
+  return {publicKey:r.publicKey,shortId:r.shortId,port:2053};
 }
 function uuid(id:string):string{
   if(!UUID.test(id))throw Error('Invalid UUID for VPN node');
@@ -27,8 +43,13 @@ export function parseNodeRecord(value:unknown):NodeRecord{
   if(v.enabled&&( !expiresAt || !Number.isFinite(expiresAt.getTime()) ||
     typeof v.credential!=='string'||!UUID.test(v.credential)))
     throw Error('Node returned unsafe active VPN credential');
+  // Public Reality parameters may only come from the authenticated, active
+  // node inspection. Never synthesize public links before on-node readiness.
+  const reality=v.enabled&&v.reality!==undefined
+    ?parseRealityConfig(v.reality):undefined;
   return {revision:Number(v.revision),enabled:v.enabled,
-    expiresAt,credential:v.enabled?String(v.credential):null};
+    expiresAt,credential:v.enabled?String(v.credential):null,
+    ...(reality?{reality}:{})};
 }
 export function makeVpnImportUri(credential:string):string {
   const id=uuid(credential);
@@ -38,6 +59,17 @@ export function makeVpnImportUri(credential:string):string {
   });
   return 'vless://'+id+'@'+WEB_PROFILE_HOST+':8443?'+query+
     '#'+encodeURIComponent('MNEBYVPN');
+}
+export function makeVpnRealityImportUri(credential:string,config:RealityPublicConfig):string {
+  const id=uuid(credential);
+  const safe=parseRealityConfig(config);
+  const query=new URLSearchParams({
+    encryption:'none',security:'reality',type:'tcp',
+    flow:'xtls-rprx-vision',sni:'www.cloudflare.com',
+    fp:'chrome',pbk:safe.publicKey,sid:safe.shortId,spx:'/',
+  });
+  return 'vless://'+id+'@'+WEB_PROFILE_HOST+':'+safe.port+'?'+query+
+    '#'+encodeURIComponent('MNEBYVPN FAST');
 }
 export class SignedXrayNodeApi implements ProvisioningAdapter {
   /** The actual isolated Xray agent enforces expiry locally without Panel. */
@@ -116,6 +148,9 @@ export class SignedXrayNodeApi implements ProvisioningAdapter {
       !Number.isFinite(expiresAt.getTime())||expiresAt.getTime()<=Date.now()||
       Math.abs(observed.expiresAt.getTime()-expiresAt.getTime())>1000)
       return null;
-    return makeVpnImportUri(observed.credential);
+    const fallback=makeVpnImportUri(observed.credential);
+    return observed.reality
+      ?makeVpnRealityImportUri(observed.credential,observed.reality)+'\n'+fallback
+      :fallback;
   }
 }
