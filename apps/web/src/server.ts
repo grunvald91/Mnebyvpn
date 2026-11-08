@@ -535,20 +535,18 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     if(!owner){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
     try{
       const nodeProfile=await liveVpnProfile(owner);
-      // Every legacy MNEBYVPN subscription URL is a living server group:
-      // refreshing INCY reveals all verified transports on the same egress,
-      // without re-import or a new bearer token. Explicit Karing imports
-      // remain on WS/TLS until Reality Vision compatibility is verified.
-      // Only server-verified signed profiles may appear in this group.
+      // Every MNEBYVPN subscription URL is one living server group for
+      // both INCY and Karing: include all independently verified transports
+      // with the original WebSocket TLS fallback last. Never hide Reality
+      // based on the client's name; the user chooses the working transport.
+      // Only authenticated, node-verified profiles may appear in this group.
       const requestedClient=url.searchParams.get('client');
       if(url.searchParams.size>1||
          [...url.searchParams.keys()].some(k=>k!=='client')||
          (requestedClient!==null&&requestedClient!=='incy'&&requestedClient!=='karing')){
         json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
       }
-      const profile=requestedClient==='karing'
-        ?nodeProfile.split('\n').at(-1)!
-        :nodeProfile;
+      const profile=nodeProfile;
       // Standard V2Ray base64 subscription: clients repeatedly fetch this URL.
       // Network revocation is enforced both in DB and by the real Xray node.
       res.setHeader('subscription-userinfo',

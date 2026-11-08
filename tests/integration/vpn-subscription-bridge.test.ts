@@ -105,10 +105,10 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.equal(dual.status,200);
    assert.equal(Buffer.from((await dual.text()).trim(),'base64').toString('utf8').trim(),
      [reality,firefox,fallback].join('\n'));
-   const safeKaring=await fetch(root+'/sub/'+issued!.token+'?client=karing');
-   assert.equal(safeKaring.status,200);
-   assert.equal(Buffer.from((await safeKaring.text()).trim(),'base64')
-     .toString('utf8').trim(),fallback);
+   const karing=await fetch(root+'/sub/'+issued!.token+'?client=karing');
+   assert.equal(karing.status,200);
+   assert.equal(Buffer.from((await karing.text()).trim(),'base64')
+     .toString('utf8').trim(),[reality,firefox,fallback].join('\n'));
    assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=other')).status,400);
    // Never publish a profile from an unexpected node, even on an authenticated
    // internal response.
