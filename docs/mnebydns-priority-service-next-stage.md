@@ -29,3 +29,20 @@ These references provide candidate host associations, not proof of operating a f
 **DNS-only limitation:** Private DNS is NOT a VPN tunnel. Where the network filters the application's original visible SNI, the DNS redirect may fail even with a perfectly functional foreign TLS relay. Such sites require an independently validated route or supported client encrypted transport.
 
 No subscriber authentication, per-account quotas, wildcard routes or public commercial Smart DNS readiness are added here. All 15 entries are explicitly unverified.
+
+## Verified 8 November 2026: CI/network acceptance
+
+- [15/15 exact hosts, original TLS 1.3 preserved through localhost-only SNI proxy](https://github.com/grunvald91/Mnebyvpn/actions/runs/42474781726): six Google, four YouTube, five Instagram/Meta. Run from an external GitHub runner, NOT the foreign VPS or a Russian client. Unknown SNI rejected.
+- [Live read-only public DoT / preserved Gemini and Discord](https://github.com/grunvald91/Mnebyvpn/actions/runs/42475591213): all 15 candidates stayed unpromoted at that moment. This does not prove Instagram or YouTube app access.
+- Earlier DNS checks occasionally received SERVFAIL for api.instagram.com, ssl.gstatic.com and domestic control gosuslugi.ru. This did not recur consistently. The evidence does not locate a single responsible layer. [First DNS failure](https://github.com/grunvald91/Mnebyvpn/actions/runs/42474952727); [subsequent regression check](https://github.com/grunvald91/Mnebyvpn/actions/runs/42475297345).
+- Prepared STAGING ONLY: render-resolver-fallback-lab.py preserves exact DNS rules and adds the second official Quad9 DoT endpoint (149.112.112.112) after 9.9.9.9 with the same validated TLS hostname. Sequential policy and SERVFAIL-only response failover do not bypass NXDOMAIN policy blocks. Network failure also causes a next-upstream attempt. [Quad9 server list](https://docs.quad9.net/services/), [CoreDNS forward specification](https://coredns.io/plugins/forward/).
+- [Deterministic real CoreDNS 1.15.0 encrypted failover PASS](https://github.com/grunvald91/Mnebyvpn/actions/runs/42476163206): primary TLS mock returned SERVFAIL, secondary returned an A record, the main resolver returned the second; healthy primary stayed primary and Gemini synthetic A remained intact. All tests bound localhost using a temporary test certificate. This proves staging logic, NOT production reliability.
+
+## Requirements before live fallback cutover
+
+1. Audit active Corefile, CoreDNS version, Gemini and Discord rules, free memory, CPU, and listener map.
+2. Back up the exact active Corefile; refuse symlinks, drifted sources and mismatched changes. No Nginx, Xray or public HTTPS edits. Validate the staged syntax, arm a short automatic rollback watchdog and restart only the DoT resolver.
+3. Repeat real strict-CA DoT queries for A, AAAA, HTTPS and SVCB for Gemini, Discord and important unpromoted sites, plus Russian-only services, multiple rounds to catch intermittent SERVFAIL. Verify latency, service resource limits and lack of plaintext DNS listeners.
+4. Promote to production only after external E2E, a verified automatic rollback, and separate authorization for infrastructure mutation. This stage does NOT deploy itself and cannot fix client-network SNI filtering for Meta.
+
+An earlier local TLS fixture did not supply its self-signed CA to the internal CoreDNS upstream client. That was a fixture trust problem, not proof of a CoreDNS bug; the final test supplied the temporary local CA and passed.
