@@ -95,7 +95,9 @@ jobs:
             printf 'worker_processes 1;\n'
             printf 'pid %s;\n' "$work/nginx-shared.pid"
             printf 'events { worker_connections 80; }\n'
-            cat "$work/shared-nginx.staged"
+            # Isolated nonprivileged test must not bind the production 443.
+            # Preserve all map entries; only the fixture listener port differs.
+            sed 's@listen 443;@listen 127.0.0.1:15457;@' "$work/shared-nginx.staged"
           } > "$work/nginx-shared-syntax.conf"
           nginx -t -c "$work/nginx-shared-syntax.conf"
           nginx -t -c "$work/google-ecosystem.nginx.conf"
