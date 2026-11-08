@@ -189,6 +189,15 @@ const policy = [
   "form-action 'self'", "base-uri 'none'", "frame-ancestors 'none'",
 ].join('; ');
 
+// JSON-LD data is inert markup, but its inline script must match an exact CSP hash.
+function structuredDataPolicy(markup:string):string{
+  const hashes=[...markup.matchAll(/<script type="application\/ld\+json">([^<]*)<\/script>/g)]
+    .map(match=>"'sha256-"+createHash('sha256').update(match[1],'utf8').digest('base64')+"'");
+  return hashes.length===0?policy:policy.replace("script-src 'self'",
+    "script-src 'self' "+hashes.join(' '));
+}
+const homepagePolicy=structuredDataPolicy(html.toString('utf8'));
+
 function send(res: ServerResponse, status: number, body: string|Buffer,
   type = 'application/json; charset=utf-8', contentPolicy = policy) {
   res.setHeader('Cache-Control', 'no-store');
@@ -504,7 +513,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const device=cookie(req,deviceCookie);
     if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
       setCookie(res,deviceCookie,randomBytes(32).toString('base64url'),365*24*60*60);
-    send(res, 200, html, 'text/html; charset=utf-8'); return;
+    send(res, 200, html, 'text/html; charset=utf-8',homepagePolicy); return;
   }
   if (req.method === 'GET' && url.pathname === '/robots.txt') {
     send(res,200,renderRobots(publicOrigin),'text/plain; charset=utf-8');return;
@@ -515,14 +524,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if (req.method === 'GET') {
     const seoHtml=renderSeoPage(url.pathname,publicOrigin);
     if(seoHtml!==null){
-      // JSON-LD is inline inert data, but browser CSP still requires its exact
-      // SHA-256 hash. Allow only the trusted per-page JSON-LD, not unsafe-inline.
-      const structured=/<script type="application\/ld\+json">([^<]*)<\/script>/.exec(seoHtml);
-      if(!structured)throw Error('SEO structured data missing');
-      const dataHash=createHash('sha256').update(structured[1],'utf8').digest('base64');
-      const seoPolicy=policy.replace("script-src 'self'",
-        "script-src 'self' 'sha256-"+dataHash+"'");
-      send(res,200,seoHtml,'text/html; charset=utf-8',seoPolicy);return;
+      send(res,200,seoHtml,'text/html; charset=utf-8',
+        structuredDataPolicy(seoHtml));return;
     }
   }
   if (req.method === 'GET' && (url.pathname === '/terms' || url.pathname === '/terms.html')) {
