@@ -33,7 +33,7 @@ DOT_IP = INGRESS_IP
 DOT_PORT = 853
 
 
-def check(name: str) -> tuple[int, int, int, int]:
+def check(name: str) -> tuple[int, int, int, int, int]:
     a_rcode, a_count, answers = DOT.query(name, 1, DOT_IP, DOT_PORT, DOT_HOST, None)
     if a_rcode not in (0, 3):
         raise AssertionError(f"Unexpected DNS response for {name}: rcode={a_rcode}")
