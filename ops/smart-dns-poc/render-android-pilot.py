@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
+import os
 from pathlib import Path
 
 CERT = "/etc/mnebydns/certs/fullchain.pem"
@@ -59,13 +60,17 @@ def main() -> None:
     args = parser.parse_args()
     text = render(args.bind_ip, args.allow_client_ip)
     path = Path(args.output)
-    if path.exists():
-        raise SystemExit("refusing to overwrite an existing configuration")
-    # Never create new system directories or write service configs as a side effect.
+    # Atomic exclusive creation: do not overwrite a file or follow a symlink.
+    # Never create new system directories or write active service configs.
     if not path.parent.is_dir():
         raise SystemExit("output parent directory must already exist")
-    path.write_text(text, encoding="utf-8")
-    path.chmod(0o600)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except FileExistsError as exc:
+        raise SystemExit("refusing to overwrite an existing configuration") from exc
+    with os.fdopen(descriptor, "w", encoding="utf-8") as out:
+        out.write(text)
     print("staged_only=true")
     print("public_dns_listener_started=false")
     print("certificate_and_domain_still_required=true")
