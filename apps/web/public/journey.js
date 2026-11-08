@@ -158,10 +158,10 @@
     el('journey-url').value=value;
     el('journey-import-step').hidden=!installed;
   }
-  async function copyLink(value) {
+  async function copyLink(value,visibleField=el('journey-url')) {
     if(!safeSubscriptionUrl(value))return;
     try{await navigator.clipboard.writeText(value);toast('Ссылка скопирована.');}
-    catch{const input=el('journey-url');input.focus();input.select();toast('Скопируйте выделенную ссылку.');}
+    catch{visibleField.focus();visibleField.select();toast('Скопируйте выделенную ссылку.');}
   }
   async function copyEntitlement(id,field) {
     if(!state.loggedIn||!state.csrf)return;
@@ -174,7 +174,7 @@
       state.guestSubscriptionUrl=res.subscriptionUrl;
       el('journey-url').value=res.subscriptionUrl;
       if(field)field.value=res.subscriptionUrl;
-      await copyLink(res.subscriptionUrl);
+      await copyLink(res.subscriptionUrl,field||el('journey-url'));
     }catch{toast('Не удалось получить ссылку. Откройте «Как подключить».');}
   }
   function enhanceAccount(payload){
