@@ -17,6 +17,18 @@ export const googleRouteCandidates: readonly DomainRouteRule[] = Object.freeze([
   {domain:'www.youtube.com', status:'testing'},
   {domain:'www.gstatic.com', status:'testing'},
 
+  // User-confirmed product entry points, NOT identified from VPN socket IPs.
+  // Source Google Stitch: https://blog.google/innovation-and-ai/models-and-research/google-labs/stitch-gemini-3/
+  // Source YouTube: https://support.google.com/youtube/answer/171780
+  {domain:'stitch.withgoogle.com', status:'unverified'},
+  {domain:'youtube.com', status:'unverified'},
+  {domain:'m.youtube.com', status:'unverified'},
+  {domain:'youtu.be', status:'unverified'},
+  {domain:'s.ytimg.com', status:'unverified'},
+  {domain:'yt3.ggpht.com', status:'unverified'},
+  {domain:'accounts.youtube.com', status:'unverified'},
+  {domain:'www.youtube-nocookie.com', status:'unverified'},
+
   // Known Google product hostnames, not measured through our SNI relay.
   {domain:'mail.google.com', status:'unverified'},
   {domain:'drive.google.com', status:'unverified'},
