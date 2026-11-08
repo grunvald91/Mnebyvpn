@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Stage a second strictly authenticated DoT upstream ONLY after SERVFAIL.
+"""Stage a same-provider second strictly authenticated Quad9 DoT endpoint.
 
-CoreDNS 1.15 forward supports 'next SERVFAIL' into the next forward plugin.
-This staging tool DOES NOT install or reload any production service.
+CoreDNS forward supports a documented 'policy sequential' plus 'failover
+SERVFAIL' when both endpoints use the same authenticated TLS server name.
+An attempted two-forward-plugin 'next SERVFAIL' fallback failed the deterministic
+CI network test and MUST NOT be deployed. No production mutation here.
 """
 from __future__ import annotations
 
@@ -17,18 +19,12 @@ OLD = """    forward . tls://9.9.9.9 {
         max_connect_attempts 2
     }
 """
-NEW = """    # First preserve the original Quad9 encrypted upstream.
-    forward . tls://9.9.9.9 {
+NEW = """    # Same-provider encrypted failover: preserve Quad9 primary and TLS identity.
+    # Only a SERVFAIL or network failure can progress to secondary, never NXDOMAIN.
+    forward . tls://9.9.9.9 tls://149.112.112.112 {
         tls_servername dns.quad9.net
-        health_check 5s
-        max_concurrent 16
-        max_connect_attempts 2
-        next SERVFAIL
-    }
-    # Separate TLS identity: CoreDNS requires distinct forward plugin blocks
-    # for resolvers with different authenticated certificate hostnames.
-    forward . tls://1.1.1.1 {
-        tls_servername cloudflare-dns.com
+        policy sequential
+        failover SERVFAIL
         health_check 5s
         max_concurrent 16
         max_connect_attempts 2
@@ -41,8 +37,9 @@ def render(corefile: str) -> str:
         raise ValueError("Expected exactly one original authenticated Quad9 block")
     if "template IN A gemini.google.com {" not in corefile:
         raise ValueError("Original Gemini exact DNS rule must be preserved")
-    if "tls://1.1.1.1" in corefile or "next SERVFAIL" in corefile:
-        raise ValueError("Fallback already present; refusing duplicate configuration")
+    if ("tls://149.112.112.112" in corefile or "tls://1.1.1.1" in corefile
+            or "failover SERVFAIL" in corefile or "next SERVFAIL" in corefile):
+        raise ValueError("Fallback already staged or unsupported cross-provider change")
     if corefile.count("cache 30") != 1:
         raise ValueError("Unexpected cache configuration")
     result = corefile.replace(OLD, NEW, 1)
@@ -74,7 +71,7 @@ def main() -> None:
     output.chmod(0o600)
     print("existing_synthetic_dns_routes_preserved=yes")
     print("Quad9_primary_DoT_unchanged=yes")
-    print("Cloudflare_DoT_is_SERVFAIL_fallback_only=yes")
+    print("Quad9_secondary_DoT_is_SERVFAIL_fallback_only=yes")
     print("production_configuration_untouched=yes")
 
 
