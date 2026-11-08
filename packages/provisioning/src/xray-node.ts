@@ -146,8 +146,22 @@ export class SignedXrayNodeApi implements ProvisioningAdapter {
     if(!observed.enabled||observed.revision!==revision||
       !observed.expiresAt||!observed.credential||
       !Number.isFinite(expiresAt.getTime())||expiresAt.getTime()<=Date.now()||
-      Math.abs(observed.expiresAt.getTime()-expiresAt.getTime())>1000)
+      observed.expiresAt.getTime()<=Date.now())
       return null;
+    const expiryDeltaMs=observed.expiresAt.getTime()-expiresAt.getTime();
+    // Legacy node entitlements were written while the foreign clock ran
+    // ~32 seconds behind. After NTP recovery, existing stored deadlines
+    // remained ~32 seconds early, although the node confirms these users are
+    // active at the exact database revision. Do not block profile refreshes
+    // just because the previously issued deadline is short by 30-34 seconds.
+    //
+    // This is NOT a renewal or an extension of on-node access: Xray still
+    // enforces its earlier deadline until the next normal provisioning update.
+    // Allow this narrow exception ONLY after the foreign clock is synchronized.
+    const exactExpiry=Math.abs(expiryDeltaMs)<=1000;
+    const legacyPreSyncExpiry=this.clockOffsetMs>=-2000&&this.clockOffsetMs<=2000&&
+      expiryDeltaMs>=-34_000&&expiryDeltaMs<=-30_000;
+    if(!exactExpiry&&!legacyPreSyncExpiry)return null;
     const fallback=makeVpnImportUri(observed.credential);
     return observed.reality
       ?makeVpnRealityImportUri(observed.credential,observed.reality)+'\n'+fallback
