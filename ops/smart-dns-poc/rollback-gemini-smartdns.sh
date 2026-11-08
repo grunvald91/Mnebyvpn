@@ -7,7 +7,7 @@ base="$1"
 test -s "$base/map.path" && test -f "$base/stream.before" && test -f "$base/dns.before"
 test -f "$base/stream.pilot" && test -f "$base/dns.pilot"
 map="$(cat "$base/map.path")"
-[[ "$map" =~ ^/etc/nginx/streams.d/[A-Za-z0-9_.-]+[.]conf$ ]] || exit 2
+[[ "$map" == /etc/nginx/nginx.conf ]] || exit 2
 test -f "$map" && test -f /opt/mnebydns-dot/Corefile
 exec 9>/run/lock/mnebyvpn-public-route.lock
 flock -w 8 9 || exit 2
