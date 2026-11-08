@@ -30,6 +30,9 @@ jobs:
           cleanup(){
             rc=$?
             trap - EXIT
+            if [[ "$rc" -ne 0 ]]; then
+              cat "$work/main.log" "$work/mock.log" 2>/dev/null || true
+            fi
             for pid in "$main_pid" "$mock_pid"; do
               if [[ -n "$pid" ]]; then
                 sudo kill "$pid" >/dev/null 2>&1 || true
@@ -108,6 +111,11 @@ jobs:
                                                'dns.test.invalid','certs/dns.test.invalid.crt')
               assert rcode==0 and count==1,(name,rcode,count)
               return socket.inet_ntoa(next(data for kind,_ttl,data in answers if kind==1))
+          for port in (1553,2553):
+              result,num,records=probe.query('fallback.example.test',1,'127.0.0.1',
+                                             port,'dns.test.invalid','certs/dns.test.invalid.crt')
+              found=[socket.inet_ntoa(v) for typ,_ttl,v in records if typ==1]
+              print(f'mock_upstream_port={port} rcode={result} answer_count={num} a={found}',flush=True)
           assert a('fallback.example.test')=='198.51.100.25'
           print('SERVFAIL_triggered_secondary_validated_TLS_fallback=pass')
           assert a('primary.example.test')=='192.0.2.10'
