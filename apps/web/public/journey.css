@@ -94,3 +94,12 @@ body.journey-active[data-journey-view="account"] .purchase-result{margin:12px 24
 .journey-account-link .button{flex:1 1 155px;min-height:43px;padding:8px 12px;font-size:12px}
 
 @media(max-width:460px){body.journey-active .header .brand-text{display:none}body.journey-active .header-inner{gap:8px}body.journey-active .journey-header-account{padding:8px 11px}}
+
+/* Separate, honest payment return screen: never equate navigation with settlement. */
+.journey-payment-intro{display:none;max-width:680px;margin:0 auto;padding-top:34px;text-align:center}
+body.journey-active[data-journey-view="payment"] .journey-payment-intro{display:block}
+.journey-payment-intro h1{font-size:clamp(24px,5vw,36px);margin:7px 0 12px;letter-spacing:-.8px}
+.journey-payment-intro p:not(.journey-kicker){max-width:560px;margin:0 auto 14px;color:#c3d4eb;font-size:13px;line-height:1.6}
+.journey-payment-cabinet{display:inline-block;font-size:13px;text-decoration:underline;text-underline-offset:4px;color:#9ce9f9}
+body.journey-active .journey-payment-intro[hidden]{display:none}
+@media(max-width:680px){.journey-payment-intro{padding-top:21px}}
