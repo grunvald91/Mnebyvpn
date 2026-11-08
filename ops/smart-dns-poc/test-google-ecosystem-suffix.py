@@ -136,6 +136,27 @@ class GoogleEcosystemTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             POLICY.shared_sni(dangerous)
 
+    def test_legacy_nginx_wildcard_masks_cannot_shadow_google(self):
+        original = "        ~^special[.]googlevideo[.]com$ 127.0.0.1:16444;"
+        for entry in (
+            "*.google.com 127.0.0.1:16501;",
+            ".youtube.com 127.0.0.1:16502;",
+            "*.com 127.0.0.1:16503;",
+            "www.* 127.0.0.1:16504;",
+            "google.* 127.0.0.1:16505;",
+        ):
+            with self.subTest(entry=entry), self.assertRaisesRegex(ValueError,"mask"):
+                POLICY.shared_sni(NGINX.replace(original, "        "+entry))
+        # Nginx specific names remain first; unrelated wildcard masks can
+        # continue to work with the new Google suffix regex added last.
+        for entry in (
+            "*.discord.com 127.0.0.1:16506;",
+            ".example.org 127.0.0.1:16507;",
+        ):
+            with self.subTest(entry=entry):
+                conf=POLICY.shared_sni(NGINX.replace(original,"        "+entry))
+                self.assertIn(entry,conf)
+
     def test_dns_and_sni_case_insensitive(self):
         regex=POLICY.suffix_pattern(nginx=True)
         for name in ("WWW.YouTube.COM","R1---Sn-Video.GoogleVideo.Com",
