@@ -43,7 +43,10 @@ test('external website prepares provider link from authenticated account and fro
    assert.equal(callback.searchParams.get('order'),id);
    assert.equal(callback.searchParams.get('payment'),'returned');
    assert.equal(callback.hash,'#account');
-   assert.equal(u.searchParams.get('urlReturn'),pd.returnUrl);
+   const returnUrl=new URL(u.searchParams.get('urlReturn')!);
+   assert.equal(returnUrl.searchParams.get('payment'),'return');
+   assert.equal(returnUrl.searchParams.get('order'),id);
+   assert.equal(returnUrl.hash,'#plans');
    return 'https://payform.ru/u8zDE/';
   }});
  assert.equal(result.paymentUrl,'https://payform.ru/u8zDE/');
@@ -58,6 +61,7 @@ test('payment data never accepts malformed email or open success redirect',()=>{
   const params=new URL(buildProdamusLinkRequest(order,'VPN',pd)).searchParams;
   assert.equal(params.has('customer_email'),false);
   assert.equal(new URL(params.get('urlSuccess')!).searchParams.get('order'),id);
+  assert.equal(new URL(params.get('urlReturn')!).searchParams.get('order'),id);
 });
 test('merchant and notification endpoints remain fragment-free',()=>{
  const order={id,provider:'prodamus' as const,currency:'RUB' as const,
