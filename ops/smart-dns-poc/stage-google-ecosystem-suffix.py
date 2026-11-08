@@ -56,6 +56,51 @@ NGINX_MAP = re.compile(
 CACHE_ANCHOR = "    cache 30\n"
 RR = ("A", "AAAA", "CNAME", "HTTPS", "SVCB")
 
+# A DNS-only catchall CANNOT forward protocols other than TLS-over-TCP/443.
+# Google explicitly uses non-443 endpoints for Android notifications and NTP.
+# These are release blockers until a compatible client transport exists.
+# https://firebase.google.com/docs/cloud-messaging/network-configuration
+# https://support.google.com/work/android/answer/10513641
+NON_HTTPS_BLOCKERS = (
+    "mtalk.google.com",
+    "mtalk4.google.com",
+    "alt1-mtalk.google.com",
+    "time.google.com",
+    "stun.l.google.com",
+)
+LAB_ONLY = True
+
+
+def matches_managed_suffix(host: str) -> bool:
+    name = host.rstrip(".").lower()
+    return any(name == zone or name.endswith("." + zone) for zone in SUFFIXES)
+
+
+def require_no_overlapping_google_exact(body: str) -> None:
+    """Prevent an existing exact Google SNI route shadowing our suffix route.
+
+    Only the historically verified root Gemini handler can be preserved without
+    another explicit live-route audit. A prior www.google.com exact entry is
+    NOT proof that it forwards valid Google TLS after a new public DNS rewrite.
+    """
+    approved = {"gemini.google.com": "127.0.0.1:15443"}
+    for line in body.splitlines():
+        parsed = re.fullmatch(
+            r"\s*([^\s;#]+)\s+([^\s;#]+);\s*(?:#.*)?", line
+        )
+        if not parsed:
+            continue
+        name, destination = parsed.groups()
+        if name == "default" or name.startswith(("~", "*", ".")):
+            continue
+        if matches_managed_suffix(name):
+            if approved.get(name.lower()) != destination:
+                raise ValueError(
+                    "Unreviewed exact Google SNI route would shadow "
+                    f"suffix policy: {name} => {destination}"
+                )
+
+
 
 def validate() -> None:
     if len(set(SUFFIXES)) != len(SUFFIXES):
@@ -96,10 +141,13 @@ def shared_sni(original: str) -> str:
     for host in PRESERVED:
         if len(re.findall(r"(?m)^\s*" + re.escape(host) + r"\s+\S+;", body)) != 1:
             raise ValueError("existing live route missing/duplicated: "+host)
+    require_no_overlapping_google_exact(body)
     if "127.0.0.1:15449" in original:
         raise ValueError("ecosystem proxy already configured")
-    insertion = "\n        ~" + suffix_pattern(nginx=True) + " " + LOCAL_SNI + ";\n"
-    result = original[:block.start(2)] + insertion + original[block.start(2):]
+    # Nginx evaluates regexp maps in order; place our broad fallback LAST.
+    # ~* makes SNI matching case-insensitive (DNS names are case-insensitive).
+    insertion = "\n        ~*" + suffix_pattern(nginx=True) + " " + LOCAL_SNI + ";\n"
+    result = original[:block.end(2)] + insertion + original[block.end(2):]
     if result.replace(insertion, "", 1) != original:
         raise AssertionError("shared SNI transform must be additive")
     return result
@@ -114,7 +162,8 @@ def public_dot(original: str) -> str:
             raise ValueError("existing Gemini or Discord route missing: "+host)
     if "# MNEBYDNS ecosystem-wide Google DNS rewrite" in original:
         raise ValueError("ecosystem DNS policy already present")
-    pattern = suffix_pattern(nginx=False)
+    # Go regexp supports inline (?i); DNS query names are case-insensitive.
+    pattern = "(?i)" + suffix_pattern(nginx=False)
     inserted = "\n    # MNEBYDNS ecosystem-wide Google DNS rewrite, staged only\n"
     for q in RR:
         ans = (
@@ -150,7 +199,7 @@ def proxy_config(pid_path: str) -> str:
         "    resolver_timeout 5s;\n"
         "    map $ssl_preread_server_name $google_origin {\n"
         "        default 127.0.0.1:1;\n"
-        "        ~" + suffix_pattern(nginx=True) + " $ssl_preread_server_name:443;\n"
+        "        ~*" + suffix_pattern(nginx=True) + " $ssl_preread_server_name:443;\n"
         "    }\n"
         "    server {\n"
         "        listen " + LOCAL_SNI + ";\n"
@@ -208,6 +257,8 @@ def stage(input_nginx: pathlib.Path, input_dot: pathlib.Path, out: pathlib.Path)
     print("foreign_origin_DNS_forward_is_encrypted=yes")
     print("unknown_non_Google_SNI_denied=yes")
     print("no_public_or_production_changes=yes")
+    print("LAB_ONLY_no_production_release_artifact=yes")
+    print("non443_Google_FCM_NTP_STUN_routing_risk=BLOCKER")
     print("QUIC_HTTP3_and_Android_voice_UNVERIFIED=yes")
 
 
