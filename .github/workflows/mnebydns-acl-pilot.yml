@@ -1,0 +1,31 @@
+name: MNEBYDNS DoT source ACL pilot test (isolated)
+on:
+  push:
+    branches: ['feature/mnebydns-android-dot-pilot-20261108']
+    paths: ['.github/workflows/mnebydns-acl-pilot.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-acl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify nonroot CoreDNS source ACL in disposable test runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="/tmp/mnebydns-ci-${{ github.run_id }}"
+          mkdir -m 700 "$target"
+          docker pull coredns/coredns:1.15.0
+          container="$(docker create coredns/coredns:1.15.0)"
+          docker cp "$container:/coredns" "$target/coredns"
+          docker rm "$container"
+          chmod 755 "$target/coredns"
+          cp ops/smart-dns-poc/{Corefile.acl-test,probe-acl.py,make-local-cert.sh,run-acl-pilot-test.sh} "$target/"
+          bash -n "$target/run-acl-pilot-test.sh"
+          python3 -m py_compile "$target/probe-acl.py"
+          (cd "$target" && sudo bash run-acl-pilot-test.sh)
+          test -z "$(ss -H -lnt 'sport = :1853')"
+          echo "public_listener=never_enabled"
