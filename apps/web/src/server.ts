@@ -736,6 +736,15 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     const dashboard = await loadDashboard(authPool, auth.accountId, meteringVerified);
     json(res,200,{ ...dashboard, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
   }
+  if(req.method==='POST'&&url.pathname==='/api/referral-link'){
+    if(!csrfAllowed(req,auth.raw)){json(res,403,{code:'FORBIDDEN'});return;}
+    const invite=await store.websiteReferralInvite(auth.accountId);
+    if(!invite){json(res,503,{code:'REFERRALS_NOT_AVAILABLE'});return;}
+    const botUrl='https://t.me/MNEBYVPN_bot?start=r'+invite.token;
+    const websiteUrl=publicOrigin+'/?ref='+encodeURIComponent(invite.token)+
+      '&product=vpn&days='+invite.days;
+    json(res,200,{botUrl,websiteUrl,days:invite.days,rewardsEnabled:false});return;
+  }
   if (req.method === 'POST' && url.pathname === '/api/logout') {
     if (!csrfAllowed(req,auth.raw)) { json(res,403,{code:'FORBIDDEN'});return; }
     await authPool.query(`UPDATE website_sessions SET revoked_at=clock_timestamp()
