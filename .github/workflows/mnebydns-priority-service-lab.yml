@@ -8,6 +8,8 @@ on:
       - 'ops/smart-dns-poc/priority-service-sni-lab.py'
       - 'ops/smart-dns-poc/probe-priority-service-sni-lab.py'
       - 'ops/smart-dns-poc/probe-priority-public-dot.py'
+      - 'ops/smart-dns-poc/render-resolver-fallback-lab.py'
+      - 'ops/smart-dns-poc/test-resolver-fallback-lab.py'
       - 'ops/smart-dns-poc/test-priority-service-sni-lab.py'
   workflow_dispatch:
 permissions:
@@ -90,3 +92,76 @@ jobs:
           echo "existing_Gemini_and_Discord_live_DNS_baselines_preserved=yes"
           echo "priority_hostnames_compared_without_forcing_a_dns_rewrite=yes"
           echo "public_DoT_read_only_probe_completed=yes"
+      - name: Validate encrypted SERVFAIL-only fallback in ephemeral real CoreDNS
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base="$GITHUB_WORKSPACE/ops/smart-dns-poc"
+          cd "$base"
+          python3 test-resolver-fallback-lab.py
+          python3 -m py_compile render-resolver-fallback-lab.py
+          work="/tmp/mnebydns-ci-$GITHUB_RUN_ID"
+          mkdir -m 700 "$work"
+          pid=''
+          cleanup(){
+            rc=$?
+            trap - EXIT
+            if [[ -n "$pid" ]]; then
+              sudo kill "$pid" >/dev/null 2>&1 || true
+              wait "$pid" >/dev/null 2>&1 || true
+            fi
+            for i in $(seq 1 20); do
+              test -z "$(ss -H -lnt 'sport = :1853')" && break
+              sleep 0.2
+            done
+            if [[ -n "$(ss -H -lnt 'sport = :1853')" ]]; then
+              echo "CoreDNS_isolated_listener_cleanup_failed=yes"
+              rc=1
+            fi
+            rm -rf -- "$work"
+            sudo rm -rf -- "$base/certs"
+            rm -f "$base/Corefile.fallback-local" "$base/coredns"
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          python3 render-resolver-fallback-lab.py \
+            Corefile.gemini-canary "$work/Corefile.fallback.staged"
+          sudo bash make-local-cert.sh
+          sed -e 's@tls://.:853@tls://.:1853@' \
+              -e 's@bind 89.125.90.101@bind 127.0.0.1@' \
+              -e 's@/run/credentials/mnebydns-dot.service/fullchain.pem@certs/dns.test.invalid.crt@' \
+              -e 's@/run/credentials/mnebydns-dot.service/privkey.pem@certs/dns.test.invalid.key@' \
+              "$work/Corefile.fallback.staged" > Corefile.fallback-local
+          docker pull coredns/coredns:1.15.0 >/dev/null
+          cid="$(docker create coredns/coredns:1.15.0)"
+          docker cp "$cid:/coredns" ./coredns
+          docker rm "$cid" >/dev/null
+          chmod 755 coredns
+          sudo chmod 755 "$GITHUB_WORKSPACE" "$(dirname "$base")" "$base"
+          sudo timeout --signal=TERM --kill-after=3s 65s \
+            setpriv --reuid 65532 --regid 65532 --clear-groups --no-new-privs \
+            ./coredns -conf Corefile.fallback-local > "$work/CoreDNS.log" 2>&1 &
+          pid=$!
+          for i in $(seq 1 50); do
+            ss -H -lnt 'sport = :1853' | grep -Fq 127.0.0.1:1853 && break
+            sleep 0.2
+          done
+          if ! ss -H -lnt 'sport = :1853' | grep -Fq 127.0.0.1:1853; then
+            cat "$work/CoreDNS.log"
+            exit 1
+          fi
+          python3 probe-gemini-canary.py --cafile certs/dns.test.invalid.crt
+          python3 - <<'PY'
+          import importlib.util
+          spec=importlib.util.spec_from_file_location('probe','probe-gemini-canary.py')
+          module=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          code,count,answers=module.query('example.org',1,'127.0.0.1',1853,
+                                           'dns.test.invalid','certs/dns.test.invalid.crt')
+          assert code==0 and count>=1,(code,count)
+          assert any(kind==1 for kind,_ttl,_rdata in answers)
+          print('normal_dns_upstream_over_validated_DoT=pass')
+          print('SERVFAIL_fallback_configuration_accepted_by_real_CoreDNS_1_15=yes')
+          print('forced_SERVFAIL_fallback_transaction=UNTESTED')
+          print('production_unchanged=yes')
+          PY
