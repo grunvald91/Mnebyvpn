@@ -118,3 +118,29 @@ Sources and implementation constraints:
 5. A wildcard Google route increases server traffic and abuse surface. Before global enablement: resource budget, access controls, per-client quotas or equivalent protections, backups and snapshot-aware watchdog rollback, preflight of live shared Nginx map, DNS and foreign-origin resolution, Russian-side strict TLS, and Android end-to-end verification.
 
 **Status at 2026-11-08:** staged code and tests PASS; production unchanged, Gemini Android voice and YouTube image/video playback unverified. Do not advertise these features as already fixed.
+
+## 2026-11-08 code review: Google-wide and exact YouTube canaries
+
+### Fixed and verified in branch
+
+- **P1: live Nginx shadowing.** A newly inserted broad regex used to be evaluated before pre-existing regex entries. Changed to append at the end of the SNI map. Nginx exact entries and prefix masks take priority over regex; unknown exact Google entries and overlapping wildcard/prefix masks now cause staging to fail closed instead of silently changing a shared route. Source: https://nginx.org/en/docs/stream/ngx_stream_map_module.html
+- **P2: case-sensitive SNI/DNS policy.** The broad proxy now uses `~*` for Nginx stream map matches and `(?i)` for CoreDNS Go regexp matches. Real TLS and DoT tests include mixed-case YouTube/Googlevideo/Google API names. DNS case-insensitivity is standardized in RFC 4343: https://www.rfc-editor.org/rfc/rfc4343
+- **P2: wrong YouTube DNS assertion.** The unused earlier additional RR probe erroneously expected Google DNS to synthesize `9.9.9.9` (Quad9 resolver) instead of the actual foreign HTTPS ingress. Fixed to use the existing pilot's shared ingress value and wired it into YouTube integration CI.
+- **P2: plaintext foreign origin DNS.** The exact two-host YouTube SNI prototype used Nginx `resolver 9.9.9.9`, which sends unencrypted DNS requests. Replaced it with a local origin CoreDNS on port 5355 forwarding strictly over Quad9 DoT, and exercised it in the actual CoreDNS/Nginx CI. Removed an obsolete untested second dual-host prototype also using plaintext DNS.
+- **P2: incomplete Nginx syntax verification.** Broad Google CI now checks the generated shared SNI map, not just the sidecar, using unprivileged temporary PID and listener paths. Existing service/Discord DNS and unknown-SNI fail-closed regression checks are retained.
+
+### Verification
+
+- [Full Google wildcard policy CI PASS](https://github.com/grunvald91/Mnebyvpn/actions/runs/42484984681): real CoreDNS and Nginx, 11 security tests, mixed-case DNS and TLS, valid origin certificates, existing Discord routes and strict unknown SNI denial.
+- [Exact YouTube pilot + encrypted origin DNS CI PASS](https://github.com/grunvald91/Mnebyvpn/actions/runs/42485253569): real CoreDNS DoT, Nginx TLS, independently corrected extra DNS record probe, preserved Gemini and Discord.
+- [15-host priority research lab CI PASS](https://github.com/grunvald91/Mnebyvpn/actions/runs/42485223348), which is still nonproduction; that standalone GitHub-runner research fixture is not a production encrypted-origin DNS service.
+
+### Unresolved release blockers: must not promote to production
+
+1. **P1 / architectural:** a public wildcard synthetic A answer for all `*.google.com` and `*.googleapis.com` sends even non-HTTPS (and UDP) connections to the foreign TCP443 ingress, which cannot serve those protocols. In particular, official Google FCM documentation identifies `mtalk.google.com` and TCP ports 5228–5230; Google says this push protocol cannot be handled by network proxies. Google also documents `time.google.com` UDP123. A broad DNS-only override can break Android push and time sync. Do not release full wildcard SmartDNS until unsupported ports/hosts bypass the rewrite or a compatible client VPN transport owns those routes. Sources: https://firebase.google.com/docs/cloud-messaging/network-configuration and https://support.google.com/work/android/answer/10513641
+2. **P1 / production:** live shared 443 config and public DoT have not been verified against the most recent staging generator. Existing exact Google entries and wildcard SNI masks must be audited first; the stager now refuses unreviewed overlaps. Backup, atomic rollout and rollback watchdog are mandatory. It must not modify Xray, unrelated VPN services or other users' configurations.
+3. **P1 / privacy and capacity:** public TCP443 sidecar does not authenticate or meter subscribers; looping through the shared public 443 dispatcher also loses the client source IP at the sidecar. No quota, abuse controls, throughput capacity, or accounting has been validated for broad Googlevideo streaming.
+4. **P1 / client compatibility:** DNS-only policy cannot force apps using QUIC/HTTP3 UDP443, own DoH resolvers, IPv6-only/NAT64 or other ports through the TCP SNI proxy. Real Android Google Gemini text/voice and YouTube thumbnail/stream playback remain unverified.
+5. **P2 / exact scope:** 22 vetted suffix families cover the 34 currently documented Gemini firewall hostnames but are **not** a verified exhaustive inventory of every Google-owned, Google Cloud-hosted or third-party CDN domain. No blanket claim of total Google coverage.
+
+**Release decision:** keep PR #74 Draft and staging-only. Fixing the production P1s requires design beyond pure DNS rewriting (client-controlled routing or explicit bypass). A green localhost TLS/DNS test does not establish successful Android app access, bypassing all regional checks, or YouTube video performance.
