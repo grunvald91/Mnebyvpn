@@ -46,7 +46,7 @@ test('authenticated Telegram 24-hour VPN trial persists pending access once with
   assert.equal(first.status,200);
   const a=await first.json() as any;
   assert.equal(a.method,'editMessageText');
-  assert.match(a.text,/Заявка записана/);
+  assert.match(a.text,/Заявка принята/);
   const second=await post(101);
   const b=await second.json() as any;
   assert.match(b.text,/Пробная заявка уже есть/);
