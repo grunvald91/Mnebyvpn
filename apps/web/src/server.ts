@@ -474,18 +474,19 @@ async function liveVpnProfile(owner:{
 function installHtml(subUrl:string,client:'incy'|'karing'):string {
   // Both URL and client have already passed strict token/enum validation.
   const app=client==='incy'?'INCY':'Karing';
+  const escapedSubUrl=subUrl.replaceAll('&','&amp;');
   return '<!doctype html><html lang="ru"><head><meta charset="utf-8">'+
     '<meta name="viewport" content="width=device-width,initial-scale=1">'+
     '<meta name="referrer" content="no-referrer">'+
     '<title>Подключение MNEBYVPN</title>'+
     '<link rel="stylesheet" href="/neo.css"></head>'+
-    '<body style="margin:0"><main data-client="'+client+'" data-sub="'+subUrl+'">'+
+    '<body style="margin:0"><main data-client="'+client+'" data-sub="'+escapedSubUrl+'">'+
     '<h1>Подключить VPN в '+app+'</h1>'+
     '<p>Пробуем открыть '+app+' автоматически. Если переход не произошёл, нажмите кнопку ниже.</p>'+
     '<p><button id="open-app" type="button">Открыть в '+app+'</button></p>'+
     '<p>Если приложение не открылось — скопируйте ссылку и вставьте её в '+app+
       ' через «Добавить подписку / Импорт из URL».</p>'+
-    '<p><input id="subscription-url" aria-label="Ссылка подписки" value="'+subUrl+
+    '<p><input id="subscription-url" aria-label="Ссылка подписки" value="'+escapedSubUrl+
       '" readonly><button id="copy-url" type="button">Копировать</button></p>'+
     '<p>Подписка персональная. Не пересылайте ссылку другим людям.</p>'+
     '<script src="/vpn-install.js" defer></script></main></body></html>';
@@ -526,7 +527,18 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const owner=await subscriptionOwner(subscriptionPool,subMatch[1]);
     if(!owner){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
     try{
-      const profile=await liveVpnProfile(owner);
+      const nodeProfile=await liveVpnProfile(owner);
+      // REALITY/Vision has platform-specific compatibility issues. Only a
+      // deliberately marked INCY import receives the fast alternative.
+      // All old subscription URLs and Karing receive the proven WS fallback.
+      const requestedClient=url.searchParams.get('client');
+      if(url.searchParams.size>1||
+         [...url.searchParams.keys()].some(k=>k!=='client')||
+         (requestedClient!==null&&requestedClient!=='incy'&&requestedClient!=='karing')){
+        json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
+      }
+      const profile=requestedClient==='incy'
+        ?nodeProfile:nodeProfile.split('\n').at(-1)!;
       // Standard V2Ray base64 subscription: clients repeatedly fetch this URL.
       // Network revocation is enforced both in DB and by the real Xray node.
       res.setHeader('subscription-userinfo',
@@ -549,7 +561,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     if(client!=='incy'&&client!=='karing'){
       json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
     }
-    send(res,200,installHtml(subscriptionLink(installMatch[1]),client),
+    send(res,200,installHtml(subscriptionLink(installMatch[1])+'?client='+client,client),
       'text/html; charset=utf-8');
     return;
   }
