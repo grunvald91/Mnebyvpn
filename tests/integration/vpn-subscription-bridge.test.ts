@@ -94,14 +94,14 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
      '&flow=xtls-rprx-vision&sni=www.cloudflare.com&fp=chrome'+
      '&pbk='+('A'.repeat(43))+'&sid=ab12cd34ef56a789&spx=%2F#MNEBYVPN%20FAST';
    const fallback=profile;
-   profile=reality+'\\n'+fallback;
+   profile=reality+'\n'+fallback;
    const dual=await fetch(root+'/sub/'+issued!.token);
    assert.equal(dual.status,200);
    assert.equal(Buffer.from((await dual.text()).trim(),'base64').toString('utf8').trim(),
-     reality+'\\n'+fallback);
+     reality+'\n'+fallback);
    // Never publish a profile from an unexpected node, even on an authenticated
    // internal response.
-   profile=reality.replace('cdn.servgo.ru','wrong-host.example')+'\\n'+fallback;
+   profile=reality.replace('cdn.servgo.ru','wrong-host.example')+'\n'+fallback;
    assert.equal((await fetch(root+'/sub/'+issued!.token)).status,503);
    profile=fallback;
    assert.equal((await fetch(root+'/sub/'+'B'.repeat(43))).status,404);
