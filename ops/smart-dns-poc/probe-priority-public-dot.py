@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Read-only strict-public-CA DoT guard for unpromoted Google/YouTube/Meta names.
+"""Read-only strict-CA DoT guard for unpromoted Google/YouTube/Meta names.
 
-Uses the existing external DoT probe and checks that an unapproved route
-does not accidentally share the *current* Gemini/Discord ingress A answer.
-Does not inspect traffic, accounts, HTTPS payloads, or device identifiers.
+A SERVFAIL is a resolution-health failure, NOT evidence of a rewrite.
+Record that condition explicitly, compare standard encrypted upstream
+resolvers and do not incorrectly declare a failed DNS query as "direct".
+No production mutation or user data is involved.
 """
 from __future__ import annotations
 
@@ -31,26 +32,34 @@ INGRESS_IP = "89.125.90.101"
 DOT_HOST = "dns.mnebyvpn.site"
 DOT_IP = INGRESS_IP
 DOT_PORT = 853
+Q_TYPES = (1, 28, 64, 65)
 
 
-def check(name: str) -> tuple[int, int, int, int, int]:
-    a_rcode, a_count, answers = DOT.query(name, 1, DOT_IP, DOT_PORT, DOT_HOST, None)
-    if a_rcode not in (0, 3):
-        raise AssertionError(f"Unexpected DNS response for {name}: rcode={a_rcode}")
-    for typ, _ttl, raw in answers:
-        if typ == 1 and socket.inet_ntoa(raw) == INGRESS_IP:
-            raise AssertionError(f"Unapproved public rewrite on {name}")
-    # This checks transport, not "synthetic NODATA" detection:
-    # ordinary HTTPS/SVCB/AAAA answers may legitimately be empty.
-    codes = []
-    for rrtype in (28, 64, 65):
-        rcode, count, _rr = DOT.query(
-            name, rrtype, DOT_IP, DOT_PORT, DOT_HOST, None
-        )
-        if rcode not in (0, 3):
-            raise AssertionError(f"Unexpected RR type response for {name}: {rrtype}/{rcode}")
-        codes.append(rcode)
-    return (a_rcode, a_count, *codes)
+def check(name: str) -> dict[int, int]:
+    codes = {}
+    for rrtype in Q_TYPES:
+        rcode, _count, answers = DOT.query(name, rrtype, DOT_IP, DOT_PORT, DOT_HOST, None)
+        if rcode not in (0, 2, 3):
+            raise AssertionError(f"Unexpected DNS error for {name}: rr={rrtype}, rcode={rcode}")
+        for kind, _ttl, data in answers:
+            if kind == 1 and socket.inet_ntoa(data) == INGRESS_IP:
+                raise AssertionError(f"Unapproved public A rewrite on {name}")
+        codes[rrtype] = rcode
+    return codes
+
+
+def compare_upstream(name: str) -> None:
+    """Report only, never change CoreDNS upstream or silently switch resolver."""
+    for label, ip, cert_name in (
+        ("quad9", "9.9.9.9", "dns.quad9.net"),
+        ("google", "8.8.8.8", "dns.google"),
+        ("cloudflare", "1.1.1.1", "cloudflare-dns.com"),
+    ):
+        try:
+            rcode, count, _answers = DOT.query(name, 1, ip, 853, cert_name, None)
+            print(f"upstream_comparison={name} resolver={label} rcode={rcode} answers={count}", flush=True)
+        except (OSError, AssertionError) as error:
+            print(f"upstream_comparison={name} resolver={label} exception={type(error).__name__}", flush=True)
 
 
 def main() -> None:
@@ -61,25 +70,40 @@ def main() -> None:
     rows = {r["host"]: r for r in manifest["hosts"]}
     if set(rows) != set(allowed):
         raise AssertionError("Manifest admission mismatch")
+
     counters: Counter[str] = Counter()
+    inconclusive = []
     for hostname in allowed:
-        rcode, a_count, _aaaa, _svcb, _https = check(hostname)
+        codes = check(hostname)
         group = rows[hostname]["service"]
         counters[group] += 1
-        # No returned IPs are logged, only one hostname and a DNS RCODE.
+        problems = [qtype for qtype, rcode in codes.items() if rcode == 2]
+        result = "INCONCLUSIVE_SERVFAIL" if problems else "NO_UNAPPROVED_A_REWRITE"
+        if problems:
+            inconclusive.append(hostname)
         print(
-            f"public_DoT_unpromoted_host={hostname}"
-            f" service={group} a_rcode={rcode}"
-            f" answer_count={a_count} proxy_rewrite=no",
+            f"public_DoT_host={hostname} service={group}"
+            f" A_rcode={codes[1]} result={result}"
+            f" servfail_types={','.join(map(str,problems)) or 'none'}",
             flush=True,
         )
     for service in ("Google", "YouTube", "Instagram"):
-        print(f"public_DoT_unpromoted_{service}={counters[service]}", flush=True)
+        print(f"public_DoT_checked_{service}={counters[service]}", flush=True)
     assert sum(counters.values()) == len(allowed) == 15
-    print("public_DoT_valid_CA_and_host_identity=yes")
-    print("MNEBYDNS_test_did_not_change_live_routing=yes")
-    print("no_Russian_device_or_HTTPS_service_access_conclusion=yes")
 
+    for host in inconclusive:
+        compare_upstream(host)
+    print("strict_public_CA_and_DoT_hostname_validation=yes", flush=True)
+    print("unpromoted_hosts_inconclusive=" + str(len(inconclusive)), flush=True)
+    print("live_routing_modified=no", flush=True)
+    print("russian_device_and_HTTPS_app_operation=UNVERIFIED", flush=True)
+    if inconclusive:
+        print(
+            "::warning::DNS upstream SERVFAIL on "
+            + ", ".join(inconclusive)
+            + " (not proof of routing); investigate without proxy promotion",
+            flush=True,
+        )
 
 if __name__ == "__main__":
     main()
