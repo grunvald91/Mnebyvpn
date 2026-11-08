@@ -46,3 +46,26 @@ test('checkout email comes only from authenticated session',()=>{
   assert.match(prodamus,/customer_email: customerEmail/);
   assert.doesNotMatch(server,/customerEmail:\s*body\./);
 });
+
+
+test('all referenced journey element IDs exist in the real HTML',()=>{
+  const referenced=[...journey.matchAll(/\bel\('([a-z][a-z0-9-]+)'\)/g)].map(x=>x[1]);
+  const existing=new Set([...index.matchAll(/\bid="([a-z][a-z0-9-]+)"/g)].map(x=>x[1]));
+  for(const name of referenced)assert.ok(existing.has(name),'Missing DOM node: '+name);
+  assert.ok(existing.has('journey-payment-heading'));
+  assert.ok(existing.has('journey-payment-to-account'));
+  assert.ok(existing.has('journey-payment-link'));
+});
+test('payment return shows own server-confirmed order and auto-opens ACTIVE subscription',()=>{
+  assert.match(journey,/Untrusted navigation is only a lookup hint/);
+  assert.match(journey,/order\?\.state==='PAID'/);
+  assert.match(journey,/autoSetupOrders\.add\(order\.id\)/);
+  assert.match(journey,/loadSubscription\(entitlement\.id\)/);
+  assert.match(journey,/paymentIntro\.hidden=next!=='payment'/);
+  assert.match(journey,/originalShowPaymentLink\(url\)/);
+});
+test('trial flow preserves pending login and automatically opens activated access',()=>{
+  assert.match(journey,/if\(!state\.loggedIn\)\{\s*await claimTrial\(\)/);
+  assert.match(journey,/view==='setup'&&!state\.guestSubscriptionUrl/);
+  assert.match(journey,/lastSetupAttempt\.set\(target\.id,Date\.now\(\)\)/);
+});
