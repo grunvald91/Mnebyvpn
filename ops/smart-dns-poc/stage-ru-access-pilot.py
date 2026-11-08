@@ -13,7 +13,6 @@ from typing import Any
 
 EXPECTED_HOSTS = frozenset({
     "discord.com", "gateway.discord.gg", "cdn.discordapp.com",
-    "www.instagram.com", "www.facebook.com", "static.cdninstagram.com",
 })
 FOREIGN_IP = "89.125.90.101"
 LOCAL_TARGET = "127.0.0.1:15446"
@@ -76,7 +75,7 @@ def render_dns(core:str,names:tuple[str,...])->str:
         raise ValueError("Existing original Gemini DNS policy missing")
     if any(name in core for name in names):
         raise ValueError("Pilot domain already present in live CoreDNS")
-    extra="\n    # MNEBYDNS verified initial RU access pilot (6 exact names)\n"
+    extra="\n    # MNEBYDNS verified Discord RU access pilot (3 exact names)\n"
     for host in names:
         for kind in ("A","AAAA","HTTPS","SVCB"):
             extra+=dns_template(host,kind)
@@ -87,7 +86,7 @@ def render_dns(core:str,names:tuple[str,...])->str:
 def render_relay(names:tuple[str,...])->str:
     table="".join(f"        {name} {name}:443;\n" for name in names)
     return (
-        "# MNEBYDNS six exact-host RU access TLS passthrough; no public listener.\n"
+        "# MNEBYDNS exact-host RU access TLS passthrough; no public listener.\n"
         "load_module /usr/lib/nginx/modules/ngx_stream_module.so;\n"
         "worker_processes 1;\n"
         "pid /run/mnebydns-ru-access/nginx.pid;\n"
