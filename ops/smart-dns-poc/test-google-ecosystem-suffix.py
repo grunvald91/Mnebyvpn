@@ -26,7 +26,7 @@ base_nginx = (
     "stream {\n    map $ssl_preread_server_name $direct_mtproxy_backend {\n"
     "        default 127.0.0.1:9443;\n"
     "        gemini.google.com 127.0.0.1:15443;\n"
-    "        www.google.com 127.0.0.1:16444;\n"
+    "        ~^special[.]googlevideo[.]com$ 127.0.0.1:16444;\n"
     "    }\n    server { listen 443; ssl_preread on;\n"
     "       proxy_pass $direct_mtproxy_backend; }\n}\n"
 )
@@ -97,7 +97,15 @@ class GoogleEcosystemTests(unittest.TestCase):
     def test_append_only_without_overwriting_legacy(self):
         a=POLICY.shared_sni(NGINX)
         self.assertEqual(a.count("gemini.google.com 127.0.0.1:15443;"),1)
-        self.assertEqual(a.count("www.google.com 127.0.0.1:16444;"),1)
+        self.assertEqual(
+            a.count("~^special[.]googlevideo[.]com$ 127.0.0.1:16444;"),1
+        )
+        self.assertIn("~*"+POLICY.suffix_pattern(nginx=True),a)
+        self.assertLess(
+            a.index("~^special[.]googlevideo[.]com$"),
+            a.index("~*"+POLICY.suffix_pattern(nginx=True)),
+            "Existing regex precedence must survive the suffix insertion",
+        )
         for h in POLICY.PRESERVED:
             self.assertIn(h, a)
         self.assertEqual(a.count(POLICY.LOCAL_SNI+";"),1)
@@ -112,6 +120,47 @@ class GoogleEcosystemTests(unittest.TestCase):
         self.assertEqual(d.count("forward . tls://9.9.9.9 {"),1)
         with self.assertRaises(ValueError):
             POLICY.public_dot(d)
+
+    def test_conflicting_exact_google_sni_must_be_reviewed(self):
+        dangerous=NGINX.replace(
+            "        ~^special[.]googlevideo[.]com$ 127.0.0.1:16444;",
+            "        www.google.com 127.0.0.1:16444;",
+        )
+        with self.assertRaisesRegex(ValueError, "shadow"):
+            POLICY.shared_sni(dangerous)
+        # An unapproved exact route to the local proxy itself would recurse.
+        dangerous=NGINX.replace(
+            "        ~^special[.]googlevideo[.]com$ 127.0.0.1:16444;",
+            "        youtubei.googleapis.com 127.0.0.1:15449;",
+        )
+        with self.assertRaises(ValueError):
+            POLICY.shared_sni(dangerous)
+
+    def test_dns_and_sni_case_insensitive(self):
+        regex=POLICY.suffix_pattern(nginx=True)
+        for name in ("WWW.YouTube.COM","R1---Sn-Video.GoogleVideo.Com",
+                     "JNN-PA.GOOGLEAPIS.COM","GEMINI.GOOGLE.COM"):
+            with self.subTest(name=name):
+                self.assertIsNotNone(re.fullmatch(regex,name,re.IGNORECASE))
+                self.assertIsNotNone(re.fullmatch(
+                    "(?i)"+POLICY.suffix_pattern(nginx=False),name+"."))
+        n=POLICY.shared_sni(NGINX)
+        s=POLICY.proxy_config("/tmp/mnebydns-ci-123/nginx.pid")
+        d=POLICY.public_dot(CORE)
+        self.assertIn("~*"+regex,n)
+        self.assertIn("~*"+regex,s)
+        self.assertIn("match (?i)",d)
+
+    def test_non_https_google_protocol_is_release_blocker(self):
+        self.assertTrue(POLICY.LAB_ONLY)
+        for hostname in POLICY.NON_HTTPS_BLOCKERS:
+            with self.subTest(host=hostname):
+                self.assertTrue(POLICY.matches_managed_suffix(hostname))
+        # Non-443 transports CANNOT be handled by this TCP/443-only SNI proxy.
+        self.assertNotIn("listen 5228;",POLICY.proxy_config(
+            "/tmp/mnebydns-ci-123/nginx.pid"))
+        self.assertNotIn("listen 123;",POLICY.proxy_config(
+            "/tmp/mnebydns-ci-123/nginx.pid"))
 
     def test_fail_closed_and_original_tls(self):
         s=POLICY.proxy_config("/tmp/mnebydns-ci-123/nginx.pid")
