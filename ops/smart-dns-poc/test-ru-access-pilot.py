@@ -61,6 +61,18 @@ class MultiServiceTests(unittest.TestCase):
         fake['entries'].append(fake['entries'][0])
         with self.assertRaises(ValueError):stage.domains(fake)
         with self.assertRaises(ValueError):stage.render_nginx('') if hasattr(stage,'render_nginx') else stage.render_sni('no shared nginx map',hosts)
+    def test_live_deploy_only_checks_admitted_discord_hosts(self):
+        deploy=(here/'deploy-ru-access-pilot.sh').read_text()
+        rollback=(here/'rollback-ru-access-pilot.sh').read_text()
+        self.assertNotIn('www.instagram.com',deploy)
+        self.assertNotIn('www.facebook.com',deploy)
+        self.assertNotIn('static.cdninstagram.com',deploy)
+        self.assertEqual(deploy.count('for domain in discord.com gateway.discord.gg cdn.discordapp.com; do'),2)
+        self.assertIn('[[ -f "$nginx" && -f "$dns" && ! -L "$nginx" && ! -L "$dns" ]]',deploy)
+        self.assertIn('[[ -f "$map" && -f "$dns" && ! -L "$map" && ! -L "$dns" ]]',rollback)
+        self.assertIn('# MNEBYDNS exact-host RU access TLS passthrough',rollback)
+        self.assertIn('systemd-run --unit="$watchdog"',deploy)
+        self.assertIn('rollback-ru-access-pilot.sh',deploy)
     def test_stager_never_mutates_live_files(self):
         with tempfile.TemporaryDirectory() as td:
             path=pathlib.Path(td)
