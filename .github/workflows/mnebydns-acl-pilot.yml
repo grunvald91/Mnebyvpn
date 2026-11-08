@@ -24,6 +24,7 @@ jobs:
           docker rm "$container"
           chmod 755 "$target/coredns"
           cp ops/smart-dns-poc/{Corefile.acl-test,probe-acl.py,make-local-cert.sh,run-acl-pilot-test.sh} "$target/"
+          python3 ops/smart-dns-poc/test-render-android-pilot.py
           bash -n "$target/run-acl-pilot-test.sh"
           python3 -m py_compile "$target/probe-acl.py"
           (cd "$target" && sudo bash run-acl-pilot-test.sh)
