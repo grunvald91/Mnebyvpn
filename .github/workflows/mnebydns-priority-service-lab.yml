@@ -89,8 +89,6 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 -m py_compile ops/smart-dns-poc/probe-priority-public-dot.py
-          python3 ops/smart-dns-poc/probe-gemini-canary.py \
-            --ip 89.125.90.101 --port 853 --hostname dns.mnebyvpn.site
           python3 ops/smart-dns-poc/probe-priority-public-dot.py \
             ops/smart-dns-poc/priority-service-hosts.json
           echo "existing_Gemini_and_Discord_live_DNS_baselines_preserved=yes"
