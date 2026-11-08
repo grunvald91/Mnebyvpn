@@ -52,3 +52,73 @@ Prior [authenticated-DoT read-only live audit](https://github.com/grunvald91/Mne
 4. Do **not** redirect every `*.google.com`, FCM, NTP, STUN or UDP/QUIC endpoint to a 443-only proxy. Some Android services need TCP 5228–5230 or UDP 123; existing DNS rewrites cannot carry those protocols.
 
 No user-specific IP addresses, account tokens, or raw source/destination payloads are included.
+
+
+## Follow-up: operator actually opened YouTube, Stitch and Google AI Studio
+
+The original 90-second capture at
+https://github.com/grunvald91/telegram-proxy-infra/actions/runs/42515144245
+was configured to match 34 **Gemini** and 11 Android-system DNS hostnames,
+**not** the complete hostnames of these three web services. Owner later
+confirmed they had opened YouTube, Stitch and Google AI Studio during that
+window; therefore it is **incorrect to attribute the 7 new socket endpoints
+(3 matching resolved Google DNS addresses) specifically to Gemini**. The
+remaining 4 unmatched IP destinations were deliberately not stored, so their
+original hostnames cannot be reconstructed from CI logs.
+
+### Independent read-only actual live MNEBYDNS DoT audit
+
+Verified follow-up workflow:
+https://github.com/grunvald91/Mnebyvpn/actions/runs/42515782973
+
+- 6 offline tests passed.
+- **YouTube** exact hostnames: 10 checked; **0** return exclusively
+  synthetic foreign TCP/443 ingress; **9** show original A/AAAA rather than
+  forced foreign; **1** DNS error/nonexistence (yt3.ggpht.com).
+- **Google Stitch**: 6 checked; **0** foreign; **6** original/direct/IPv6.
+  Notably `stitch.withgoogle.com` remains on original DNS routing.
+- **Google AI Studio**: 6 checked; **0** foreign; **6** original/direct/IPv6.
+  `aistudio.google.com` and `generativelanguage.googleapis.com` remain on
+  original DNS routing.
+- Some hosts appear across categories; per-product counts cannot be summed
+  as a count of unique domains.
+- Dynamic `*.googlevideo.com`, `*.ytimg.com`, `*.ggpht.com` video/asset
+  origin families **not exhaustively audited** by fixed-host DoT lookup.
+- Previously audited Gemini: 1/34 foreign; Android system: 0/12 foreign.
+- DNS results alone **do not prove** Android application success/failure,
+  the user's Private DNS use, Google regional entitlement, Android QUIC
+  fallback, or existing TCP connection paths.
+
+### User-priority service inventory for engineering
+
+- YouTube: `www.youtube.com`, `youtubei.googleapis.com`,
+  `i.ytimg.com`, `s.ytimg.com`; **dynamic CDN hostname families require
+  separate careful study**, as video is not equivalent to homepage TLS.
+- Stitch: `stitch.withgoogle.com` + shared Google sign-in and static resources.
+- AI Studio: `aistudio.google.com`, potential
+  `generativelanguage.googleapis.com` API calls + sign-in/static resources.
+- Existing MNEBYDNS 443-only SNI router is **not** a general-purpose VPN. Do
+  not redirect Android FCM, time/NTP, STUN, UDP/443/QUIC or all Google suffixes
+  to it without per-protocol routing.
+- Only known host candidates were added to **unverified** laboratory manifest.
+  `googleRoutePolicyIsLive = false`; no live DNS or foreign ingress changes.
+
+Official/reference sources:
+- https://blog.google/innovation-and-ai/models-and-research/google-labs/stitch-gemini-3/
+- https://ai.google.dev/aistudio
+- https://docs.cloud.google.com/docs/get-started/required-domains
+- https://support.google.com/youtube/answer/171780
+- https://support.google.com/youtube/thread/421362985
+- https://firebase.google.com/docs/cloud-messaging/network-configuration
+
+### Verification before any DNS production admission
+
+1. On *separate test windows*, establish YouTube homepage + video playback,
+   Stitch interface + creation, AI Studio UI + model response, for
+   MNEBYVPN / DNS-only / no-special-routing control.
+2. Capture scoped domain/SNI or client opt-in diagnostics; never attribute
+   shared Google IPs to apps from IP alone.
+3. Audit original per-host TLS certificate, foreign egress, A/AAAA/CNAME/
+   HTTPS/SVCB answers, supported ports and fallback behavior; deploy only
+   host/protocol combinations that pass end-to-end preflight and rollback.
+4. Keep all other websites direct, and never break system Android push routes.
