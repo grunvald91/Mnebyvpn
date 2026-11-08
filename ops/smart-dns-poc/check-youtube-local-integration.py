@@ -9,13 +9,11 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
-import os
 import pathlib
 import socket
 import ssl
 
 HERE = pathlib.Path(__file__).resolve().parent
-FOREIGN_INGRESS = "89.125.90.101"
 DNS_PORT = 1855
 SNI_PORT = 15448
 CAFILE = "certs/dns.test.invalid.crt"
@@ -31,6 +29,7 @@ def load(filename: str, name: str):
 
 YT = load("stage-youtube-exact-canary.py", "youtube_stage")
 DISCORD = load("stage-ru-access-pilot.py", "discord_stage")
+FOREIGN_INGRESS = DISCORD.FOREIGN_IP
 DOT = load("probe-gemini-canary.py", "youtube_dot_probe")
 
 
