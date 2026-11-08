@@ -37,7 +37,7 @@ print(str(found[0]))
 PY
 )"
 [[ "$map" =~ ^/etc/nginx/streams.d/[A-Za-z0-9_.-]+[.]conf$ ]] || exit 2
-nginx -T 2>/dev/null | grep -Fq 'proxy_pass $direct_mtproxy_backend;' || exit 2
+nginx -T 2>/dev/null | grep -F 'proxy_pass $direct_mtproxy_backend;' >/dev/null || exit 2
 mkdir -p /opt/mnebydns-gemini-backups
 install -d -m 700 -o root -g root "$base"
 cp -p -- "$map" "$base/stream.before"
@@ -47,6 +47,8 @@ install -m 700 "$work/rollback-gemini-smartdns.sh" "$base/rollback.sh"
 python3 "$work/patch-gemini-sni.py" "$map" "$work/staged-stream.conf"
 chown --reference="$map" "$work/staged-stream.conf"
 chmod --reference="$map" "$work/staged-stream.conf"
+cp -p -- "$work/staged-stream.conf" "$base/stream.pilot"
+cp -p -- "$work/Corefile.gemini-canary" "$base/dns.pilot"
 rollback_error() {
   result="$?"
   trap - ERR
