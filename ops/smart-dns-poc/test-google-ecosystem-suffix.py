@@ -70,6 +70,30 @@ class GoogleEcosystemTests(unittest.TestCase):
                 self.assertIsNone(re.fullmatch(POLICY.suffix_pattern(nginx=True),host))
                 self.assertIsNone(re.fullmatch(POLICY.suffix_pattern(nginx=False),host+"."))
 
+    def test_every_official_gemini_firewall_host_is_covered(self):
+        # https://knowledge.workspace.google.com/admin/generative-ai/gemini-app/gemini-app-firewall-settings
+        documented=(
+            "lh5.googleusercontent.com", "www.googleapis.com", "ssl.gstatic.com",
+            "fonts.googleapis.com", "play.google.com", "ogs.google.com",
+            "www.google.com", "apis.google.com", "jnn-pa.googleapis.com",
+            "waa-pa.clients6.google.com", "i.ytimg.com", "yt3.ggpht.com",
+            "lh3.googleusercontent.com", "maps.gstatic.com", "lh3.google.com",
+            "ogads-pa.clients6.google.com", "csp.withgoogle.com",
+            "www.googletagmanager.com", "www.youtube.com", "fonts.gstatic.com",
+            "maps.googleapis.com", "static.doubleclick.net", "www.gstatic.com",
+            "gemini.google.com", "td.doubleclick.net",
+            "googleads.g.doubleclick.net", "www.google-analytics.com",
+            "optimizationguide-pa.googleapis.com", "encrypted-tbn0.gstatic.com",
+            "encrypted-tbn1.gstatic.com", "encrypted-tbn2.gstatic.com",
+            "encrypted-tbn3.gstatic.com", "streetviewpixels-pa.googleapis.com",
+            "content-autofill.googleapis.com",
+        )
+        self.assertEqual(len(documented),34)
+        for host in documented:
+            with self.subTest(host=host):
+                self.assertIsNotNone(re.fullmatch(
+                    POLICY.suffix_pattern(nginx=True),host))
+
     def test_append_only_without_overwriting_legacy(self):
         a=POLICY.shared_sni(NGINX)
         self.assertEqual(a.count("gemini.google.com 127.0.0.1:15443;"),1)
