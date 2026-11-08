@@ -1,7 +1,8 @@
 /**
- * Search-readable public informational pages.
- * Never insert user data or secret links. Product readiness is deliberately explicit:
- * MNEBYDNS and the combined mode are NOT available for purchase.
+ * Public search pages prepared for a future full MNEBYVPN + MNEBYDNS launch.
+ * The copy models the intended launch offer; this file does not grant access,
+ * enable DNS purchases or prove any unverified product capabilities.
+ * Never insert account data, secrets, user-specific URLs or invented prices.
  */
 export type SeoPage = {
   path:string; title:string; description:string; heading:string; lead:string;
@@ -47,6 +48,70 @@ export const seoPages:SeoPage[] = [
       {heading:'MNEBYDNS и MNEBYVPN вместе',paragraphs:[
         'Smart DNS используется для выбранных сетевых сценариев. VPN создаёт защищённый туннель. Когда нужен полный VPN, его можно использовать отдельно от настроенного DNS.',
         'На главной странице представлены виды доступа. Актуальные сроки, цены и возможность заказа определяются опубликованными тарифами в личном кабинете.'
+      ]}
+    ]
+  },
+
+  {
+    path:'/vpn-android',
+    title:'Как подключить VPN на Android — MNEBYVPN через INCY',
+    description:'Пошаговая настройка MNEBYVPN на Android: выбор VPN-тарифа, установка клиента INCY, импорт подписки и проверка соединения.',
+    heading:'Как подключить MNEBYVPN на Android',
+    lead:'На Android для MNEBYVPN используется совместимый VPN-клиент INCY. После выбора тарифа инструкция и персональная ссылка доступны в личном кабинете.',
+    sections:[
+      {heading:'Шаг 1. Подготовьте подписку',paragraphs:[
+        'Откройте главный сайт MNEBYVPN, выберите опубликованный VPN-тариф и войдите в личный кабинет. После активации подписки откройте инструкцию подключения.',
+        'Персональная ссылка подписки — это ключ доступа. Не публикуйте её, не пересылайте в открытые чаты и не добавляйте на сайты проверки URL.'
+      ]},
+      {heading:'Шаг 2. Импортируйте подписку в INCY',paragraphs:[
+        'Установите приложение INCY для Android по ссылке из инструкции в личном кабинете. Нажмите кнопку импорта подписки и подтвердите открытие в приложении.',
+        'Если автоматический переход не сработал, скопируйте персональную ссылку и используйте импорт из URL в INCY. Не вводите адрес сервера и пароль наугад.'
+      ]},
+      {heading:'Шаг 3. Проверьте работу',paragraphs:[
+        'Включите подключение в INCY и подтвердите системный запрос Android на создание VPN. Затем проверьте открытие обычного сайта и необходимого приложения.',
+        'Если связь не устанавливается, обновите подписку в клиенте, проверьте мобильный интернет или Wi-Fi и обратитесь в поддержку MNEBYVPN. Возможности конкретного сервиса зависят и от его собственных правил.'
+      ]}
+    ]
+  },
+  {
+    path:'/vpn-iphone',
+    title:'Как подключить VPN на iPhone — MNEBYVPN через Karing',
+    description:'Инструкция по VPN на iPhone: получить подписку MNEBYVPN, импортировать её в Karing и проверить соединение.',
+    heading:'Как подключить MNEBYVPN на iPhone',
+    lead:'На iPhone для подключения MNEBYVPN используется совместимый клиент Karing. Подписка импортируется из личного кабинета без ручного набора параметров сервера.',
+    sections:[
+      {heading:'Получите доступ в личном кабинете',paragraphs:[
+        'Выберите подходящий опубликованный VPN-тариф на главной странице. После активации доступа откройте в кабинете инструкцию и персональную ссылку подписки.',
+        'Сохраните персональную ссылку только в доверенном месте: тот, у кого есть эта ссылка, потенциально может использовать параметры вашего подключения.'
+      ]},
+      {heading:'Импортируйте VPN в Karing',paragraphs:[
+        'Установите Karing для iOS из App Store по ссылке на странице подключения. Нажмите импорт в Karing либо вставьте ссылку через функцию добавления подписки из URL.',
+        'Подтвердите системное разрешение iOS на создание VPN-конфигурации. Без такого разрешения клиент не сможет включить VPN-туннель.'
+      ]},
+      {heading:'Проверьте результат',paragraphs:[
+        'После подключения проверьте, что VPN отображается активным в настройках устройства. Затем откройте нужный сайт или приложение и оцените работу нужных функций.',
+        'Отдельные действия, например голосовые запросы в ИИ, могут иметь ограничения аккаунта или страны, которые VPN не отменяет.'
+      ]}
+    ]
+  },
+  {
+    path:'/private-dns-android',
+    title:'Private DNS на Android — настройка MNEBYDNS и отличие от VPN',
+    description:'Как настроить Private DNS на Android: адрес DNS-over-TLS, проверка подключения, совместимость с VPN и ограничения Smart DNS.',
+    heading:'Private DNS на Android: настройка MNEBYDNS',
+    lead:'Android Private DNS позволяет использовать DNS-over-TLS с совместимым DNS-сервером. MNEBYDNS предназначен для DNS-сценариев; он не заменяет защищённый VPN-туннель.',
+    sections:[
+      {heading:'Где включается Private DNS',paragraphs:[
+        'На поддерживаемых устройствах Android откройте настройки сети и найдите раздел «Частный DNS» (Private DNS). Названия пунктов отличаются у производителей.',
+        'Выберите режим указания имени DNS-провайдера, а не автоматический режим. Для DNS-over-TLS обычно требуется именно доменное имя сервера, а не произвольный IP-адрес.'
+      ]},
+      {heading:'Как использовать параметры MNEBYDNS',paragraphs:[
+        'Возьмите персональные параметры подключения из кабинета MNEBYDNS. Введите указанное имя DNS-хоста без https://, пробелов и пути URL, затем сохраните настройки.',
+        'Если устройство сообщает об ошибке соединения, проверьте точность имени и доступность сети. Не заменяйте подтверждённый адрес случайным DNS-сервером из интернета.'
+      ]},
+      {heading:'Чем режим отличается от VPN',paragraphs:[
+        'Private DNS шифрует DNS-запросы при использовании DNS-over-TLS, но не шифрует весь остальной трафик приложений и не скрывает автоматически исходный IP от посещаемого сайта.',
+        'При одновременном использовании MNEBYDNS и VPN поведение DNS зависит от клиента и настроек маршрутизации. Проверяйте результат в активной конфигурации.'
       ]}
     ]
   },
@@ -170,9 +235,20 @@ export function renderSeoPage(path:string,origin:string):string|null{
   const absolute=origin+page.path;
   const other=seoPages.filter(p=>p.path!==path);
   const jsonLd=JSON.stringify({
-    '@context':'https://schema.org','@type':'WebPage',
-    'name':page.title,'description':page.description,'inLanguage':'ru',
-    'url':absolute,'isPartOf':{'@type':'WebSite','name':'MNEBYVPN','url':origin+'/'}
+    '@context':'https://schema.org',
+    '@graph':[
+      {
+        '@type':'WebPage','name':page.title,'description':page.description,
+        'inLanguage':'ru','url':absolute,
+        'isPartOf':{'@type':'WebSite','name':'MNEBYVPN','url':origin+'/'},
+      },
+      {
+        '@type':'BreadcrumbList','itemListElement':[
+          {'@type':'ListItem','position':1,'name':'MNEBYVPN','item':origin+'/'},
+          {'@type':'ListItem','position':2,'name':page.heading,'item':absolute},
+        ],
+      },
+    ],
   }).replace(/</g,'\\u003c');
   const content=page.sections.map(section=>`
     <section class="seo-section"><h2>${esc(section.heading)}</h2>
