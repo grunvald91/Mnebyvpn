@@ -1,0 +1,20 @@
+# Temporary foreign VPS DNS test: host networking but CoreDNS explicitly binds
+# 127.0.0.1:1853. No Docker port publish/NAT, no firewall, no persistent service.
+name: mnebyvpn-dns-foreign-poc
+services:
+  resolver:
+    image: coredns/coredns:1.15.0
+    command: ["-conf", "/etc/coredns/Corefile"]
+    network_mode: host
+    volumes:
+      - "./Corefile.foreign:/etc/coredns/Corefile:ro"
+      - "./certs:/certs:ro"
+    user: "65532:65532"
+    cap_drop: ["ALL"]
+    cap_add: ["NET_BIND_SERVICE"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.5
+    restart: "no"
