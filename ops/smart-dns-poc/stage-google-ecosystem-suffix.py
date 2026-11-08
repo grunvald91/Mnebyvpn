@@ -91,8 +91,33 @@ def require_no_overlapping_google_exact(body: str) -> None:
         if not parsed:
             continue
         name, destination = parsed.groups()
-        if name == "default" or name.startswith(("~", "*", ".")):
+        if name == "default":
             continue
+        if name.startswith("~"):
+            # Earlier regex entries retain their original priority and are
+            # never overwritten. Arbitrary PCRE overlaps still need a live
+            # configuration review; do not interpret lab PASS as full reach.
+            continue
+        # Nginx mask names take precedence over ANY regex. A previously
+        # installed *.google.com, .youtube.com or even *.com rule could
+        # silently shadow our new broad Google suffix route.
+        if name.startswith("*.") or name.startswith("."):
+            zone = name[2:] if name.startswith("*.") else name[1:]
+            if any(suffix == zone.lower() or suffix.endswith("." + zone.lower())
+                   for suffix in SUFFIXES):
+                raise ValueError("Existing Google-overlapping SNI wildcard mask: " + name)
+            continue
+        if name.endswith(".*"):
+            prefix = name[:-1].lower()
+            samples = (
+                "www.google.com", "www.youtube.com", "www.googleapis.com",
+                "gemini.google.com", "i.ytimg.com",
+            )
+            if any(host.startswith(prefix) for host in samples):
+                raise ValueError("Existing Google-overlapping SNI prefix mask: " + name)
+            continue
+        if "*" in name:
+            raise ValueError("Unknown SNI mask syntax requires manual review: " + name)
         if matches_managed_suffix(name):
             if approved.get(name.lower()) != destination:
                 raise ValueError(
