@@ -829,6 +829,11 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   if(url.pathname.startsWith('/api/guest/')){
     json(res,403,{code:'AUTH_REQUIRED_FOR_TRIAL'});return;
   }
+  // Unknown public GET addresses must be genuine 404s, never a login wall.
+  // Protected API paths retain their existing 401/403 semantics.
+  if(req.method==='GET'&&!/^\/(?:api\/|auth\/|sub\/|install\/|webhooks\/)/.test(url.pathname)){
+    json(res,404,{code:'NOT_FOUND'});return;
+  }
   const auth = await authorized(req);
   if (!auth) { json(res, 401, { code: 'LOGIN_REQUIRED' }); return; }
   if (req.method === 'GET' && url.pathname === '/api/me') {
