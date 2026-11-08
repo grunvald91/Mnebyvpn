@@ -73,7 +73,7 @@ jobs:
               'stream {\n    map $ssl_preread_server_name $direct_mtproxy_backend {\n'
               '        default 127.0.0.1:9443;\n'
               '        gemini.google.com 127.0.0.1:15443;\n'
-              '        www.google.com 127.0.0.1:16444;\n'
+              '        ~^special[.]googlevideo[.]com$ 127.0.0.1:16444;\n'
               '    }\n    server { listen 443; ssl_preread on;'
               ' proxy_pass $direct_mtproxy_backend; }\n}\n'
           )
@@ -88,6 +88,15 @@ jobs:
           grep -Fq '        discord.com 127.0.0.1:15446;' "$work/shared-nginx.staged"
           cp -- "$work/Corefile.origin-resolver" Corefile.google-origin-local
           chmod 644 Corefile.google-origin-local
+          # Syntax-check both the SNI sidecar AND the shared 443 map.
+          # Merely validating the sidecar previously missed map regressions.
+          {
+            printf 'load_module /usr/lib/nginx/modules/ngx_stream_module.so;\n'
+            printf 'worker_processes 1;\n'
+            printf 'events { worker_connections 80; }\n'
+            cat "$work/shared-nginx.staged"
+          } > "$work/nginx-shared-syntax.conf"
+          nginx -t -c "$work/nginx-shared-syntax.conf"
           nginx -t -c "$work/google-ecosystem.nginx.conf"
           sudo bash make-local-cert.sh
           sed \
