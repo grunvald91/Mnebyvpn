@@ -218,9 +218,28 @@ test('SEO HTTP routes serve robots, sitemap, valid structured data and safe head
     assert.ok(csp.includes("'sha256-"+hash+"'"),'Missing JSON-LD CSP hash on '+path);
     assert.ok(!csp.includes("'unsafe-inline'"));
   }
-  const alias=await fetch(origin+'/vpn-android/?ref=seo-test',{redirect:'manual'});
-  assert.equal(alias.status,301);
-  assert.equal(alias.headers.get('location'),'/vpn-android?ref=seo-test');
+  for(const [path,target] of [
+    ['/index.html?ref=seo','/?ref=seo'],
+    ['/terms.html','/terms'],
+    ['/terms/','/terms'],
+    ['/privacy.html','/privacy'],
+    ['/privacy/','/privacy'],
+    ['/vpn-android/?ref=seo-test','/vpn-android?ref=seo-test'],
+    ['/google-gemini/','/google-gemini'],
+  ]){
+    const alias=await fetch(origin+path,{redirect:'manual'});
+    assert.equal(alias.status,301,'Canonical redirect '+path);
+    assert.equal(alias.headers.get('location'),target);
+  }
+  const unknown=await fetch(origin+'/unknown-guide');
+  assert.equal(unknown.status,404);
+  assert.equal(unknown.headers.get('x-robots-tag'),'noindex, nofollow, noarchive');
+  const privateNotFound=await fetch(origin+'/sub/invalid-token');
+  assert.equal(privateNotFound.headers.get('x-robots-tag'),'noindex, nofollow, noarchive');
+  const guide=await fetch(origin+'/vpn');
+  assert.match(guide.headers.get('cache-control')??'',/public, max-age=300/);
+  const privateApi=await fetch(origin+'/api/me');
+  assert.equal(privateApi.headers.get('cache-control'),'no-store');
   const css=await fetch(origin+'/seo.css');
   assert.equal(css.status,200);
   assert.match(css.headers.get('content-type')??'',/text\/css/);
