@@ -49,7 +49,12 @@ container="$(docker compose -p "$project" -f compose.foreign.yaml ps -q resolver
 test -n "$container"
 mode="$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$container")"
 [[ "$mode" == "host" ]] || { echo "unexpected container network mode"; exit 1; }
-bound="$(ss -H -lnt 'sport = :1853' | awk '{print $4}')"
+bound=""
+for attempt in {1..30}; do
+  bound="$(ss -H -lnt 'sport = :1853' | awk '{print $4}')"
+  [[ -n "$bound" ]] && break
+  sleep 0.2
+done
 if [[ "$bound" != "127.0.0.1:1853" ]]; then
   echo "UNSAFE: unexpected published address"
   exit 1
