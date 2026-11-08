@@ -106,9 +106,11 @@
     if(!lastAccount?.identity?.email){
       beginEmailLink();return;
     }
+    // Clear before setSelection, which synchronously triggers renderPlan.
+    // Otherwise its wrapper would recursively resume the same checkout.
+    clearIntent();
     state.product='vpn';
     setSelection('vpn',pending.days);
-    clearIntent();
     void purchase();
   }
   const downloads={
