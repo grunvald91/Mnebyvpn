@@ -470,6 +470,25 @@ function validNodeVpnProfile(value:unknown):value is string {
   return shape==='ws'||shape==='reality_chrome,ws'||
     shape==='reality_chrome,reality_firefox,ws';
 }
+/** Preserve the signed node configuration and existing working WS profile.
+ * Karing uses type+server+port for disabled-node bookkeeping, which collides
+ * for Chrome and Firefox if both Reality fingerprints dial the same host:2053.
+ * Use the existing verified public IPv4 only for Chrome; Firefox keeps the
+ * canonical domain. Both still reach the same node and use the same UUID/SNI.
+ * This changes only subscription import URLs, not any live Xray service.
+ */
+function stableMultiClientVpnProfile(nodeProfile:string):string {
+  return nodeProfile.split('\n').map(link=>{
+    const url=new URL(link);
+    if(url.port==='2053' && url.hostname==='cdn.servgo.ru' &&
+       url.searchParams.get('security')==='reality' &&
+       url.searchParams.get('fp')==='chrome'){
+      url.hostname='89.125.90.101';
+      return url.toString();
+    }
+    return link;
+  }).join('\n');
+}
 async function liveVpnProfile(owner:{
   telegramUserId:number|null;entitlementId:string;
 }):Promise<string>{
@@ -597,7 +616,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
          (requestedClient!==null&&requestedClient!=='incy'&&requestedClient!=='karing')){
         json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
       }
-      const profile=nodeProfile;
+      const profile=stableMultiClientVpnProfile(nodeProfile);
       // Standard V2Ray base64 subscription: clients repeatedly fetch this URL.
       // Network revocation is enforced both in DB and by the real Xray node.
       res.setHeader('subscription-userinfo',

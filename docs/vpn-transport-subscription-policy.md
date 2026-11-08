@@ -13,9 +13,11 @@
 
 | Подпись клиента | Транспорт | Вход |
 | --- | --- | --- |
-| MNEBYVPN · Germany · REALITY Vision | VLESS/TCP + REALITY + XTLS Vision | `cdn.servgo.ru:2053` |
+| MNEBYVPN · Germany · REALITY Vision | VLESS/TCP + REALITY + XTLS Vision | `89.125.90.101:2053` (прямой адрес того же узла) |
 | MNEBYVPN · Germany · REALITY Firefox (TEST) | VLESS/TCP + REALITY + XTLS Vision, uTLS `fp=firefox` | `cdn.servgo.ru:2053` |
 | MNEBYVPN · Germany · WebSocket TLS | VLESS/WS + TLS | `cdn.servgo.ru:8443` |
+
+В публичном ответе подписки Reality Chrome получает проверенный IPv4-адрес того же узла, а Reality Firefox остаётся на домене. Различаются поля `server` при одинаковом порте `2053` и UUID: это исключает совпадение ключа `type;server;port` в Karing для двух отпечатков. WebSocket/TLS остаётся без изменений. Это мера совместимости списка, **не средство гарантированного обхода DPI**: исходящий IP и Reality-сервер одинаковы.
 
 Название страны — клиентская метка, основанная на регистрации IP-подсети;
 оно не используется при авторизации и не гарантирует физическое расположение.
