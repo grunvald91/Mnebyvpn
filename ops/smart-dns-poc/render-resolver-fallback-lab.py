@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Stage a same-provider second strictly authenticated Quad9 DoT endpoint.
 
-CoreDNS forward supports a documented 'policy sequential' plus 'failover
-SERVFAIL' when both endpoints use the same authenticated TLS server name.
-An attempted two-forward-plugin 'next SERVFAIL' fallback failed the deterministic
-CI network test and MUST NOT be deployed. No production mutation here.
+CoreDNS forward supports documented 'policy sequential' plus 'failover
+SERVFAIL' when both endpoints share the same authenticated TLS server name.
+The first test fixture lacked trust in its self-signed upstream CA; that was
+a fixture error, not evidence that a different forward-plugin layout is broken.
+No production mutation here.
 """
 from __future__ import annotations
 
