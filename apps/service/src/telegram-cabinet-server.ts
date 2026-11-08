@@ -18,7 +18,7 @@ import {
 import {
   buildStarsInvoice,parseStarsPayload,validateStarsPreCheckout,validateStarsSuccess,
 } from '../../../packages/billing/src/stars.ts';
-import {activationView,awaitActivation,deviceView,manualView}
+import {activationView,deviceView,manualView}
   from './vpn-onboarding.ts';
 import {formatDuration,formatRoubles} from '../../../packages/telegram-ui/src/menu.ts';
 import {effectiveAccessState,formatRemainingTime,formatRemainingQuota} from '../../../packages/telegram-ui/src/access-format.ts';
@@ -304,20 +304,19 @@ async function receiveStars(update:any){
 async function trial(id:number){
   if(!store)throw new Error('DB unavailable');
   const r=await store.grantTrial(id,'vpn');
-  if(pool&&(r.status==='GRANTED'||r.status==='PENDING'||r.status==='ALREADY_USED')){
-    const ready=r.status==='ALREADY_USED'?await activationView(pool,id,true)
-      :await awaitActivation(pool,id);
+  if(pool&&r.status==='ALREADY_USED'){
+    const ready=await activationView(pool,id,true);
     if(ready)return ready;
   }
   const text=r.status==='GRANTED'
-    ? '🎁 Пробные 24 часа VPN\n\nЗаявка записана. Выдача VPN-профиля поставлена в очередь. Время начнётся только после подтверждения активации на узле.'
+    ? '🎁 Пробные 24 часа VPN\n\nЗаявка принята. Сервер готовит VPN-профиль. Как только подключение будет активировано, бот сам пришлёт сообщение с выбором устройства.\n\nНичего проверять не нужно. 24 часа начнутся после активации.'
     :r.status==='PENDING'
-    ? '⏳ Пробная заявка уже есть. Проверяем выдачу доступа. 24 часа ещё не отсчитываются.'
+    ? '⏳ Бесплатный VPN подключается. Бот автоматически пришлёт инструкцию, когда сервер подтвердит активацию. Проверять вручную не нужно.'
     :r.status==='ALREADY_USED'
     ? '🎁 Пробные 24 часа уже использованы этим Telegram-аккаунтом.'
-    : '🎁 Пробные 24 часа VPN пока не активированы в настройках сервера.';
-  return msg(text,[[{text:'🔐 Проверить статус',callback_data:'nav:status'}],
-    [{text:'🌐 Выбрать VPN',callback_data:'nav:vpn'}],[homeButton]]);
+    : '🎁 Бесплатный VPN сейчас недоступен. Попробуйте позднее.';
+  return msg(text,[[{text:'🔐 Мои подключения',callback_data:'nav:status'}],
+    [{text:'🌐 Тарифы VPN',callback_data:'nav:vpn'}],[homeButton]]);
 }
 function info(data:string,id:number){
   if(data==='nav:dns'||data==='info:dns')
@@ -328,7 +327,7 @@ function info(data:string,id:number){
       [[{text:'📤 Поделиться',url:'https://t.me/share/url?url=https%3A%2F%2Ft.me%2FMNEBYVPN_bot'}],
        [homeButton]]);
   if(data==='nav:help'||data==='info:help')
-    return msg('❔ Помощь\n\n1. Выберите VPN.\n2. Нажмите «24 часа бесплатно» или просмотрите тарифы.\n3. В разделе «Мои подключения» проверяйте статус и остаток срока.\n\nИнтернет при ограничениях мобильной сети и совместный тариф находятся в разработке.',
+    return msg('❔ Помощь\n\n1. Выберите VPN.\n2. Нажмите «24 часа бесплатно» или просмотрите тарифы.\n3. После выдачи пробного VPN бот сам пришлёт инструкцию. В «Мои подключения» смотрите остаток срока.\n\nИнтернет при ограничениях мобильной сети и совместный тариф находятся в разработке.',
       [[support?.operatorId===id
          ?{text:'📥 Входящие заявки',callback_data:'support:page:0'}
          :{text:'✉️ Написать оператору',callback_data:'nav:support'}],
