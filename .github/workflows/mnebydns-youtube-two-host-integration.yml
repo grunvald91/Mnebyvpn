@@ -33,21 +33,22 @@ jobs:
           work="/tmp/mnebydns-ci-$GITHUB_RUN_ID"
           mkdir -m 700 -- "$work"
           dns_pid=''
+          origin_pid=''
           tls_pid=''
           cleanup(){
             rc=$?
             trap - EXIT
             if [[ "$rc" -ne 0 ]]; then
-              cat "$work/dns.log" "$work/nginx.log" 2>/dev/null || true
+              cat "$work/dns.log" "$work/origin.log" "$work/nginx.log" 2>/dev/null || true
             fi
-            for pid in "$tls_pid" "$dns_pid"; do
+            for pid in "$tls_pid" "$dns_pid" "$origin_pid"; do
               if [[ -n "$pid" ]]; then
                 sudo kill "$pid" >/dev/null 2>&1 || true
                 wait "$pid" >/dev/null 2>&1 || true
               fi
             done
             for i in $(seq 1 25); do
-              [[ -z "$(ss -H -lnt '( sport = :1855 or sport = :15448 )')" ]] && break
+              [[ -z "$(ss -H -lnt '( sport = :1855 or sport = :15448 or sport = :5355 )')" ]] && break
               sleep 0.2
             done
             if [[ -n "$(ss -H -lnt '( sport = :1855 or sport = :15448 )')" ]]; then
@@ -55,7 +56,7 @@ jobs:
               rc=1
             fi
             rm -rf -- "$work"
-            rm -f "$base/Corefile.youtube-local" "$base/coredns"
+            rm -f "$base/Corefile.youtube-local" "$base/Corefile.youtube-origin-local" "$base/coredns"
             sudo rm -rf -- "$base/certs"
             exit "$rc"
           }
@@ -78,9 +79,13 @@ jobs:
           docker rm "$cid" >/dev/null
           chmod 755 coredns
           sudo chmod 755 "$GITHUB_WORKSPACE" "$(dirname "$base")" "$base"
-          for port in 1855 15448; do
+          for port in 1855 15448 5355; do
             [[ -z "$(ss -H -lnt "sport = :$port")" ]]
           done
+          sudo timeout --signal=TERM --kill-after=3s 120s \
+            setpriv --reuid 65532 --regid 65532 --clear-groups --no-new-privs \
+            ./coredns -conf Corefile.youtube-origin-local > "$work/origin.log" 2>&1 &
+          origin_pid=$!
           sudo timeout --signal=TERM --kill-after=3s 120s \
             setpriv --reuid 65532 --regid 65532 --clear-groups --no-new-privs \
             ./coredns -conf Corefile.youtube-local > "$work/dns.log" 2>&1 &
@@ -90,13 +95,15 @@ jobs:
           tls_pid=$!
           for i in $(seq 1 40); do
             if ss -H -lnt 'sport = :1855' | grep -Fq 127.0.0.1:1855 &&
-               ss -H -lnt 'sport = :15448' | grep -Fq 127.0.0.1:15448; then
+               ss -H -lnt 'sport = :15448' | grep -Fq 127.0.0.1:15448 &&
+               ss -H -lnu 'sport = :5355' | grep -Fq 127.0.0.1:5355; then
               break
             fi
             sleep 0.25
           done
           if ! ss -H -lnt 'sport = :1855' | grep -Fq 127.0.0.1:1855 ||
-             ! ss -H -lnt 'sport = :15448' | grep -Fq 127.0.0.1:15448; then
+             ! ss -H -lnt 'sport = :15448' | grep -Fq 127.0.0.1:15448 ||
+             ! ss -H -lnu 'sport = :5355' | grep -Fq 127.0.0.1:5355; then
             echo "local_listeners_unavailable"
             exit 1
           fi
