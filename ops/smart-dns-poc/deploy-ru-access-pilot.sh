@@ -21,7 +21,8 @@ for svc in nginx mnebydns-dot.service mnebydns-gemini.service xray.service; do
   systemctl is-active --quiet "$svc" || { echo "required_service_unavailable=$svc"; exit 2; }
 done
 nginx -t >/dev/null 2>&1
-[[ -f "$nginx" && -f "$dns" && ! -L "$nginx" && ! -L "$dns" ]]
+test -f "$nginx" && test -f "$dns"
+test ! -L "$nginx" && test ! -L "$dns"
 [[ "$(ss -H -lnt 'sport = :853' | awk '{print $4}')" = 89.125.90.101:853 ]]
 test -z "$(ss -H -lnt 'sport = :15446')"
 test "$(awk '/^MemAvailable:/{print int($2/1024)}' /proc/meminfo)" -ge 700
