@@ -66,9 +66,14 @@ test('a confirmed VPN grant issues only hashed subscriber URLs and per-platform 
    await pool.query("UPDATE entitlements SET state='EXPIRED' WHERE id=$1",[entitlement]);
    assert.equal(await subscriptionOwner(pool,link!.token),null);
    assert.equal(await issueSubscriptionLink(pool,user),null);
-   const pending=await activationView(pool,user);
-   assert.match(pending?.text??'',/автоматически пришлёт сообщение/);
-   assert.equal(pending?.reply_markup.inline_keyboard[0][0].callback_data,'nav:status');
+   const noAccess=await activationView(pool,user);
+   assert.match(noAccess?.text??'',/Нет активного VPN-доступа/);
+   assert.equal(noAccess?.reply_markup.inline_keyboard[0][0].callback_data,'trial:vpn');
+   await pool.query("UPDATE entitlements SET state='PAID_PENDING_PROVISIONING' WHERE id=$1",[entitlement]);
+   const awaiting=await activationView(pool,user);
+   assert.match(awaiting?.text??'',/VPN подключается/);
+   assert.doesNotMatch(awaiting?.text??'',/Подключаем бесплатный VPN/);
+   assert.equal(awaiting?.reply_markup.inline_keyboard[0][0].callback_data,'nav:status');
  }finally{
    await pool.query('DELETE FROM vpn_subscription_links WHERE entitlement_id=$1',[entitlement]).catch(()=>{});
    await pool.query('DELETE FROM provisioning_state WHERE entitlement_id=$1',[entitlement]).catch(()=>{});

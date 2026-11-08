@@ -3,8 +3,6 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {PgBillingStore} from '../../packages/billing/src/store.ts';
-import {PgOutboxDispatcher,type AdapterMap} from '../../packages/provisioning/src/pg-worker.ts';
-import type {ObservedAccess,DesiredAccess} from '../../packages/provisioning/src/reconciler.ts';
 import {
   PgVpnTrialReadyQueue,processVpnTrialReadyNotices,trialReadyMessage,
   TelegramTrialReadySender,type VpnTrialReadyNotice,
@@ -35,25 +33,21 @@ test('24h Telegram trial is delivered automatically only after the final node re
   }};
   await processVpnTrialReadyNotices(queue,sender,30);
   assert.equal(sent.filter(x=>x.orderId===orderId).length,0);
-  const observed=new Map<string,ObservedAccess>();
-  const adapter:AdapterMap={vpn:{
-    enforcesHardExpiry:true,
-    inspect:async(id)=>observed.get(id)??{revision:0,enabled:false},
-    apply:async(d:DesiredAccess)=>{
-      observed.set(d.entitlementId,{revision:d.revision,enabled:d.enabled,
-        expiresAt:d.expiresAt});
-      return 'applied';
-    },
-  }};
-  // Do not let unrelated integration fixtures occupy this worker's outbox.
-  await pool.query("UPDATE reconcile_outbox SET handled_at=clock_timestamp() WHERE entitlement_id<>$1 AND handled_at IS NULL",[entitlement]);
-  const worker=new PgOutboxDispatcher(pool,adapter);
-  assert.equal((await worker.processOnce()).status,'synced');
+  // Exercise the same node-ack SQL as the worker without changing ANY other
+  // test's global reconcile queue or creating fake foreign-node credentials.
+  const fence=(await pool.query(
+    "SELECT claim_provisioning_fence($1,'vpn') AS fence",[entitlement]
+  )).rows[0].fence;
+  assert.equal((await pool.query(
+    "SELECT acknowledge_provisioning($1,'vpn',1,$2,true) AS ok",
+    [entitlement,fence])).rows[0].ok,true);
   assert.equal(Number((await pool.query("SELECT revision,state FROM entitlements WHERE id=$1",[entitlement])).rows[0].revision),2);
   await processVpnTrialReadyNotices(queue,sender,30);
   assert.equal(sent.filter(x=>x.orderId===orderId).length,0,
     'a provisional 5-minute credential is NOT proof that full 24 hours are on-node');
-  assert.equal((await worker.processOnce()).status,'synced');
+  assert.equal((await pool.query(
+    "SELECT acknowledge_provisioning($1,'vpn',2,$2,true) AS ok",
+    [entitlement,fence])).rows[0].ok,true);
   await processVpnTrialReadyNotices(queue,sender,30);
   const own=sent.filter(x=>x.orderId===orderId);
   assert.equal(own.length,1);
@@ -84,6 +78,73 @@ test('trial notifier rejects expired trial and disassociated Telegram owner',asy
   await processVpnTrialReadyNotices(queue,{send:async(job)=>{seen.push(job);return {status:'sent'};}},30);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM vpn_trial_ready_notifications WHERE order_id=$1',[order])).rows[0].n,0);
   assert.equal(seen.filter(x=>x.orderId===order).length,0);
+});
+
+
+test('temporary node drift and >8 Telegram failures never permanently discard a live trial',async()=>{
+  const account=randomUUID(),order=randomUUID(),entitlement=randomUUID();
+  const user='960'+randomUUID().replace(/[^0-9]/g,'').slice(0,9).padEnd(9,'3');
+  await pool.query('INSERT INTO accounts(id,telegram_user_id) VALUES($1,$2)',[account,user]);
+  await pool.query(
+    "INSERT INTO orders(id,account_id,product,provider,amount_minor,currency,state) "+
+    "VALUES($1,$2,'vpn','internal_trial',0,'XTR','TRIAL')",[order,account]);
+  await pool.query(
+    "INSERT INTO trial_grants(telegram_user_id,account_id,order_id,product,"+
+    "activated_at,access_expires_at) VALUES($1,$2,$3,'vpn',"+
+    "now()-interval '2 minutes',now()+interval '23 hours 58 minutes')",
+    [user,account,order]);
+  await pool.query(
+    "INSERT INTO entitlements(id,account_id,source_order_id,product,state,revision,"+
+    "starts_at,expires_at) VALUES($1,$2,$3,'vpn','ACTIVE',2,"+
+    "now()-interval '2 minutes',now()+interval '23 hours 58 minutes')",
+    [entitlement,account,order]);
+  await pool.query(
+    "INSERT INTO provisioning_state(entitlement_id,adapter,applied_revision,"+
+    "fencing_token,last_observed_at) VALUES($1,'vpn',2,2,now())",
+    [entitlement]);
+  const queue=new PgVpnTrialReadyQueue(pool);
+  await queue.discover();
+  assert.equal((await pool.query(
+    'SELECT status FROM vpn_trial_ready_notifications WHERE order_id=$1',
+    [order])).rows[0].status,'PENDING');
+  // Node was verified but momentarily lost revision acknowledgement.
+  await pool.query(
+    "UPDATE provisioning_state SET applied_revision=1 WHERE entitlement_id=$1",
+    [entitlement]);
+  await queue.discardStale();
+  assert.equal((await pool.query(
+    'SELECT status FROM vpn_trial_ready_notifications WHERE order_id=$1',
+    [order])).rows[0].status,'PENDING',
+    'a recoverable revision mismatch must not permanently mark the message SKIPPED');
+  await pool.query(
+    "UPDATE provisioning_state SET applied_revision=2 WHERE entitlement_id=$1",
+    [entitlement]);
+  // Simulate eight earlier network failures. A ninth temporary Telegram outage
+  // must NOT abandon a valid 24h entitlement.
+  await pool.query(
+    "UPDATE vpn_trial_ready_notifications SET attempts=8,next_attempt_at=clock_timestamp() WHERE order_id=$1",
+    [order]);
+  const attempted:string[]=[];
+  await processVpnTrialReadyNotices(queue,{
+    send:async(job)=>{attempted.push(job.orderId);return {status:'retry'};},
+  },30);
+  assert.ok(attempted.includes(order));
+  const afterFailure=(await pool.query(
+    'SELECT status,attempts FROM vpn_trial_ready_notifications WHERE order_id=$1',[order])).rows[0];
+  assert.equal(afterFailure.status,'PENDING');
+  assert.equal(Number(afterFailure.attempts),9);
+  // An eventual recovery still sends the exact order and only once.
+  await pool.query(
+    "UPDATE vpn_trial_ready_notifications SET next_attempt_at=clock_timestamp() WHERE order_id=$1",
+    [order]);
+  const successful:string[]=[];
+  await processVpnTrialReadyNotices(queue,{
+    send:async(job)=>{successful.push(job.orderId);return {status:'sent'};},
+  },30);
+  assert.equal(successful.filter(x=>x===order).length,1);
+  assert.equal((await pool.query(
+    'SELECT status FROM vpn_trial_ready_notifications WHERE order_id=$1',
+    [order])).rows[0].status,'SENT');
 });
 
 test('Telegram trial-ready sender sends the onboarding device buttons, no bearer URL',async()=>{
