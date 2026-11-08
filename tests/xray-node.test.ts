@@ -100,6 +100,12 @@ test('node advertises validated REALITY profile first with safe WS fallback',asy
    expiresAt:expiry.toISOString(),credential,reality});
  assert.deepEqual(record.reality,reality);
  const fast=makeVpnRealityImportUri(credential,reality);
+ const firefox=makeVpnRealityImportUri(credential,reality,'firefox');
+ const firefoxUri=new URL(firefox);
+ assert.equal(firefoxUri.searchParams.get('fp'),'firefox');
+ assert.equal(decodeURIComponent(firefoxUri.hash.slice(1)),
+   'MNEBYVPN · Germany · REALITY Firefox (TEST)');
+ assert.throws(()=>makeVpnRealityImportUri(credential,reality,'unsafe' as 'chrome'));
  const uriFast=new URL(fast);
  assert.equal(decodeURIComponent(uriFast.hash.slice(1)),
    'MNEBYVPN · Germany · REALITY Vision');
@@ -115,7 +121,7 @@ test('node advertises validated REALITY profile first with safe WS fallback',asy
    {headers:{Date:new Date().toUTCString()}});
  const api=new SignedXrayNodeApi(key,fetcher);
  assert.equal(await api.profileFor(entitlement,3,expiry),
-   fast+'\n'+makeVpnImportUri(credential));
+   [fast,firefox,makeVpnImportUri(credential)].join('\n'));
  for(const invalid of [
    {...reality,shortId:'x'},
    {...reality,publicKey:'malformed'},

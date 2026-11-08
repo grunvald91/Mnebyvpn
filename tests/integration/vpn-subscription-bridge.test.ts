@@ -93,24 +93,34 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
      '@cdn.servgo.ru:2053?encryption=none&security=reality&type=tcp'+
      '&flow=xtls-rprx-vision&sni=www.cloudflare.com&fp=chrome'+
      '&pbk='+('A'.repeat(43))+'&sid=ab12cd34ef56a789&spx=%2F#MNEBYVPN%20FAST';
+   const firefox=reality.replace('&fp=chrome','&fp=firefox')
+     .replace('#MNEBYVPN%20FAST','#MNEBYVPN%20Firefox%20TEST');
    const fallback=profile;
-   profile=reality+'\n'+fallback;
+   profile=[reality,firefox,fallback].join('\n');
    const legacyRefresh=await fetch(root+'/sub/'+issued!.token);
    assert.equal(legacyRefresh.status,200);
    assert.equal(Buffer.from((await legacyRefresh.text()).trim(),'base64')
-     .toString('utf8').trim(),reality+'\n'+fallback);
+     .toString('utf8').trim(),[reality,firefox,fallback].join('\n'));
    const dual=await fetch(root+'/sub/'+issued!.token+'?client=incy');
    assert.equal(dual.status,200);
    assert.equal(Buffer.from((await dual.text()).trim(),'base64').toString('utf8').trim(),
-     reality+'\n'+fallback);
-   const safeKaring=await fetch(root+'/sub/'+issued!.token+'?client=karing');
-   assert.equal(safeKaring.status,200);
-   assert.equal(Buffer.from((await safeKaring.text()).trim(),'base64')
-     .toString('utf8').trim(),fallback);
+     [reality,firefox,fallback].join('\n'));
+   const karing=await fetch(root+'/sub/'+issued!.token+'?client=karing');
+   assert.equal(karing.status,200);
+   assert.equal(Buffer.from((await karing.text()).trim(),'base64')
+     .toString('utf8').trim(),[reality,firefox,fallback].join('\n'));
    assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=other')).status,400);
    // Never publish a profile from an unexpected node, even on an authenticated
    // internal response.
-   profile=reality.replace('cdn.servgo.ru','wrong-host.example')+'\n'+fallback;
+   profile=[
+     reality.replace('cdn.servgo.ru','wrong-host.example'),firefox,fallback,
+   ].join('\n');
+   assert.equal((await fetch(root+'/sub/'+issued!.token)).status,503);
+   profile=[reality,firefox.replace('&fp=firefox','&fp=unsafe'),fallback].join('\n');
+   assert.equal((await fetch(root+'/sub/'+issued!.token)).status,503);
+   profile=[reality,reality,fallback].join('\n');
+   assert.equal((await fetch(root+'/sub/'+issued!.token)).status,503);
+   profile=[reality,firefox.replace('pbk='+('A'.repeat(43)),'pbk='+('B'.repeat(43))),fallback].join('\n');
    assert.equal((await fetch(root+'/sub/'+issued!.token)).status,503);
    profile=fallback;
    assert.equal((await fetch(root+'/sub/'+'B'.repeat(43))).status,404);

@@ -423,18 +423,19 @@ async function callback(req:IncomingMessage,res:ServerResponse,url:URL){
   }catch{redirect(res,'/?login=failed#account');}
 }
 function validNodeVpnProfile(value:unknown):value is string {
-  if(typeof value!=='string'||value.length>4096)return false;
+  if(typeof value!=='string'||value.length>6000)return false;
   const links=value.split('\n');
-  if(links.length<1||links.length>2)return false;
+  if(![1,2,3].includes(links.length))return false;
   const credentialPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const seen=new Set<string>();
+  const variants:string[]=[];
   let credential='';
+  let realityKey='';
   for(const link of links){
     let uri:URL;
     try{uri=new URL(link);}catch{return false;}
     if(uri.protocol!=='vless:'||uri.hostname!=='cdn.servgo.ru'||
-       !credentialPattern.test(uri.username)||uri.password||uri.searchParams.get('encryption')!=='none')
-      return false;
+       !credentialPattern.test(uri.username)||uri.password||
+       uri.searchParams.get('encryption')!=='none')return false;
     if(credential&&uri.username!==credential)return false;
     credential=uri.username;
     const p=uri.searchParams;
@@ -446,22 +447,28 @@ function validNodeVpnProfile(value:unknown):value is string {
          p.get('security')!=='tls'||p.get('type')!=='ws'||
          p.get('host')!=='cdn.servgo.ru'||p.get('sni')!=='cdn.servgo.ru'||
          p.get('path')!=='/mnebyvpn-vpn/ws')return false;
+      variants.push('ws');
     }else if(uri.port==='2053'){
       const expected=['encryption','security','type','flow','sni','fp','pbk','sid','spx'];
       if(expected.some(k=>!keys.has(k))||keys.size!==expected.length||
          p.get('security')!=='reality'||p.get('type')!=='tcp'||
          p.get('flow')!=='xtls-rprx-vision'||
-         p.get('sni')!=='www.cloudflare.com'||p.get('fp')!=='chrome'||
+         p.get('sni')!=='www.cloudflare.com'||
+         (p.get('fp')!=='chrome'&&p.get('fp')!=='firefox')||
          !/^[A-Za-z0-9_-]{43}$/.test(p.get('pbk')??'')||
          !/^[0-9a-f]{16}$/.test(p.get('sid')??'')||
          p.get('spx')!=='/')return false;
+      const signature=p.get('pbk')+':'+p.get('sid');
+      if(realityKey&&realityKey!==signature)return false;
+      realityKey=signature;
+      variants.push('reality_'+p.get('fp'));
     }else return false;
-    if(seen.has(uri.port))return false;
-    seen.add(uri.port);
   }
-  // The app shows the fast option first and keeps the existing working node.
-  return links.length===1 ? seen.has('8443')
-    : seen.has('2053')&&seen.has('8443')&&links[0].includes(':2053?');
+  // One transport per signed node profile, no duplicates or invalid mixes.
+  // Accept the old two-line form during a zero-downtime worker rollout.
+  const shape=variants.join(',');
+  return shape==='ws'||shape==='reality_chrome,ws'||
+    shape==='reality_chrome,reality_firefox,ws';
 }
 async function liveVpnProfile(owner:{
   telegramUserId:number|null;entitlementId:string;
@@ -579,20 +586,18 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     if(!owner){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
     try{
       const nodeProfile=await liveVpnProfile(owner);
-      // Every legacy MNEBYVPN subscription URL is a living server group:
-      // refreshing INCY reveals all verified transports on the same egress,
-      // without re-import or a new bearer token. Explicit Karing imports
-      // remain on WS/TLS until Reality Vision compatibility is verified.
-      // Only server-verified signed profiles may appear in this group.
+      // Every MNEBYVPN subscription URL is one living server group for
+      // both INCY and Karing: include all independently verified transports
+      // with the original WebSocket TLS fallback last. Never hide Reality
+      // based on the client's name; the user chooses the working transport.
+      // Only authenticated, node-verified profiles may appear in this group.
       const requestedClient=url.searchParams.get('client');
       if(url.searchParams.size>1||
          [...url.searchParams.keys()].some(k=>k!=='client')||
          (requestedClient!==null&&requestedClient!=='incy'&&requestedClient!=='karing')){
         json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
       }
-      const profile=requestedClient==='karing'
-        ?nodeProfile.split('\n').at(-1)!
-        :nodeProfile;
+      const profile=nodeProfile;
       // Standard V2Ray base64 subscription: clients repeatedly fetch this URL.
       // Network revocation is enforced both in DB and by the real Xray node.
       res.setHeader('subscription-userinfo',

@@ -64,16 +64,22 @@ export function makeVpnImportUri(credential:string):string {
   return 'vless://'+id+'@'+WEB_PROFILE_HOST+':8443?'+query+
     '#'+encodeURIComponent(NODE_DISPLAY_NAME+' · WebSocket TLS');
 }
-export function makeVpnRealityImportUri(credential:string,config:RealityPublicConfig):string {
+export function makeVpnRealityImportUri(
+  credential:string,config:RealityPublicConfig,
+  fingerprint:'chrome'|'firefox'='chrome',
+):string {
+  if(fingerprint!=='chrome'&&fingerprint!=='firefox')
+    throw Error('Unsupported REALITY fingerprint');
   const id=uuid(credential);
   const safe=parseRealityConfig(config);
   const query=new URLSearchParams({
     encryption:'none',security:'reality',type:'tcp',
     flow:'xtls-rprx-vision',sni:'www.cloudflare.com',
-    fp:'chrome',pbk:safe.publicKey,sid:safe.shortId,spx:'/',
+    fp:fingerprint,pbk:safe.publicKey,sid:safe.shortId,spx:'/',
   });
   return 'vless://'+id+'@'+WEB_PROFILE_HOST+':'+safe.port+'?'+query+
-    '#'+encodeURIComponent(NODE_DISPLAY_NAME+' · REALITY Vision');
+    '#'+encodeURIComponent(NODE_DISPLAY_NAME+
+      (fingerprint==='firefox'?' · REALITY Firefox (TEST)':' · REALITY Vision'));
 }
 export class SignedXrayNodeApi implements ProvisioningAdapter {
   /** The actual isolated Xray agent enforces expiry locally without Panel. */
@@ -154,7 +160,13 @@ export class SignedXrayNodeApi implements ProvisioningAdapter {
       return null;
     const fallback=makeVpnImportUri(observed.credential);
     return observed.reality
-      ?makeVpnRealityImportUri(observed.credential,observed.reality)+'\n'+fallback
+      ?[
+        makeVpnRealityImportUri(observed.credential,observed.reality),
+        // Alternate genuine uTLS ClientHello on the SAME authenticated server.
+        // An opt-in test of Android/mobile-network compatibility, not a new key.
+        makeVpnRealityImportUri(observed.credential,observed.reality,'firefox'),
+        fallback,
+      ].join('\n')
       :fallback;
   }
 }
