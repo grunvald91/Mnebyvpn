@@ -449,6 +449,7 @@ async function purchase() {
       LOGIN_REQUIRED:'Сессия истекла. Войдите повторно.',
       FORBIDDEN:'Сессия изменилась. Обновите страницу и войдите повторно.',
       UNSAFE_PAYMENT_LINK:'Не удалось проверить ссылку Prodamus.',
+      VERIFIED_EMAIL_REQUIRED:'Перед оплатой подтвердите email в личном кабинете.',
     };
     const message=messages[error?.message] || 'Не удалось создать заказ или открыть оплату. Повторите попытку.';
     checkoutError(message);toast(message);
@@ -488,6 +489,7 @@ async function claimTrial(){
       byId('account').scrollIntoView({behavior:'smooth'});
     else if(['GRANTED','PENDING'].includes(response.status))
       byId('guest-trial-card').scrollIntoView({behavior:'smooth',block:'center'});
+    return response.status;
   }catch(error){
     toast(error.status===401?'Сессия истекла. Войдите повторно.':
       'Не удалось проверить бесплатный доступ. Попробуйте позднее.');
