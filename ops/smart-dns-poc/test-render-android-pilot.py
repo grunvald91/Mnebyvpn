@@ -2,6 +2,9 @@
 """Offline acceptance tests for the single-client public DoT configuration."""
 import importlib.util
 import pathlib
+import subprocess
+import sys
+import tempfile
 import unittest
 
 path = pathlib.Path(__file__).with_name("render-android-pilot.py")
@@ -43,6 +46,23 @@ class PilotConfigTests(unittest.TestCase):
     def test_bind_is_not_client(self):
         with self.assertRaisesRegex(ValueError, "must not equal"):
             mod.render("9.9.9.9", "9.9.9.9")
+
+    def test_cli_never_overwrites_existing_file_or_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = pathlib.Path(directory)
+            target = folder / "existing.txt"
+            target.write_text("do not change", encoding="utf-8")
+            options = [sys.executable, str(path), "--bind-ip", "9.9.9.9",
+                       "--allow-client-ip", "8.8.4.4", "--output"]
+            attempt = subprocess.run(options + [str(target)], capture_output=True, text=True)
+            self.assertNotEqual(attempt.returncode, 0)
+            self.assertEqual(target.read_text(), "do not change")
+
+            dangling = folder / "dangling.Corefile"
+            dangling.symlink_to(folder / "must-not-create")
+            attempt = subprocess.run(options + [str(dangling)], capture_output=True, text=True)
+            self.assertNotEqual(attempt.returncode, 0)
+            self.assertFalse((folder / "must-not-create").exists())
 
 
 if __name__ == "__main__":
