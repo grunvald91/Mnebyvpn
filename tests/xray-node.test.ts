@@ -95,7 +95,7 @@ test('31-second foreign-node clock skew is compensated for exact 24h deadline',a
 });
 
 test('node advertises validated REALITY profile first with safe WS fallback',async()=>{
- const reality={publicKey:'A'.repeat(43),shortId:'ab12cd34ef56a789',port:2053};
+ const reality={publicKey:'A'.repeat(43),shortId:'ab12cd34ef56a789',port:2053 as const};
  const record=parseNodeRecord({revision:3,enabled:true,
    expiresAt:expiry.toISOString(),credential,reality});
  assert.deepEqual(record.reality,reality);
