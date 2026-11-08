@@ -44,7 +44,7 @@ TLS_ORIGINS=(
     "www.gstatic.com",
     "apis.google.com",
 )
-OUTSIDE=("example.org","discord.com","gosuslugi.ru")
+OUTSIDE=("example.org","cloudflare.com")
 
 
 def query(host,typ):
@@ -71,6 +71,11 @@ def main():
         protocol=strict_tls(host)
         assert protocol.startswith("TLS"),(host,protocol)
         print("ecosystem_original_origin_TLS_verified="+host+" protocol="+protocol,flush=True)
+    for host in ("discord.com","gateway.discord.gg","cdn.discordapp.com"):
+        c,n,rr=query(host,1)
+        a=[socket.inet_ntoa(raw) for kind,_ttl,raw in rr if kind==1]
+        assert c==0 and n==1 and a==[IP],(host,c,n,a)
+        print("existing_Discord_route_preserved="+host,flush=True)
     for host in OUTSIDE:
         code,count,records=query(host,1)
         assert code==0 and count>=1,(host,code,count)
