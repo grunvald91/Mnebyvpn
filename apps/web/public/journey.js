@@ -232,7 +232,8 @@
     state.guestSubscriptionUrl=null;
     el('journey-setup-controls').hidden=true;
     el('journey-url').value='';
-    if(paymentLanding)setView('payment');
+    if(view==='setup')setView('account',true);
+    else if(paymentLanding)setView('payment');
   }
   const originalRenderPlan=window.renderPlan;
   const originalRenderAccount=window.renderAccount;
