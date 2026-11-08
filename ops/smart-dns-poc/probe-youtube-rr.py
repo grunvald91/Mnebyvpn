@@ -12,6 +12,16 @@ assert spec and spec.loader
 DOT=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(DOT)
 
+# Quad9 (9.9.9.9) is an upstream DNS resolver, not the actual HTTPS ingress.
+# The same single source of truth is used by the staged Gemini/Discord pilots.
+ingress_spec=importlib.util.spec_from_file_location(
+    "existing_pilot",HERE/"stage-ru-access-pilot.py"
+)
+assert ingress_spec and ingress_spec.loader
+PILOT=importlib.util.module_from_spec(ingress_spec)
+ingress_spec.loader.exec_module(PILOT)
+INGRESS=PILOT.FOREIGN_IP
+
 def main():
     p=argparse.ArgumentParser()
     p.add_argument("--cafile",required=True)
@@ -21,7 +31,7 @@ def main():
         code,count,records=DOT.query(host,1,"127.0.0.1",args.port,
                                      "dns.test.invalid",args.cafile)
         assert code==0 and count==1,(host,"A",code,count)
-        assert any(kind==1 and socket.inet_ntoa(value)=="9.9.9.9"
+        assert any(kind==1 and socket.inet_ntoa(value)==INGRESS
                    for kind,_ttl,value in records),(host,records)
         for rrtype in (28,5,64,65):
             code,count,_=DOT.query(host,rrtype,"127.0.0.1",args.port,
@@ -33,7 +43,7 @@ def main():
         code,count,records=DOT.query(host,1,"127.0.0.1",args.port,
                                      "dns.test.invalid",args.cafile)
         assert code==0 and count==1,(host,code,count)
-        assert any(kind==1 and socket.inet_ntoa(value)=="89.125.90.101"
+        assert any(kind==1 and socket.inet_ntoa(value)==INGRESS
                    for kind,_ttl,value in records)
         print("original_live_route_preserved_in_fixture="+host,flush=True)
     print("no_live_public_DNS_or_443_changed=yes")
