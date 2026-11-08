@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "mode": "FOREIGN_LOOPBACK_LAB_ONLY",
+  "publicDnsRewrite": false,
+  "publicIngressChange": false,
+  "listener": "127.0.0.1:15447",
+  "hosts": [
+    {
+      "host": "www.google.com",
+      "service": "Google",
+      "role": "web",
+      "source": "https://support.google.com/chrome/a/answer/6334001",
+      "status": "unverified"
+    },
+    {
+      "host": "accounts.google.com",
+      "service": "Google",
+      "role": "auth",
+      "source": "https://support.google.com/chrome/a/answer/6334001",
+      "status": "unverified"
+    },
+    {
+      "host": "aistudio.google.com",
+      "service": "Google",
+      "role": "ai-studio",
+      "source": "https://github.com/grunvald91/Mnebyvpn/pull/67",
+      "status": "unverified"
+    },
+    {
+      "host": "www.gstatic.com",
+      "service": "Google",
+      "role": "static",
+      "source": "https://support.google.com/chrome/a/answer/6334001",
+      "status": "unverified"
+    },
+    {
+      "host": "ssl.gstatic.com",
+      "service": "Google",
+      "role": "auth-static",
+      "source": "https://support.google.com/chrome/a/answer/6334001",
+      "status": "unverified"
+    },
+    {
+      "host": "oauth2.googleapis.com",
+      "service": "Google",
+      "role": "oauth-api",
+      "source": "https://support.google.com/a/users/answer/2622308",
+      "status": "unverified"
+    },
+    {
+      "host": "www.youtube.com",
+      "service": "YouTube",
+      "role": "web",
+      "source": "https://support.google.com/youtube/answer/171780",
+      "status": "unverified"
+    },
+    {
+      "host": "youtubei.googleapis.com",
+      "service": "YouTube",
+      "role": "internal-api-candidate",
+      "source": "https://github.com/grunvald91/Mnebyvpn/pull/73",
+      "status": "unverified"
+    },
+    {
+      "host": "i.ytimg.com",
+      "service": "YouTube",
+      "role": "thumbnail-candidate",
+      "source": "https://www.netify.ai/resources/applications/youtube",
+      "status": "unverified"
+    },
+    {
+      "host": "accounts.youtube.com",
+      "service": "YouTube",
+      "role": "auth-candidate",
+      "source": "https://support.google.com/chrome/a/answer/6334001",
+      "status": "unverified"
+    },
+    {
+      "host": "www.instagram.com",
+      "service": "Instagram",
+      "role": "web",
+      "source": "https://www.netify.ai/resources/hostnames/www.instagram.com",
+      "status": "unverified"
+    },
+    {
+      "host": "api.instagram.com",
+      "service": "Instagram",
+      "role": "api-candidate",
+      "source": "https://www.netify.ai/resources/hostnames/api.instagram.com",
+      "status": "unverified"
+    },
+    {
+      "host": "gateway.instagram.com",
+      "service": "Instagram",
+      "role": "gateway-candidate",
+      "source": "https://www.netify.ai/resources/hostnames/gateway.instagram.com",
+      "status": "unverified"
+    },
+    {
+      "host": "static.cdninstagram.com",
+      "service": "Instagram",
+      "role": "static-candidate",
+      "source": "https://www.netify.ai/resources/applications/instagram",
+      "status": "unverified"
+    },
+    {
+      "host": "www.facebook.com",
+      "service": "Instagram",
+      "role": "shared-login-candidate",
+      "source": "https://github.com/grunvald91/Mnebyvpn/pull/73",
+      "status": "unverified"
+    }
+  ]
+}

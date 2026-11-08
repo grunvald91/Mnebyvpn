@@ -1,0 +1,112 @@
+name: MNEBYDNS YouTube two-host real TLS and DoT localhost integration
+on:
+  push:
+    branches: ['feature/mnebydns-google-youtube-instagram-lab-20261108']
+    paths:
+      - '.github/workflows/mnebydns-youtube-two-host-integration.yml'
+      - 'ops/smart-dns-poc/check-youtube-local-integration.py'
+      - 'ops/smart-dns-poc/probe-youtube-rr.py'
+      - 'ops/smart-dns-poc/stage-youtube-exact-canary.py'
+      - 'ops/smart-dns-poc/stage-ru-access-pilot.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mnebydns-youtube-two-host-local
+  cancel-in-progress: true
+jobs:
+  localhost-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run strict real CoreDNS and Nginx integration (NO production changes)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -qq -y nginx libnginx-mod-stream
+          base="$GITHUB_WORKSPACE/ops/smart-dns-poc"
+          cd "$base"
+          python3 test-stage-youtube-exact-canary.py
+          python3 -m py_compile check-youtube-local-integration.py
+          work="/tmp/mnebydns-ci-$GITHUB_RUN_ID"
+          mkdir -m 700 -- "$work"
+          dns_pid=''
+          origin_pid=''
+          tls_pid=''
+          cleanup(){
+            rc=$?
+            trap - EXIT
+            if [[ "$rc" -ne 0 ]]; then
+              cat "$work/dns.log" "$work/origin.log" "$work/nginx.log" 2>/dev/null || true
+            fi
+            for pid in "$tls_pid" "$dns_pid" "$origin_pid"; do
+              if [[ -n "$pid" ]]; then
+                sudo kill "$pid" >/dev/null 2>&1 || true
+                wait "$pid" >/dev/null 2>&1 || true
+              fi
+            done
+            for i in $(seq 1 25); do
+              [[ -z "$(ss -H -lnt '( sport = :1855 or sport = :15448 or sport = :5355 )')" ]] && break
+              sleep 0.2
+            done
+            if [[ -n "$(ss -H -lnt '( sport = :1855 or sport = :15448 )')" ]]; then
+              echo "localhost_listener_cleanup_failed=yes"
+              rc=1
+            fi
+            rm -rf -- "$work"
+            rm -f "$base/Corefile.youtube-local" "$base/Corefile.youtube-origin-local" "$base/coredns"
+            sudo rm -rf -- "$base/certs"
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          python3 check-youtube-local-integration.py prepare --workdir "$work"
+          nginx -t -c "$work/youtube-nginx.conf"
+          sudo bash make-local-cert.sh
+          downloaded=0
+          for attempt in 1 2 3; do
+            if docker pull coredns/coredns:1.15.0 >/dev/null; then
+              downloaded=1
+              break
+            fi
+            echo "::warning::Container registry connection failed, bounded retry $attempt"
+            sleep 2
+          done
+          test "$downloaded" -eq 1
+          cid="$(docker create coredns/coredns:1.15.0)"
+          docker cp "$cid:/coredns" ./coredns
+          docker rm "$cid" >/dev/null
+          chmod 755 coredns
+          sudo chmod 755 "$GITHUB_WORKSPACE" "$(dirname "$base")" "$base"
+          for port in 1855 15448 5355; do
+            [[ -z "$(ss -H -lnt "sport = :$port")" ]]
+          done
+          sudo timeout --signal=TERM --kill-after=3s 120s \
+            setpriv --reuid 65532 --regid 65532 --clear-groups --no-new-privs \
+            ./coredns -conf Corefile.youtube-origin-local > "$work/origin.log" 2>&1 &
+          origin_pid=$!
+          sudo timeout --signal=TERM --kill-after=3s 120s \
+            setpriv --reuid 65532 --regid 65532 --clear-groups --no-new-privs \
+            ./coredns -conf Corefile.youtube-local > "$work/dns.log" 2>&1 &
+          dns_pid=$!
+          nginx -c "$work/youtube-nginx.conf" -g 'daemon off;' \
+            > "$work/nginx.log" 2>&1 &
+          tls_pid=$!
+          for i in $(seq 1 40); do
+            if ss -H -lnt 'sport = :1855' | grep -Fq 127.0.0.1:1855 &&
+               ss -H -lnt 'sport = :15448' | grep -Fq 127.0.0.1:15448 &&
+               ss -H -lnu 'sport = :5355' | grep -Fq 127.0.0.1:5355; then
+              break
+            fi
+            sleep 0.25
+          done
+          if ! ss -H -lnt 'sport = :1855' | grep -Fq 127.0.0.1:1855 ||
+             ! ss -H -lnt 'sport = :15448' | grep -Fq 127.0.0.1:15448 ||
+             ! ss -H -lnu 'sport = :5355' | grep -Fq 127.0.0.1:5355; then
+            echo "local_listeners_unavailable"
+            exit 1
+          fi
+          python3 check-youtube-local-integration.py verify
+          python3 probe-youtube-rr.py --cafile certs/dns.test.invalid.crt --port 1855
+          echo "no_public_DNS_443_or_VPN_changed=yes"

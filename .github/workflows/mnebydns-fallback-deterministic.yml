@@ -1,0 +1,130 @@
+name: MNEBYDNS deterministic encrypted DNS SERVFAIL fallback
+on:
+  push:
+    branches: ['feature/mnebydns-google-youtube-instagram-lab-20261108']
+    paths:
+      - '.github/workflows/mnebydns-fallback-deterministic.yml'
+      - 'ops/smart-dns-poc/Corefile.fallback-mock-upstreams'
+      - 'ops/smart-dns-poc/render-resolver-fallback-lab.py'
+      - 'ops/smart-dns-poc/test-resolver-fallback-lab.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  local-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Real pinned CoreDNS / three strict localhost TLS listeners
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base="$GITHUB_WORKSPACE/ops/smart-dns-poc"
+          cd "$base"
+          python3 test-resolver-fallback-lab.py
+          work="/tmp/mnebydns-ci-$GITHUB_RUN_ID"
+          mkdir -m 700 -- "$work"
+          mock_pid=''
+          main_pid=''
+          cleanup(){
+            rc=$?
+            trap - EXIT
+            if [[ "$rc" -ne 0 ]]; then
+              cat "$work/main.log" "$work/mock.log" 2>/dev/null || true
+            fi
+            for pid in "$main_pid" "$mock_pid"; do
+              if [[ -n "$pid" ]]; then
+                sudo kill "$pid" >/dev/null 2>&1 || true
+                wait "$pid" >/dev/null 2>&1 || true
+              fi
+            done
+            for i in $(seq 1 20); do
+              if [[ -z "$(ss -H -lnt '( sport = :1553 or sport = :2553 or sport = :1854 )')" ]]; then break; fi
+              sleep 0.2
+            done
+            if [[ -n "$(ss -H -lnt '( sport = :1553 or sport = :2553 or sport = :1854 )')" ]]; then
+              echo "mock_DoT_listener_cleanup_failed=yes"
+              rc=1
+            fi
+            rm -rf -- "$work"
+            rm -f "$base/Corefile.fallback-mock-main" "$base/coredns"
+            sudo rm -rf -- "$base/certs"
+            exit "$rc"
+          }
+          trap cleanup EXIT
+          python3 render-resolver-fallback-lab.py \
+            Corefile.gemini-canary "$work/Corefile.fallback.staged"
+          sudo bash make-local-cert.sh
+          sed \
+            -e 's@tls://.:853@tls://.:1854@' \
+            -e 's@bind 89.125.90.101@bind 127.0.0.1@' \
+            -e 's@/run/credentials/mnebydns-dot.service/fullchain.pem@certs/dns.test.invalid.crt@' \
+            -e 's@/run/credentials/mnebydns-dot.service/privkey.pem@certs/dns.test.invalid.key@' \
+            -e 's@tls://9.9.9.9 tls://149.112.112.112@tls://127.0.0.1:1553 tls://127.0.0.1:2553@' \
+            -e 's@tls_servername dns.quad9.net@tls_servername dns.test.invalid@' \
+            "$work/Corefile.fallback.staged" > Corefile.fallback-mock-main
+          # The local test CA is self-signed: CoreDNS's *upstream* TLS client
+          # must trust it explicitly; Python's cafile only covers the outer DoT.
+          # Production upstreams use public CAs, so this is fixture-only.
+          sed -i '/^        tls_servername dns.test.invalid$/a\        tls certs/dns.test.invalid.crt' \
+            Corefile.fallback-mock-main
+          docker pull coredns/coredns:1.15.0 >/dev/null
+          cid="$(docker create coredns/coredns:1.15.0)"
+          docker cp "$cid:/coredns" ./coredns
+          docker rm "$cid" >/dev/null
+          chmod 755 ./coredns
+          sudo chmod 755 "$GITHUB_WORKSPACE" "$(dirname "$base")" "$base"
+          for port in 1553 2553 1854; do
+            test -z "$(ss -H -lnt "sport = :$port")"
+          done
+          sudo timeout --signal=TERM --kill-after=3s 90s \
+            setpriv --reuid 65532 --regid 65532 --clear-groups --no-new-privs \
+            ./coredns -conf Corefile.fallback-mock-upstreams > "$work/mock.log" 2>&1 &
+          mock_pid=$!
+          for i in $(seq 1 40); do
+            if ss -H -lnt 'sport = :1553' | grep -Fq 127.0.0.1:1553 &&
+               ss -H -lnt 'sport = :2553' | grep -Fq 127.0.0.1:2553; then break; fi
+            sleep 0.2
+          done
+          if ! ss -H -lnt 'sport = :1553' | grep -Fq 127.0.0.1:1553 ||
+             ! ss -H -lnt 'sport = :2553' | grep -Fq 127.0.0.1:2553; then
+            cat "$work/mock.log"
+            exit 1
+          fi
+          sudo timeout --signal=TERM --kill-after=3s 90s \
+            setpriv --reuid 65532 --regid 65532 --clear-groups --no-new-privs \
+            ./coredns -conf Corefile.fallback-mock-main > "$work/main.log" 2>&1 &
+          main_pid=$!
+          for i in $(seq 1 40); do
+            ss -H -lnt 'sport = :1854' | grep -Fq 127.0.0.1:1854 && break
+            sleep 0.2
+          done
+          if ! ss -H -lnt 'sport = :1854' | grep -Fq 127.0.0.1:1854; then
+            cat "$work/main.log"
+            exit 1
+          fi
+          python3 - <<'PY'
+          import importlib.util,socket
+          spec=importlib.util.spec_from_file_location('probe','probe-gemini-canary.py')
+          probe=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(probe)
+          def a(name):
+              rcode,count,answers=probe.query(name,1,'127.0.0.1',1854,
+                                               'dns.test.invalid','certs/dns.test.invalid.crt')
+              assert rcode==0 and count==1,(name,rcode,count)
+              return socket.inet_ntoa(next(data for kind,_ttl,data in answers if kind==1))
+          for port in (1553,2553):
+              result,num,records=probe.query('fallback.example.test',1,'127.0.0.1',
+                                             port,'dns.test.invalid','certs/dns.test.invalid.crt')
+              found=[socket.inet_ntoa(v) for typ,_ttl,v in records if typ==1]
+              print(f'mock_upstream_port={port} rcode={result} answer_count={num} a={found}',flush=True)
+          assert a('fallback.example.test')=='198.51.100.25'
+          print('SERVFAIL_triggered_secondary_validated_TLS_fallback=pass')
+          assert a('primary.example.test')=='192.0.2.10'
+          print('healthy_primary_does_not_fall_through=pass')
+          assert a('gemini.google.com')=='89.125.90.101'
+          print('existing_synthetic_Gemini_exact_A_preserved=pass')
+          print('all_tests_are_localhost_only=yes')
+          print('production_DNS_untouched=yes')
+          PY
