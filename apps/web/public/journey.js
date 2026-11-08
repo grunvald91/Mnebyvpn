@@ -21,7 +21,7 @@
   }
   function getRoute() {
     const hash=location.hash;
-    if(paymentLanding && hash!=='#plans' && hash!=='#connect' && hash!=='#contact-support')return 'payment';
+    if(paymentLanding)return 'payment';
     if(hash==='#account')return 'account';
     if(hash==='#connect')return 'setup';
     if(hash==='#contact-support')return 'support';
@@ -34,6 +34,7 @@
     landing.hidden=next!=='plans';
     setup.hidden=next!=='setup';
     if(writeHash){
+      if(next!=='payment')paymentLanding=false;
       const hash=next==='payment'?'#account':next==='setup'?'#connect':
         next==='support'?'#contact-support':next==='account'?'#account':'#plans';
       if(location.hash!==hash)history.replaceState(null,'',location.pathname+location.search+hash);
