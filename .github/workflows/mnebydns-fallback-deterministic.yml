@@ -64,6 +64,11 @@ jobs:
             -e 's@tls://9.9.9.9 tls://149.112.112.112@tls://127.0.0.1:1553 tls://127.0.0.1:2553@' \
             -e 's@tls_servername dns.quad9.net@tls_servername dns.test.invalid@' \
             "$work/Corefile.fallback.staged" > Corefile.fallback-mock-main
+          # The local test CA is self-signed: CoreDNS's *upstream* TLS client
+          # must trust it explicitly; Python's cafile only covers the outer DoT.
+          # Production upstreams use public CAs, so this is fixture-only.
+          sed -i '/^        tls_servername dns.test.invalid$/a\        tls certs/dns.test.invalid.crt' \
+            Corefile.fallback-mock-main
           docker pull coredns/coredns:1.15.0 >/dev/null
           cid="$(docker create coredns/coredns:1.15.0)"
           docker cp "$cid:/coredns" ./coredns
