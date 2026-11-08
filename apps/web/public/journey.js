@@ -10,6 +10,7 @@
   const allViews=new Set(['plans','account','payment','setup','support']);
   let view='plans', lastAccount=null, chosenPlatform='android', installed=false;
   const autoSetupOrders=new Set();
+  const lastSetupAttempt=new Map();
   const request=new URL(location.href);
   const paymentReturn=['returned','return'].includes(request.searchParams.get('payment')) ||
     request.pathname==='/payment/success' || request.pathname==='/payment/return';
@@ -255,6 +256,17 @@
         void loadSubscription(entitlement.id);
       }
     }
+    // Trial activation can finish asynchronously after the initial request.
+    // Automatically fetch its verified subscription when a polling refresh
+    // reports ACTIVE, without asking the buyer to press a check button.
+    if(view==='setup'&&!state.guestSubscriptionUrl&&!state.setupLoading&&active.length){
+      const target=active[0];
+      const last=lastSetupAttempt.get(target.id)||0;
+      if(Date.now()-last>30000){
+        lastSetupAttempt.set(target.id,Date.now());
+        void loadSubscription(target.id);
+      }
+    }
     if(pendingIntent())resumeCheckout();
   }
   function loggedOut(){
@@ -295,8 +307,8 @@
       setView('account',true);
       return;
     }
-    await claimTrial();
-    setView('setup',true);
+    const result=await claimTrial();
+    setView(['GRANTED','PENDING'].includes(result)?'setup':'account',true);
   });
   setup.querySelectorAll('[data-journey-platform]').forEach(btn=>btn.addEventListener('click',()=>setPlatform(btn.dataset.journeyPlatform)));
   el('journey-installed').addEventListener('click',()=>{
