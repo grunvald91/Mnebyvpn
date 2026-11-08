@@ -99,8 +99,7 @@ cp -p -- "$base/nginx.pilot" /etc/nginx/.mnebydns-ru-access-new.conf
 mv -- /etc/nginx/.mnebydns-ru-access-new.conf "$nginx"
 nginx -t >/dev/null 2>&1
 systemctl reload nginx
-for domain in discord.com gateway.discord.gg cdn.discordapp.com \
-              www.instagram.com www.facebook.com static.cdninstagram.com; do
+for domain in discord.com gateway.discord.gg cdn.discordapp.com; do
   code=000
   for attempt in $(seq 1 16); do
     code="$(curl -4 --noproxy '*' -s -o /dev/null \
