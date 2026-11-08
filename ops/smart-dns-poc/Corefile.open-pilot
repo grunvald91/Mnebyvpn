@@ -1,0 +1,14 @@
+# Temporary/public DNS-over-TLS pilot. No Smart DNS rewriting yet.
+# No UDP/53 listener; forward over authenticated DNS-over-TLS.
+# max_concurrent limits in-flight upstream lookups, NOT per-IP QPS.
+tls://.:853 {
+    bind 89.125.90.101
+    tls /run/credentials/mnebydns-dot.service/fullchain.pem /run/credentials/mnebydns-dot.service/privkey.pem
+    cache 30
+    forward . tls://9.9.9.9 {
+        tls_servername dns.quad9.net
+        health_check 5s
+        max_concurrent 16
+        max_connect_attempts 2
+    }
+}
