@@ -104,7 +104,7 @@ def sidecar() -> str:
         "error_log stderr warn;\n"
         "events { worker_connections 96; }\n"
         "stream {\n"
-        "    resolver 9.9.9.9 ipv6=off valid=30s;\n"
+        "    resolver 127.0.0.1:5355 ipv6=off valid=30s;\n"
         "    resolver_timeout 3s;\n"
         "    map $ssl_preread_server_name $youtube_exact_target {\n"
         "        default 127.0.0.1:1;\n"
@@ -118,6 +118,27 @@ def sidecar() -> str:
         "        proxy_timeout 90s;\n"
         "        proxy_buffer_size 16k;\n"
         "        access_log off;\n"
+        "    }\n"
+        "}\n"
+    )
+
+
+def origin_dns() -> str:
+    """Isolated foreign-origin lookup: loopback DNS to authenticated DoT.
+
+    The *public* synthetic DNS responder must not be used for this lookup,
+    otherwise the proxy recursively connects to its own public ingress.
+    """
+    return (
+        "# YouTube LAB ONLY: origin DNS over authenticated Quad9 DoT\n"
+        ".:5355 {\n"
+        "    bind 127.0.0.1\n"
+        "    cache 20\n"
+        "    forward . tls://9.9.9.9 tls://149.112.112.112 {\n"
+        "        tls_servername dns.quad9.net\n"
+        "        policy sequential\n"
+        "        failover SERVFAIL\n"
+        "        max_connect_attempts 2\n"
         "    }\n"
         "}\n"
     )
@@ -149,6 +170,7 @@ def main() -> None:
         ("nginx.shared.staged", n),
         ("Corefile.staged", d),
         ("youtube.loopback.nginx.conf", relay),
+        ("youtube.origin.Corefile", origin_dns()),
     ):
         with (out / name).open("x", encoding="utf-8") as f:
             f.write(data)
