@@ -12,6 +12,7 @@
   const request=new URL(location.href);
   const paymentReturn=request.searchParams.get('payment')==='returned' ||
     request.pathname==='/payment/success' || request.pathname==='/payment/return';
+  let paymentLanding=paymentReturn;
   const urlOrder=request.searchParams.get('order');
   if(paymentReturn&&urlOrder&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(urlOrder)){
     // Untrusted navigation is only a lookup hint; /api/me owns the actual order.
@@ -19,8 +20,8 @@
     try{sessionStorage.setItem('mnebyvpn-purchase-intent',JSON.stringify(state.purchaseIntent));}catch{}
   }
   function getRoute() {
-    if(paymentReturn)return 'payment';
     const hash=location.hash;
+    if(paymentLanding && hash!=='#plans' && hash!=='#connect' && hash!=='#contact-support')return 'payment';
     if(hash==='#account')return 'account';
     if(hash==='#connect')return 'setup';
     if(hash==='#contact-support')return 'support';
@@ -202,7 +203,7 @@
         card.append(b);
       }
     });
-    if(paymentReturn){
+    if(paymentLanding){
       setView('payment');
     }else if(view==='plans'&&!location.hash&&active.length>0){
       setView('account');
@@ -220,7 +221,7 @@
     state.guestSubscriptionUrl=null;
     el('journey-setup-controls').hidden=true;
     el('journey-url').value='';
-    if(paymentReturn)setView('payment');
+    if(paymentLanding)setView('payment');
   }
   const originalRenderPlan=window.renderPlan;
   const originalRenderAccount=window.renderAccount;
@@ -256,7 +257,17 @@
     installed=true;updateSetup();el('journey-auto').focus();
   });
   el('journey-copy').addEventListener('click',()=>void copyLink(el('journey-url').value));
-  window.addEventListener('hashchange',()=>setView(getRoute()));
+  // Following My VPN from the payment wizard deliberately exits result-only mode.
+  document.querySelector('.journey-header-account')?.addEventListener('click',event=>{
+    event.preventDefault();paymentLanding=false;setView('account',true);
+  });
+  document.querySelector('.journey-back')?.addEventListener('click',event=>{
+    event.preventDefault();paymentLanding=false;setView('account',true);
+  });
+  window.addEventListener('hashchange',()=>{
+    if(location.hash==='#account' && view==='setup')paymentLanding=false;
+    setView(getRoute());
+  });
   const card=el('guest-trial-card');
   el('journey-setup-slot').append(card);
   const ua=navigator.userAgent||'';
