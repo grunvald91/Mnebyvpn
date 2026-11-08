@@ -10,10 +10,6 @@ import type {DesiredAccess,ObservedAccess,ProvisioningAdapter} from './reconcile
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FIXED_NODE_URL='http://10.66.77.1:18944/v1/provision';
 const WEB_PROFILE_HOST='cdn.servgo.ru';
-// Distinct public dial address prevents Karing's transport+server+port
-// collision between two Reality ClientHello fingerprints. Same node, keys,
-// port and TLS SNI; direct IPv4 has already passed real Xray E2E tests.
-const REALITY_VISION_DIAL_HOST='89.125.90.101';
 // One physical egress node with distinct protocol entries for comparison.
 // The 89.125.90.0/24 IP registry records country DE; this is a display label,
 // not a geolocation-based access decision.
@@ -81,8 +77,7 @@ export function makeVpnRealityImportUri(
     flow:'xtls-rprx-vision',sni:'www.cloudflare.com',
     fp:fingerprint,pbk:safe.publicKey,sid:safe.shortId,spx:'/',
   });
-  const dialHost=fingerprint==='chrome'?REALITY_VISION_DIAL_HOST:WEB_PROFILE_HOST;
-  return 'vless://'+id+'@'+dialHost+':'+safe.port+'?'+query+
+  return 'vless://'+id+'@'+WEB_PROFILE_HOST+':'+safe.port+'?'+query+
     '#'+encodeURIComponent(NODE_DISPLAY_NAME+
       (fingerprint==='firefox'?' · REALITY Firefox (TEST)':' · REALITY Vision'));
 }
