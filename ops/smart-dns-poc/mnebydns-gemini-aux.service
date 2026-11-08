@@ -1,0 +1,32 @@
+[Unit]
+Description=MNEBYDNS Gemini auxiliary SNI passthrough (loopback only)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/nginx -c /etc/mnebydns-gemini-aux/nginx.conf -g "daemon off;"
+DynamicUser=yes
+RuntimeDirectory=mnebydns-gemini-aux
+RuntimeDirectoryMode=0700
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_UNIX
+MemoryMax=96M
+CPUQuota=15%
+TasksMax=24
+LimitNOFILE=256
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=8s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

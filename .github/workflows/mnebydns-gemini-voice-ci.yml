@@ -1,0 +1,69 @@
+name: MNEBYDNS Gemini auxiliary RPC routing E2E on isolated DoT
+on:
+  push:
+    branches: ['feature/mnebydns-gemini-voice-endpoints-20261108']
+    paths:
+      - '.github/workflows/mnebydns-gemini-voice-ci.yml'
+      - 'ops/smart-dns-poc/extend-gemini-voice-rr.py'
+      - 'ops/smart-dns-poc/test-extend-gemini-voice.py'
+      - 'ops/smart-dns-poc/probe-gemini-voice.py'
+      - 'ops/smart-dns-poc/Gemini-Aux-SNI.nginx.conf'
+      - 'ops/smart-dns-poc/mnebydns-gemini-aux.service'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail-closed two-host Gemini DNS and SNI change unit tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 ops/smart-dns-poc/test-extend-gemini-voice.py
+          python3 -m py_compile ops/smart-dns-poc/probe-gemini-voice.py
+      - name: Real CoreDNS 1.15 DoT TLS and DNS record test
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base="$GITHUB_WORKSPACE/ops/smart-dns-poc"
+          cd "$base"
+          python3 - <<'PY'
+          import importlib.util,pathlib
+          root=pathlib.Path('.')
+          s=importlib.util.spec_from_file_location('ext',root/'extend-gemini-voice-rr.py')
+          assert s and s.loader
+          m=importlib.util.module_from_spec(s)
+          s.loader.exec_module(m)
+          (root/'Corefile.voice-generated').write_text(m.extend_dns((root/'Corefile.gemini-canary').read_text()))
+          PY
+          sudo bash make-local-cert.sh
+          sed -e 's@tls://.:853@tls://.:1853@' \
+            -e 's@bind 89.125.90.101@bind 127.0.0.1@' \
+            -e 's@/run/credentials/mnebydns-dot.service/fullchain.pem@certs/dns.test.invalid.crt@' \
+            -e 's@/run/credentials/mnebydns-dot.service/privkey.pem@certs/dns.test.invalid.key@' \
+            Corefile.voice-generated > Corefile.voice-local
+          docker pull coredns/coredns:1.15.0 >/dev/null
+          cid="$(docker create coredns/coredns:1.15.0)"
+          docker cp "$cid:/coredns" ./coredns
+          docker rm "$cid" >/dev/null
+          chmod 755 ./coredns
+          sudo chmod 755 "$GITHUB_WORKSPACE" "$(dirname "$base")" "$base"
+          sudo timeout --signal=TERM --kill-after=3s 90s \
+            setpriv --reuid 65532 --regid 65532 --clear-groups --no-new-privs \
+            ./coredns -conf Corefile.voice-local > /tmp/mnebydns-gemini-voice-test.log 2>&1 &
+          pid=$!
+          cleanup() { sudo kill "$pid" >/dev/null 2>&1 || true; wait "$pid" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          for i in $(seq 1 50); do
+            ss -H -lnt 'sport = :1853' | grep -q 127.0.0.1:1853 && break
+            sleep 0.2
+          done
+          if ! ss -H -lnt 'sport = :1853' | grep -q 127.0.0.1:1853; then
+            cat /tmp/mnebydns-gemini-voice-test.log
+            exit 1
+          fi
+          python3 probe-gemini-canary.py --cafile certs/dns.test.invalid.crt
+          python3 probe-gemini-voice.py --cafile certs/dns.test.invalid.crt
+          echo "gemini_aux_e2e_rr_test=PASS"
