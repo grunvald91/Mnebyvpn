@@ -33,7 +33,8 @@ test('24h Telegram trial is delivered automatically only after the final node re
   const sender={send:async(job:VpnTrialReadyNotice)=>{
     sent.push(job);return {status:'sent' as const};
   }};
-  assert.equal((await processVpnTrialReadyNotices(queue,sender)).sent,0);
+  await processVpnTrialReadyNotices(queue,sender,30);
+  assert.equal(sent.filter(x=>x.orderId===orderId).length,0);
   const observed=new Map<string,ObservedAccess>();
   const adapter:AdapterMap={vpn:{
     enforcesHardExpiry:true,
@@ -49,20 +50,22 @@ test('24h Telegram trial is delivered automatically only after the final node re
   const worker=new PgOutboxDispatcher(pool,adapter);
   assert.equal((await worker.processOnce()).status,'synced');
   assert.equal(Number((await pool.query("SELECT revision,state FROM entitlements WHERE id=$1",[entitlement])).rows[0].revision),2);
-  assert.equal((await processVpnTrialReadyNotices(queue,sender)).sent,0,
+  await processVpnTrialReadyNotices(queue,sender,30);
+  assert.equal(sent.filter(x=>x.orderId===orderId).length,0,
     'a provisional 5-minute credential is NOT proof that full 24 hours are on-node');
   assert.equal((await worker.processOnce()).status,'synced');
-  assert.equal((await processVpnTrialReadyNotices(queue,sender)).sent,1);
-  assert.equal(sent.length,1);
-  assert.equal(sent[0].orderId,orderId);
-  assert.equal(sent[0].telegramUserId,String(actor));
-  const message=trialReadyMessage(sent[0]);
+  await processVpnTrialReadyNotices(queue,sender,30);
+  const own=sent.filter(x=>x.orderId===orderId);
+  assert.equal(own.length,1);
+  assert.equal(own[0].telegramUserId,String(actor));
+  const message=trialReadyMessage(own[0]);
   assert.match(message.text,/бесплатный VPN готов/);
   assert.ok(message.reply_markup.inline_keyboard.some(row=>
     row.some(button=>button.callback_data==='nav:device:android')));
   assert.ok(message.reply_markup.inline_keyboard.some(row=>
     row.some(button=>button.callback_data==='nav:device:ios')));
-  assert.equal((await processVpnTrialReadyNotices(queue,sender)).sent,0,
+  await processVpnTrialReadyNotices(queue,sender,30);
+  assert.equal(sent.filter(x=>x.orderId===orderId).length,1,
     'repeated node polls must not send duplicate trial-ready messages');
   const states=(await pool.query('SELECT status,attempts FROM vpn_trial_ready_notifications WHERE order_id=$1',
     [orderId])).rows;
@@ -78,10 +81,9 @@ test('trial notifier rejects expired trial and disassociated Telegram owner',asy
   await pool.query("INSERT INTO entitlements(id,account_id,source_order_id,product,state,revision,starts_at,expires_at) VALUES($1,$2,$3,'vpn','EXPIRED',2,now()-interval '25 hours',now()-interval '1 hour')",[entitlement,account,order]);
   const queue=new PgVpnTrialReadyQueue(pool);
   const seen:VpnTrialReadyNotice[]=[];
-  const result=await processVpnTrialReadyNotices(queue,{send:async(job)=>{seen.push(job);return {status:'sent'};}});
-  assert.equal(result.sent,0);
+  await processVpnTrialReadyNotices(queue,{send:async(job)=>{seen.push(job);return {status:'sent'};}},30);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM vpn_trial_ready_notifications WHERE order_id=$1',[order])).rows[0].n,0);
-  assert.equal(seen.length,0);
+  assert.equal(seen.filter(x=>x.orderId===order).length,0);
 });
 
 test('Telegram trial-ready sender sends the onboarding device buttons, no bearer URL',async()=>{
