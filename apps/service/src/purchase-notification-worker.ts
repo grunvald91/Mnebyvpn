@@ -23,9 +23,9 @@ export async function runVpnTrialReadyLoop(
     try{
       const result=await processVpnTrialReadyNotices(queue,sender);
       if(Object.values(result).some(Boolean))
-        process.stdout.write('vpn-trial-ready-notifications '+JSON.stringify(result)+'\\n');
+        process.stdout.write('vpn-trial-ready-notifications '+JSON.stringify(result)+'\n');
     }catch{
-      process.stderr.write('vpn-trial-ready-notifications retry after transient failure\\n');
+      process.stderr.write('vpn-trial-ready-notifications retry after transient failure\n');
     }
     if(signal.aborted)break;
     try{await wait(5000,signal);}catch{
