@@ -12,6 +12,7 @@ import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,val
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
 import {subscriptionOwner,subscriptionLink,issueSubscriptionLinkForAccount}
   from '../../../packages/provisioning/src/subscription-links.ts';
+import {incyGoogleModeHeaders} from '../../../packages/provisioning/src/incy-google-mode.ts';
 import {
   prepareWebsiteProdamusCheckout, type PayformLinkTransport,
 } from '../../../packages/billing/src/website-checkout.ts';
@@ -481,6 +482,7 @@ async function liveVpnProfile(owner:{
 function installHtml(subUrl:string,client:'incy'|'karing'):string {
   // Both URL and client have already passed strict token/enum validation.
   const app=client==='incy'?'INCY':'Karing';
+  const isGoogleMode=subUrl.endsWith('&mode=google') && client==='incy';
   const escapedSubUrl=subUrl.replaceAll('&','&amp;');
   return '<!doctype html><html lang="ru"><head><meta charset="utf-8">'+
     '<meta name="viewport" content="width=device-width,initial-scale=1">'+
@@ -489,6 +491,10 @@ function installHtml(subUrl:string,client:'incy'|'karing'):string {
     '<link rel="stylesheet" href="/neo.css"></head>'+
     '<body style="margin:0"><main data-client="'+client+'" data-sub="'+escapedSubUrl+'">'+
     '<h1>Подключить VPN в '+app+'</h1>'+
+    (isGoogleMode?
+      '<p>Выборочный режим: Gemini, Google Play Services и другие приложения Google '+
+      'через зарубежный VPN; прочие приложения напрямую. Значок VPN останется включённым. '+
+      'Не используйте «Блокировать соединения без VPN» с этим режимом.</p>':'')+
     '<p>Пробуем открыть '+app+' автоматически. Если переход не произошёл, нажмите кнопку ниже.</p>'+
     '<p><button id="open-app" type="button">Открыть в '+app+'</button></p>'+
     '<p>Если приложение не открылось — скопируйте ссылку и вставьте её в '+app+
@@ -541,10 +547,12 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       // remain on WS/TLS until Reality Vision compatibility is verified.
       // Only server-verified signed profiles may appear in this group.
       const requestedClient=url.searchParams.get('client');
-      if(url.searchParams.size>1||
-         [...url.searchParams.keys()].some(k=>k!=='client')||
-         (requestedClient!==null&&requestedClient!=='incy'&&requestedClient!=='karing')){
-        json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
+      const requestedMode=url.searchParams.get('mode');
+      if(url.searchParams.size>(requestedMode===null?1:2)||
+         [...url.searchParams.keys()].some(k=>k!=='client'&&k!=='mode')||
+         (requestedClient!==null&&requestedClient!=='incy'&&requestedClient!=='karing')||
+         (requestedMode!==null&&(requestedMode!=='google'||requestedClient!=='incy'))){
+        json(res,400,{code:'UNSUPPORTED_VPN_CLIENT_OR_MODE'});return;
       }
       const profile=requestedClient==='karing'
         ?nodeProfile.split('\n').at(-1)!
@@ -554,7 +562,14 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       res.setHeader('subscription-userinfo',
         'upload=0; download=0; total=0; expire='+
         Math.floor(owner.expiresAt.getTime()/1000));
-      res.setHeader('profile-title','base64:'+Buffer.from('MNEBYVPN').toString('base64'));
+      res.setHeader('profile-title','base64:'+Buffer.from(
+        requestedMode==='google'?'MNEBYVPN GOOGLE':'MNEBYVPN').toString('base64'));
+      // Only a specifically opted-in INCY Android subscription changes the
+      // VpnService per-app list. Never force it onto existing live links.
+      for(const [key,value] of Object.entries(
+        incyGoogleModeHeaders(requestedClient,requestedMode))){
+        res.setHeader(key,value);
+      }
       send(res,200,Buffer.from(profile+'\n','utf8').toString('base64')+'\n',
         'text/plain; charset=utf-8');
     }catch{
@@ -568,10 +583,15 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const owner=await subscriptionOwner(subscriptionPool,installMatch[1]);
     if(!owner){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
     const client=url.searchParams.get('client');
-    if(client!=='incy'&&client!=='karing'){
-      json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
+    const mode=url.searchParams.get('mode');
+    if((client!=='incy'&&client!=='karing')||
+       (mode!==null&&(mode!=='google'||client!=='incy'))||
+       url.searchParams.size>(mode===null?1:2)||
+       [...url.searchParams.keys()].some(k=>k!=='client'&&k!=='mode')){
+      json(res,400,{code:'UNSUPPORTED_VPN_CLIENT_OR_MODE'});return;
     }
-    send(res,200,installHtml(subscriptionLink(installMatch[1])+'?client='+client,client),
+    send(res,200,installHtml(subscriptionLink(installMatch[1])+'?client='+client+
+      (mode==='google'?'&mode=google':''),client),
       'text/html; charset=utf-8');
     return;
   }
