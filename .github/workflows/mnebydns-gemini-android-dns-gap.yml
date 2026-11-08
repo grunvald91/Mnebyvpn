@@ -1,3 +1,4 @@
+# Post-cutover 2026-11-09 independent audit: verify all 34 Gemini hosts after live 60-host canary.
 name: MNEBYDNS Gemini Android live DNS-only gap audit
 on:
   push:
