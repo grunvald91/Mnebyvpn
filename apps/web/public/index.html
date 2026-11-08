@@ -328,7 +328,18 @@
       <p>У нас уже есть механизм учёта приглашений в боте. Реферальные бонусы за покупки друзей готовим отдельно: пока дни или деньги за приглашение не начисляются.</p>
       <p>Планируем поощрять и пригласившего, и нового покупателя после подтверждённой первой оплаты. Размер награды и условия объявим до запуска.</p>
       <a class="button button-secondary about-share" href="https://t.me/share/url?url=https%3A%2F%2Ft.me%2FMNEBYVPN_bot&amp;text=MNEBYVPN%20%E2%80%94%20%D0%BF%D1%80%D0%BE%D1%81%D1%82%D0%BE%D0%B9%20VPN" target="_blank" rel="noopener noreferrer">Поделиться ботом</a>
-      <p class="about-muted">Эта обычная ссылка на бота не является персональным реферальным кодом.</p>
+      <div class="about-invite">
+        <button class="button button-primary" type="button" id="about-personal-invite">Получить мою ссылку</button>
+        <p id="about-invite-status" role="status" aria-live="polite">Персональное приглашение учитывает покупки друзей. Начисление бонусов пока не запущено.</p>
+        <div id="about-invite-ready" hidden>
+          <input id="about-invite-url" type="text" readonly aria-label="Моя реферальная ссылка">
+          <div class="about-invite-actions">
+            <button class="button button-secondary" type="button" id="about-invite-copy">Копировать</button>
+            <a class="button button-outline" id="about-invite-share" rel="noopener noreferrer" target="_blank">Поделиться</a>
+          </div>
+        </div>
+      </div>
+      <p class="about-muted">Кнопка выше ведёт к обычному боту. Для личного приглашения получите свою ссылку после входа.</p>
     </section>
     <section id="about-panel-roadmap" class="about-tab-panel" role="tabpanel" aria-labelledby="about-tab-roadmap" data-about-panel="roadmap" hidden>
       <h3>К чему идём</h3>
