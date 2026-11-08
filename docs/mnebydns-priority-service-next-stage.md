@@ -86,3 +86,35 @@ The first runnable two-host YouTube canary now has a [dedicated **passing** Core
 The next release action is a separate *operator-controlled limited pilot* after an audited production configuration backup and rollback watchdog. Only www.youtube.com and youtubei.googleapis.com would be admitted initially, with TLS handshake validation from Russian ingress, existing Gemini/Discord health and recovery on any failing condition. In the first pilot, do NOT promise streaming or accelerate video CDNs; collect consented user playback measurements without individual video URLs or cookies.
 
 A single-time CI pass is not a production release gate. Recheck the branch and CI at current head before considering any rollout.
+
+## Broad Google ecosystem policy: user decision, Nov 8
+
+**User preference updated:** route the entire known Google / Gemini / YouTube domain ecosystem through the foreign SNI proxy rather than cherry-picking a few endpoints. A small exact-host-only trial is insufficient for dynamic Googlevideo media names, Youtube thumbnails and Android Gemini dependencies. This is a **Google suffix policy**, not an arbitrary proxy for unrelated hostnames.
+
+### Implemented (STAGING ONLY)
+
+The generator ops/smart-dns-poc/stage-google-ecosystem-suffix.py adds 22 bounded domain suffix families including google.com, googleapis.com, gstatic.com, googleusercontent.com, googlevideo.com, youtube.com, ytimg.com, ggpht.com, youtu.be and other related domains. Each suffix includes all its subdomains. Other traffic remains with the existing DNS service. Existing exact Gemini and Discord rules remain intact. Do not substitute this draft for production CoreDNS or Nginx configs.
+
+- Synthetic DNS-over-TLS A answers target the foreign HTTPS ingress; AAAA, CNAME and HTTPS/SVCB for those same Google names receive empty responses to prevent IPv6/HTTPS routing bypass.
+- Existing public Nginx stream SNI map gains one suffix-regex rule pointing only to a new loopback port. Existing exact SNI entries have priority and are retained byte-for-byte.
+- The isolated sidecar forwards original encrypted TCP/TLS streams by SNI to the **real** Google hostname. No SSL interception, CA substitution or HTTP inspection. Any non-Google SNI is denied.
+- A separate localhost-only origin DNS resolver uses authenticated Quad9 DoT, not the public synthetic Google A mapping. This prevents recursive routing to the proxy itself and avoids unencrypted DNS for origin resolution.
+- A global catchall or dynamic arbitrary-host proxy was **not** created. Unverified third-party CDN infrastructure and Google Cloud customer-operated app hostnames are outside the static suffix list until ownership and routing are grounded.
+
+**Passing integration**: https://github.com/grunvald91/Mnebyvpn/actions/runs/42483424292 . This ran real pinned CoreDNS 1.15.0 and Nginx, 6 security unit tests, 17 expected Google synthetic A plus AAAA/CNAME/HTTPS/SVCB policies, 7 genuine origin TLS certificates, preserved original Discord DNS and rejected three unrelated SNI names. Both DNS and proxy bound only to localhost and all ephemeral listeners were cleaned up. The staging does not change live production.
+
+Sources and implementation constraints: 
+- Google official Gemini connectivity list: https://knowledge.workspace.google.com/admin/generative-ai/gemini-app/gemini-app-firewall-settings
+- CoreDNS template and fallthrough behavior: https://coredns.io/plugins/template/
+- Nginx stream map priority and regex: https://nginx.org/en/docs/stream/ngx_stream_map_module.html
+- Nginx encrypted original-TLS SNI inspection: https://nginx.org/en/docs/stream/ngx_stream_ssl_preread_module.html
+
+### Release blockers and honest limits
+
+1. No successful fresh **production** dry-run of broad suffix rules against the current foreign live config has been recorded. Do not treat the localhost CI as validation of production compatibility or as an authorization to restart the shared public Nginx/DoT/other VPS services.
+2. The previous Gemini RPC pair is not known to fix Android Gemini voice, and was actively rolled back after the user observed an earlier Android error. Broad rerouting is a new hypothesis and can trigger regional/identity challenges. Validate Google login, Gemini text, Gemini browser voice and Android app voice independently.
+3. DNS does NOT conceal the user's region on its own; the user-facing origin IP becomes foreign **only** when the matching SNI connection successfully uses the foreign egress. Google may additionally infer country from the signed-in account, SIM, device signals, GPS, cookies, or request data. Never promise that all Google apps will see a foreign location.
+4. This proxy handles TCP/443, **not QUIC/HTTP3 UDP/443**. Dynamic googlevideo media host DNS was proven syntactically, not live playback. Media speed tests from a real Russian carrier/Android are still required. Only a supported client VPN transport can guarantee routing of unsupported traffic.
+5. A wildcard Google route increases server traffic and abuse surface. Before global enablement: resource budget, access controls, per-client quotas or equivalent protections, backups and snapshot-aware watchdog rollback, preflight of live shared Nginx map, DNS and foreign-origin resolution, Russian-side strict TLS, and Android end-to-end verification.
+
+**Status at 2026-11-08:** staged code and tests PASS; production unchanged, Gemini Android voice and YouTube image/video playback unverified. Do not advertise these features as already fixed.
