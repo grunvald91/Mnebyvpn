@@ -1,0 +1,30 @@
+name: MNEBYDNS Google route candidate security contracts
+on:
+  push:
+    branches: ['feature/mnebydns-google-sni-isolated-20261108']
+    paths:
+      - '.github/workflows/mnebydns-google-policy-tests.yml'
+      - 'ops/smart-dns-poc/Google-SNI-staging.nginx.conf'
+      - 'ops/smart-dns-poc/test-google-sni-staging.py'
+      - 'packages/dns-policy/src/google-service-candidates.ts'
+      - 'tests/google-service-candidates.test.ts'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify Google candidate list cannot accidentally route without approval
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types --test tests/google-service-candidates.test.ts
+      - name: Verify passthrough does not create public or wildcard proxy
+        run: |
+          set -euo pipefail
+          python3 ops/smart-dns-poc/test-google-sni-staging.py
