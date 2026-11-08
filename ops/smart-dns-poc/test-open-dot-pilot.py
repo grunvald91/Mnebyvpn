@@ -11,6 +11,7 @@ class PublicDoTPilotTests(unittest.TestCase):
     def setUpClass(cls):
         cls.core = (HERE / "Corefile.open-pilot").read_text()
         cls.service = (HERE / "mnebydns-dot.service").read_text()
+        cls.deploy = (HERE / "deploy-open-dot-pilot.sh").read_text()
 
     def test_no_insecure_dns_or_interception(self):
         self.assertIn("tls://.:853", self.core)
@@ -40,6 +41,21 @@ class PublicDoTPilotTests(unittest.TestCase):
         self.assertNotIn("ExecStartPre=/usr/sbin/nft", self.service)
         self.assertNotIn("nginx", self.service)
         self.assertNotIn("docker", self.service)
+
+    def test_deploy_is_reversible_and_scoped(self):
+        for required in (
+            'trap cleanup EXIT', 'MemoryMax=160M', 'CPUQuota=20%',
+            'systemctl start mnebydns-dot.service',
+            'systemctl stop mnebydns-dot.service',
+            'systemctl daemon-reload',
+            'test -z "$(ss -H -lnt', 'nginx -t',
+        ):
+            self.assertIn(required, self.deploy)
+        self.assertNotIn("systemctl restart nginx", self.deploy)
+        self.assertNotIn("systemctl stop nginx", self.deploy)
+        self.assertNotIn("iptables -F", self.deploy)
+        self.assertNotIn("nft flush ruleset", self.deploy)
+        self.assertNotIn("systemctl enable mnebydns-dot.service", self.deploy)
 
 
 if __name__ == "__main__":
