@@ -163,7 +163,7 @@
     try{await navigator.clipboard.writeText(value);toast('Ссылка скопирована.');}
     catch{const input=el('journey-url');input.focus();input.select();toast('Скопируйте выделенную ссылку.');}
   }
-  async function copyEntitlement(id) {
+  async function copyEntitlement(id,field) {
     if(!state.loggedIn||!state.csrf)return;
     try{
       const res=await api('/api/vpn/subscription',{method:'POST',
@@ -173,6 +173,7 @@
       // Show the actual field for fallback copy in browsers that disallow clipboard.
       state.guestSubscriptionUrl=res.subscriptionUrl;
       el('journey-url').value=res.subscriptionUrl;
+      if(field)field.value=res.subscriptionUrl;
       await copyLink(res.subscriptionUrl);
     }catch{toast('Не удалось получить ссылку. Откройте «Как подключить».');}
   }
@@ -196,11 +197,18 @@
       const existing=card.querySelector('.setup-button');
       if(existing)existing.textContent='Как подключить';
       if(!card.querySelector('.journey-copy-access')){
+        const wrapper=document.createElement('div');
+        wrapper.className='journey-account-link';
+        const field=document.createElement('input');
+        field.type='text';field.readOnly=true;
+        field.setAttribute('aria-label','Ссылка для ручного добавления VPN');
+        field.placeholder='Персональная ссылка — показать и копировать';
         const b=document.createElement('button');
         b.type='button';b.className='button button-secondary journey-copy-access';
-        b.textContent='Копировать ссылку';
-        b.addEventListener('click',()=>void copyEntitlement(data.id));
-        card.append(b);
+        b.textContent='Показать и копировать';
+        b.addEventListener('click',()=>void copyEntitlement(data.id,field));
+        wrapper.append(field,b);
+        card.append(wrapper);
       }
     });
     if(paymentLanding){
