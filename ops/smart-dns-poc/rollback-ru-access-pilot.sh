@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Restore only the exact MNEBYDNS six-host access canary; no unrelated services.
+# Restore only the exact MNEBYDNS Discord pilot; no unrelated services.
 set -Eeuo pipefail
 (( EUID == 0 )) || exit 2
 [[ $# -eq 1 && "$1" =~ ^/opt/mnebydns-ru-access-backups/[0-9]+$ ]] || exit 2
@@ -11,7 +11,7 @@ for suffix in nginx.before nginx.pilot dns.before dns.pilot; do
 done
 exec 9>/run/lock/mnebyvpn-public-route.lock
 flock -w 12 9 || { echo "rollback_lock_unavailable"; exit 2; }
-test -f "$map" && test -f "$dns" && ! -L "$map" && ! -L "$dns"
+[[ -f "$map" && -f "$dns" && ! -L "$map" && ! -L "$dns" ]]
 if ! cmp -s "$map" "$base/nginx.pilot" && ! cmp -s "$map" "$base/nginx.before"; then
   echo "refuse_to_overwrite_newer_nginx_revision"; exit 2
 fi
