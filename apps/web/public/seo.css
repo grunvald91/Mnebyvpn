@@ -19,3 +19,9 @@
 .seo-links{padding-top:40px;padding-bottom:60px}
 .seo-links .feature-card a{color:var(--teal);text-decoration:underline;text-underline-offset:4px}
 @media(max-width:640px){.seo-main{padding-top:22px;padding-bottom:42px}.seo-article{padding:24px 18px}.seo-related ul{grid-template-columns:1fr}.seo-links{padding-top:28px;padding-bottom:44px}}
+
+
+.seo-link-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.seo-link-grid a{display:flex;align-items:center;min-height:56px;padding:14px 20px;background:rgba(16,27,46,.8);border:1px solid var(--line);border-radius:16px;color:var(--teal);font-weight:650;text-decoration:none}
+.seo-link-grid a:hover,.seo-link-grid a:focus-visible{border-color:var(--teal);background:rgba(20,42,62,.95)}
+@media(max-width:640px){.seo-link-grid{grid-template-columns:1fr}}
