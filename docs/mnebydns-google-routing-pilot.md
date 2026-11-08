@@ -1,6 +1,6 @@
 # MNEBYDNS Google selective HTTPS routing — first stage
 
-**2026-11-08: ISOLATED SNI PROTOTYPE. NOT DEPLOYED TO PUBLIC TCP/443. NO DNS REWRITE ACTIVE.**
+**2026-11-08: ISOLATED SNI PROTOTYPE SUCCESSFULLY TESTED ON THE REAL FOREIGN VPS. NOT DEPLOYED TO PUBLIC TCP/443. NO DNS REWRITE ACTIVE.** The test ran on private localhost 15443, with successful origin TLS/HTTPS for eight exact hostnames, unknown SNI rejected, and temporary listener cleaned up. [Actual foreign test log](https://github.com/grunvald91/telegram-proxy-infra/actions/runs/42458771724).
 
 The goal is to send selected Google TCP/TLS connections from a user device to the foreign VPS while keeping application-to-Google TLS end-to-end. Merely forwarding encrypted DNS does **not** change the website-observed client IP. Public DNS at `dns.mnebyvpn.site:853` is currently a normal encrypted resolver only.
 
