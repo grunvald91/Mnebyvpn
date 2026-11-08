@@ -420,8 +420,7 @@ function validNodeVpnProfile(value:unknown):value is string {
   for(const link of links){
     let uri:URL;
     try{uri=new URL(link);}catch{return false;}
-    if(uri.protocol!=='vless:'||
-       !['cdn.servgo.ru','89.125.90.101'].includes(uri.hostname)||
+    if(uri.protocol!=='vless:'||uri.hostname!=='cdn.servgo.ru'||
        !credentialPattern.test(uri.username)||uri.password||
        uri.searchParams.get('encryption')!=='none')return false;
     if(credential&&uri.username!==credential)return false;
@@ -431,7 +430,7 @@ function validNodeVpnProfile(value:unknown):value is string {
     if(keys.size!==p.size)return false;
     if(uri.port==='8443'){
       const expected=['encryption','security','type','host','sni','path'];
-      if(uri.hostname!=='cdn.servgo.ru'||expected.some(k=>!keys.has(k))||keys.size!==expected.length||
+      if(expected.some(k=>!keys.has(k))||keys.size!==expected.length||
          p.get('security')!=='tls'||p.get('type')!=='ws'||
          p.get('host')!=='cdn.servgo.ru'||p.get('sni')!=='cdn.servgo.ru'||
          p.get('path')!=='/mnebyvpn-vpn/ws')return false;
@@ -439,8 +438,6 @@ function validNodeVpnProfile(value:unknown):value is string {
     }else if(uri.port==='2053'){
       const expected=['encryption','security','type','flow','sni','fp','pbk','sid','spx'];
       if(expected.some(k=>!keys.has(k))||keys.size!==expected.length||
-         (p.get('fp')==='chrome'&&uri.hostname!=='89.125.90.101')||
-         (p.get('fp')==='firefox'&&uri.hostname!=='cdn.servgo.ru')||
          p.get('security')!=='reality'||p.get('type')!=='tcp'||
          p.get('flow')!=='xtls-rprx-vision'||
          p.get('sni')!=='www.cloudflare.com'||
@@ -459,6 +456,25 @@ function validNodeVpnProfile(value:unknown):value is string {
   const shape=variants.join(',');
   return shape==='ws'||shape==='reality_chrome,ws'||
     shape==='reality_chrome,reality_firefox,ws';
+}
+/** Preserve the signed node configuration and existing working WS profile.
+ * Karing uses type+server+port for disabled-node bookkeeping, which collides
+ * for Chrome and Firefox if both Reality fingerprints dial the same host:2053.
+ * Use the existing verified public IPv4 only for Chrome; Firefox keeps the
+ * canonical domain. Both still reach the same node and use the same UUID/SNI.
+ * This changes only subscription import URLs, not any live Xray service.
+ */
+function stableMultiClientVpnProfile(nodeProfile:string):string {
+  return nodeProfile.split('\n').map(link=>{
+    const url=new URL(link);
+    if(url.port==='2053' && url.hostname==='cdn.servgo.ru' &&
+       url.searchParams.get('security')==='reality' &&
+       url.searchParams.get('fp')==='chrome'){
+      url.hostname='89.125.90.101';
+      return url.toString();
+    }
+    return link;
+  }).join('\n');
 }
 async function liveVpnProfile(owner:{
   telegramUserId:number|null;entitlementId:string;
@@ -549,7 +565,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
          (requestedClient!==null&&requestedClient!=='incy'&&requestedClient!=='karing')){
         json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
       }
-      const profile=nodeProfile;
+      const profile=stableMultiClientVpnProfile(nodeProfile);
       // Standard V2Ray base64 subscription: clients repeatedly fetch this URL.
       // Network revocation is enforced both in DB and by the real Xray node.
       res.setHeader('subscription-userinfo',
