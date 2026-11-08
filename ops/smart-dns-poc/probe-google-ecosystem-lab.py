@@ -34,6 +34,8 @@ SYNTHETIC=(
     "fonts.gstatic.com",
     "lh3.googleusercontent.com",
     "googleads.g.doubleclick.net",
+    "WWW.YouTube.COM", "JNN-PA.GOOGLEAPIS.COM",
+    "R1---SN-Video.Googlevideo.com",
 )
 TLS_ORIGINS=(
     "gemini.google.com",
@@ -43,6 +45,7 @@ TLS_ORIGINS=(
     "i.ytimg.com",
     "www.gstatic.com",
     "apis.google.com",
+    "WWW.YouTube.COM",
 )
 OUTSIDE=("example.org","cloudflare.com")
 
