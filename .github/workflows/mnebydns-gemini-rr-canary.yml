@@ -6,6 +6,8 @@ on:
       - '.github/workflows/mnebydns-gemini-rr-canary.yml'
       - 'ops/smart-dns-poc/Corefile.gemini-canary'
       - 'ops/smart-dns-poc/probe-gemini-canary.py'
+      - 'ops/smart-dns-poc/patch-gemini-sni.py'
+      - 'ops/smart-dns-poc/test-patch-gemini-sni.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -15,6 +17,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - name: Review production SNI map transformer against synthetic 26-route fixture
+        run: python3 ops/smart-dns-poc/test-patch-gemini-sni.py
       - name: Validate full DNS A, AAAA, HTTPS/SVCB and normal upstream
         shell: bash
         run: |
