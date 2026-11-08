@@ -93,6 +93,7 @@ jobs:
           {
             printf 'load_module /usr/lib/nginx/modules/ngx_stream_module.so;\n'
             printf 'worker_processes 1;\n'
+            printf 'pid %s;\n' "$work/nginx-shared.pid"
             printf 'events { worker_connections 80; }\n'
             cat "$work/shared-nginx.staged"
           } > "$work/nginx-shared-syntax.conf"
