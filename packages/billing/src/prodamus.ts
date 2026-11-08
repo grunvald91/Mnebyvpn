@@ -86,6 +86,11 @@ export function buildProdamusLinkRequest(order: ProdamusOrder, title: string, cf
   const success=new URL(cfg.successUrl);
   success.searchParams.set('payment','returned');
   success.searchParams.set('order',order.id);
+  // A return without payment is distinct from paid success. Both still
+  // require an authenticated, signed-webhook-backed status lookup.
+  const ret=new URL(cfg.returnUrl);
+  ret.searchParams.set('payment','return');
+  ret.searchParams.set('order',order.id);
   const data: Fields = {
     do: 'link',
     order_id: order.id,
@@ -95,7 +100,7 @@ export function buildProdamusLinkRequest(order: ProdamusOrder, title: string, cf
     ...(cfg.sys ? {sys:cfg.sys,urlNotification:cfg.notificationUrl} : {}),
     ...(customerEmail ? { customer_email: customerEmail } : {}),
     urlSuccess: success.toString(),
-    urlReturn: cfg.returnUrl,
+    urlReturn: ret.toString(),
   };
   const params = new URLSearchParams();
   function flatten(k: string, val: Field): void {
