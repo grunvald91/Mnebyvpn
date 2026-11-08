@@ -2,7 +2,13 @@ name: MNEBYDNS DoT source ACL pilot test (isolated)
 on:
   push:
     branches: ['feature/mnebydns-android-dot-pilot-20261108']
-    paths: ['.github/workflows/mnebydns-acl-pilot.yml']
+    paths:
+      - '.github/workflows/mnebydns-acl-pilot.yml'
+      - 'ops/smart-dns-poc/Corefile.acl-test'
+      - 'ops/smart-dns-poc/probe-acl.py'
+      - 'ops/smart-dns-poc/run-acl-pilot-test.sh'
+      - 'ops/smart-dns-poc/render-android-pilot.py'
+      - 'ops/smart-dns-poc/test-render-android-pilot.py'
   workflow_dispatch:
 permissions:
   contents: read
