@@ -53,7 +53,13 @@ jobs:
         run: |
           set -euo pipefail
           docker compose -f ops/smart-dns-poc/compose.foreign.yaml up -d --pull missing
-          test "$(ss -H -lnt 'sport = :1853' | awk '{print $4}')" = "127.0.0.1:1853"
+          bound=""
+          for attempt in {1..30}; do
+            bound="$(ss -H -lnt 'sport = :1853' | awk '{print $4}')"
+            [[ -n "$bound" ]] && break
+            sleep 0.2
+          done
+          test "$bound" = "127.0.0.1:1853"
           python3 ops/smart-dns-poc/probe-dot.py
           docker compose -f ops/smart-dns-poc/compose.foreign.yaml stats --no-stream
       - name: Always stop foreign host-loopback profile
