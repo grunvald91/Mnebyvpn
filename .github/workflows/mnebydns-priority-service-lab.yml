@@ -8,6 +8,8 @@ on:
       - 'ops/smart-dns-poc/priority-service-sni-lab.py'
       - 'ops/smart-dns-poc/probe-priority-service-sni-lab.py'
       - 'ops/smart-dns-poc/probe-priority-public-dot.py'
+      - 'ops/smart-dns-poc/compare-priority-ru-tls.py'
+      - 'ops/smart-dns-poc/test-compare-priority-ru-tls.py'
       - 'ops/smart-dns-poc/render-resolver-fallback-lab.py'
       - 'ops/smart-dns-poc/test-resolver-fallback-lab.py'
       - 'ops/smart-dns-poc/test-priority-service-sni-lab.py'
@@ -27,6 +29,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 ops/smart-dns-poc/test-priority-service-sni-lab.py
+          python3 ops/smart-dns-poc/test-compare-priority-ru-tls.py
+          python3 -m py_compile ops/smart-dns-poc/compare-priority-ru-tls.py
           python3 -m py_compile ops/smart-dns-poc/priority-service-sni-lab.py
           python3 -m py_compile ops/smart-dns-poc/probe-priority-service-sni-lab.py
       - name: Exercise real origin TLS with SNI through local TCP proxy
