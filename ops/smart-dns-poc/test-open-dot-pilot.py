@@ -30,7 +30,7 @@ class PublicDoTPilotTests(unittest.TestCase):
         for required in (
             "CPUQuota=20%", "MemoryMax=160M", "MemoryHigh=112M",
             "TasksMax=48", "Restart=on-failure", "NoNewPrivileges=yes",
-            "User=nobody", "ProtectSystem=strict",
+            "DynamicUser=yes", "ProtectSystem=strict",
             "LoadCredential=fullchain.pem:", "LoadCredential=privkey.pem:",
             "Environment=GOMEMLIMIT=96MiB",
             "LimitNOFILE=256",
