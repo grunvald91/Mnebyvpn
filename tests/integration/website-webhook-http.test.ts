@@ -174,3 +174,43 @@ test('signed cookie not in server ledger cannot access account; logout revokes i
   assert.equal(logout.status,200);
   assert.equal((await fetch(base+'/api/me',{headers})).status,401);
 });
+
+
+test('SEO HTTP routes serve robots, sitemap, valid structured data and safe headers',async()=>{
+  const origin='http://127.0.0.1:'+port;
+  const seoPaths=[
+    '/vpn','/smart-dns','/vpn-android','/vpn-iphone','/private-dns-android',
+    '/youtube','/instagram','/telegram','/google-gemini','/ai-services',
+  ];
+  const sitemapResponse=await fetch(origin+'/sitemap.xml');
+  assert.equal(sitemapResponse.status,200);
+  assert.match(sitemapResponse.headers.get('content-type')??'',/application\/xml/);
+  const sitemap=await sitemapResponse.text();
+  for(const path of ['/', '/terms', '/privacy',...seoPaths]){
+    assert.ok(sitemap.includes('<loc>'+origin+path+'</loc>'),'Missing '+path);
+  }
+  assert.ok(!sitemap.includes('/sub/'));
+  const robotsResponse=await fetch(origin+'/robots.txt');
+  assert.equal(robotsResponse.status,200);
+  assert.match(await robotsResponse.text(),/Disallow: \/sub\/([\r\n]|$)/);
+  for(const path of seoPaths){
+    const response=await fetch(origin+path);
+    assert.equal(response.status,200,path+' status');
+    assert.match(response.headers.get('content-type')??'',/text\/html/);
+    const html=await response.text();
+    assert.ok(html.includes('rel="canonical" href="'+origin+path+'"'));
+    assert.match(html,/name="description"/);
+    assert.match(html,/<h1>/);
+    const content=/<script type="application\/ld\+json">([^<]*)<\/script>/.exec(html)?.[1];
+    assert.ok(content,'JSON-LD missing on '+path);
+    const hash=createHash('sha256').update(content,'utf8').digest('base64');
+    const csp=response.headers.get('content-security-policy')??'';
+    assert.ok(csp.includes("'sha256-"+hash+"'"),'Missing JSON-LD CSP hash on '+path);
+    assert.ok(!csp.includes("'unsafe-inline'"));
+  }
+  const css=await fetch(origin+'/seo.css');
+  assert.equal(css.status,200);
+  assert.match(css.headers.get('content-type')??'',/text\/css/);
+  const api=await fetch(origin+'/api/plans');
+  assert.equal(api.headers.get('x-robots-tag'),'noindex, nofollow, noarchive');
+});
