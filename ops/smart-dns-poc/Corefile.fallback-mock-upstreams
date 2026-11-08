@@ -1,0 +1,29 @@
+# Local-only deterministic upstream fixtures for CoreDNS forward SERVFAIL.
+# NO public listener. Both upstreams present the same test CA/SAN so that
+# the client independently validates genuine TLS without system trust changes.
+tls://.:1553 {
+    bind 127.0.0.1
+    tls certs/dns.test.invalid.crt certs/dns.test.invalid.key
+
+    template IN A fallback.example.test {
+        match ^fallback[.]example[.]test[.]$
+        rcode SERVFAIL
+    }
+    template IN A primary.example.test {
+        match ^primary[.]example[.]test[.]$
+        answer "{{ .Name }} 20 IN A 192.0.2.10"
+    }
+}
+tls://.:2553 {
+    bind 127.0.0.1
+    tls certs/dns.test.invalid.crt certs/dns.test.invalid.key
+
+    template IN A fallback.example.test {
+        match ^fallback[.]example[.]test[.]$
+        answer "{{ .Name }} 20 IN A 198.51.100.25"
+    }
+    template IN A primary.example.test {
+        match ^primary[.]example[.]test[.]$
+        answer "{{ .Name }} 20 IN A 198.51.100.25"
+    }
+}
