@@ -114,6 +114,8 @@ export async function deviceView(pool:Pool,userId:number,name:string):
     ...(info.alternate?[[{text:info.alternateText!,url:info.alternate}]]:[]),
     [{text:'⚡ Добавить подписку автоматически',
       url:installerLink(issued.token,info.client)}],
+    ...(name==='android'?[[{text:'✨ Google и Gemini · только Google через VPN',
+      url:installerLink(issued.token,'incy','google')}]]:[]),
     [{text:'📋 Копировать ссылку',copy_text:{text:issued.link}}],
     [{text:'🛠 Ручная настройка',callback_data:'nav:manual'}],
     [{text:'↩️ Другое устройство',callback_data:'nav:connect'}],[home],
@@ -125,6 +127,11 @@ export async function deviceView(pool:Pool,userId:number,name:string):
     '3. Выберите «MNEBYVPN» и включите VPN.\n\n'+
     'Если приложение не открылось, скопируйте ссылку подписки и вставьте '+
     'её через «Добавить подписку / Импорт из URL».\n\n'+
+    (name==='android'?'\n\n✨ Режим Google — отдельное подключение INCY: '+
+      'Gemini и основные приложения/службы Google используют VPN, '+
+      'остальные приложения — обычную сеть. Значок VPN при этом остаётся включённым. '+
+      'Не включайте «Блокировать соединения без VPN» в этом выборочном режиме: '+
+      'это отключит доступ остальным приложениям.':'')+
     '🔐 Персональную ссылку никому не пересылайте.',
     buttons);
 }
