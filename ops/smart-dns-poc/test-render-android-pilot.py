@@ -13,10 +13,10 @@ spec.loader.exec_module(mod)
 
 class PilotConfigTests(unittest.TestCase):
     def test_allow_one_source_and_deny_everyone_else(self):
-        config = mod.render("89.125.90.101", "203.0.113.42")
+        config = mod.render("9.9.9.9", "8.8.4.4")
         self.assertIn("tls://.:853", config)
-        self.assertIn("bind 89.125.90.101", config)
-        self.assertIn("allow net 203.0.113.42/32\n        block", config)
+        self.assertIn("bind 9.9.9.9", config)
+        self.assertIn("allow net 8.8.4.4/32\n        block", config)
         self.assertIn("tls /etc/mnebydns/certs/fullchain.pem /etc/mnebydns/certs/privkey.pem", config)
         self.assertIn("tls_servername dns.quad9.net", config)
         self.assertNotIn("0.0.0.0/0", config)
@@ -27,22 +27,22 @@ class PilotConfigTests(unittest.TestCase):
         for client in (
             "0.0.0.0", "127.0.0.1", "10.1.1.1", "192.168.0.9",
             "172.20.1.1", "100.64.0.10", "169.254.10.1",
-            "::1", "2001:db8::1", "203.0.113.42/32",
+            "::1", "2001:db8::1", "8.8.4.4/32",
             "bad.invalid", "198.51.100.0/24",
         ):
             with self.subTest(client=client):
                 with self.assertRaises(ValueError):
-                    mod.render("89.125.90.101", client)
+                    mod.render("9.9.9.9", client)
 
     def test_invalid_binding_fails_closed(self):
-        for bind in ("0.0.0.0", "127.0.0.1", "192.168.0.1", "::", "89.125.90.101/32"):
+        for bind in ("0.0.0.0", "127.0.0.1", "192.168.0.1", "::", "9.9.9.9/32"):
             with self.subTest(bind=bind):
                 with self.assertRaises(ValueError):
                     mod.render(bind, "8.8.4.4")
 
     def test_bind_is_not_client(self):
         with self.assertRaisesRegex(ValueError, "must not equal"):
-            mod.render("89.125.90.101", "89.125.90.101")
+            mod.render("9.9.9.9", "9.9.9.9")
 
 
 if __name__ == "__main__":
