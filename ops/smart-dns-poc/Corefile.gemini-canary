@@ -1,0 +1,36 @@
+# MNEBYDNS Gemini-only canary. NOT active until foreign 443 SNI rule is validated.
+# In this pilot only gemini.google.com gets the foreign TCP/443 ingress IP.
+# IPv6 and HTTPS/SVCB hints are deliberately NODATA to prevent bypass.
+# Every other domain is forwarded normally via authenticated DoT.
+tls://.:853 {
+    bind 89.125.90.101
+    tls /run/credentials/mnebydns-dot.service/fullchain.pem /run/credentials/mnebydns-dot.service/privkey.pem
+
+    template IN A gemini.google.com {
+        match ^gemini[.]google[.]com[.]$
+        answer "{{ .Name }} 20 IN A 89.125.90.101"
+        fallthrough
+    }
+    template IN AAAA gemini.google.com {
+        match ^gemini[.]google[.]com[.]$
+        rcode NOERROR
+        fallthrough
+    }
+    template IN HTTPS gemini.google.com {
+        match ^gemini[.]google[.]com[.]$
+        rcode NOERROR
+        fallthrough
+    }
+    template IN SVCB gemini.google.com {
+        match ^gemini[.]google[.]com[.]$
+        rcode NOERROR
+        fallthrough
+    }
+    cache 30
+    forward . tls://9.9.9.9 {
+        tls_servername dns.quad9.net
+        health_check 5s
+        max_concurrent 16
+        max_connect_attempts 2
+    }
+}
