@@ -90,6 +90,13 @@ class YouTubeExactStagingTests(unittest.TestCase):
     def test_local_loopback_sidecar_rejects_every_unknown_sni(self):
         conf = YT.sidecar()
         self.assertIn("listen 127.0.0.1:15448;", conf)
+        self.assertIn("resolver 127.0.0.1:5355",conf)
+        self.assertNotIn("resolver 9.9.9.9",conf)
+        origin=YT.origin_dns()
+        self.assertIn("bind 127.0.0.1",origin)
+        self.assertIn("tls://9.9.9.9 tls://149.112.112.112",origin)
+        self.assertIn("tls_servername dns.quad9.net",origin)
+        self.assertNotIn("forward . 9.9.9.9",origin)
         self.assertIn("default 127.0.0.1:1;", conf)
         self.assertIn("ssl_preread on;", conf)
         self.assertIn("access_log off;", conf)
