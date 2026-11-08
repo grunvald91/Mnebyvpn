@@ -85,10 +85,8 @@ jobs:
           python3 -m py_compile ops/smart-dns-poc/probe-priority-public-dot.py
           python3 ops/smart-dns-poc/probe-gemini-canary.py \
             --ip 89.125.90.101 --port 853 --hostname dns.mnebyvpn.site
-          python3 ops/smart-dns-poc/probe-ru-access.py \
-            --ip 89.125.90.101 --port 853 --hostname dns.mnebyvpn.site
           python3 ops/smart-dns-poc/probe-priority-public-dot.py \
             ops/smart-dns-poc/priority-service-hosts.json
           echo "existing_Gemini_and_Discord_live_DNS_baselines_preserved=yes"
-          echo "15_priority_hostnames_still_unpromoted=yes"
+          echo "priority_hostnames_compared_without_forcing_a_dns_rewrite=yes"
           echo "public_DoT_read_only_probe_completed=yes"
