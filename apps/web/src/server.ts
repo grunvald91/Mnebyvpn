@@ -453,7 +453,7 @@ function installHtml(subUrl:string,client:'incy'|'karing'):string {
 
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', publicOrigin);
-  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/payment/success' || url.pathname === '/payment/return')) {
     const device=cookie(req,deviceCookie);
     if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
       setCookie(res,deviceCookie,randomBytes(32).toString('base64url'),365*24*60*60);
@@ -772,6 +772,11 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       json(res,503,{code:'PAYMENT_NOT_AVAILABLE'});return;
     }
     const body = await bodyJson(req);
+    // Web payment forms must receive the verified email from the session.
+    // Telegram-only users link an email once; never trust buyer-supplied body.email.
+    if(!auth.email){
+      json(res,409,{code:'VERIFIED_EMAIL_REQUIRED'});return;
+    }
     const isRenewal=url.pathname==='/api/renew';
     const validTarget=typeof body.renewalTargetId==='string' &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.renewalTargetId);
@@ -787,7 +792,7 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     }
     try {
       const purchase = await prepareWebsiteProdamusCheckout({
-        accountId: auth.accountId, planId: body.planId,
+        accountId: auth.accountId, email:auth.email, planId: body.planId,
         requestId: 'web:' + body.requestId,
         inviteToken: body.inviteToken as string|undefined,
         renewalTargetId: isRenewal ? body.renewalTargetId as string : undefined,
