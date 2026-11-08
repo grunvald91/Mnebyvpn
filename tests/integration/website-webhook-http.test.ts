@@ -218,6 +218,9 @@ test('SEO HTTP routes serve robots, sitemap, valid structured data and safe head
     assert.ok(csp.includes("'sha256-"+hash+"'"),'Missing JSON-LD CSP hash on '+path);
     assert.ok(!csp.includes("'unsafe-inline'"));
   }
+  const alias=await fetch(origin+'/vpn-android/?ref=seo-test',{redirect:'manual'});
+  assert.equal(alias.status,301);
+  assert.equal(alias.headers.get('location'),'/vpn-android?ref=seo-test');
   const css=await fetch(origin+'/seo.css');
   assert.equal(css.status,200);
   assert.match(css.headers.get('content-type')??'',/text\/css/);
