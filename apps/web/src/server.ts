@@ -5,6 +5,7 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { renderRobots,renderSitemap,renderSeoPage } from './seo.ts';
 import { createHash,createHmac,randomBytes,randomUUID,timingSafeEqual } from 'node:crypto';
 import { Pool } from 'pg';
 import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
@@ -177,6 +178,7 @@ const termsHtml = await readFile(new URL('../public/terms.html',import.meta.url)
 const privacyHtml = await readFile(new URL('../public/privacy.html',import.meta.url));
 const css = await readFile(new URL('../public/site.css', import.meta.url));
 const neoCss = await readFile(new URL('../public/neo.css', import.meta.url));
+const seoCss = await readFile(new URL('../public/seo.css', import.meta.url));
 const brandAvatar = await readFile(new URL('../public/brand-avatar.webp', import.meta.url));
 const js = await readFile(new URL('../public/app.js', import.meta.url));
 const vpnInstallJs=await readFile(new URL('../public/vpn-install.js',import.meta.url));
@@ -494,11 +496,24 @@ function installHtml(subUrl:string,client:'incy'|'karing'):string {
 
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', publicOrigin);
+  // Subscription and authentication URLs must never appear as search snippets.
+  if (/^\/(?:api\/|auth\/|sub\/|install\/|webhooks\/|healthz$|readyz$)/.test(url.pathname))
+    res.setHeader('X-Robots-Tag','noindex, nofollow, noarchive');
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
     const device=cookie(req,deviceCookie);
     if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
       setCookie(res,deviceCookie,randomBytes(32).toString('base64url'),365*24*60*60);
     send(res, 200, html, 'text/html; charset=utf-8'); return;
+  }
+  if (req.method === 'GET' && url.pathname === '/robots.txt') {
+    send(res,200,renderRobots(publicOrigin),'text/plain; charset=utf-8');return;
+  }
+  if (req.method === 'GET' && url.pathname === '/sitemap.xml') {
+    send(res,200,renderSitemap(publicOrigin),'application/xml; charset=utf-8');return;
+  }
+  if (req.method === 'GET') {
+    const seoHtml=renderSeoPage(url.pathname,publicOrigin);
+    if(seoHtml!==null){send(res,200,seoHtml,'text/html; charset=utf-8');return;}
   }
   if (req.method === 'GET' && (url.pathname === '/terms' || url.pathname === '/terms.html')) {
     send(res,200,termsHtml,'text/html; charset=utf-8');return;
@@ -511,6 +526,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === 'GET' && url.pathname === '/neo.css') {
     send(res, 200, neoCss, 'text/css; charset=utf-8'); return;
+  }
+  if (req.method === 'GET' && url.pathname === '/seo.css') {
+    send(res, 200, seoCss, 'text/css; charset=utf-8'); return;
   }
   if (req.method === 'GET' && url.pathname === '/brand-avatar.webp') {
     send(res, 200, brandAvatar, 'image/webp'); return;
