@@ -11,6 +11,8 @@ on:
       - 'ops/smart-dns-poc/test-ru-access-pilot.py'
       - 'ops/smart-dns-poc/probe-ru-access.py'
       - 'ops/smart-dns-poc/mnebydns-ru-access.service'
+      - 'ops/smart-dns-poc/deploy-ru-access-pilot.sh'
+      - 'ops/smart-dns-poc/rollback-ru-access-pilot.sh'
 permissions:
   contents: read
 jobs:
@@ -26,6 +28,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 ops/smart-dns-poc/test-ru-access-pilot.py
+          bash -n ops/smart-dns-poc/deploy-ru-access-pilot.sh
+          bash -n ops/smart-dns-poc/rollback-ru-access-pilot.sh
           node --experimental-strip-types --test tests/ru-access-candidates.test.ts
           python3 -m py_compile ops/smart-dns-poc/probe-ru-access.py
           sed 's@ExecStart=/usr/sbin/nginx -c /etc/mnebydns-ru-access/nginx.conf -g "daemon off;"@ExecStart=/usr/bin/true@' \
