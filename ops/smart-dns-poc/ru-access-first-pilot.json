@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "foreignIngressIPv4": "89.125.90.101",
   "listener": "127.0.0.1:15446",
-  "purpose": "initial measured blocked-in-Russia pilot; exact hostnames only",
+  "purpose": "three measured Discord domains only; Instagram/Meta are research-only because RU HTTPS via foreign egress timed out",
   "entries": [
     {
       "domain": "discord.com",
@@ -24,27 +24,6 @@
       "ruProbe": "tls_timeout",
       "foreignProbe": "tls_ok",
       "evidence": "https://explorer.ooni.org/findings/2025-russia-blocked-discord"
-    },
-    {
-      "domain": "www.instagram.com",
-      "service": "meta",
-      "ruProbe": "dns_error",
-      "foreignProbe": "tls_ok",
-      "evidence": "https://www.top10vpn.com/research/websites-blocked-in-russia/"
-    },
-    {
-      "domain": "www.facebook.com",
-      "service": "meta",
-      "ruProbe": "dns_error",
-      "foreignProbe": "tls_ok",
-      "evidence": "https://www.top10vpn.com/research/websites-blocked-in-russia/"
-    },
-    {
-      "domain": "static.cdninstagram.com",
-      "service": "meta",
-      "ruProbe": "dns_error",
-      "foreignProbe": "tls_ok",
-      "evidence": "https://www.top10vpn.com/research/websites-blocked-in-russia/"
     }
   ]
 }
