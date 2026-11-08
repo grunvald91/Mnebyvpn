@@ -189,13 +189,14 @@ const policy = [
   "form-action 'self'", "base-uri 'none'", "frame-ancestors 'none'",
 ].join('; ');
 
-function send(res: ServerResponse, status: number, body: string|Buffer, type = 'application/json; charset=utf-8') {
+function send(res: ServerResponse, status: number, body: string|Buffer,
+  type = 'application/json; charset=utf-8', contentPolicy = policy) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', type);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Content-Security-Policy', policy);
+  res.setHeader('Content-Security-Policy', contentPolicy);
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.writeHead(status).end(body);
 }
@@ -513,7 +514,16 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === 'GET') {
     const seoHtml=renderSeoPage(url.pathname,publicOrigin);
-    if(seoHtml!==null){send(res,200,seoHtml,'text/html; charset=utf-8');return;}
+    if(seoHtml!==null){
+      // JSON-LD is inline inert data, but browser CSP still requires its exact
+      // SHA-256 hash. Allow only the trusted per-page JSON-LD, not unsafe-inline.
+      const structured=/<script type="application\/ld\+json">([^<]*)<\/script>/.exec(seoHtml);
+      if(!structured)throw Error('SEO structured data missing');
+      const dataHash=createHash('sha256').update(structured[1],'utf8').digest('base64');
+      const seoPolicy=policy.replace("script-src 'self'",
+        "script-src 'self' 'sha256-"+dataHash+"'");
+      send(res,200,seoHtml,'text/html; charset=utf-8',seoPolicy);return;
+    }
   }
   if (req.method === 'GET' && (url.pathname === '/terms' || url.pathname === '/terms.html')) {
     send(res,200,termsHtml,'text/html; charset=utf-8');return;
