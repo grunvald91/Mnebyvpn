@@ -409,6 +409,47 @@ async function callback(req:IncomingMessage,res:ServerResponse,url:URL){
     redirect(res,'/#account');
   }catch{redirect(res,'/?login=failed#account');}
 }
+function validNodeVpnProfile(value:unknown):value is string {
+  if(typeof value!=='string'||value.length>4096)return false;
+  const links=value.split('\n');
+  if(links.length<1||links.length>2)return false;
+  const credentialPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const seen=new Set<string>();
+  let credential='';
+  for(const link of links){
+    let uri:URL;
+    try{uri=new URL(link);}catch{return false;}
+    if(uri.protocol!=='vless:'||uri.hostname!=='cdn.servgo.ru'||
+       !credentialPattern.test(uri.username)||uri.password||uri.searchParams.get('encryption')!=='none')
+      return false;
+    if(credential&&uri.username!==credential)return false;
+    credential=uri.username;
+    const p=uri.searchParams;
+    const keys=new Set(p.keys());
+    if(keys.size!==p.size)return false;
+    if(uri.port==='8443'){
+      const expected=['encryption','security','type','host','sni','path'];
+      if(expected.some(k=>!keys.has(k))||keys.size!==expected.length||
+         p.get('security')!=='tls'||p.get('type')!=='ws'||
+         p.get('host')!=='cdn.servgo.ru'||p.get('sni')!=='cdn.servgo.ru'||
+         p.get('path')!=='/mnebyvpn-vpn/ws')return false;
+    }else if(uri.port==='2053'){
+      const expected=['encryption','security','type','flow','sni','fp','pbk','sid','spx'];
+      if(expected.some(k=>!keys.has(k))||keys.size!==expected.length||
+         p.get('security')!=='reality'||p.get('type')!=='tcp'||
+         p.get('flow')!=='xtls-rprx-vision'||
+         p.get('sni')!=='www.cloudflare.com'||p.get('fp')!=='chrome'||
+         !/^[A-Za-z0-9_-]{43}$/.test(p.get('pbk')??'')||
+         !/^[0-9a-f]{16}$/.test(p.get('sid')??'')||
+         p.get('spx')!=='/')return false;
+    }else return false;
+    if(seen.has(uri.port))return false;
+    seen.add(uri.port);
+  }
+  // The app shows the fast option first and keeps the existing working node.
+  return links.length===1 ? seen.has('8443')
+    : seen.has('2053')&&seen.has('8443')&&links[0].includes(':2053?');
+}
 async function liveVpnProfile(owner:{
   telegramUserId:number|null;entitlementId:string;
 }):Promise<string>{
@@ -425,8 +466,7 @@ async function liveVpnProfile(owner:{
   if(!response.ok)throw Error('VPN node subscription unavailable');
   const result:unknown=await response.json();
   const profile=(result as {profile?:unknown})?.profile;
-  if(typeof profile!=='string'||profile.length>4096||
-     !/^vless:\/\/[0-9a-f-]{36}@cdn\.servgo\.ru:8443\?/.test(profile))
+  if(!validNodeVpnProfile(profile))
     throw Error('Unexpected VPN node configuration');
   return profile;
 }
