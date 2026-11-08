@@ -486,8 +486,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if(req.method==='GET' && url.pathname==='/journey.js'){
     send(res,200,journeyJs,'text/javascript; charset=utf-8');return;
   }
-  if(req.method==='GET' && url.pathname==='/about.js'){
-    send(res,200,aboutJs,'text/javascript; charset=utf-8');return;
+  if (req.method === 'GET' && url.pathname === '/about.js') {
+    send(res, 200, aboutJs, 'text/javascript; charset=utf-8'); return;
   }
   if(req.method==='GET' && url.pathname==='/vpn-install.js'){
     send(res,200,vpnInstallJs,'text/javascript; charset=utf-8');return;
