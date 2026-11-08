@@ -190,7 +190,9 @@ function renderAccess(accesses) {
         state.renewalTargetId=a.id;
         state.requestId=null;
         renderPlan();
-        byId('plans').scrollIntoView({behavior:'smooth'});
+        if(typeof window!=='undefined'&&window.MnebyvpnJourney)
+          window.MnebyvpnJourney.show('plans',true);
+        else byId('plans').scrollIntoView({behavior:'smooth'});
       });
       item.append(renew);
     }
