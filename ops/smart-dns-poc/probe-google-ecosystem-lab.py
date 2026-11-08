@@ -16,27 +16,40 @@ TLS_PORT=15449
 CA="certs/dns.test.invalid.crt"
 DNS_HOST="dns.test.invalid"
 
-SYNTHETIC=(
-    "gemini.google.com",
-    "jnn-pa.googleapis.com",
-    "waa-pa.clients6.google.com",
-    "apis.google.com",
-    "play.google.com",
-    "www.youtube.com",
-    "youtubei.googleapis.com",
-    "i.ytimg.com",
-    "yt3.ggpht.com",
-    "s.ytimg.com",
-    "r1---sn-dynamic.googlevideo.com",
-    "www.google.com",
-    "accounts.google.com",
-    "www.google.ru",
-    "fonts.gstatic.com",
-    "lh3.googleusercontent.com",
-    "googleads.g.doubleclick.net",
-    "WWW.YouTube.COM", "JNN-PA.GOOGLEAPIS.COM",
-    "R1---SN-Video.Googlevideo.com",
+# Use the same source-backed inventories as the live read-only audit.
+# 34 official Gemini firewall hosts are mandatory, not just a sample.
+d=importlib.util.spec_from_file_location(
+    "google_live_inventory", HERE/"diagnose-gemini-android-live.py"
 )
+assert d and d.loader
+INV=importlib.util.module_from_spec(d)
+d.loader.exec_module(INV)
+assert len(INV.GEMINI_HOSTS)==34 and len(set(INV.GEMINI_HOSTS))==34
+
+# One bulk DNS coverage run: official Gemini + AI Studio + Stitch + YouTube
+# + Android system controls + case-insensitivity + dynamic media samples.
+# Android system entries are SYNTHETIC LAB CHECKS ONLY; rewrites of TCP/5228
+# or UDP services remain UNSUPPORTED by the actual TCP/443 ingress.
+SYNTHETIC=tuple(dict.fromkeys((
+    *INV.GEMINI_HOSTS,
+    *INV.AI_STUDIO_HOSTS,
+    *INV.STITCH_HOSTS,
+    *INV.YOUTUBE_HOSTS,
+    *INV.ANDROID_SYSTEM_HOSTS,
+    "r1---sn-dynamic.googlevideo.com",
+    "r2---sn-dynamic.googlevideo.com",
+    "s.ytimg.com",
+    "storage.googleapis.com",
+    "www.google.ru",
+    "www.google.co.uk",
+    "WWW.YouTube.COM",
+    "JNN-PA.GOOGLEAPIS.COM",
+    "R1---SN-Video.Googlevideo.com",
+)))
+assert set(INV.GEMINI_HOSTS).issubset(SYNTHETIC)
+assert set(INV.AI_STUDIO_HOSTS).issubset(SYNTHETIC)
+assert set(INV.STITCH_HOSTS).issubset(SYNTHETIC)
+
 TLS_ORIGINS=(
     "gemini.google.com",
     "jnn-pa.googleapis.com",
@@ -62,6 +75,13 @@ def strict_tls(host):
 
 
 def main():
+    print("official_gemini_hosts_in_bulk_dns_lab="+str(len(INV.GEMINI_HOSTS)), flush=True)
+    print("stitch_hosts_in_bulk_dns_lab="+str(len(INV.STITCH_HOSTS)), flush=True)
+    print("aistudio_hosts_in_bulk_dns_lab="+str(len(INV.AI_STUDIO_HOSTS)), flush=True)
+    print("youtube_hosts_in_bulk_dns_lab="+str(len(INV.YOUTUBE_HOSTS)), flush=True)
+    print("android_system_hosts_in_bulk_dns_lab="+str(len(INV.ANDROID_SYSTEM_HOSTS)), flush=True)
+    print("unique_bulk_dns_hostnames="+str(len(SYNTHETIC)), flush=True)
+    print("Android_system_non443_support=NOT_IMPLEMENTED", flush=True)
     for host in SYNTHETIC:
         code,count,records=query(host,1)
         a=[socket.inet_ntoa(data) for kind,_ttl,data in records if kind==1]
