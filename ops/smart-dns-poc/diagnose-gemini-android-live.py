@@ -50,6 +50,36 @@ ANDROID_SYSTEM_HOSTS = (
     "gcm-xmpp.googleapis.com", "android.googleapis.com",
     "pki.google.com", "clients1.google.com", "notifications.google.com",
 )
+# Google-owned entry points and representative subservices for three
+# products the operator explicitly used during the 90-second VPN trace.
+# These are read-only DNS hypotheses; no traffic identity is proven.
+# YouTube: https://support.google.com/youtube/answer/171780
+# Stitch: https://blog.google/innovation-and-ai/models-and-research/google-labs/stitch-gemini-3/
+# AI Studio: https://ai.google.dev/aistudio
+# Static / account services: https://docs.cloud.google.com/docs/get-started/required-domains
+YOUTUBE_HOSTS = (
+    "youtube.com", "www.youtube.com", "m.youtube.com",
+    "youtu.be", "youtubei.googleapis.com", "i.ytimg.com",
+    "s.ytimg.com", "yt3.ggpht.com", "accounts.youtube.com",
+    "www.youtube-nocookie.com",
+)
+STITCH_HOSTS = (
+    "stitch.withgoogle.com", "accounts.google.com",
+    "www.gstatic.com", "ssl.gstatic.com", "fonts.gstatic.com",
+    "fonts.googleapis.com",
+)
+AI_STUDIO_HOSTS = (
+    "aistudio.google.com", "generativelanguage.googleapis.com",
+    "accounts.google.com", "oauth2.googleapis.com",
+    "www.gstatic.com", "ssl.gstatic.com",
+)
+# Video CDN origins are dynamic; checking an arbitrary single googlevideo.com
+# hostname would NOT audit *.googlevideo.com. Wildcard policy must be tested
+# separately and is not enabled by this script.
+DYNAMIC_VIDEO_SUFFIXES_NOT_VERIFIED = (
+    "googlevideo.com", "ytimg.com", "ggpht.com",
+)
+
 EXISTING_CONTROLS = ("discord.com", "gateway.discord.gg", "cdn.discordapp.com")
 PRIVATE_DNS_NAME = "dns.mnebyvpn.site"
 FOREIGN_INGRESS = "89.125.90.101"
@@ -98,6 +128,8 @@ def main() -> None:
     seen = {}
     for label, names in (
         ("gemini", GEMINI_HOSTS), ("android", ANDROID_SYSTEM_HOSTS),
+        ("youtube", YOUTUBE_HOSTS), ("stitch", STITCH_HOSTS),
+        ("aistudio", AI_STUDIO_HOSTS),
         ("existing_control", EXISTING_CONTROLS),
     ):
         for name in names:
@@ -112,6 +144,20 @@ def main() -> None:
     for host in EXISTING_CONTROLS:
         if seen[host] != "FOREIGN_HTTPS_INGRESS":
             raise AssertionError("Existing Discord synthetic route missing: "+host)
+    for service, hosts in (("youtube",YOUTUBE_HOSTS),
+                           ("stitch",STITCH_HOSTS),
+                           ("aistudio",AI_STUDIO_HOSTS)):
+        rewritten_hosts = sum(seen[h] == "FOREIGN_HTTPS_INGRESS" for h in hosts)
+        errors = sum(seen[h] in ("TRANSPORT_FAILURE",
+                                "DNS_ERROR_OR_NONEXISTENT") for h in hosts)
+        print(f"service={service} audited_exact_hosts={len(hosts)} "
+              f"foreign_443={rewritten_hosts} "
+              f"direct_or_ipv6={sum(seen[h]=='NON_SYNTHETIC_OR_IPV6' for h in hosts)} "
+              f"DNS_error_or_inconclusive={errors}")
+    print("youtube_dynamic_video_CDN_suffixes_not_verified=" +
+          ",".join(DYNAMIC_VIDEO_SUFFIXES_NOT_VERIFIED))
+    print("retroactive_VPN_socket_domain_attribution=IMPOSSIBLE")
+    print("youtube_stitch_AI_Studio_browser_functionality=UNVERIFIED")
     rewritten = sum(seen[h] == "FOREIGN_HTTPS_INGRESS" for h in GEMINI_HOSTS)
     impaired = sum(seen[h] in ("TRANSPORT_FAILURE", "DNS_ERROR_OR_NONEXISTENT")
                    for h in GEMINI_HOSTS)
