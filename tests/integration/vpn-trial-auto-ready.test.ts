@@ -3,8 +3,6 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {PgBillingStore} from '../../packages/billing/src/store.ts';
-import {PgOutboxDispatcher,type AdapterMap} from '../../packages/provisioning/src/pg-worker.ts';
-import type {ObservedAccess,DesiredAccess} from '../../packages/provisioning/src/reconciler.ts';
 import {
   PgVpnTrialReadyQueue,processVpnTrialReadyNotices,trialReadyMessage,
   TelegramTrialReadySender,type VpnTrialReadyNotice,
@@ -35,25 +33,21 @@ test('24h Telegram trial is delivered automatically only after the final node re
   }};
   await processVpnTrialReadyNotices(queue,sender,30);
   assert.equal(sent.filter(x=>x.orderId===orderId).length,0);
-  const observed=new Map<string,ObservedAccess>();
-  const adapter:AdapterMap={vpn:{
-    enforcesHardExpiry:true,
-    inspect:async(id)=>observed.get(id)??{revision:0,enabled:false},
-    apply:async(d:DesiredAccess)=>{
-      observed.set(d.entitlementId,{revision:d.revision,enabled:d.enabled,
-        expiresAt:d.expiresAt});
-      return 'applied';
-    },
-  }};
-  // Do not let unrelated integration fixtures occupy this worker's outbox.
-  await pool.query("UPDATE reconcile_outbox SET handled_at=clock_timestamp() WHERE entitlement_id<>$1 AND handled_at IS NULL",[entitlement]);
-  const worker=new PgOutboxDispatcher(pool,adapter);
-  assert.equal((await worker.processOnce()).status,'synced');
+  // Exercise the same node-ack SQL as the worker without changing ANY other
+  // test's global reconcile queue or creating fake foreign-node credentials.
+  const fence=(await pool.query(
+    "SELECT claim_provisioning_fence($1,'vpn') AS fence",[entitlement]
+  )).rows[0].fence;
+  assert.equal((await pool.query(
+    "SELECT acknowledge_provisioning($1,'vpn',1,$2,true) AS ok",
+    [entitlement,fence])).rows[0].ok,true);
   assert.equal(Number((await pool.query("SELECT revision,state FROM entitlements WHERE id=$1",[entitlement])).rows[0].revision),2);
   await processVpnTrialReadyNotices(queue,sender,30);
   assert.equal(sent.filter(x=>x.orderId===orderId).length,0,
     'a provisional 5-minute credential is NOT proof that full 24 hours are on-node');
-  assert.equal((await worker.processOnce()).status,'synced');
+  assert.equal((await pool.query(
+    "SELECT acknowledge_provisioning($1,'vpn',2,$2,true) AS ok",
+    [entitlement,fence])).rows[0].ok,true);
   await processVpnTrialReadyNotices(queue,sender,30);
   const own=sent.filter(x=>x.orderId===orderId);
   assert.equal(own.length,1);
