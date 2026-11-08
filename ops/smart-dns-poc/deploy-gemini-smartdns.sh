@@ -25,18 +25,14 @@ exec 9>/run/lock/mnebyvpn-public-route.lock
 flock -n 9 || { echo 'shared_route_change_locked'; exit 2; }
 map="$(python3 - <<'PY'
 import pathlib,re
+p=pathlib.Path('/etc/nginx/nginx.conf')
 pattern=re.compile(r'map\s+\$ssl_preread_server_name\s+\$direct_mtproxy_backend\s*\{')
-found=[]
-for f in pathlib.Path('/etc/nginx/streams.d').glob('*.conf'):
-  if f.is_symlink() or not f.is_file():continue
-  try:
-    if pattern.search(f.read_text()):found.append(f)
-  except (OSError,UnicodeError):pass
-if len(found)!=1:raise SystemExit('Expected exactly one shared SNI map')
-print(str(found[0]))
+if p.is_symlink() or not p.is_file() or len(pattern.findall(p.read_text()))!=1:
+    raise SystemExit('Expected unique shared map in actual nginx.conf')
+print(str(p))
 PY
 )"
-[[ "$map" =~ ^/etc/nginx/streams.d/[A-Za-z0-9_.-]+[.]conf$ ]] || exit 2
+[[ "$map" == /etc/nginx/nginx.conf ]] || exit 2
 nginx -T 2>/dev/null | grep -F 'proxy_pass $direct_mtproxy_backend;' >/dev/null || exit 2
 mkdir -p /opt/mnebydns-gemini-backups
 install -d -m 700 -o root -g root "$base"
