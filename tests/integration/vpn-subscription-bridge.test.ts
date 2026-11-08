@@ -90,34 +90,34 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    // A node-verified fast profile can be offered without removing existing
    // websocket access. Both links must belong to the same user credential.
    const reality='vless://'+credential+
-     '@89.125.90.101:2053?encryption=none&security=reality&type=tcp'+
+     '@cdn.servgo.ru:2053?encryption=none&security=reality&type=tcp'+
      '&flow=xtls-rprx-vision&sni=www.cloudflare.com&fp=chrome'+
      '&pbk='+('A'.repeat(43))+'&sid=ab12cd34ef56a789&spx=%2F#MNEBYVPN%20FAST';
    const firefox=reality.replace('&fp=chrome','&fp=firefox')
-     .replace('89.125.90.101:2053','cdn.servgo.ru:2053')
      .replace('#MNEBYVPN%20FAST','#MNEBYVPN%20Firefox%20TEST');
+   const fastDial=reality.replace('@cdn.servgo.ru:2053','@89.125.90.101:2053');
+   assert.equal(new URL(fastDial).hostname,'89.125.90.101');
+   assert.equal(new URL(firefox).hostname,'cdn.servgo.ru');
    const fallback=profile;
    profile=[reality,firefox,fallback].join('\n');
    const legacyRefresh=await fetch(root+'/sub/'+issued!.token);
    assert.equal(legacyRefresh.status,200);
    assert.equal(Buffer.from((await legacyRefresh.text()).trim(),'base64')
-     .toString('utf8').trim(),[reality,firefox,fallback].join('\n'));
+     .toString('utf8').trim(),[fastDial,firefox,fallback].join('\n'));
    const dual=await fetch(root+'/sub/'+issued!.token+'?client=incy');
    assert.equal(dual.status,200);
    assert.equal(Buffer.from((await dual.text()).trim(),'base64').toString('utf8').trim(),
-     [reality,firefox,fallback].join('\n'));
+     [fastDial,firefox,fallback].join('\n'));
    const karing=await fetch(root+'/sub/'+issued!.token+'?client=karing');
    assert.equal(karing.status,200);
    assert.equal(Buffer.from((await karing.text()).trim(),'base64')
-     .toString('utf8').trim(),[reality,firefox,fallback].join('\n'));
+     .toString('utf8').trim(),[fastDial,firefox,fallback].join('\n'));
    assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=other')).status,400);
    // Never publish a profile from an unexpected node, even on an authenticated
    // internal response.
    profile=[
-     reality.replace('89.125.90.101','wrong-host.example'),firefox,fallback,
+     reality.replace('cdn.servgo.ru','wrong-host.example'),firefox,fallback,
    ].join('\n');
-   assert.equal((await fetch(root+'/sub/'+issued!.token)).status,503);
-   profile=[reality,firefox.replace('cdn.servgo.ru:2053','89.125.90.101:2053'),fallback].join('\n');
    assert.equal((await fetch(root+'/sub/'+issued!.token)).status,503);
    profile=[reality,firefox.replace('&fp=firefox','&fp=unsafe'),fallback].join('\n');
    assert.equal((await fetch(root+'/sub/'+issued!.token)).status,503);
@@ -126,6 +126,10 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    profile=[reality,firefox.replace('pbk='+('A'.repeat(43)),'pbk='+('B'.repeat(43))),fallback].join('\n');
    assert.equal((await fetch(root+'/sub/'+issued!.token)).status,503);
    profile=fallback;
+   const single=await fetch(root+'/sub/'+issued!.token+'?client=karing');
+   assert.equal(single.status,200);
+   assert.equal(Buffer.from((await single.text()).trim(),'base64')
+     .toString('utf8').trim(),fallback);
    assert.equal((await fetch(root+'/sub/'+'B'.repeat(43))).status,404);
    const installer=await fetch(root+'/install/'+issued!.token+'?client=incy');
    assert.equal(installer.status,200);
