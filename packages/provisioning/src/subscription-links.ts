@@ -23,10 +23,13 @@ export function subscriptionLink(token:string):string {
   if(!TOKEN.test(token))throw Error('Invalid VPN subscription token');
   return HOST+'/sub/'+token;
 }
-export function installerLink(token:string,client:'incy'|'karing'):string {
-  if(!TOKEN.test(token)||!['incy','karing'].includes(client))
+export function installerLink(token:string,client:'incy'|'karing',
+  mode?:'google'):string {
+  if(!TOKEN.test(token)||!['incy','karing'].includes(client)||
+     (mode!==undefined&&(mode!=='google'||client!=='incy')))
     throw Error('Invalid installer link');
-  return HOST+'/install/'+token+'?client='+client;
+  return HOST+'/install/'+token+'?client='+client+
+    (mode==='google'?'&mode=google':'');
 }
 export async function issueSubscriptionLink(pool:Pool,userId:number):Promise<{
   link:string;token:string;expiresAt:Date;entitlementId:string;

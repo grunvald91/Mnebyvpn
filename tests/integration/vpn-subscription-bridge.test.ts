@@ -105,6 +105,23 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.equal(dual.status,200);
    assert.equal(Buffer.from((await dual.text()).trim(),'base64').toString('utf8').trim(),
      [reality,firefox,fallback].join('\n'));
+   assert.equal(dual.headers.get('per-app-proxy-enable'),null);
+   assert.equal(legacyRefresh.headers.get('per-app-proxy-list'),null);
+   const google=await fetch(root+'/sub/'+issued!.token+'?client=incy&mode=google');
+   assert.equal(google.status,200);
+   assert.equal(google.headers.get('per-app-proxy-enable'),'1');
+   assert.equal(google.headers.get('per-app-proxy-mode'),'proxy');
+   const allowedApps=(google.headers.get('per-app-proxy-list')??'').split(',');
+   assert.ok(allowedApps.includes('com.google.android.apps.bard'));
+   assert.ok(allowedApps.includes('com.google.android.googlequicksearchbox'));
+   assert.ok(allowedApps.includes('com.google.android.gms'));
+   assert.ok(allowedApps.includes('com.google.android.youtube'));
+   assert.equal(Buffer.from((await google.text()).trim(),'base64').toString('utf8').trim(),
+     [reality,firefox,fallback].join('\n'));
+   assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=karing&mode=google')).status,400);
+   assert.equal((await fetch(root+'/sub/'+issued!.token+'?mode=google')).status,400);
+   assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=incy&mode=unsafe')).status,400);
+   assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=incy&mode=google&mode=google')).status,400);
    const safeKaring=await fetch(root+'/sub/'+issued!.token+'?client=karing');
    assert.equal(safeKaring.status,200);
    assert.equal(Buffer.from((await safeKaring.text()).trim(),'base64')
@@ -124,6 +141,14 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.equal((await fetch(root+'/sub/'+issued!.token)).status,503);
    profile=fallback;
    assert.equal((await fetch(root+'/sub/'+'B'.repeat(43))).status,404);
+   const googleInstaller=await fetch(root+'/install/'+issued!.token+'?client=incy&mode=google');
+   assert.equal(googleInstaller.status,200);
+   const googlePage=await googleInstaller.text();
+   assert.match(googlePage,/mode=google/);
+   assert.match(googlePage,/Google Play Services/);
+   assert.match(googlePage,/Значок VPN останется включённым/);
+   assert.equal((await fetch(root+'/install/'+issued!.token+'?client=karing&mode=google')).status,400);
+   assert.equal((await fetch(root+'/install/'+issued!.token+'?client=incy&mode=google&mode=google')).status,400);
    const installer=await fetch(root+'/install/'+issued!.token+'?client=incy');
    assert.equal(installer.status,200);
    const page=await installer.text();
