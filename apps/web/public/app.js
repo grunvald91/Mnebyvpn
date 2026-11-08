@@ -488,7 +488,8 @@ async function claimTrial(){
     if(response.status==='ALREADY_USED')
       byId('account').scrollIntoView({behavior:'smooth'});
     else if(['GRANTED','PENDING'].includes(response.status)) {
-      if(window.MnebyvpnJourney)window.MnebyvpnJourney.show('setup',true);
+      if(typeof window!=='undefined'&&window.MnebyvpnJourney)
+        window.MnebyvpnJourney.show('setup',true);
       else byId('guest-trial-card').scrollIntoView({behavior:'smooth',block:'center'});
     }
     return response.status;
