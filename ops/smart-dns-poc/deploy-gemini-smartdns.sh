@@ -63,10 +63,20 @@ mv -- "$work/staged-stream.conf" "$map"
 nginx -t >/dev/null 2>&1
 systemctl reload nginx
 test "$(systemctl is-active nginx)" = active
-code="$(curl --noproxy '*' -4 -sS -o /dev/null \
-  --connect-timeout 4 --max-time 15 --resolve gemini.google.com:443:89.125.90.101 \
-  -w '%{http_code}' https://gemini.google.com/)"
-[[ "$code" = 200 || "$code" = 302 ]] || { echo 'gemini_public_https_canary_failed'; exit 1; }
+# systemctl reload returns before all new nginx workers are accepting 443.
+# Never treat an early old-worker TLS certificate as a permanent route failure.
+code=''
+for attempt in $(seq 1 20); do
+  code="$(curl --noproxy '*' -4 -s -o /dev/null \
+    --connect-timeout 3 --max-time 5 --resolve gemini.google.com:443:89.125.90.101 \
+    -w '%{http_code}' https://gemini.google.com/ || true)"
+  if [[ "$code" = 200 || "$code" = 302 ]]; then
+    echo "gemini_443_converged_on_attempt=$attempt"
+    break
+  fi
+  sleep 0.7
+done
+[[ "$code" = 200 || "$code" = 302 ]] || { echo 'gemini_public_https_canary_failed_after_retries'; exit 1; }
 echo "gemini_public_443_origin_tls=pass"
 
 install -m 644 -o root -g root "$work/Corefile.gemini-canary" "$dns"
