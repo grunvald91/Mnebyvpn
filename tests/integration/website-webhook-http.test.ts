@@ -182,6 +182,16 @@ test('SEO HTTP routes serve robots, sitemap, valid structured data and safe head
     '/vpn','/smart-dns','/vpn-android','/vpn-iphone','/private-dns-android',
     '/youtube','/instagram','/telegram','/google-gemini','/ai-services',
   ];
+  const homeResponse=await fetch(origin+'/');
+  assert.equal(homeResponse.status,200);
+  const homeHtml=await homeResponse.text();
+  const homeJson=/<script type="application\/ld\+json">([^<]*)<\/script>/.exec(homeHtml)?.[1];
+  assert.ok(homeJson,'Home page must supply a WebSite name');
+  const homeData=JSON.parse(homeJson) as {'@type':string;name:string};
+  assert.equal(homeData['@type'],'WebSite');
+  assert.equal(homeData.name,'MNEBYVPN');
+  const homeHash=createHash('sha256').update(homeJson).digest('base64');
+  assert.ok((homeResponse.headers.get('content-security-policy')??'').includes("'sha256-"+homeHash+"'"));
   const sitemapResponse=await fetch(origin+'/sitemap.xml');
   assert.equal(sitemapResponse.status,200);
   assert.match(sitemapResponse.headers.get('content-type')??'',/application\/xml/);
