@@ -1,0 +1,48 @@
+name: Visual QA — compact MNEBYVPN storefront screenshots
+
+on:
+  push:
+    branches:
+      - fix/restore-neon-compact-viewport-20261109
+    paths:
+      - 'apps/web/public/**'
+      - 'tests/visual-journey-preview.mjs'
+      - '.github/workflows/visual-journey-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser for visual check
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/mnebyvpn-visual" --no-save playwright@1.56.1
+          "$RUNNER_TEMP/mnebyvpn-visual/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Screenshot actual landing page with synthetic test-only plans
+        shell: bash
+        env:
+          VISUAL_SCREENSHOT_INLINE: 'yes'
+        run: |
+          set -euo pipefail
+          export VISUAL_PLAYWRIGHT_PACKAGE="$RUNNER_TEMP/mnebyvpn-visual/node_modules/playwright/index.mjs"
+          node tests/visual-journey-preview.mjs
+      - name: Keep screenshot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compact-storefront-visual-qa
+          path: ${{ runner.temp }}/mnebyvpn-*.jpg
+          if-no-files-found: warn
+          retention-days: 7
