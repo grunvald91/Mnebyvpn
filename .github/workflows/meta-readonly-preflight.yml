@@ -10,6 +10,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  issues: write
 concurrency:
   group: mnebydns-meta-readonly-preflight
   cancel-in-progress: false
@@ -33,6 +34,7 @@ jobs:
           for var in RU_HOST DE_HOST PINNED_HOST_KEYS RU_PASS DE_PASS; do
             if [[ -z "${!var:-}" ]]; then
               echo "missing_${var}=true" >> "$GITHUB_STEP_SUMMARY"
+              echo "missing_${var}=true" >> "$RUNNER_TEMP/meta-aggregates.txt"
               echo "missing_${var}=true"
               missing=1
             fi
@@ -170,3 +172,27 @@ jobs:
             fi
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Report filtered outcome from push-only run
+        if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/diagnostics/pcapdroid-meta-path-20261109' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          REPORT="$RUNNER_TEMP/meta-aggregates.txt"
+          COMMENT="$RUNNER_TEMP/meta-pr-comment.md"
+          {
+            echo '### MNEBYDNS Meta remote diagnostic — push-event'
+            echo ''
+            echo 'Revision `${{ github.sha }}` · job `${{ job.status }}`.'
+            echo ''
+            echo '```text'
+            if [[ -s "$REPORT" ]]; then
+              grep -E '^(ru|de|diagnostic|missing)_[A-Za-z0-9_]+=(true|false|none|ok|[0-9]+|[A-Za-z0-9_]+)$' "$REPORT" | head -n 120 || true
+            else
+              echo 'diagnostic_blocked=no_data_collected'
+            fi
+            echo '```'
+            echo 'Only aggregate outcomes; no host addresses, packet contents, client identifiers or credentials.'
+          } > "$COMMENT"
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/82/comments" -f body="$(cat "$COMMENT")" >/dev/null || echo 'Could not publish push-result via PR comment (token scope restriction)'
