@@ -86,12 +86,51 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
     console.log(readFileSync(file).toString('base64'));
     console.log('VISUAL_JPEG_'+width+'_END');
   }
+  // Auth is a real separate client-side page. Click through the displayed
+  // trial CTA and assert the exact EXISTING OTP form has moved there.
+  await page.locator('#journey-trial').click();
+  await page.waitForFunction(()=>document.body.dataset.journeyView==='trial-auth');
+  const trial=await page.evaluate(()=>{
+    const form=document.querySelector('#email-start-form');
+    const panel=document.querySelector('#email-auth-panel');
+    const button=document.querySelector('#journey-trial-telegram');
+    const mount=document.querySelector('#journey-email-mount');
+    return {
+      route:location.hash,
+      emailMounted:mount?.contains(form),
+      emailVisible:panel&&!panel.classList.contains('hidden'),
+      telegram:button?.getAttribute('aria-disabled'),
+      telegramExplained:document.querySelector('.journey-telegram-note')?.textContent,
+      horizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
+      trialTitle:document.querySelector('#journey-trial-title')?.textContent,
+      pageErrors:browserErrors,
+    };
+  });
+  const authImage=process.env.RUNNER_TEMP+'/mnebyvpn-trial-auth-'+width+'x'+height+'.jpg';
+  await page.screenshot({path:authImage,type:'jpeg',quality:72,fullPage:true});
+  console.log('TRIAL_AUTH_METRICS_'+width+'='+JSON.stringify(trial));
+  if(!trial.emailMounted||!trial.emailVisible||!trial.telegramExplained?.includes('email')||
+     trial.horizontalOverflow||trial.pageErrors.length||trial.route!=='#try')failed=true;
+  if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
+    console.log('TRIAL_AUTH_JPEG_'+width+'_BEGIN');
+    console.log(readFileSync(authImage).toString('base64'));
+    console.log('TRIAL_AUTH_JPEG_'+width+'_END');
+  }
+  await page.locator('#journey-trial-back').click();
+  const returned=await page.evaluate(()=>({
+    home:document.body.dataset.journeyView==='plans',
+    emailRestored:document.querySelector('.account-panel')?.contains(
+      document.querySelector('#email-start-form')),
+  }));
+  if(!returned.home||!returned.emailRestored){
+    console.error('TRIAL_AUTH_BACK_FAILED',JSON.stringify(returned));failed=true;
+  }
   await page.close();
 }
 await browser.close();
 server.close();
 if(failed){
-  console.error('VISUAL_ACCEPTANCE_FAILED: overflow or page error at a required viewport');
+  console.error('VISUAL_ACCEPTANCE_FAILED: overflow, page error or invalid trial auth at required viewport');
   process.exitCode=1;
 }else{
   console.log('VISUAL_ACCEPTANCE_PASSED: all required viewports fit without scroll');
