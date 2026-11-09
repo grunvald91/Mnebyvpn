@@ -190,7 +190,9 @@ function renderAccess(accesses) {
         state.renewalTargetId=a.id;
         state.requestId=null;
         renderPlan();
-        byId('plans').scrollIntoView({behavior:'smooth'});
+        if(typeof window!=='undefined'&&window.MnebyvpnJourney)
+          window.MnebyvpnJourney.show('plans',true);
+        else byId('plans').scrollIntoView({behavior:'smooth'});
       });
       item.append(renew);
     }
@@ -447,6 +449,7 @@ async function purchase() {
       LOGIN_REQUIRED:'Сессия истекла. Войдите повторно.',
       FORBIDDEN:'Сессия изменилась. Обновите страницу и войдите повторно.',
       UNSAFE_PAYMENT_LINK:'Не удалось проверить ссылку Prodamus.',
+      VERIFIED_EMAIL_REQUIRED:'Перед оплатой подтвердите email в личном кабинете.',
     };
     const message=messages[error?.message] || 'Не удалось создать заказ или открыть оплату. Повторите попытку.';
     checkoutError(message);toast(message);
@@ -484,8 +487,12 @@ async function claimTrial(){
     await refresh();
     if(response.status==='ALREADY_USED')
       byId('account').scrollIntoView({behavior:'smooth'});
-    else if(['GRANTED','PENDING'].includes(response.status))
-      byId('guest-trial-card').scrollIntoView({behavior:'smooth',block:'center'});
+    else if(['GRANTED','PENDING'].includes(response.status)) {
+      if(typeof window!=='undefined'&&window.MnebyvpnJourney)
+        window.MnebyvpnJourney.show('setup',true);
+      else byId('guest-trial-card').scrollIntoView({behavior:'smooth',block:'center'});
+    }
+    return response.status;
   }catch(error){
     toast(error.status===401?'Сессия истекла. Войдите повторно.':
       'Не удалось проверить бесплатный доступ. Попробуйте позднее.');

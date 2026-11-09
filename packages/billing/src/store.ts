@@ -434,6 +434,44 @@ export class PgBillingStore {
     finally{c.release();}
   }
 
+  /** Issue a stable per-plan invite for the verified website account, even
+   * when the customer entered via email rather than Telegram. Rewards are not
+   * granted here; only attribution occurs when the referred buyer pays.
+   */
+  async websiteReferralInvite(accountId:string):Promise<{token:string;days:number}|null>{
+    if(!uuid.test(accountId))throw new Error('Invalid verified account');
+    const c=await this.pool.connect();
+    try{
+      await c.query('BEGIN');
+      const selected=await c.query(
+        `SELECT id,duration_seconds FROM billing_plans
+          WHERE enabled=true AND product='vpn' AND stars IS NOT NULL AND rub_minor IS NOT NULL
+          ORDER BY CASE WHEN duration_seconds=2592000 THEN 0 ELSE 1 END,duration_seconds,id
+          LIMIT 1`);
+      if(!selected.rowCount){
+        await c.query('COMMIT');return null;
+      }
+      const row=selected.rows[0];
+      const token=randomBytes(12).toString('base64url');
+      const added=await c.query(
+        `INSERT INTO referral_invites(token,referrer_account_id,plan_id)
+         VALUES($1,$2,$3)
+         ON CONFLICT(referrer_account_id,plan_id) DO NOTHING RETURNING token`,
+        [token,accountId,row.id]);
+      const active=added.rows[0]?.token ??
+        (await c.query(
+          'SELECT token FROM referral_invites WHERE referrer_account_id=$1 AND plan_id=$2',
+          [accountId,row.id])).rows[0]?.token;
+      if(typeof active!=='string'||!/^[A-Za-z0-9_-]{16,24}$/.test(active))
+        throw new Error('Referral invite unavailable');
+      const seconds=safeInt(row.duration_seconds);
+      if(seconds%86400!==0||seconds<=0)throw new Error('Invalid referral term');
+      await c.query('COMMIT');
+      return {token:active,days:seconds/86400};
+    }catch(error){await c.query('ROLLBACK');throw error;}
+    finally{c.release();}
+  }
+
   async referralPlan(token:string):Promise<PricedPlan|null> {
     if(!/^[A-Za-z0-9_-]{16,24}$/.test(token))return null;
     const {rows}=await this.pool.query(

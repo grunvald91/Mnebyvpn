@@ -32,14 +32,21 @@ test('external website prepares provider link from authenticated account and fro
   calls.push([a,p,k,t].join(':'));return order;
  }} as unknown as PgBillingStore;
  const result=await prepareWebsiteProdamusCheckout(
-  {accountId:aid,requestId:'web-invoice-1',planId:'vpn-30',inviteToken:'A'.repeat(16)},
+  {accountId:aid,email:'buyer@example.com',requestId:'web-invoice-1',planId:'vpn-30',inviteToken:'A'.repeat(16)},
   db,pd,{getLink:async signedUrl=>{
    const u=new URL(signedUrl);
    assert.equal(u.searchParams.get('do'),'link');
    assert.equal(u.searchParams.get('order_id'),id);
    assert.equal(u.searchParams.get('products[0][price]'),'199.00');
-   assert.equal(u.searchParams.get('urlSuccess'),pd.successUrl);
-   assert.equal(u.searchParams.get('urlReturn'),pd.returnUrl);
+   assert.equal(u.searchParams.get('customer_email'),'buyer@example.com');
+   const callback=new URL(u.searchParams.get('urlSuccess')!);
+   assert.equal(callback.searchParams.get('order'),id);
+   assert.equal(callback.searchParams.get('payment'),'returned');
+   assert.equal(callback.hash,'#account');
+   const returnUrl=new URL(u.searchParams.get('urlReturn')!);
+   assert.equal(returnUrl.searchParams.get('payment'),'return');
+   assert.equal(returnUrl.searchParams.get('order'),id);
+   assert.equal(returnUrl.hash,'#plans');
    return 'https://payform.ru/u8zDE/';
   }});
  assert.equal(result.paymentUrl,'https://payform.ru/u8zDE/');
@@ -47,6 +54,15 @@ test('external website prepares provider link from authenticated account and fro
  assert.deepEqual(calls,[aid+':vpn-30:web-invoice-1:'+('A'.repeat(16))]);
 });
 
+test('payment data never accepts malformed email or open success redirect',()=>{
+  const order={id,provider:'prodamus' as const,currency:'RUB' as const,
+    amountMinor:6000,state:'PENDING' as const};
+  assert.throws(()=>buildProdamusLinkRequest(order,'VPN',pd,'not-an-email'),/Invalid verified customer email/);
+  const params=new URL(buildProdamusLinkRequest(order,'VPN',pd)).searchParams;
+  assert.equal(params.has('customer_email'),false);
+  assert.equal(new URL(params.get('urlSuccess')!).searchParams.get('order'),id);
+  assert.equal(new URL(params.get('urlReturn')!).searchParams.get('order'),id);
+});
 test('merchant and notification endpoints remain fragment-free',()=>{
  const order={id,provider:'prodamus' as const,currency:'RUB' as const,
    amountMinor:6000,state:'PENDING' as const};

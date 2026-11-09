@@ -179,6 +179,9 @@ const css = await readFile(new URL('../public/site.css', import.meta.url));
 const neoCss = await readFile(new URL('../public/neo.css', import.meta.url));
 const brandAvatar = await readFile(new URL('../public/brand-avatar.webp', import.meta.url));
 const js = await readFile(new URL('../public/app.js', import.meta.url));
+const journeyCss = await readFile(new URL('../public/journey.css', import.meta.url));
+const journeyJs = await readFile(new URL('../public/journey.js', import.meta.url));
+const aboutJs = await readFile(new URL('../public/about.js', import.meta.url));
 const vpnInstallJs=await readFile(new URL('../public/vpn-install.js',import.meta.url));
 const workerProfileToken=process.env.VPN_WORKER_PROFILE_TOKEN??'';
 const policy = [
@@ -520,7 +523,7 @@ function installHtml(subUrl:string,client:'incy'|'karing'):string {
 
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', publicOrigin);
-  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/payment/success' || url.pathname === '/payment/return')) {
     const device=cookie(req,deviceCookie);
     if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
       setCookie(res,deviceCookie,randomBytes(32).toString('base64url'),365*24*60*60);
@@ -543,6 +546,15 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === 'GET' && url.pathname === '/app.js') {
     send(res, 200, js, 'text/javascript; charset=utf-8'); return;
+  }
+  if(req.method==='GET' && url.pathname==='/journey.css'){
+    send(res,200,journeyCss,'text/css; charset=utf-8');return;
+  }
+  if(req.method==='GET' && url.pathname==='/journey.js'){
+    send(res,200,journeyJs,'text/javascript; charset=utf-8');return;
+  }
+  if (req.method === 'GET' && url.pathname === '/about.js') {
+    send(res, 200, aboutJs, 'text/javascript; charset=utf-8'); return;
   }
   if(req.method==='GET' && url.pathname==='/vpn-install.js'){
     send(res,200,vpnInstallJs,'text/javascript; charset=utf-8');return;
@@ -803,6 +815,15 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     const dashboard = await loadDashboard(authPool, auth.accountId, meteringVerified);
     json(res,200,{ ...dashboard, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
   }
+  if(req.method==='POST'&&url.pathname==='/api/referral-link'){
+    if(!csrfAllowed(req,auth.raw)){json(res,403,{code:'FORBIDDEN'});return;}
+    const invite=await store.websiteReferralInvite(auth.accountId);
+    if(!invite){json(res,503,{code:'REFERRALS_NOT_AVAILABLE'});return;}
+    const botUrl='https://t.me/MNEBYVPN_bot?start=r'+invite.token;
+    const websiteUrl=publicOrigin+'/?ref='+encodeURIComponent(invite.token)+
+      '&product=vpn&days='+invite.days;
+    json(res,200,{botUrl,websiteUrl,days:invite.days,rewardsEnabled:false});return;
+  }
   if (req.method === 'POST' && url.pathname === '/api/logout') {
     if (!csrfAllowed(req,auth.raw)) { json(res,403,{code:'FORBIDDEN'});return; }
     await authPool.query(`UPDATE website_sessions SET revoked_at=clock_timestamp()
@@ -851,6 +872,11 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       json(res,503,{code:'PAYMENT_NOT_AVAILABLE'});return;
     }
     const body = await bodyJson(req);
+    // Web payment forms must receive the verified email from the session.
+    // Telegram-only users link an email once; never trust buyer-supplied body.email.
+    if(!auth.email){
+      json(res,409,{code:'VERIFIED_EMAIL_REQUIRED'});return;
+    }
     const isRenewal=url.pathname==='/api/renew';
     const validTarget=typeof body.renewalTargetId==='string' &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.renewalTargetId);
@@ -866,7 +892,7 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     }
     try {
       const purchase = await prepareWebsiteProdamusCheckout({
-        accountId: auth.accountId, planId: body.planId,
+        accountId: auth.accountId, email:auth.email, planId: body.planId,
         requestId: 'web:' + body.requestId,
         inviteToken: body.inviteToken as string|undefined,
         renewalTargetId: isRenewal ? body.renewalTargetId as string : undefined,

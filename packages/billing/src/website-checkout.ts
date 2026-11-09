@@ -11,6 +11,8 @@ import {buildProdamusLinkRequest,type ProdamusConfig} from './prodamus.ts';
 export interface TrustedWebsiteCheckout {
   /** Resolved by an actual authenticated website session, not an HTTP body. */
   accountId:string;
+  /** Verified account email; never read from checkout request body. */
+  email?:string;
   requestId:string;
   planId:string;
   inviteToken?:string;
@@ -48,7 +50,7 @@ export async function prepareWebsiteProdamusCheckout(
   const order=await db.createWebsiteOrder(
     authenticated.accountId,authenticated.planId,authenticated.requestId,
     authenticated.inviteToken,authenticated.renewalTargetId);
-  const url=buildProdamusLinkRequest(prodamusOrderFromDB(order),order.planTitle,config);
+  const url=buildProdamusLinkRequest(prodamusOrderFromDB(order),order.planTitle,config,authenticated.email);
   const payform=new URL(url);
   if(!approvedHost(payform.hostname))throw new Error('Unapproved configured Prodamus host');
   const result=await transport.getLink(url);
