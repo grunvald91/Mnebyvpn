@@ -129,6 +129,54 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
   }
   await page.close();
 }
+// Synthetic *end-to-end* email OTP and trial request (no customer records,
+ // external email or paid orders). Verifies that clicking Try does not issue
+ // an anonymous trial and the server-backed grant occurs after OTP only.
+{
+  const page=await browser.newPage({viewport:{width:390,height:844}});
+  let verified=false,trialCalls=0;
+  page.on('pageerror',error=>{
+    console.error('TRIAL_OTP_PAGE_ERROR',String(error.message));failed=true;
+  });
+  await page.route('**/api/me',route=>route.fulfill({
+    status:verified?200:401,contentType:'application/json',
+    body:JSON.stringify(verified?{
+      csrf:'visual-test-csrf',identity:{email:'visual-test@example.com',
+        emailLinked:true,telegramLinked:false},
+      access:[],orders:[],
+    }:{code:'LOGIN_REQUIRED'}),
+  }));
+  await page.route('**/api/auth/email/start',route=>route.fulfill({
+    status:200,contentType:'application/json',body:'{"status":"SENT"}',
+  }));
+  await page.route('**/api/auth/email/verify',route=>{
+    verified=true;
+    return route.fulfill({status:200,contentType:'application/json',body:'{"status":"SIGNED_IN"}'});
+  });
+  await page.route('**/api/trial',route=>{
+    trialCalls++;
+    return route.fulfill({status:200,contentType:'application/json',body:'{"status":"GRANTED"}'});
+  });
+  await page.goto(base,{waitUntil:'networkidle'});
+  await page.waitForFunction(()=>document.body.classList.contains('journey-active')&&
+    !document.querySelector('#journey-trial').disabled);
+  await page.locator('#journey-trial').click();
+  if(trialCalls!==0)failed=true;
+  await page.locator('#email-input').fill('visual-test@example.com');
+  await page.locator('#email-send-button').click();
+  await page.locator('#email-code-input').fill('123456');
+  await page.locator('#email-verify-button').click();
+  try{await page.waitForFunction(()=>document.body.dataset.journeyView==='setup',{timeout:7000});}
+  catch{failed=true;}
+  const actual=await page.evaluate(()=>({
+    view:document.body.dataset.journeyView,
+    title:document.querySelector('#journey-setup-title')?.textContent,
+    emailFormDuplicates:document.querySelectorAll('#email-start-form').length,
+  }));
+  console.log('TRIAL_EMAIL_OTP_SMOKE='+JSON.stringify({...actual,trialCalls}));
+  if(actual.view!=='setup'||trialCalls!==1||actual.emailFormDuplicates!==1)failed=true;
+  await page.close();
+}
 await browser.close();
 server.close();
 if(failed){
