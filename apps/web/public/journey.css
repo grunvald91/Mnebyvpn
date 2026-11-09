@@ -103,3 +103,293 @@ body.journey-active[data-journey-view="payment"] .journey-payment-intro{display:
 .journey-payment-cabinet{display:inline-block;font-size:13px;text-decoration:underline;text-underline-offset:4px;color:#9ce9f9}
 body.journey-active .journey-payment-intro[hidden]{display:none}
 @media(max-width:680px){.journey-payment-intro{padding-top:21px}}
+
+
+/* The original decorative ambient spots were absolutely positioned at
+   top:780px and right:-240px. They extended document scroll dimensions even
+   when the entire compact checkout fit within one viewport. Fixed decoration
+   is excluded from document layout while preserving the neon background. */
+body.journey-active .ambient{position:fixed;pointer-events:none}
+html:has(body.journey-active){overflow-x:clip}
+/* 2026-11-09 visual QA: reuse the established neon glass visual language.
+   The one-screen storefront is a layout, not a new brand theme. The old
+   account, setup, checkout endpoints and modal remain unchanged. */
+body.journey-active[data-journey-view="plans"]{
+  display:flex;
+  flex-direction:column;
+  min-height:100vh;
+  min-height:100dvh;
+}
+body.journey-active[data-journey-view="plans"] .header,
+body.journey-active[data-journey-view="plans"] .footer{flex:0 0 auto}
+body.journey-active[data-journey-view="plans"] main{
+  flex:1 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-width:0;
+}
+body.journey-active .journey-landing[hidden],
+body.journey-active .journey-setup[hidden],
+body.journey-active .journey-payment-intro[hidden]{display:none!important}
+body.journey-active[data-journey-view="plans"] .header-inner{
+  min-height:68px;
+}
+body.journey-active .journey-header-account{
+  border-color:rgba(101,183,255,.46);
+  background:linear-gradient(115deg,rgba(10,59,85,.67),rgba(46,25,92,.75));
+  box-shadow:inset 0 1px rgba(255,255,255,.09);
+  border-radius:15px;
+}
+body.journey-active .journey-landing{
+  display:grid;
+  width:min(1080px,calc(100% - 48px));
+  max-width:1080px;
+  grid-template-columns:minmax(0,.94fr) minmax(0,1fr);
+  align-items:center;
+  gap:clamp(24px,5vw,70px);
+  padding:clamp(12px,3vh,32px) 0;
+}
+body.journey-active .journey-intro{
+  position:relative;
+  min-width:0;
+  margin:0;
+  text-align:left;
+}
+body.journey-active .journey-kicker{
+  color:#38e8f1;
+  font-size:11px;
+  letter-spacing:2px;
+  margin-bottom:14px;
+}
+body.journey-active .journey-intro h1{
+  font-weight:900;
+  font-size:clamp(41px,5vw,69px);
+  line-height:1.09;
+  letter-spacing:-2.5px;
+  margin:0 0 15px;
+  text-wrap:balance;
+}
+body.journey-active .journey-intro h1 span{
+  display:block;
+  color:transparent;
+  background:linear-gradient(94deg,#23edfa 5%,#74aaff 43%,#bd74ff 94%);
+  background-clip:text;
+  -webkit-background-clip:text;
+}
+body.journey-active .journey-intro>p:not(.journey-kicker){
+  max-width:365px;
+  color:#bcc9e7;
+  font-size:15px;
+  line-height:1.55;
+  margin:0;
+}
+body.journey-active .journey-portal{
+  height:clamp(156px,23vh,237px);
+  width:min(340px,100%);
+  margin:8px auto -4px;
+  pointer-events:none;
+}
+body.journey-active .journey-portal .portal-art{
+  width:100%;
+  height:100%;
+  filter:drop-shadow(0 12px 36px rgba(68,34,170,.29));
+}
+body.journey-active .journey-checkout{
+  position:relative;
+  overflow:hidden;
+  border:1px solid transparent;
+  border-radius:28px;
+  background:
+    linear-gradient(130deg,rgba(9,39,76,.97),rgba(20,24,64,.96) 54%,rgba(48,20,87,.95)) padding-box,
+    linear-gradient(125deg,#00d8f7,rgba(86,111,237,.32) 50%,#ab62fa) border-box;
+  box-shadow:0 0 27px rgba(15,193,245,.12),0 13px 42px rgba(103,34,204,.12),inset 0 1px rgba(255,255,255,.09);
+  padding:clamp(18px,2.6vw,28px);
+}
+body.journey-active .journey-checkout::before{
+  content:"";
+  position:absolute;
+  width:190px;height:190px;right:-85px;top:-110px;
+  background:rgba(155,75,255,.43);
+  filter:blur(64px);
+  border-radius:50%;
+  pointer-events:none;
+}
+body.journey-active .journey-checkout>*{position:relative}
+body.journey-active .journey-checkout h2{
+  color:#f8faff;
+  font-size:20px;
+  font-weight:850;
+  margin:0 0 16px;
+  letter-spacing:-.5px;
+}
+body.journey-active .journey-duration-grid{
+  gap:10px;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+body.journey-active .journey-duration-grid button{
+  position:relative;
+  min-height:74px;
+  padding:11px 8px;
+  background:linear-gradient(130deg,rgba(12,43,75,.6),rgba(35,23,80,.57));
+  border:1px solid rgba(137,148,245,.37);
+  border-radius:16px;
+  color:#e8f2ff;
+  transition:border-color .2s,box-shadow .2s,background .2s;
+}
+body.journey-active .journey-duration-grid button:not(:disabled):hover{
+  border-color:rgba(78,236,254,.82);
+  box-shadow:0 0 20px rgba(22,186,231,.14);
+}
+body.journey-active .journey-duration-grid button[aria-pressed="true"]{
+  border:1px solid rgba(169,248,255,.91);
+  background:linear-gradient(115deg,rgba(0,151,191,.76),rgba(51,99,201,.81) 54%,rgba(134,62,224,.79));
+  box-shadow:0 0 15px rgba(23,215,239,.28),inset 0 0 0 1px rgba(131,233,255,.35);
+}
+body.journey-active .journey-duration-grid button span{
+  font-size:14px;
+  font-weight:800;
+}
+body.journey-active .journey-duration-grid button strong{
+  font-size:15px;
+  color:#a3f5ff;
+  margin-top:2px;
+}
+body.journey-active .journey-duration-grid button[aria-pressed="true"] strong{color:white}
+body.journey-active .journey-summary{
+  margin:15px 0 11px;
+  font-size:12px;
+  min-height:0;
+  color:#cbd6f4;
+}
+body.journey-active #journey-buy{
+  min-height:51px;
+  border:1px solid rgba(144,255,255,.67);
+  border-radius:17px;
+  color:#fff;
+  font-size:16px;
+  background:linear-gradient(105deg,#00dbdf,#278dff 53%,#ae45f8);
+  box-shadow:0 0 18px rgba(7,215,244,.28),0 0 25px rgba(145,52,239,.16);
+}
+body.journey-active #journey-buy:disabled{
+  background:linear-gradient(110deg,#137e90,#346ba8 50%,#7140a9);
+  border-color:rgba(119,158,224,.46);
+  color:#e6edff;
+}
+body.journey-active #journey-buy:not(:disabled):hover{
+  filter:brightness(1.13);
+  box-shadow:0 0 27px rgba(11,227,255,.4),0 0 33px rgba(145,52,239,.25);
+}
+body.journey-active .journey-trial{
+  color:#6bf8ff;
+  text-decoration:none;
+  margin-top:10px;
+  font-size:13px;
+}
+body.journey-active .journey-trial:not(:disabled):hover{text-decoration:underline}
+body.journey-active .journey-secondary{margin-top:7px;color:#a6b5d4;font-size:10px}
+body.journey-active[data-journey-view="plans"] .footer{
+  padding:10px 0;
+  border-top:1px solid rgba(129,153,237,.18);
+  background:rgba(8,11,28,.35);
+}
+body.journey-active[data-journey-view="plans"] .footer-inner{
+  display:flex;
+  justify-content:center;
+  min-height:0;
+  padding:0;
+  gap:0;
+}
+body.journey-active[data-journey-view="plans"] .footer-brand{display:none}
+body.journey-active[data-journey-view="plans"] .footer-links{
+  width:100%;
+  justify-content:center;
+  gap:clamp(9px,2.1vw,22px);
+  flex-wrap:wrap;
+  margin:0;
+}
+body.journey-active[data-journey-view="plans"] .footer-links a,
+body.journey-active[data-journey-view="plans"] .footer-links button{
+  font-size:11px;
+  line-height:1.35;
+}
+@media(max-width:700px){
+  body.journey-active[data-journey-view="plans"] .header-inner{min-height:54px}
+  body.journey-active .journey-landing{
+    width:min(430px,calc(100% - 30px));
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:clamp(9px,2vh,17px);
+    padding:clamp(8px,1.7vh,17px) 0;
+  }
+  body.journey-active .journey-intro{text-align:center}
+  body.journey-active .journey-kicker{
+    font-size:10px;letter-spacing:1.5px;margin:0 0 7px;
+  }
+  body.journey-active .journey-intro h1{
+    font-size:clamp(30px,8vw,39px);
+    letter-spacing:-1.4px;
+    margin:0 0 7px;
+  }
+  body.journey-active .journey-intro>p:not(.journey-kicker){
+    margin:auto;
+    max-width:340px;
+    font-size:12px;
+    line-height:1.35;
+  }
+  body.journey-active .journey-portal{display:none}
+  body.journey-active .journey-checkout{padding:clamp(12px,3.7vw,18px);border-radius:22px}
+  body.journey-active .journey-checkout h2{font-size:16px;margin:0 0 10px}
+  body.journey-active .journey-duration-grid{gap:8px}
+  body.journey-active .journey-duration-grid button{min-height:60px;padding:7px 6px;border-radius:13px}
+  body.journey-active .journey-duration-grid button span{font-size:13px}
+  body.journey-active .journey-duration-grid button strong{font-size:14px;margin-top:1px}
+  body.journey-active .journey-summary{margin:10px 0 8px;font-size:11px}
+  body.journey-active #journey-buy{min-height:46px;font-size:14px}
+  body.journey-active .journey-trial{margin-top:8px;font-size:12px}
+  body.journey-active .journey-secondary{font-size:10px;margin-top:7px}
+  body.journey-active[data-journey-view="plans"] .footer{padding:8px 0}
+  body.journey-active[data-journey-view="plans"] .footer-links{gap:7px 14px}
+  body.journey-active[data-journey-view="plans"] .footer-links a,
+  body.journey-active[data-journey-view="plans"] .footer-links button{font-size:10px}
+}
+@media(max-width:400px){
+  body.journey-active .header .brand-text{display:none}
+  body.journey-active .journey-intro h1{font-size:32px}
+}
+@media(max-height:730px) and (max-width:700px){
+  body.journey-active .journey-landing{gap:8px;padding:7px 0}
+  body.journey-active .journey-intro h1{font-size:29px;margin-bottom:4px}
+  body.journey-active .journey-checkout h2{margin-bottom:8px}
+  body.journey-active .journey-duration-grid button{min-height:56px}
+  body.journey-active .journey-checkout{padding:12px}
+  body.journey-active[data-journey-view="plans"] .footer{padding:6px 0}
+}
+/* Keep the original brand wordmark on phones; the earlier compact
+   prototype hid it, leaving only a small icon in the header. */
+@media(max-width:460px){
+  body.journey-active[data-journey-view="plans"] .header .brand-text{
+    display:inline;
+    font-size:12px;
+    letter-spacing:-.55px;
+  }
+  body.journey-active[data-journey-view="plans"] .header-inner{
+    width:calc(100% - 20px);
+    gap:6px;
+  }
+  body.journey-active[data-journey-view="plans"] .brand{gap:5px}
+  body.journey-active[data-journey-view="plans"] .brand-avatar{width:26px;height:26px}
+  body.journey-active[data-journey-view="plans"] .about-trigger{
+    padding:7px 8px;
+    font-size:10px;
+  }
+  body.journey-active[data-journey-view="plans"] .journey-header-account{
+    min-height:35px;
+    padding:7px 8px;
+    font-size:10px;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  body.journey-active .journey-duration-grid button{transition:none}
+}
