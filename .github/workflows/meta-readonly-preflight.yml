@@ -3,6 +3,10 @@ on:
   push:
     branches: [diagnostics/pcapdroid-meta-path-20261109]
     paths: [.github/workflows/meta-readonly-preflight.yml]
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+    paths: [.github/workflows/meta-readonly-preflight.yml]
   workflow_dispatch:
 permissions:
   contents: read
