@@ -100,7 +100,7 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
       emailMounted:mount?.contains(form),
       emailVisible:panel&&!panel.classList.contains('hidden'),
       telegram:button?.getAttribute('aria-disabled'),
-      telegramExplained:document.querySelector('.journey-telegram-note')?.textContent,
+      telegramExplained:document.querySelector('.journey-telegram-method .journey-telegram-note')?.textContent,
       horizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
       trialTitle:document.querySelector('#journey-trial-title')?.textContent,
       pageErrors:[],
