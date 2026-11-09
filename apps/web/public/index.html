@@ -16,6 +16,58 @@
 <body>
   <div class="ambient ambient-a" aria-hidden="true"></div>
   <div class="ambient ambient-b" aria-hidden="true"></div>
+  <div class="journey-world-backdrop" aria-hidden="true">
+    <svg viewBox="0 0 940 920" role="presentation" focusable="false" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="worldCore" cx="35%" cy="29%" r="75%">
+          <stop stop-color="#195184" stop-opacity=".62"/><stop offset=".42" stop-color="#07365e" stop-opacity=".48"/>
+          <stop offset=".78" stop-color="#0d1c53" stop-opacity=".55"/><stop offset="1" stop-color="#0b0d2e" stop-opacity=".05"/>
+        </radialGradient>
+        <linearGradient id="worldRing" x1="0" x2="1" y1="1" y2="0">
+          <stop stop-color="#00eaff" stop-opacity=".06"/><stop offset=".35" stop-color="#09d8fa"/>
+          <stop offset=".7" stop-color="#7d67ff"/><stop offset="1" stop-color="#f147ff" stop-opacity=".18"/>
+        </linearGradient>
+        <linearGradient id="worldCrack" x1="0" x2="1">
+          <stop stop-color="#1cefff"/><stop offset=".58" stop-color="#377efe"/><stop offset="1" stop-color="#d35cff"/>
+        </linearGradient>
+        <filter id="worldGlow"><feGaussianBlur stdDeviation="11"/></filter>
+        <clipPath id="worldClip"><circle cx="470" cy="440" r="352"/></clipPath>
+      </defs>
+      <circle cx="470" cy="440" r="368" fill="none" stroke="#196abf" stroke-width="2" opacity=".25" filter="url(#worldGlow)"/>
+      <circle cx="470" cy="440" r="352" fill="url(#worldCore)" stroke="url(#worldRing)" stroke-width="3"/>
+      <g clip-path="url(#worldClip)">
+        <g stroke="#3ab8ed" stroke-width="1.1" opacity=".2" fill="none">
+          <ellipse cx="470" cy="440" rx="110" ry="350"/><ellipse cx="470" cy="440" rx="242" ry="350"/>
+          <ellipse cx="470" cy="440" rx="345" ry="125"/><ellipse cx="470" cy="440" rx="345" ry="248"/>
+          <path d="M118 440H822 M132 335H808 M138 555H802"/>
+        </g>
+        <g fill="#126697" fill-opacity=".21" stroke="#42c4e5" stroke-opacity=".47" stroke-width="1.5">
+          <path d="M257 209l64-39 38 12 23 41-17 35 29 25-21 42-57 7-13 44-38 14-7 44-26 16-16-55-38-24 5-48-30-30 28-58z"/>
+          <path d="M344 444l61 18 26 48-8 60-33 71-28 42-25-11-6-60-28-28 8-55-23-34z"/>
+          <path d="M477 191l84-27 43 28 26-5 49 41 65 7 26 38-25 48-46 10-28 44-48-2-20 33-50-16-38-40-31 2-24-48 36-49-25-39z"/>
+          <path d="M520 400l70-12 45 44-8 68-27 78-53 41-48-40-10-77-25-36z"/>
+          <path d="M706 588l44-29 39 19-13 43-49 12z"/>
+          <path d="M447 688l51 7 21 29-37 13-42-22z"/>
+        </g>
+        <g fill="none" stroke="url(#worldCrack)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity=".78">
+          <path d="M187 341l72 18 35-25 31 17 25-14 23 25 43-2 29 40 22-10 43 31 31-16 24 37 44-8 28 26 40-10"/>
+          <path d="M255 530l67-38 42 9 29-19 30 32 40-7 37 32 45-12 32 40 57-5 42 30"/>
+          <path d="M366 242l29 37 60-4 21 34 38-14 48 31 49-2 24 34"/>
+          <path d="M405 609l36-26 37 31 47-20 30 32 26-9"/>
+        </g>
+        <g fill="none" stroke="#1bf2ff" stroke-width="7" opacity=".19" filter="url(#worldGlow)">
+          <path d="M187 341l72 18 35-25 31 17 25-14 23 25 43-2 29 40 22-10 43 31 31-16 24 37 44-8 28 26 40-10"/>
+        </g>
+        <g fill="#ffb76d" opacity=".48">
+          <circle cx="347" cy="283" r="3"/><circle cx="375" cy="307" r="2"/><circle cx="583" cy="277" r="2.5"/>
+          <circle cx="646" cy="308" r="3"/><circle cx="522" cy="433" r="2.5"/><circle cx="568" cy="475" r="2"/>
+        </g>
+      </g>
+      <ellipse cx="470" cy="470" rx="444" ry="107" transform="rotate(-21 470 470)" fill="none" stroke="url(#worldRing)" stroke-width="2.5" opacity=".76"/>
+      <ellipse cx="470" cy="470" rx="443" ry="106" transform="rotate(-21 470 470)" fill="none" stroke="#14cffa" stroke-width="15" opacity=".17" filter="url(#worldGlow)"/>
+      <text x="470" y="478" text-anchor="middle" fill="#5bd6ff" fill-opacity=".14" font-family="Arial, sans-serif" font-weight="900" font-style="italic" font-size="95" letter-spacing="5">MNEBYVPN</text>
+    </svg>
+  </div>
   <header class="header">
     <div class="shell header-inner">
       <a href="/" class="brand" aria-label="MNEBYVPN — главная">
@@ -61,8 +113,30 @@
         <button type="button" class="button button-primary journey-primary" id="journey-buy" disabled>Загрузка…</button>
         <a id="journey-payment-link" class="button button-secondary journey-primary hidden" target="_blank" rel="noopener noreferrer">Открыть ссылку оплаты</a>
         <p role="alert" class="journey-error" id="journey-error" aria-live="assertive"></p>
-        <button type="button" class="journey-trial" id="journey-trial" disabled>Бесплатные 24 часа</button>
-        <p class="journey-secondary">Без автосписаний. Оплата на защищённой странице Prodamus.</p>
+        <div class="journey-trial-cta" id="journey-trial-offer">
+          <span class="journey-trial-label">⚡ Бесплатные 24 часа</span>
+          <button type="button" class="journey-trial" id="journey-trial" disabled>Попробовать</button>
+        </div>
+        <p class="journey-secondary">Без автосписаний. Защищённая оплата через Prodamus. Заранее напомним, когда срок будет заканчиваться.</p>
+        <p class="journey-notice-condition">Напоминания в Telegram доступны после привязки бота.</p>
+      </div>
+    </section>
+    <section class="journey-trial-auth shell" id="journey-trial-auth" aria-labelledby="journey-trial-title" hidden>
+      <div class="journey-trial-auth-card">
+        <p class="journey-kicker">MNEBYVPN · ПОПРОБУЙТЕ БЕСПЛАТНО</p>
+        <h1 id="journey-trial-title">Ваши 24 часа VPN</h1>
+        <p class="journey-trial-explain">Для получения персональной ссылки на 24 часа бесплатного пользования VPN авторизуйтесь по email. После подтверждения кода мы оформим пробный доступ и покажем инструкцию подключения.</p>
+        <div class="journey-trial-method">
+          <h2><span class="journey-method-number">01</span> Авторизация по email</h2>
+          <p>Отправим одноразовый код. Пароль не нужен.</p>
+          <div id="journey-email-mount"></div>
+        </div>
+        <div class="journey-trial-method journey-telegram-method">
+          <h2><span class="journey-method-number">02</span> Авторизация через Telegram</h2>
+          <a id="journey-trial-telegram" class="button button-outline journey-primary" href="/auth/login" aria-disabled="true">Войти через Telegram</a>
+          <p class="journey-telegram-note">Станет доступна после первого входа по email и привязки Telegram в личном кабинете.</p>
+        </div>
+        <a class="journey-back" id="journey-trial-back" href="#plans">← Вернуться к тарифам</a>
       </div>
     </section>
     <section class="journey-setup shell" id="journey-setup" aria-labelledby="journey-setup-title" hidden>
