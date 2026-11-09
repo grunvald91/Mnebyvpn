@@ -588,7 +588,10 @@ async function finishEmail(event){
     byId('email-verify-form').classList.add('hidden');
     await refresh();
     await consumePendingTrial();
-    byId('account').scrollIntoView({behavior:'smooth'});
+    // The trial sign-in screen shares this exact OTP flow with the cabinet.
+    // Do not scroll to a hidden account after the trial wizard has opened.
+    if(!window.MnebyvpnJourney?.afterEmailAuthenticated?.())
+      byId('account').scrollIntoView({behavior:'smooth'});
   }catch(error){
     text('email-status',error.message==='EMAIL_ALREADY_LINKED'?
       'Этот email уже привязан к другой учётной записи. Слияние не выполнено.':
