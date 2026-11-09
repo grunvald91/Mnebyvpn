@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/restore-neon-compact-viewport-20261109
+      - feat/trial-email-first-portal-20261109
     paths:
       - 'apps/web/public/**'
       - 'tests/visual-journey-preview.mjs'
