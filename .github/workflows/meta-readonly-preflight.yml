@@ -10,7 +10,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  issues: write
 concurrency:
   group: mnebydns-meta-readonly-preflight
   cancel-in-progress: false
@@ -34,6 +33,7 @@ jobs:
           for var in RU_HOST DE_HOST PINNED_HOST_KEYS RU_PASS DE_PASS; do
             if [[ -z "${!var:-}" ]]; then
               echo "missing_${var}=true" >> "$GITHUB_STEP_SUMMARY"
+              echo "missing_${var}=true"
               missing=1
             fi
           done
@@ -153,29 +153,20 @@ jobs:
                   status=type(exc).__name__
               print('ru_ingress_tls_'+sni.replace('.','_')+'='+status,flush=True)
           PY
-      - name: Publish sanitized aggregate results to diagnostic pull request
+      - name: Publish sanitized aggregate results to job summary
         if: always()
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
           REPORT="$RUNNER_TEMP/meta-aggregates.txt"
-          COMMENT="$RUNNER_TEMP/meta-pr-comment.md"
           {
-            echo '### Automatic MNEBYDNS Meta read-only preflight'
-            echo ''
-            echo 'Revision: `${{ github.sha }}` · GitHub Actions job: `${{ job.status }}`.'
-            echo ''
-            echo 'Only filtered aggregate counters below; no hosts, keys, SNI payloads or client identities.'
-            echo ''
+            echo "### MNEBYDNS Meta preflight (read-only)"
+            echo "Job status: ${{ job.status }}"
             echo '```text'
             if [[ -s "$REPORT" ]]; then
-              grep -E '^(ru|de|diagnostic)_[A-Za-z0-9_]+=(true|false|none|ok|[0-9]+|[A-Za-z_]+)$' "$REPORT" | head -n 100 || true
+              grep -E '^(ru|de|diagnostic)_[A-Za-z0-9_]+=(true|false|none|ok|[0-9]+|[A-Za-z0-9_]+)$' "$REPORT" | head -n 100 || true
             else
-              echo 'diagnostic_blocked=workflow_did_not_collect_server_results'
+              echo "diagnostic_blocked=no_data_collected"
             fi
             echo '```'
-          } > "$COMMENT"
-          gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/82/comments" -f body="$(cat "$COMMENT")" >/dev/null
-          echo 'Sanitized diagnostic posted to PR #82.' >> "$GITHUB_STEP_SUMMARY"
+          } >> "$GITHUB_STEP_SUMMARY"
