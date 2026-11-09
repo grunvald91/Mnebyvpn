@@ -102,6 +102,29 @@ jobs:
                           print(f'{role}_origin_tls_{safe}=ok')
                   except (OSError, ssl.SSLError) as exc:
                       print(f'{role}_origin_tls_{safe}={type(exc).__name__}')
+          # Only explicitly marked aggregate counters from active pilot units.
+          for line in lines:
+              fields = line.split()
+              if len(fields) < 4 or fields[3] != 'running': continue
+              unit = fields[0]
+              code, raw = run('journalctl','-u',unit,'--no-pager','-o','cat','-n','120')
+              if code != 0: continue
+              marker = 'meta_quic_'+role+'_active='
+              latest = next((row for row in reversed(raw.splitlines()) if row.startswith(marker)), None)
+              if not latest: continue
+              for key in ('rx','admitted','rejected','to_upstream','upstream_rx','client_tx','socket_error','emsgsize'):
+                  hit = re.search(r'(?:^|\s)'+key+r'=(\d+)(?:\s|$)', latest)
+                  if hit: print(f'{role}_quic_{key}={hit.group(1)}')
+              break
+          if role == 'de':
+              code, active = run('systemctl','list-units','--all','--plain','--no-legend','mnebydns-meta-pilot-*.service')
+              pilot_units = [s.split()[0] for s in active.splitlines() if len(s.split()) > 3 and s.split()[3] == 'running']
+              for unit in pilot_units[:1]:
+                  rc, raw = run('journalctl','-u',unit,'--no-pager','-o','cat','-n','120')
+                  rows=[s for s in raw.splitlines() if s.startswith('META_DE ')] if rc == 0 else []
+                  print(f'{role}_tcp_origin_sessions_sampled={len(rows)}')
+                  print(f'{role}_tcp_sessions_with_origin_reply={sum(int(v.group(1)) > 0 for v in (re.search(r"\brecv_from_origin=(\d+)", row) for row in rows) if v)}')
+                  break
           print(f'{role}_read_only_complete=true')
           PY
           done
