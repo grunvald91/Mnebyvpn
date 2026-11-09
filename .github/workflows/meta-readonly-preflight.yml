@@ -1,0 +1,125 @@
+name: MNEBYDNS Meta read-only network diagnostics
+on:
+  push:
+    branches: [diagnostics/pcapdroid-meta-path-20261109]
+    paths: [.github/workflows/meta-readonly-preflight.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mnebydns-meta-readonly-preflight
+  cancel-in-progress: false
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      RU_HOST: ${{ secrets.MNEBY_META_RU_HOST }}
+      DE_HOST: ${{ secrets.MNEBY_META_DE_HOST }}
+      PINNED_HOST_KEYS: ${{ secrets.MNEBY_SSH_KNOWN_HOSTS }}
+      RU_PASS: ${{ secrets.SERVER188_SSH_PASSWORD }}
+      DE_PASS: ${{ secrets.RELAY89_SSH_PASSWORD }}
+    steps:
+      - name: Validate private probe configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          missing=0
+          for var in RU_HOST DE_HOST PINNED_HOST_KEYS RU_PASS DE_PASS; do
+            if [[ -z "${!var:-}" ]]; then
+              echo "missing_${var}=true" >> "$GITHUB_STEP_SUMMARY"
+              missing=1
+            fi
+          done
+          if (( missing )); then
+            echo 'BLOCKED: no production access attempted (requires pinned SSH host keys and host secrets)' >> "$GITHUB_STEP_SUMMARY"
+            exit 78
+          fi
+          echo 'Host credentials and pinned SSH keys supplied; no server changes permitted.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Setup pinned SSH and minimal client
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$PINNED_HOST_KEYS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass >/dev/null
+      - name: Read-only remote network and service snapshot on RU and DE
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SSH_OPTS=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=1 -o LogLevel=ERROR)
+          for role in ru de; do
+            if [[ "$role" = ru ]]; then
+              export SSHPASS="$RU_PASS"
+              host="$RU_HOST"
+            else
+              export SSHPASS="$DE_PASS"
+              host="$DE_HOST"
+            fi
+            echo "=== ${role^^} read-only ==="
+            sshpass -e ssh "${SSH_OPTS[@]}" "root@$host" 'python3 -' "$role" <<'PY'
+          import datetime, importlib.util, os, re, socket, ssl, subprocess, sys, time
+          role = sys.argv[1]
+          def run(*cmd):
+              try:
+                  r = subprocess.run(cmd, capture_output=True, text=True, timeout=6)
+                  return r.returncode, r.stdout
+              except (OSError, subprocess.TimeoutExpired): return 127, ''
+          print(f'{role}_probe_started=true')
+          code, out = run('ip', '-o', 'link', 'show', 'dev', 'tg-relay')
+          print(f'{role}_wireguard_interface_present={str(code == 0).lower()}')
+          match = re.search(r'\bmtu\s+(\d+)\b', out)
+          if match: print(f'{role}_wireguard_mtu={match.group(1)}')
+          code, out = run('wg', 'show', 'tg-relay', 'latest-handshakes')
+          handshakes = []
+          if code == 0:
+              for line in out.splitlines():
+                  fields = line.split()
+                  if len(fields) == 2 and fields[1].isdigit(): handshakes.append(int(fields[1]))
+          newest = max(handshakes, default=0)
+          print(f'{role}_wireguard_peer_count={len(handshakes)}')
+          print(f'{role}_wireguard_handshake_age_seconds={max(0, int(time.time())-newest) if newest else "none"}')
+          code, out = run('systemctl', 'list-units', '--all', '--plain', '--no-legend', 'mnebydns-meta-quic-*')
+          lines = [s for s in out.splitlines() if '.service' in s and '.timer' not in s]
+          print(f'{role}_meta_quic_service_count={len(lines)}')
+          print(f'{role}_meta_quic_running_count={sum(len(s.split()) > 3 and s.split()[3] == "running" for s in lines)}')
+          if role == 'ru':
+              code, out = run('ss', '-H', '-lun', 'sport = :443')
+              print(f'{role}_udp443_listener_present={str(code == 0 and bool(out.strip())).lower()}')
+              code, out = run('ss', '-H', '-ltn', 'sport = :443')
+              print(f'{role}_tcp443_listener_present={str(code == 0 and bool(out.strip())).lower()}')
+          else:
+              print(f'{role}_cryptography_available={str(importlib.util.find_spec("cryptography") is not None).lower()}')
+              for hostname in ('i.instagram.com', 'graph.instagram.com', 'threads.com'):
+                  safe = hostname.replace('.', '_')
+                  try:
+                      conn = socket.create_connection((hostname,443),timeout=6)
+                      conn.settimeout(6)
+                      with conn, ssl.create_default_context().wrap_socket(conn,server_hostname=hostname) as tls:
+                          print(f'{role}_origin_tls_{safe}=ok')
+                  except (OSError, ssl.SSLError) as exc:
+                      print(f'{role}_origin_tls_{safe}={type(exc).__name__}')
+          print(f'{role}_read_only_complete=true')
+          PY
+          done
+          echo 'Completed read-only service and network preflight. No DNS, firewall, nginx, WG or proxy mutations.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Probe Meta TLS through RU ingress from GitHub runner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import os, socket, ssl
+          host=os.environ['RU_HOST']
+          for sni in ('i.instagram.com','graph.instagram.com','test-gateway.instagram.com','threads.com'):
+              try:
+                  with socket.create_connection((host,443),timeout=8) as conn:
+                      conn.settimeout(8)
+                      with ssl.create_default_context().wrap_socket(conn,server_hostname=sni) as tls:
+                          status='verified_tls_'+tls.version().replace('.','_')
+              except (OSError,ssl.SSLError) as exc:
+                  status=type(exc).__name__
+              print('ru_ingress_tls_'+sni.replace('.','_')+'='+status,flush=True)
+          PY
