@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  issues: write
 concurrency:
   group: mnebydns-meta-readonly-preflight
   cancel-in-progress: false
@@ -25,6 +26,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           missing=0
+          : > "$RUNNER_TEMP/meta-aggregates.txt"
           for var in RU_HOST DE_HOST PINNED_HOST_KEYS RU_PASS DE_PASS; do
             if [[ -z "${!var:-}" ]]; then
               echo "missing_${var}=true" >> "$GITHUB_STEP_SUMMARY"
@@ -33,6 +35,7 @@ jobs:
           done
           if (( missing )); then
             echo 'BLOCKED: no production access attempted (requires pinned SSH host keys and host secrets)' >> "$GITHUB_STEP_SUMMARY"
+            echo 'diagnostic_blocked=missing_access_configuration' >> "$RUNNER_TEMP/meta-aggregates.txt"
             exit 78
           fi
           echo 'Host credentials and pinned SSH keys supplied; no server changes permitted.' >> "$GITHUB_STEP_SUMMARY"
@@ -60,7 +63,7 @@ jobs:
               host="$DE_HOST"
             fi
             echo "=== ${role^^} read-only ==="
-            sshpass -e ssh "${SSH_OPTS[@]}" "root@$host" 'python3 -' "$role" <<'PY'
+            sshpass -e ssh "${SSH_OPTS[@]}" "root@$host" 'python3 -' "$role" <<'PY' | tee -a "$RUNNER_TEMP/meta-aggregates.txt"
           import datetime, importlib.util, os, re, socket, ssl, subprocess, sys, time
           role = sys.argv[1]
           def run(*cmd):
@@ -133,7 +136,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 - <<'PY'
+          python3 - <<'PY' | tee -a "$RUNNER_TEMP/meta-aggregates.txt"
           import os, socket, ssl
           host=os.environ['RU_HOST']
           for sni in ('i.instagram.com','graph.instagram.com','test-gateway.instagram.com','threads.com'):
@@ -146,3 +149,29 @@ jobs:
                   status=type(exc).__name__
               print('ru_ingress_tls_'+sni.replace('.','_')+'='+status,flush=True)
           PY
+      - name: Publish sanitized aggregate results to diagnostic pull request
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          REPORT="$RUNNER_TEMP/meta-aggregates.txt"
+          COMMENT="$RUNNER_TEMP/meta-pr-comment.md"
+          {
+            echo '### Automatic MNEBYDNS Meta read-only preflight'
+            echo ''
+            echo 'Revision: `${{ github.sha }}` · GitHub Actions job: `${{ job.status }}`.'
+            echo ''
+            echo 'Only filtered aggregate counters below; no hosts, keys, SNI payloads or client identities.'
+            echo ''
+            echo '```text'
+            if [[ -s "$REPORT" ]]; then
+              grep -E '^(ru|de|diagnostic)_[A-Za-z0-9_]+=(true|false|none|ok|[0-9]+|[A-Za-z_]+)$' "$REPORT" | head -n 100 || true
+            else
+              echo 'diagnostic_blocked=workflow_did_not_collect_server_results'
+            fi
+            echo '```'
+          } > "$COMMENT"
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/82/comments" -f body="$(cat "$COMMENT")" >/dev/null
+          echo 'Sanitized diagnostic posted to PR #82.' >> "$GITHUB_STEP_SUMMARY"
