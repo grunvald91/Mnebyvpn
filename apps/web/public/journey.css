@@ -366,6 +366,30 @@ body.journey-active[data-journey-view="plans"] .footer-links button{
   body.journey-active .journey-checkout{padding:12px}
   body.journey-active[data-journey-view="plans"] .footer{padding:6px 0}
 }
+/* Keep the original brand wordmark on phones; the earlier compact
+   prototype hid it, leaving only a small icon in the header. */
+@media(max-width:460px){
+  body.journey-active[data-journey-view="plans"] .header .brand-text{
+    display:inline;
+    font-size:12px;
+    letter-spacing:-.55px;
+  }
+  body.journey-active[data-journey-view="plans"] .header-inner{
+    width:calc(100% - 20px);
+    gap:6px;
+  }
+  body.journey-active[data-journey-view="plans"] .brand{gap:5px}
+  body.journey-active[data-journey-view="plans"] .brand-avatar{width:26px;height:26px}
+  body.journey-active[data-journey-view="plans"] .about-trigger{
+    padding:7px 8px;
+    font-size:10px;
+  }
+  body.journey-active[data-journey-view="plans"] .journey-header-account{
+    min-height:35px;
+    padding:7px 8px;
+    font-size:10px;
+  }
+}
 @media(prefers-reduced-motion:reduce){
   body.journey-active .journey-duration-grid button{transition:none}
 }
