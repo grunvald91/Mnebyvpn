@@ -5,9 +5,10 @@
   'use strict';
   const el=id=>document.getElementById(id);
   const root=document.body;
-  const landing=el('journey-landing'),setup=el('journey-setup'),paymentIntro=el('journey-payment-intro');
+  const landing=el('journey-landing'),setup=el('journey-setup'),paymentIntro=el('journey-payment-intro'),trialAuth=el('journey-trial-auth');
+  const emailPanel=el('email-auth-panel'),emailHome=emailPanel?.parentNode;
   if(!landing||!setup||typeof state==='undefined')return;
-  const allViews=new Set(['plans','account','payment','setup','support']);
+  const allViews=new Set(['plans','account','payment','setup','support','trial-auth']);
   let view='plans', lastAccount=null, chosenPlatform='android', installed=false;
   const autoSetupOrders=new Set();
   const lastSetupAttempt=new Map();
@@ -24,6 +25,7 @@
   function getRoute() {
     const hash=location.hash;
     if(paymentLanding)return 'payment';
+    if(hash==='#try')return 'trial-auth';
     if(hash==='#account')return 'account';
     if(hash==='#connect')return 'setup';
     if(hash==='#contact-support')return 'support';
@@ -31,14 +33,25 @@
   }
   function setView(next,writeHash=false){
     if(!allViews.has(next))return;
+    if(view==='trial-auth'&&next!=='trial-auth'){
+      restoreEmailPanel();
+      // Explicitly leaving the sign-in screen cancels the unsubmitted trial.
+      // An external Telegram OIDC redirect does not call setView, and keeps
+      // the intent across the redirect so existing linked users can continue.
+      if(!state.loggedIn){
+        try{sessionStorage.removeItem('mnebyvpn-pending-trial');}catch{}
+      }
+    }
     view=next;
     root.dataset.journeyView=next;
     landing.hidden=next!=='plans';
     setup.hidden=next!=='setup';
     if(paymentIntro)paymentIntro.hidden=next!=='payment';
+    if(trialAuth)trialAuth.hidden=next!=='trial-auth';
+    if(next==='trial-auth')mountTrialEmail();
     if(writeHash){
       if(next!=='payment')paymentLanding=false;
-      const hash=next==='payment'?'#account':next==='setup'?'#connect':
+      const hash=next==='payment'?'#account':next==='trial-auth'?'#try':next==='setup'?'#connect':
         next==='support'?'#contact-support':next==='account'?'#account':'#plans';
       if(location.hash!==hash)history.replaceState(null,'',location.pathname+location.search+hash);
     }
@@ -46,6 +59,35 @@
     if(heading)heading.hidden=next!=='payment';
     if(next==='setup')updateSetup();
     window.scrollTo?.({top:0,behavior:'instant'});
+  }
+  // The same existing email OTP forms are used in both the cabinet and trial
+  // entry screen: never create duplicate inputs/IDs or a second auth service.
+  function updateTrialAuth(){
+    if(!trialAuth)return;
+    const emailOn=state.emailLoginEnabled===true;
+    el('journey-email-unavailable').hidden=emailOn;
+    if(view==='trial-auth'&&emailPanel){
+      emailPanel.classList.toggle('hidden',!emailOn);
+    }
+    const telegram=el('journey-trial-telegram');
+    if(telegram){
+      const enabled=state.telegramLoginEnabled===true;
+      if(enabled)telegram.href='/auth/login';
+      else telegram.removeAttribute('href');
+      telegram.setAttribute('aria-disabled',String(!enabled));
+      telegram.classList.toggle('journey-option-disabled',!enabled);
+    }
+  }
+  function mountTrialEmail(){
+    const mount=el('journey-email-mount');
+    if(mount&&emailPanel&&emailPanel.parentNode!==mount)mount.append(emailPanel);
+    updateTrialAuth();
+  }
+  function restoreEmailPanel(){
+    if(emailPanel&&emailHome&&emailPanel.parentNode!==emailHome){
+      emailHome.insertBefore(emailPanel,el('account-content'));
+      emailPanel.classList.toggle('hidden',!state.emailLoginEnabled||state.loggedIn&&!state.emailLinkMode);
+    }
   }
   function priceFor(days) {
     const p=state.plans.find(p=>p.product==='vpn'&&p.durationDays===days);
@@ -64,8 +106,10 @@
     const plan=state.plans.find(p=>p.product==='vpn'&&p.durationDays===state.days);
     buy.disabled=original.disabled;
     buy.textContent=original.textContent;
+    const trialAvailable=state.trialOffers.includes('vpn');
     el('journey-trial').disabled=el('trial-button').disabled;
-    el('journey-trial').hidden=!state.trialOffers.includes('vpn');
+    el('journey-trial-offer').hidden=!trialAvailable;
+    updateTrialAuth();
     el('journey-summary').textContent=plan?'VPN · '+state.days+' дней · '+priceFor(state.days):
       'Выбранный тариф пока не опубликован';
     el('journey-error').textContent=el('checkout-error').textContent||'';
@@ -310,13 +354,20 @@
   }));
   el('journey-buy').addEventListener('click',beginCheckout);
   el('journey-trial').addEventListener('click',async()=>{
+    if(!state.trialOffers.includes('vpn'))return;
     if(!state.loggedIn){
-      await claimTrial(); // Preserve the pending-trial intent during email login.
-      setView('account',true);
+      saveSelection();
+      try{sessionStorage.setItem('mnebyvpn-pending-trial','1');}catch{}
+      setView('trial-auth',true);
+      if(state.emailLoginEnabled)el('email-input')?.focus();
       return;
     }
     const result=await claimTrial();
     setView(['GRANTED','PENDING'].includes(result)?'setup':'account',true);
+  });
+  el('journey-trial-back')?.addEventListener('click',event=>{
+    event.preventDefault();
+    setView('plans',true);
   });
   setup.querySelectorAll('[data-journey-platform]').forEach(btn=>btn.addEventListener('click',()=>setPlatform(btn.dataset.journeyPlatform)));
   el('journey-installed').addEventListener('click',()=>{
@@ -330,7 +381,10 @@
   document.querySelector('#journey-payment-to-account')?.addEventListener('click',event=>{
     event.preventDefault();paymentLanding=false;setView('account',true);
   });
-  document.querySelector('.journey-back')?.addEventListener('click',event=>{
+  // Only the install wizard's back link belongs here. The new trial sign-in
+  // page has its own Back action; a global .journey-back selector would bind
+  // both handlers to the trial link and incorrectly send users to the cabinet.
+  setup.querySelector('.journey-back')?.addEventListener('click',event=>{
     event.preventDefault();paymentLanding=false;setView('account',true);
   });
   window.addEventListener('hashchange',()=>{
@@ -350,5 +404,13 @@
   root.classList.add('journey-active');
   setView(getRoute());
   updatePlan();
-  window.MnebyvpnJourney={show:setView,beginCheckout,updatePlan};
+  window.MnebyvpnJourney={show:setView,beginCheckout,updatePlan,
+    afterEmailAuthenticated(){
+      if(view==='setup')return true; // successful trial already opened installer
+      if(view==='trial-auth'){
+        setView('account',true);return true; // denied/unavailable trial: show real cabinet
+      }
+      return false;
+    },
+  };
 })();

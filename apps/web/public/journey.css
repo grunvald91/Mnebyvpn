@@ -393,3 +393,265 @@ body.journey-active[data-journey-view="plans"] .footer-links button{
 @media(prefers-reduced-motion:reduce){
   body.journey-active .journey-duration-grid button{transition:none}
 }
+
+
+/* Immersive neon world, based on the previously approved concept. SVG is
+   decorative inline artwork, not the source of clickable content. */
+.journey-world-backdrop{display:none}
+body.journey-active[data-journey-view="plans"] .journey-world-backdrop{
+  display:block;
+  position:fixed;
+  inset:0;
+  z-index:0;
+  overflow:hidden;
+  pointer-events:none;
+  opacity:.58;
+}
+body.journey-active .journey-world-backdrop svg{
+  display:block;
+  position:absolute;
+  width:min(134vw,1110px);
+  height:auto;
+  min-height:95%;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+  filter:drop-shadow(0 0 25px rgba(38,144,254,.14));
+}
+body.journey-active .header{z-index:40}
+body.journey-active main,body.journey-active .footer{position:relative;z-index:2}
+body.journey-active[data-journey-view="plans"] .journey-checkout{
+  background:linear-gradient(130deg,rgba(9,31,72,.86),rgba(21,24,67,.9) 55%,rgba(49,17,83,.88)) padding-box,
+    linear-gradient(125deg,#00d8f7,rgba(86,111,237,.35) 50%,#ab62fa) border-box;
+  backdrop-filter:blur(13px);
+  -webkit-backdrop-filter:blur(13px);
+  box-shadow:0 0 27px rgba(15,193,245,.17),0 13px 42px rgba(103,34,204,.18),inset 0 1px rgba(255,255,255,.1);
+}
+body.journey-active .journey-intro h1,
+body.journey-active .journey-checkout h2,
+body.journey-active #journey-buy,
+body.journey-active .journey-trial-auth h1,
+body.journey-active .journey-trial-method h2{
+  font-family:"Trebuchet MS","Arial Narrow",system-ui,sans-serif;
+  font-style:italic;
+  font-weight:900;
+  text-shadow:0 2px 15px rgba(35,175,242,.11);
+}
+body.journey-active .journey-intro h1 span{
+  text-transform:uppercase;
+  letter-spacing:-1.2px;
+  filter:drop-shadow(0 0 13px rgba(102,93,245,.2));
+}
+body.journey-active .journey-kicker{
+  font-family:"Trebuchet MS",system-ui,sans-serif;
+  font-style:italic;
+  font-weight:850;
+}
+body.journey-active .journey-checkout h2{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  letter-spacing:-.25px;
+}
+body.journey-active .journey-checkout h2::before{
+  content:"";
+  width:7px;
+  height:23px;
+  background:linear-gradient(#26eeff,#8a5bff);
+  transform:skew(-27deg);
+  box-shadow:0 0 12px rgba(33,226,255,.3);
+}
+body.journey-active .journey-duration-grid button span,
+body.journey-active .journey-duration-grid button strong{
+  font-family:"Trebuchet MS",system-ui,sans-serif;
+  font-style:italic;
+  letter-spacing:.1px;
+}
+body.journey-active .journey-summary{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  justify-content:center;
+}
+body.journey-active .journey-summary::before,
+body.journey-active .journey-summary::after{
+  content:"";
+  flex:1;
+  max-width:45px;
+  height:1px;
+  background:linear-gradient(90deg,transparent,#37c9f7);
+}
+body.journey-active .journey-summary::after{transform:rotate(180deg)}
+body.journey-active #journey-buy{font-size:clamp(14px,2.1vw,18px)}
+body.journey-active .journey-trial-cta{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-wrap:wrap;
+  column-gap:12px;
+  row-gap:4px;
+  margin-top:11px;
+}
+body.journey-active .journey-trial-cta[hidden]{display:none}
+body.journey-active .journey-trial-label{
+  color:#65f4ff;
+  font-family:"Trebuchet MS",system-ui,sans-serif;
+  font-style:italic;
+  font-weight:850;
+  font-size:13px;
+  white-space:nowrap;
+}
+body.journey-active .journey-trial{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  margin:0;
+  padding:6px 14px;
+  min-height:32px;
+  border:1px solid rgba(100,223,255,.75);
+  border-radius:11px;
+  color:#e6feff;
+  text-decoration:none;
+  background:linear-gradient(115deg,rgba(9,126,166,.4),rgba(74,41,169,.55));
+  box-shadow:inset 0 1px rgba(255,255,255,.12),0 0 14px rgba(43,206,246,.09);
+  font-size:12px;
+  line-height:1;
+  font-family:"Trebuchet MS",system-ui,sans-serif;
+  font-style:italic;
+  font-weight:850;
+}
+body.journey-active .journey-trial:not(:disabled):hover{
+  background:linear-gradient(110deg,rgba(14,174,224,.8),rgba(125,72,234,.77));
+  box-shadow:0 0 17px rgba(45,209,249,.35);
+  text-decoration:none;
+}
+body.journey-active .journey-secondary{
+  line-height:1.4;
+  font-size:11px;
+  margin:8px auto 0;
+  max-width:450px;
+  color:#cbd9ef;
+}
+body.journey-active .journey-notice-condition{
+  margin:3px 0 0;
+  color:#a7b8d8;
+  text-align:center;
+  font-size:10px;
+  line-height:1.35;
+}
+/* Dedicated trial sign-in. Two methods, one canonical email OTP form. */
+body.journey-active .journey-trial-auth[hidden]{display:none!important}
+body.journey-active .journey-trial-auth{
+  padding:clamp(18px,3vh,44px) 0;
+  width:min(610px,calc(100% - 30px));
+  max-width:610px;
+}
+body.journey-active .journey-trial-auth-card{
+  border:1px solid transparent;
+  border-radius:26px;
+  background:linear-gradient(133deg,rgba(10,32,73,.97),rgba(21,23,63,.98) 58%,rgba(44,21,84,.97)) padding-box,
+    linear-gradient(120deg,#36ddfd,rgba(95,105,247,.35),#a960fa) border-box;
+  box-shadow:0 14px 46px rgba(0,0,0,.28),0 0 25px rgba(49,157,230,.12);
+  padding:clamp(18px,4vw,30px);
+}
+body.journey-active .journey-trial-auth h1{
+  font-size:clamp(28px,6.3vw,43px);
+  line-height:1.15;
+  letter-spacing:-1.1px;
+  margin:0 0 9px;
+  background:linear-gradient(90deg,#eaf7ff,#40dbf9,#c09aff);
+  color:transparent;
+  background-clip:text;
+  -webkit-background-clip:text;
+}
+body.journey-active .journey-trial-explain{
+  color:#c6d5ed;
+  font-size:13px;
+  line-height:1.54;
+  margin:0 0 17px;
+}
+body.journey-active .journey-trial-method{
+  border:1px solid rgba(110,159,240,.27);
+  border-radius:18px;
+  padding:clamp(11px,2.6vw,19px);
+  background:rgba(8,24,57,.55);
+  margin:0 0 12px;
+}
+body.journey-active .journey-trial-method h2{
+  font-size:16px;
+  line-height:1.32;
+  margin:0 0 8px;
+}
+body.journey-active .journey-trial-method>p{
+  margin:0 0 11px;
+  color:#abbfdf;
+  font-size:12px;
+  line-height:1.45;
+}
+body.journey-active .journey-method-number{
+  font-size:11px;
+  font-style:normal;
+  color:#6df2f9;
+  padding:3px 6px;
+  border:1px solid rgba(91,234,254,.4);
+  border-radius:7px;
+  margin-right:4px;
+}
+body.journey-active .journey-trial-auth .email-auth-panel{
+  margin:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  padding:0;
+  box-shadow:none;
+}
+body.journey-active .journey-trial-auth .email-fields{display:flex;gap:9px;flex-wrap:wrap}
+body.journey-active .journey-trial-auth .email-fields input{
+  min-width:0;
+  flex:1 1 190px;
+  color:#fff;
+}
+body.journey-active .journey-trial-auth .email-fields button{flex:0 1 auto;min-height:44px}
+body.journey-active .journey-trial-auth #email-status{font-size:11px;line-height:1.45}
+body.journey-active .journey-trial-auth .journey-telegram-method{
+  background:rgba(12,22,50,.37);
+}
+body.journey-active .journey-trial-auth .journey-telegram-note{
+  color:#a8b8d3;
+  font-size:11px;
+  line-height:1.45;
+  margin:9px 0 0;
+}
+body.journey-active .journey-trial-auth .journey-option-disabled{
+  pointer-events:none;
+  opacity:.48;
+  cursor:not-allowed;
+  filter:grayscale(.3);
+}
+body.journey-active .journey-trial-auth .journey-back{margin-top:3px}
+@media(max-width:700px){
+  body.journey-active .journey-world-backdrop svg{
+    width:clamp(460px,147vw,700px);
+    height:auto;min-height:0;
+    top:45%;
+    opacity:.82;
+  }
+  body.journey-active .journey-intro h1{line-height:1.1}
+  body.journey-active .journey-intro h1 span{letter-spacing:-.6px}
+  body.journey-active .journey-checkout h2::before{height:17px;width:6px}
+  body.journey-active .journey-trial-cta{margin-top:7px;gap:6px 11px}
+  body.journey-active .journey-trial{min-height:28px;padding:5px 11px;font-size:11px}
+  body.journey-active .journey-trial-label{font-size:12px}
+  body.journey-active .journey-secondary{font-size:10px;line-height:1.38}
+  body.journey-active .journey-notice-condition{font-size:9px;line-height:1.3}
+}
+@media(max-height:760px) and (max-width:700px){
+  body.journey-active .journey-trial-cta{margin-top:5px}
+  body.journey-active .journey-trial{min-height:27px}
+  body.journey-active .journey-summary{margin:7px 0 5px}
+  body.journey-active .journey-checkout{padding:11px}
+  body.journey-active .journey-checkout h2{margin-bottom:7px}
+  body.journey-active .journey-duration-grid button{min-height:53px}
+  body.journey-active .journey-secondary{margin-top:5px}
+  body.journey-active .journey-notice-condition{margin-top:2px}
+}

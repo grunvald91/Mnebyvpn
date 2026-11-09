@@ -67,7 +67,9 @@ test('payment return shows own server-confirmed order and auto-opens ACTIVE subs
   assert.match(journey,/originalShowPaymentLink\(url\)/);
 });
 test('trial flow preserves pending login and automatically opens activated access',()=>{
-  assert.match(journey,/if\(!state\.loggedIn\)\{\s*await claimTrial\(\)/);
+  assert.match(journey,/sessionStorage\.setItem\('mnebyvpn-pending-trial','1'\)/);
+  assert.match(journey,/setView\('trial-auth',true\)/);
+  assert.doesNotMatch(journey,/if\(!state\.loggedIn\)\{\s*await claimTrial\(\)/);
   assert.match(journey,/view==='setup'&&!state\.guestSubscriptionUrl/);
   assert.match(journey,/lastSetupAttempt\.set\(target\.id,Date\.now\(\)\)/);
 });

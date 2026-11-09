@@ -12,7 +12,7 @@ const publicDir=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../ap
 const plans=[15,30,60,90].map((durationDays,i)=>({
   id:'vpn_'+durationDays+'d_1device',
   title:'VPN '+durationDays+' дней',product:'vpn',
-  durationDays,rubMinor:[6000,9900,18000,26000][i],deviceLimit:1,
+  durationDays,rubMinor:[6000,9900,19900,24900][i],deviceLimit:1,
 }));
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
   '.css':'text/css; charset=utf-8','.webp':'image/webp'};
@@ -86,12 +86,101 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
     console.log(readFileSync(file).toString('base64'));
     console.log('VISUAL_JPEG_'+width+'_END');
   }
+  // Auth is a real separate client-side page. Click through the displayed
+  // trial CTA and assert the exact EXISTING OTP form has moved there.
+  await page.locator('#journey-trial').click();
+  await page.waitForFunction(()=>document.body.dataset.journeyView==='trial-auth');
+  const trial=await page.evaluate(()=>{
+    const form=document.querySelector('#email-start-form');
+    const panel=document.querySelector('#email-auth-panel');
+    const button=document.querySelector('#journey-trial-telegram');
+    const mount=document.querySelector('#journey-email-mount');
+    return {
+      route:location.hash,
+      emailMounted:mount?.contains(form),
+      emailVisible:panel&&!panel.classList.contains('hidden'),
+      telegram:button?.getAttribute('aria-disabled'),
+      telegramExplained:document.querySelector('.journey-telegram-method .journey-telegram-note')?.textContent,
+      horizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
+      trialTitle:document.querySelector('#journey-trial-title')?.textContent,
+      pageErrors:[],
+
+    };
+  });
+  trial.pageErrors=browserErrors;
+  const authImage=process.env.RUNNER_TEMP+'/mnebyvpn-trial-auth-'+width+'x'+height+'.jpg';
+  await page.screenshot({path:authImage,type:'jpeg',quality:72,fullPage:true});
+  console.log('TRIAL_AUTH_METRICS_'+width+'='+JSON.stringify(trial));
+  if(!trial.emailMounted||!trial.emailVisible||!trial.telegramExplained?.includes('email')||
+     trial.horizontalOverflow||trial.pageErrors.length||trial.route!=='#try')failed=true;
+  if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
+    console.log('TRIAL_AUTH_JPEG_'+width+'_BEGIN');
+    console.log(readFileSync(authImage).toString('base64'));
+    console.log('TRIAL_AUTH_JPEG_'+width+'_END');
+  }
+  await page.locator('#journey-trial-back').click();
+  const returned=await page.evaluate(()=>({
+    home:document.body.dataset.journeyView==='plans',
+    emailRestored:document.querySelector('.account-panel')?.contains(
+      document.querySelector('#email-start-form')),
+  }));
+  if(!returned.home||!returned.emailRestored){
+    console.error('TRIAL_AUTH_BACK_FAILED',JSON.stringify(returned));failed=true;
+  }
+  await page.close();
+}
+// Synthetic *end-to-end* email OTP and trial request (no customer records,
+ // external email or paid orders). Verifies that clicking Try does not issue
+ // an anonymous trial and the server-backed grant occurs after OTP only.
+{
+  const page=await browser.newPage({viewport:{width:390,height:844}});
+  let verified=false,trialCalls=0;
+  page.on('pageerror',error=>{
+    console.error('TRIAL_OTP_PAGE_ERROR',String(error.message));failed=true;
+  });
+  await page.route('**/api/me',route=>route.fulfill({
+    status:verified?200:401,contentType:'application/json',
+    body:JSON.stringify(verified?{
+      csrf:'visual-test-csrf',identity:{email:'visual-test@example.com',
+        emailLinked:true,telegramLinked:false},
+      access:[],orders:[],
+    }:{code:'LOGIN_REQUIRED'}),
+  }));
+  await page.route('**/api/auth/email/start',route=>route.fulfill({
+    status:200,contentType:'application/json',body:'{"status":"SENT"}',
+  }));
+  await page.route('**/api/auth/email/verify',route=>{
+    verified=true;
+    return route.fulfill({status:200,contentType:'application/json',body:'{"status":"SIGNED_IN"}'});
+  });
+  await page.route('**/api/trial',route=>{
+    trialCalls++;
+    return route.fulfill({status:200,contentType:'application/json',body:'{"status":"GRANTED"}'});
+  });
+  await page.goto(base,{waitUntil:'networkidle'});
+  await page.waitForFunction(()=>document.body.classList.contains('journey-active')&&
+    !document.querySelector('#journey-trial').disabled);
+  await page.locator('#journey-trial').click();
+  if(trialCalls!==0)failed=true;
+  await page.locator('#email-input').fill('visual-test@example.com');
+  await page.locator('#email-send-button').click();
+  await page.locator('#email-code-input').fill('123456');
+  await page.locator('#email-verify-button').click();
+  try{await page.waitForFunction(()=>document.body.dataset.journeyView==='setup',{timeout:7000});}
+  catch{failed=true;}
+  const actual=await page.evaluate(()=>({
+    view:document.body.dataset.journeyView,
+    title:document.querySelector('#journey-setup-title')?.textContent,
+    emailFormDuplicates:document.querySelectorAll('#email-start-form').length,
+  }));
+  console.log('TRIAL_EMAIL_OTP_SMOKE='+JSON.stringify({...actual,trialCalls}));
+  if(actual.view!=='setup'||trialCalls!==1||actual.emailFormDuplicates!==1)failed=true;
   await page.close();
 }
 await browser.close();
 server.close();
 if(failed){
-  console.error('VISUAL_ACCEPTANCE_FAILED: overflow or page error at a required viewport');
+  console.error('VISUAL_ACCEPTANCE_FAILED: overflow, page error or invalid trial auth at required viewport');
   process.exitCode=1;
 }else{
   console.log('VISUAL_ACCEPTANCE_PASSED: all required viewports fit without scroll');
