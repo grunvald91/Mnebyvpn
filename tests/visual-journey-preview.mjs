@@ -103,9 +103,11 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
       telegramExplained:document.querySelector('.journey-telegram-note')?.textContent,
       horizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
       trialTitle:document.querySelector('#journey-trial-title')?.textContent,
-      pageErrors:browserErrors,
+      pageErrors:[],
+
     };
   });
+  trial.pageErrors=browserErrors;
   const authImage=process.env.RUNNER_TEMP+'/mnebyvpn-trial-auth-'+width+'x'+height+'.jpg';
   await page.screenshot({path:authImage,type:'jpeg',quality:72,fullPage:true});
   console.log('TRIAL_AUTH_METRICS_'+width+'='+JSON.stringify(trial));
