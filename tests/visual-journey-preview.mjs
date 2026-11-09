@@ -12,7 +12,7 @@ const publicDir=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../ap
 const plans=[15,30,60,90].map((durationDays,i)=>({
   id:'vpn_'+durationDays+'d_1device',
   title:'VPN '+durationDays+' дней',product:'vpn',
-  durationDays,rubMinor:[6000,9900,18000,26000][i],deviceLimit:1,
+  durationDays,rubMinor:[6000,9900,19900,24900][i],deviceLimit:1,
 }));
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
   '.css':'text/css; charset=utf-8','.webp':'image/webp'};
