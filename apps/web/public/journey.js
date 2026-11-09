@@ -33,7 +33,15 @@
   }
   function setView(next,writeHash=false){
     if(!allViews.has(next))return;
-    if(view==='trial-auth'&&next!=='trial-auth')restoreEmailPanel();
+    if(view==='trial-auth'&&next!=='trial-auth'){
+      restoreEmailPanel();
+      // Explicitly leaving the sign-in screen cancels the unsubmitted trial.
+      // An external Telegram OIDC redirect does not call setView, and keeps
+      // the intent across the redirect so existing linked users can continue.
+      if(!state.loggedIn){
+        try{sessionStorage.removeItem('mnebyvpn-pending-trial');}catch{}
+      }
+    }
     view=next;
     root.dataset.journeyView=next;
     landing.hidden=next!=='plans';
@@ -359,8 +367,6 @@
   });
   el('journey-trial-back')?.addEventListener('click',event=>{
     event.preventDefault();
-    // Leave the pending trial in this browser session so returning to auth
-    // does not lose the request if a sign-in redirect is still in flight.
     setView('plans',true);
   });
   setup.querySelectorAll('[data-journey-platform]').forEach(btn=>btn.addEventListener('click',()=>setPlatform(btn.dataset.journeyPlatform)));
@@ -375,7 +381,10 @@
   document.querySelector('#journey-payment-to-account')?.addEventListener('click',event=>{
     event.preventDefault();paymentLanding=false;setView('account',true);
   });
-  document.querySelector('.journey-back')?.addEventListener('click',event=>{
+  // Only the install wizard's back link belongs here. The new trial sign-in
+  // page has its own Back action; a global .journey-back selector would bind
+  // both handlers to the trial link and incorrectly send users to the cabinet.
+  setup.querySelector('.journey-back')?.addEventListener('click',event=>{
     event.preventDefault();paymentLanding=false;setView('account',true);
   });
   window.addEventListener('hashchange',()=>{
