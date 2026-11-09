@@ -15,7 +15,7 @@ function browser(url:string,loggedIn:boolean){
     let href='';
     return {
       id,handlers,style:{},dataset:{},hidden:false,disabled:false,textContent:'',value:'',href:'',
-      classList:{add:()=>{},remove:()=>{},contains:()=>false},
+      classList:{add:()=>{},remove:()=>{},toggle:()=>{},contains:()=>false},
       addEventListener:(event:string,cb:()=>void)=>handlers.set(event,cb),
       removeAttribute:()=>{},setAttribute:()=>{},getAttribute:()=>null,
       append:()=>{},querySelector:()=>null,querySelectorAll:()=>[],focus:()=>{},
@@ -95,12 +95,19 @@ test('verified PAID+ACTIVE order opens setup exactly once even on refresh',()=>{
   assert.equal(b.map.get('journey-payment-heading').textContent,'VPN готов к подключению');
 });
 
-test('free trial starts login when anonymous instead of hiding login behind setup',async()=>{
+test('try button opens email-first trial auth without claiming VPN anonymously',async()=>{
   const b=browser('https://mnebyvpn.site/#plans',false);
   b.map.get('journey-trial').handlers.get('click')?.();
   await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(b.actions.trials,1);
+  assert.equal(b.actions.trials,0);
+  assert.equal(b.map.get('journey-trial-auth').hidden,false);
   assert.equal(b.map.get('journey-setup').hidden,true);
   assert.equal(b.map.get('journey-landing').hidden,true);
   assert.equal(b.window.MnebyvpnJourney!==undefined,true);
+});
+test('Telegram trial login remains secondary and is disabled when OIDC unavailable',()=>{
+  const b=browser('https://mnebyvpn.site/#try',false);
+  assert.equal(b.map.get('journey-trial-auth').hidden,false);
+  assert.equal(b.map.get('journey-trial-telegram').getAttribute('href'),null);
+  assert.equal(b.actions.trials,0);
 });
