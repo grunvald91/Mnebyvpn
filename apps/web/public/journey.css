@@ -105,6 +105,12 @@ body.journey-active .journey-payment-intro[hidden]{display:none}
 @media(max-width:680px){.journey-payment-intro{padding-top:21px}}
 
 
+/* The original decorative ambient spots were absolutely positioned at
+   top:780px and right:-240px. They extended document scroll dimensions even
+   when the entire compact checkout fit within one viewport. Fixed decoration
+   is excluded from document layout while preserving the neon background. */
+body.journey-active .ambient{position:fixed;pointer-events:none}
+html:has(body.journey-active){overflow-x:clip}
 /* 2026-11-09 visual QA: reuse the established neon glass visual language.
    The one-screen storefront is a layout, not a new brand theme. The old
    account, setup, checkout endpoints and modal remain unchanged. */
