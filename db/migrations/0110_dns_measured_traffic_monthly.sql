@@ -18,6 +18,32 @@ CREATE TABLE smart_dns_measured_traffic (
 -- No domains, source IP, SNI values, credentials or DNS history are retained.
 REVOKE ALL ON smart_dns_measured_traffic FROM PUBLIC;
 
+-- Append-only measurements. Verify upload + download exactly matches the
+-- existing accepted quota event even for privileged direct SQL inserts.
+CREATE FUNCTION enforce_smart_dns_measured_traffic_integrity()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER AS $
+DECLARE
+  v_charged bigint;
+BEGIN
+  IF TG_OP <> 'INSERT' THEN
+    RAISE EXCEPTION 'Measured DNS traffic events are append-only'
+      USING ERRCODE='23514';
+  END IF;
+  SELECT bytes INTO v_charged FROM quota_usage_events
+   WHERE entitlement_id=NEW.entitlement_id AND usage_event_id=NEW.usage_event_id;
+  IF NOT FOUND OR v_charged::numeric <>
+      NEW.upload_bytes::numeric + NEW.download_bytes::numeric THEN
+    RAISE EXCEPTION 'Directional DNS bytes do not match accepted quota debit'
+      USING ERRCODE='23514';
+  END IF;
+  RETURN NEW;
+END;
+$;
+CREATE TRIGGER smart_dns_measured_traffic_integrity
+  BEFORE INSERT OR UPDATE OR DELETE ON smart_dns_measured_traffic
+  FOR EACH ROW EXECUTE FUNCTION enforce_smart_dns_measured_traffic_integrity();
+REVOKE ALL ON FUNCTION enforce_smart_dns_measured_traffic_integrity() FROM PUBLIC;
+
 -- Atomic transfer accounting with exact-event idempotency. Distinct upload
 -- and download amounts are mandatory to independently audit monthly usage.
 -- This function MUST NOT be exposed to browsers/resolvers; a verified ingress
