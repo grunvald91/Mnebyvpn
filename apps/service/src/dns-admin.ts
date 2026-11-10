@@ -95,7 +95,10 @@ export async function dnsAdminAdd(pool:Pool|null,actorId:number,value:string,pro
     const {rows}=await pool.query<DomainRow>(
       `INSERT INTO dns_admin_domains (domain,product,status,requested_by,updated_by)
        VALUES ($1,$2,'PENDING',$3,$3)
-       ON CONFLICT (domain) DO NOTHING
+       ON CONFLICT (domain) DO UPDATE SET
+         status='PENDING',updated_by=EXCLUDED.updated_by,
+         requested_by=EXCLUDED.requested_by,updated_at=now()
+       WHERE dns_admin_domains.status IN ('CANCELLED','FAILED')
        RETURNING id,domain,product,status`,
       [domain,product,actorId]);
     if(rows.length){
@@ -116,7 +119,10 @@ export async function dnsAdminOracle(pool:Pool|null,actorId:number):Promise<Admi
       const {rowCount}=await pool.query(
         `INSERT INTO dns_admin_domains (domain,product,status,requested_by,updated_by)
          VALUES ($1,'Oracle','PENDING',$2,$2)
-         ON CONFLICT (domain) DO NOTHING`,[domain,actorId]);
+         ON CONFLICT (domain) DO UPDATE SET
+           status='PENDING',updated_by=EXCLUDED.updated_by,
+           requested_by=EXCLUDED.requested_by,updated_at=now()
+         WHERE dns_admin_domains.status IN ('CANCELLED','FAILED')`,[domain,actorId]);
       outcomes.push(domain+((rowCount??0)>0?' — добавлен':' — уже в списке'));
     }
     return page('☁️ Oracle\n\n'+outcomes.join('\n')+
