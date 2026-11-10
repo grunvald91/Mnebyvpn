@@ -120,6 +120,52 @@ test('real loopback TCP echo is billed by PostgreSQL for BOTH payload directions
   }
 });
 
+test('TCP transport stops on paid byte cap instead of forwarding the full buffer',async()=>{
+  const identity=await paidSubscriber(128);
+  const echo=createServer(s=>s.on('data',data=>{s.write(data);}));
+  const echoPort=await listen(echo);
+  const finished:Promise<RelayResult>[]=[];
+  const relay=createServer(async downstream=>{
+    downstream.pause();
+    const upstream=connect({host:'127.0.0.1',port:echoPort});
+    try{
+      await once(upstream,'connect');
+      const session=runMeteredTcpRelay({
+        client:downstream,upstream,identity,quota,maxChunkBytes:32,recheckMs:30,
+      });
+      finished.push(session.done);
+      downstream.resume();
+    }catch{downstream.destroy();upstream.destroy();}
+  });
+  const port=await listen(relay);
+  const client=await dial(port);
+  const received:Buffer[]=[];
+  client.on('data',d=>received.push(d));
+  try{
+    client.write(Buffer.alloc(256,0x61));
+    await Promise.race([
+      once(client,'close'),
+      new Promise((_,reject)=>setTimeout(
+        ()=>reject(new Error('quota cutoff timeout')),4000)),
+    ]);
+    assert.equal(finished.length,1);
+    const result=await finished[0];
+    assert.ok(
+      result.stopReason==='quota-denied'||result.stopReason==='revoked',
+      result.stopReason);
+    assert.ok(result.uploadBytes+result.downloadBytes<=128);
+    const total=(await pool.query('SELECT quota_used_bytes FROM entitlements WHERE id=$1',
+      [identity.entitlementId])).rows[0].quota_used_bytes;
+    assert.ok(Number(total)>0 && Number(total)<=128);
+    assert.equal(Number(total),result.uploadBytes+result.downloadBytes);
+    assert.ok(Buffer.concat(received).length<=128);
+  }finally{
+    client.destroy();
+    await new Promise<void>(resolve=>relay.close(()=>resolve()));
+    await new Promise<void>(resolve=>echo.close(()=>resolve()));
+  }
+});
+
 test('SQL revocation cuts an already open TCP relay with no new payload billed',async()=>{
   const identity=await paidSubscriber(4096);
   const echo=createServer(s=>s.on('data',data=>{s.write(data);}));
