@@ -620,8 +620,10 @@ async function processUpdate(update:any){
       w.chat.id===w.from.id&&validId(w.message_id)&&typeof w.data==='string'&&
       Buffer.byteLength(w.data,'utf8')<=64&&
       (w.type===undefined||w.type?.type==='data')&&!w.widget_id;
-    if(valid&&/^buy:[A-Za-z0-9_-]{16}$/.test(w.data))
-      result=await widgetStarsInvoice(w.from.id,w.data.slice(4),w.id);
+    if(valid&&/^buy:[A-Za-z0-9_-]{16}$/.test(w.data)){
+      try{result=await widgetStarsInvoice(w.from.id,w.data.slice(4),w.id)}
+      catch{result='CHECK_CHAT'}
+    }
     return {method:'answerWidgetQuery',widget_query_id:w.id,data:result};
   }
   const adminReply=await handleOperatorReply(update);
@@ -679,7 +681,7 @@ async function processUpdate(update:any){
   }
   try {
     if(['nav:vpn','info:vpn','nav:plans:vpn','nav:catalog','nav:plans'].includes(action))
-      return vpnBubble(actor.id);
+      return await vpnBubble(actor.id);
     if(action==='nav:vpn:list')return oneAction(actor,await vpnPlans());
     if(/^buy:stars:[a-z0-9][a-z0-9_-]{0,52}$/.test(action))
       return issueStars(actor.id,action.slice('buy:stars:'.length),update.update_id);
