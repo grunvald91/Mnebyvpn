@@ -90,10 +90,10 @@ export class PgBillingStore {
     const { rows } = await this.pool.query(orderSQL,[orderId]);
     return rows.length ? mapOrder(rows[0]) : null;
   }
-  async createTelegramOrder(telegramUserId: number, planId: string, requestId: string, inviteToken?:string,expectedKey?:string): Promise<OrderRecord> {
+  async createTelegramOrder(telegramUserId: number, planId: string, requestId: string, inviteToken?:string,expectedKey?:string,preferredOrderId?:string): Promise<OrderRecord> {
     if (!Number.isSafeInteger(telegramUserId) || telegramUserId <= 0)
       throw new Error('Invalid authenticated Telegram user ID');
-    return this.createOrder('telegram_stars', { telegramUserId }, planId, requestId, inviteToken,expectedKey);
+    return this.createOrder('telegram_stars', { telegramUserId }, planId, requestId, inviteToken,expectedKey,undefined,preferredOrderId);
   }
   /**
    * This method is for an independently authenticated WEBSITE session only.
@@ -109,10 +109,12 @@ export class PgBillingStore {
   private async createOrder(
     provider: PaymentProvider,
     who: { telegramUserId: number } | { accountId: string },
-    planId: string, requestId: string, inviteToken?: string,expectedKey?:string,renewalTargetId?:string,
+    planId: string, requestId: string, inviteToken?: string,expectedKey?:string,renewalTargetId?:string,preferredOrderId?:string,
   ): Promise<OrderRecord> {
     if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(planId)
         || !requestId || requestId.length > 160) throw new Error('Invalid request identity');
+    if (preferredOrderId!==undefined && !uuid.test(preferredOrderId))
+      throw new Error('Invalid pre-signed order identity');
     if (expectedKey!==undefined && !/^[A-Za-z0-9_-]{16}$/.test(expectedKey))
       throw new Error('Invalid expected offer key');
     if (inviteToken!==undefined && !/^[A-Za-z0-9_-]{16,24}$/.test(inviteToken))
@@ -202,7 +204,7 @@ export class PgBillingStore {
       const price = provider === 'telegram_stars' ? p.stars : p.rub_minor;
       if (price === null || safeInt(price) === 0) throw new Error('Price not configured');
       const currency = provider === 'telegram_stars' ? 'XTR' : 'RUB';
-      const id = randomUUID();
+      const id = preferredOrderId??randomUUID();
       await c.query(
         `INSERT INTO orders(id,account_id,product,provider,amount_minor,currency)
          VALUES($1,$2,$3,$4,$5,$6)`,
