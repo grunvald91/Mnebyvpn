@@ -233,7 +233,7 @@ export async function dnsAdminKeep(pool:Pool|null,actorId:number,rawId:string):P
     const {rows}=await pool.query<DomainRow>(
       `UPDATE dns_admin_domains SET status='CONFIRM_REQUESTED',revision=revision+1,
        updated_by=$2,updated_at=now()
-       WHERE id=$1 AND status='CANARY' AND canary_expires_at>now()+interval '2 minutes'
+       WHERE id=$1 AND status='CANARY' AND canary_expires_at>now()+interval '10 minutes'
        RETURNING id,domain,product,status`,[id,actorId]);
     if(!rows.length)return dnsAdminError('Тест уже завершён или срок слишком близок. Запроси новый тест.');
     return page('⏳ '+rows[0].domain+'\n\nПодтверждение принято, но постоянное включение '+
