@@ -74,7 +74,10 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
       horizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
       scrollExtra:document.documentElement.scrollHeight-innerHeight,
       card:rect(card),intro:rect(intro),footer:rect(footer),
+      cardToFooterGap:Math.round(footer.getBoundingClientRect().top-card.getBoundingClientRect().bottom),
+      desktopDarkDisk:innerWidth>700&&getComputedStyle(intro,'::before').display!=='none',
       selected:document.querySelector('[data-journey-days="30"]')?.getAttribute('aria-pressed'),
+      globeNaturalWidth:document.querySelector('.journey-world-image')?.naturalWidth||0,
       globeLoaded:!!(document.querySelector('.journey-world-image')?.complete &&
         document.querySelector('.journey-world-image')?.naturalWidth>=700),
       schematicGlobePresent:!!document.querySelector('.journey-world-backdrop svg'),
@@ -85,7 +88,8 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
   await page.screenshot({path:file,type:'jpeg',quality:72,fullPage:true});
   console.log('VISUAL_METRICS_'+width+'='+JSON.stringify({...metrics,browserErrors}));
   if(metrics.scrollExtra>2||metrics.horizontalOverflow||browserErrors.length||
-    !metrics.globeLoaded||metrics.schematicGlobePresent)failed=true;
+    !metrics.globeLoaded||metrics.globeNaturalWidth!==780||metrics.schematicGlobePresent||metrics.desktopDarkDisk||
+    (width<=390 && (metrics.cardToFooterGap<0||metrics.cardToFooterGap>50)))failed=true;
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('VISUAL_JPEG_'+width+'_BEGIN');
     console.log(readFileSync(file).toString('base64'));
