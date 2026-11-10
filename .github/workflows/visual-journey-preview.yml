@@ -8,6 +8,7 @@ on:
       - feat/neon-world-reference-20261110
       - fix/neon-reference-fill-and-glow-20261110
       - feat/halo-branded-checkout-20261110
+      - feat/stone-portal-visual-20261110
     paths:
       - 'apps/web/public/**'
       - 'tests/visual-journey-preview.mjs'
