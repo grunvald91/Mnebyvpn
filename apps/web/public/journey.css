@@ -1065,3 +1065,14 @@ body.journey-active[data-journey-view="plans"] .journey-intro h1 span{
   -webkit-text-stroke:.15px rgba(150,229,255,.33);
   filter:drop-shadow(0 0 13px rgba(26,157,255,.17));
 }
+
+
+/* Mobile-only visual match: keep illuminated continents visible through the
+   hero while local text shadows keep the CTA instructions fully readable. */
+@media(max-width:700px){
+  body.journey-active[data-journey-view="plans"] .journey-intro::before{
+    background:radial-gradient(ellipse at 50% 50%,
+      rgba(2,12,36,.74) 0%,rgba(3,14,37,.48) 47%,
+      rgba(4,15,39,.1) 76%,transparent 95%);
+  }
+}
