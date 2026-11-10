@@ -59,10 +59,10 @@ test('production cabinet: Stars invoice, checked payment, durable settlement and
       await new Promise(r=>setTimeout(r,100));
     }
     const catalog=await new PgBillingStore(pool).plans('telegram_stars');
-    const valid=catalog.filter(p=>p.product==='vpn'&&p.stars!==null)
+    const validOffers=catalog.filter(p=>p.product==='vpn'&&p.stars!==null)
       .filter(p=>{try{vpnPurchaseWidgetData([p]);return true}catch{return false}});
-    assert.ok(valid.some(p=>p.planId===planId));
-    assert.doesNotThrow(()=>vpnPurchaseWidgetPayload(user,valid));
+    assert.ok(validOffers.some(p=>p.planId===planId));
+    assert.doesNotThrow(()=>vpnPurchaseWidgetPayload(user,validOffers));
     // This is the ACTUAL production cabinet path behind the screenshot's
     // "🌐 VPN и тарифы" button, not the parallel legacy bot-navigation path.
     const home=await post({update_id:80999,message:{chat:{id:user,type:'private'},
