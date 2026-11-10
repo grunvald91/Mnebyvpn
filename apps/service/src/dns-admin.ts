@@ -14,8 +14,12 @@ const page=(text:string,buttons:AdminButton[][]):AdminPage=>({
   text,reply_markup:{inline_keyboard:buttons},
 });
 const labels:Record<string,string>={
-  PENDING:'🟡 На проверке',
-  ACTIVE:'🟢 Активен (сверьте с DNS)',
+  PENDING:'🟡 Ожидает проверки',
+  APPLY_REQUESTED:'⏳ Запрошен запуск',
+  CANARY:'🧪 Тест 60 минут',
+  CONFIRM_REQUESTED:'⏳ Ожидает закрепления',
+  ROLLBACK_REQUESTED:'⏳ Запрошен откат',
+  ACTIVE:'🟢 Активен',
   FAILED:'🔴 Не прошёл проверку',
   CANCELLED:'⚪ Заявка отменена',
   REMOVAL_PENDING:'🟠 Отключение ожидает применения',
@@ -42,11 +46,11 @@ export function normalizeDnsDomain(value:unknown):string|null{
 }
 export function dnsAdminIntro():AdminPage{
   return page('🛠 MNEBYDNS · управление доменами\n\n'+
-    'Здесь можно добавлять домены в очередь проверки и отменять заявки. '+
-    'Пока статус «На проверке», реальный DNS и прокси НЕ изменяются. '+
-    'Включать маршрут можно только после проверки HTTPS, SNI, IPv6 и отката.',[
+    'Добавляй домены, затем из карточки запускай проверку и временное включение. '+
+    'Постоянное включение — только после проверки на телефоне и отдельного подтверждения. '+
+    'Если тест не подтверждён, маршрут отключится автоматически.',[
       [{text:'➕ Добавить домен',callback_data:'dnsadmin:add'}],
-      [{text:'📋 Домены и статусы',callback_data:'dnsadmin:list'}],
+      [{text:'📋 Домены и статусы',callback_data:'dnsadmin:list:0'}],
       [{text:'☁️ Oracle · проверить заявки',callback_data:'dnsadmin:oracle'}],
       [home],
     ]);
