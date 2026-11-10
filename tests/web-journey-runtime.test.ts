@@ -111,3 +111,28 @@ test('Telegram trial login remains secondary and is disabled when OIDC unavailab
   assert.equal(b.map.get('journey-trial-telegram').getAttribute('href'),null);
   assert.equal(b.actions.trials,0);
 });
+
+
+test('checkout is a separate MNEBYVPN review, no provider request before confirmation',async()=>{
+  const b=browser('https://mnebyvpn.site/#plans',true);
+  b.state.checkoutEnabled=true;
+  b.window.renderAccount({orders:[],access:[],identity:{email:'verified@example.com'}});
+  b.map.get('journey-buy').handlers.get('click')?.();
+  assert.equal(b.map.get('journey-order').hidden,false);
+  assert.equal(b.map.get('journey-landing').hidden,true);
+  assert.equal(b.map.get('journey-order-period').textContent,'VPN · 30 дней');
+  assert.equal(b.map.get('journey-order-email').textContent,'verified@example.com');
+  assert.equal(b.actions.purchase,0);
+  b.map.get('journey-order-pay').handlers.get('click')?.();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(b.actions.purchase,1);
+});
+
+test('anonymous checkout never calls the payment provider',async()=>{
+  const b=browser('https://mnebyvpn.site/#plans',false);
+  b.state.checkoutEnabled=true;
+  b.map.get('journey-buy').handlers.get('click')?.();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(b.actions.purchase,0);
+  assert.equal(b.map.get('journey-order').hidden,true);
+});
