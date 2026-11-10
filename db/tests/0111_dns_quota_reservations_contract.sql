@@ -132,6 +132,21 @@ BEGIN
   SELECT quota_used_bytes INTO used_bytes FROM entitlements WHERE id=ent_b;
   IF used_bytes<>0 THEN RAISE EXCEPTION 'B charged for A'; END IF;
 
+  -- B's lease can expire while a hold remains. Duplicate requests MUST
+  -- not treat its original status as a fresh licence to forward more bytes.
+  UPDATE smart_dns_quota_reservations
+    SET created_at=clock_timestamp()-interval '40 seconds',
+        allowed_until=clock_timestamp()-interval '25 seconds'
+    WHERE entitlement_id=ent_b AND reservation_id='b-chunk-01';
+  SELECT reserve_smart_dns_chunk(ent_b,'b-chunk-01',500) INTO outcome;
+  IF outcome<>'DENY_LEASE_EXPIRED' THEN
+    RAISE EXCEPTION 'expired lease replay accepted: %',outcome;
+  END IF;
+  SELECT reserve_smart_dns_chunk(ent_b,'b-chunk-02',1) INTO outcome;
+  IF outcome<>'DENY_QUOTA' THEN
+    RAISE EXCEPTION 'expired hold silently released quota: %',outcome;
+  END IF;
+
   -- B reserves 500 then expires during the lease. No NEW grant, and
   -- positive late settlement fails closed rather than inventing extra quota.
   UPDATE entitlements SET starts_at=clock_timestamp()-interval '2 hours',
