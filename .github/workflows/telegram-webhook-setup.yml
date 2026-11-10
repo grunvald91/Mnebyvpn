@@ -1,6 +1,7 @@
 name: MNEBYVPN Telegram webhook digest and activation (token stays in GitHub)
 on:
   push:
+    branches: [main]
     paths: ['.github/workflows/telegram-webhook-setup.yml']
   workflow_dispatch:
 permissions:
@@ -47,7 +48,7 @@ jobs:
               result=call('setWebhook',{
                 'url':'https://cdn.servgo.ru:8443/mnebyvpn-telegram/webhook',
                 'secret_token':secret,
-                'allowed_updates':['message','callback_query','pre_checkout_query'],
+                'allowed_updates':['message','callback_query','pre_checkout_query','widget_query'],
                 'max_connections':5,
                 'drop_pending_updates':False,
               })
