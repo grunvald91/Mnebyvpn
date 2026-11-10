@@ -33,103 +33,28 @@ export function vpnPurchaseWidgetData(plans:ReadonlyArray<PricedPlan>):string {
 
 // Fixed, no-network HTML. Dynamic server prices are passed as private chat_data;
 // never use innerHTML with any user- or database-controlled values.
-const HTML=String.raw`<!doctype html><html lang="ru"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-:root{font-family:system-ui,-apple-system,sans-serif;color:#f7faff;background:#080d25;color-scheme:dark}*{box-sizing:border-box}
-body{margin:0;padding:14px 13px 16px;overflow-x:hidden;background:radial-gradient(circle at 94% 5%,#5b24a866,transparent 60%),linear-gradient(145deg,#080d25,#172451 62%,#100d34);font-size:13px}
-header{display:flex;gap:10px;align-items:center;margin-bottom:13px}
-.brand{position:relative;flex:0 0 39px;height:39px;border-radius:13px;overflow:hidden;background:radial-gradient(circle at 30% 22%,#8ffeff,#1689ff 34%,#261466 75%);border:1px solid #86f4ff;box-shadow:0 0 15px #0edfff77}
-.brandname{font-size:17px;font-weight:860;color:#a9f4ff}
-.meta{font-size:10px;color:#b2c7ec}
-.hero{display:flex;align-items:center;justify-content:space-between;min-height:139px;gap:5px;padding:16px 11px 14px 15px;overflow:hidden;border:1px solid #80c5ff85;border-radius:23px;background:linear-gradient(125deg,#075073,#243b89 54%,#59288f);box-shadow:0 9px 25px #04082976}
-.hero-copy{min-width:0;max-width:59%}
-.hero-chip{color:#98efff;font-size:9px;font-weight:750}
-.hero h2{font-size:22px;font-weight:850;line-height:1.07;letter-spacing:-.7px;margin:10px 0 6px;color:white}.hero h2 span{color:#93f9ff}
-.hero p{font-size:11px;line-height:1.42;color:#d7e5ff;margin:0}
-.energy{position:relative;flex:0 0 111px;height:115px;transform:translate(8px,3px)}
-.planet{position:absolute;left:21px;top:17px;width:82px;height:82px;border-radius:50%;background:radial-gradient(circle at 30% 22%,#dcffff,#58eaff 17%,#146bfc 42%,#161063 82%);box-shadow:0 0 21px #23dfff9c}
-.orbit{position:absolute;left:3px;top:46px;width:119px;height:32px;border:3px solid #61f4ff;border-left-color:#ac67ff;border-radius:50%;transform:rotate(-28deg);box-shadow:0 0 9px #5ef4ff}
-.eyebrow{margin:16px 0 10px;color:#84e8ff;font-size:10px;font-weight:850}
-.options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
-.option{min-width:0;min-height:77px;padding:12px;text-align:left;color:#fff;font:inherit;background:linear-gradient(145deg,#2a5b87,#33316d 60%,#5a2a83);border:1px solid #9cbbff77;border-radius:18px;box-shadow:inset 0 1px #ffffff52,0 7px 15px #03092380}
-.option[aria-pressed=true]{background:linear-gradient(125deg,#05c8d3,#287fff 53%,#8a47f1);border:1px solid #bbffff;box-shadow:0 0 0 1px #4cdcff78,0 0 19px #00deef70}
-.option:focus-visible,#pay:focus-visible{outline:2px solid white;outline-offset:3px}
-.term{display:block;color:#e4eeff;font-size:13px;font-weight:720}.amount{display:block;margin-top:7px;font-size:18px;font-weight:850}
-.total{margin-top:12px;padding:13px 14px;border:1px solid #9ab8f44d;border-radius:17px;background:linear-gradient(120deg,#122f56,#24205b 65%,#2e1758)}
-.line{display:flex;justify-content:space-between;align-items:center;gap:9px}.hint{color:#b4c8e7;font-size:11px}.value{font-size:12px;font-weight:740}
-.separator{height:1px;background:#88b4fc52;margin:12px 0}.price{color:#9cfcff;font-size:23px;font-weight:860}
-#pay{width:100%;min-height:48px;margin-top:12px;border:1px solid #bffbff;border-radius:17px;background:linear-gradient(105deg,#00d4df,#3288ff 50%,#b052f3);color:white;font:inherit;font-size:15px;font-weight:840;box-shadow:inset 0 1px #ffffff8c,0 0 17px #00e8f46b,0 9px 20px #431ab15e}
-#pay:disabled{opacity:.62;box-shadow:none}#notice{min-height:10px;margin:8px 3px 0;color:#abe3ff;font-size:11px}
-footer{margin-top:10px;color:#a7b7d9;font-size:10px;line-height:1.45;text-align:center}
-@media(max-width:320px){body{padding:11px 10px}.hero{padding:12px}.energy{transform:translate(9px,3px) scale(.82)}.hero h2{font-size:19px}}
-</style></head><body>
-<header><div class="brand" aria-hidden="true"></div><div><div class="brandname">MNEBYVPN</div><div class="meta">Личный VPN · Telegram Stars</div></div></header>
-<section class="hero"><div class="hero-copy"><span class="hero-chip">VPN ACCESS</span><h2>Твой интернет.<br><span>Твои правила.</span></h2><p>Выбери период. Оплата — прямо в Telegram.</p></div><div class="energy" aria-hidden="true"><div class="planet"></div><div class="orbit"></div></div></section>
-<div class="eyebrow">ВЫБЕРИ СВОЙ ПЕРИОД</div>
+// Inline 80px WebP derived from apps/web/public/brand-avatar.webp; the same real Telegram avatar is reused for header and hero.
+const HTML=String.raw`<!doctype html><html lang="ru"><style>:root{--art:url('data:image/webp;base64,UklGRnYDAABXRUJQVlA4IGoDAADQEgCdASpQAFAAP32gxV22Kygktx47asAviWwAuzSSiKg2Y5I/RX5rfQnbbm0a36fTIE/2pjVsSl1YTVb46mn2Bqm1bYVy3fG5HwfOJZyCuEWyYCifZ1XwQdDJU9v9iS9hyz/IfppuEssUGzBVmZXfXIKweytMoHnOhHYMtPfsqz2ECepQme1GkZW/iutaEKPnxvNEvgJpkcZ3vNyYRgAA/vVl1uzPqpyTB+XYOyuSR+34XbFOxlaCMBOpMZoyebqBBSS+MpZ4LQqua/EjGoim4GEgjhHyWCmYy2KHmGuDxeGxCM0OMI1pac6P2E1bKV3fJ5AAUMbi4ni2M6Ev8sfv37wdYSi8qswzi4dpNFLt0NBHytZXYhW0kEQsjT0HiuflOrT9eiHNgsbdUxaHB29atSZShXSphdrrDM6owHOmWNL8KgzI0pGbum+KL/tSL35DdwhvRAgGrAAmwMr+7wRw/NL55z9IzAXNYpXOz8dy9X1IwMEXVIXbVWz8ebuVz+6OCAui5FDQLRcr6jKr9Jg9wfUS4wFiB+jNhDsZfzqbK1pBp4hW/p/pIba9tZlOYnUyfOGF4e7FCAXgLEIcm4EbRwxolYHoUrPIgqxlltkwyydGKxrcT4iYaatq9oEvfNbizSwpc/nbUcsoIcBWn/nK/TwXxqW4BYX8ugrGpRe9ONOEYPVKDcEMhzGqXnjkqIIZKF2yd6bCMynna1vUWpRJErNKL9m3Xh8sE2D69g0fq+uTGj19/ShDrJm5Th179nBEBgVC3E8PrdxIao0r7sUoxYZFyU8cVo0USvgdGjQIpPGArHiS6gvvKF8dgtTZq2HfpYr4P3j0u3Q3j+888VXfHzF0RSdRKC3SmthrkULgUFErvtjGoIFY43keqf4n9u+qBrcHtTEiPeiwykWZC7JEYkBGvOIf6yeC3nu0MnWd7DdwKrewTA5wRBgHcp1jMZmSscL9Lei9oKOkHDNdUgyI0TVKlCiNQOM+tG2uGNT7T49ZWGOvrmQupIW7pR/Wl7knMI60wqFknW8k0xzXKg/Q6O26mbwBrniM2p7ItX6nQanW3/43MXuBCNqwKi1t2GgbAO8dTFIkwHfOIRE1KLyN8xqQGp68goPS5bCGBLTBRivdHv6ocYOh7GfFpmWouwTjX5Kng2ezgAAA');font-family:system-ui,sans-serif;color:#f5f8ff;background:#080b20}
+*{box-sizing:border-box}body{margin:0;padding:12px 12px 15px;background:linear-gradient(156deg,#071224,#101b43 60%,#110e31)}
+header{display:flex;align-items:center;gap:9px;margin-bottom:10px}.avatar{width:39px;height:39px;flex:none;border-radius:50%;background:var(--art) center/cover;border:1px solid #7feaff5c}.name{font-size:16px;font-weight:850}.sub{font-size:10px;color:#a8bddf;margin-top:2px}
+.hero{height:126px;display:flex;align-items:center;justify-content:space-between;padding:11px 10px 11px 15px;border:1px solid #72e5ff65;border-radius:21px;background:linear-gradient(115deg,#0e375dd9,#1a316dcf 54%,#47206bdb)}
+.copy{width:58%}.pill{font-size:9px;color:#8ff4ff;font-weight:800;letter-spacing:1px}.hero h2{font-size:21px;line-height:1.08;margin:8px 0 6px;letter-spacing:-.6px}.hero h2 span{color:#85f9ff}.hero p{font-size:10px;color:#deebff;line-height:1.4;margin:0}.art{width:110px;height:110px;flex:none;border-radius:50%;background:var(--art) center/cover}
+.eyebrow{font-weight:800;font-size:10px;color:#96dfff;letter-spacing:1px;margin:15px 0 9px}.options{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.option{min-width:0;min-height:69px;border-radius:16px;padding:9px 11px;text-align:left;font:inherit;color:white;border:1px solid #a6beff5c;background:linear-gradient(140deg,#274574c9,#35376fb8 70%,#512671bb)}
+.option[aria-pressed=true]{background:linear-gradient(114deg,#0ebfce,#347ff8 55%,#8b51e3);border:1px solid #adfeff;box-shadow:inset 0 1px #ffffff88,0 0 16px #29eaff88}
+.term{display:block;font-size:13px;font-weight:700}.amount{display:block;font-size:17px;font-weight:850;margin-top:5px}.total{border-radius:15px;margin-top:10px;padding:11px 12px;background:linear-gradient(110deg,#15365bac,#261f5bd9)}.line{display:flex;align-items:center;justify-content:space-between}.hint{font-size:11px;color:#b2c8ea}.value{font-size:12px;font-weight:700}.separator{height:1px;background:#afcaff36;margin:9px 0}.price{font-size:20px;font-weight:850;color:#92faff}
+#pay{width:100%;border-radius:16px;margin-top:10px;min-height:46px;border:1px solid #b5feff;color:white;background:linear-gradient(105deg,#13d9e8,#3c8efc 54%,#a25bea);font:inherit;font-size:14px;font-weight:800}#pay:disabled{opacity:.5}#notice{font-size:10px;color:#a5f4ff;min-height:8px;margin-top:7px}footer{font-size:9px;color:#a3b9df;text-align:center;line-height:1.3;margin-top:7px}</style><body><header><div class="avatar" aria-hidden="true"></div><div><div class="name">MNEBYVPN</div><div class="sub">Личный VPN · Telegram Stars</div></div></header>
+<section class="hero"><div class="copy"><span class="pill">СВОБОДНЫЙ ИНТЕРНЕТ</span><h2>Без стен.<br><span>Без границ.</span></h2><p>Выбери период и оплати в Telegram.</p></div><div class="art" aria-hidden="true"></div></section>
+<div class="eyebrow">ВЫБЕРИ ПЕРИОД</div>
 <div class="options">
 <button class="option" id="o0" type="button" hidden><span class="term" id="t0"></span><span class="amount" id="a0"></span></button>
 <button class="option" id="o1" type="button" hidden><span class="term" id="t1"></span><span class="amount" id="a1"></span></button>
 <button class="option" id="o2" type="button" hidden><span class="term" id="t2"></span><span class="amount" id="a2"></span></button>
 <button class="option" id="o3" type="button" hidden><span class="term" id="t3"></span><span class="amount" id="a3"></span></button>
-</div>
-<section class="total"><div class="line"><span class="hint">Устройств</span><span class="value" id="devices">1</span></div>
-<div class="separator"></div><div class="line"><span class="hint" id="duration">Выбранный период</span><span class="price" id="total">—</span></div></section>
-<button id="pay" type="button" disabled>Выберите тариф</button>
-<div id="notice" aria-live="polite"></div>
-<footer>Разовый пакет · счёт в Telegram Stars. Доступ после подтверждения оплаты.</footer>
-<script>
-(function(){
- var TW=typeof TelegramWidget==="undefined"?null:TelegramWidget,s=null,selected=-1,busy=false,locked="";
- function el(k){return document.getElementById(k)}
- function valid(row){return Array.isArray(row)&&row.length===5&&Number.isSafeInteger(row[0])&&row[0]>0&&
-  Number.isSafeInteger(row[1])&&row[1]>0&&Number.isSafeInteger(row[2])&&row[2]>0&&
-  typeof row[4]==="string"&&/^[A-Za-z0-9_-]{16}$/.test(row[4])}
- function days(n){return n===1?"1 день":n%10>=2&&n%10<=4&&(n%100<12||n%100>14)?n+" дня":n+" дней"}
- function render(){
-  var offer=s&&s.p[selected];
-  for(var i=0;i<4;i++){
-   var row=s&&s.p[i],button=el("o"+i);button.hidden=!row;
-   if(!row)continue;
-   el("t"+i).textContent=days(row[0]);el("a"+i).textContent=row[1]+" ⭐";
-   button.setAttribute("aria-pressed",String(selected===i));button.disabled=busy;
-  }
-  el("devices").textContent=offer?String(offer[2]):"—";
-  el("duration").textContent=offer?days(offer[0])+" · к оплате":"Выбранный период";
-  el("total").textContent=offer?offer[1]+" ⭐":"—";
-  el("pay").textContent=offer?"Оплатить "+offer[1]+" ⭐":"Выберите тариф";
-  el("pay").disabled=!offer||busy||locked===offer[4]||!TW||typeof TW.request!=="function";
- }
- function select(i){if(busy||!s||!s.p[i])return;selected=i;el("notice").textContent="";render()}
- function receive(){
-  try{
-   var raw=JSON.parse(TW&&TW.chatData||"{}");
-   if(raw.v!==1||!Array.isArray(raw.p)||raw.p.length<1||raw.p.length>4||!raw.p.every(valid))throw 0;
-   s=raw;
-   if(selected<0||selected>=s.p.length)selected=s.p.length>1?1:0;
-   render();
-   if(raw.more>0)el("notice").textContent="Показаны первые 4 тарифа. Остальные доступны в каталоге.";
-  }catch(e){s=null;render();el("notice").textContent="Откройте обновлённую карточку в личном чате с ботом."}
- }
- for(var i=0;i<4;i++){(function(j){el("o"+j).addEventListener("click",function(){select(j)})})(i)}
- el("pay").addEventListener("click",function(){
-  var row=s&&s.p[selected];if(!row||busy||locked===row[4]||!TW)return;
-  busy=true;render();el("notice").textContent="Готовим счёт…";
-  var key=row[4];
-  TW.request("buy:"+key).then(function(answer){
-   var result=answer&&answer.result;
-   if(result==="INVOICE_SENT"){locked=key;el("notice").textContent="Счёт отправлен в чат. Подтвердите оплату в Telegram."}
-   else if(result==="PROCESSING"||result==="ALREADY_REQUESTED"){
-    locked=key;el("notice").textContent="Проверьте сообщения бота. Чтобы не создать дубль, этот запрос не повторяется."}
-   else if(result==="PLAN_UNAVAILABLE"){el("notice").textContent="Цена или тариф изменились. Вернитесь в каталог и выберите заново."}
-   else{el("notice").textContent="Не удалось подтвердить создание счёта. Проверьте сообщения бота."}
-  },function(err){el("notice").textContent="Нет ответа от бота ("+String(err.code||"ошибка")+"). Проверьте чат перед повтором."})
-   .finally(function(){busy=false;render()});
- });
- if(TW){TW.onEvent("chatDataChanged",receive);receive();TW.ready()}
- else {render();el("notice").textContent="Карточка доступна в приложении Telegram."}
-})();
-</script></body></html>`;
+</div><section class="total"><div class="line"><span class="hint">Устройств</span><span class="value" id="devices">1</span></div><div class="separator"></div><div class="line"><span class="hint" id="duration">Выбранный период</span><span class="price" id="total">—</span></div></section>
+<button id="pay" type="button" disabled>Выберите тариф</button><div id="notice" aria-live="polite"></div><footer>Разовый пакет · счёт в Stars · доступ после оплаты</footer><script>(()=>{let w=typeof TelegramWidget=='undefined'?null:TelegramWidget,s={p:[]},i=1,b=0,k='';const e=id=>document.getElementById(id),term=n=>n===1?'1 день':n%10>1&&n%10<5&&(n%100<12||n%100>14)?n+' дня':n+' дней';function draw(){let p=s.p[i];for(let j=0;j<4;j++){let r=s.p[j],o=e('o'+j);o.hidden=!r;if(r){e('t'+j).textContent=term(r[0]);e('a'+j).textContent=r[1]+' ⭐';o.setAttribute('aria-pressed',String(i===j));o.disabled=!!b}}e('devices').textContent=p?p[2]:'—';e('duration').textContent=p?term(p[0])+' · к оплате':'Выбранный период';e('total').textContent=p?p[1]+' ⭐':'—';e('pay').textContent=p?'Оплатить '+p[1]+' ⭐':'Выберите тариф';e('pay').disabled=!p||b||k===p[4]||!w||typeof w.request!=='function'}
+function load(){try{let x=JSON.parse(w.chatData||'{}');if(x.v!==1||!Array.isArray(x.p)||!x.p.length||x.p.length>4||!x.p.every(r=>Array.isArray(r)&&r.length===5&&Number.isSafeInteger(r[0])&&r[0]>0&&Number.isSafeInteger(r[1])&&r[1]>0&&Number.isSafeInteger(r[2])&&r[2]>0&&typeof r[4]==='string'&&/^[\w-]{16}$/.test(r[4])))throw 0;s=x;i=Math.min(i,s.p.length-1);draw()}catch{s={p:[]};draw();e('notice').textContent='Откройте карточку в личном чате.'}}
+for(let j=0;j<4;j++)e('o'+j).onclick=()=>{if(b||!s.p[j])return;i=j;draw()};e('pay').onclick=()=>{let p=s.p[i];if(!p||b||k===p[4]||!w)return;b=1;k=p[4];draw();e('notice').textContent='Готовим счёт…';w.request('buy:'+k).then(a=>{e('notice').textContent=a&&a.result==='INVOICE_SENT'?'Счёт отправлен в чат.':'Проверьте чат или откройте каталог.'},()=>{e('notice').textContent='Нет ответа. Проверьте сообщения бота.'}).finally(()=>{b=0;draw()})};if(w){w.onEvent('chatDataChanged',load);load();w.ready()}else{draw();e('notice').textContent='Откройте в Telegram.'}})();</script></body></html>`;
 
 export function vpnPurchaseWidgetHtml():string {
   const original=Buffer.from(HTML,'utf8'),compressed=deflateSync(original,{level:9});

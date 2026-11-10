@@ -13,18 +13,21 @@ const offers:PricedPlan[]=[
  {planId:'vpn_60d_1device',product:'vpn',title:'60 дней',stars:110,rubMinor:19900,durationSeconds:60*86400,deviceLimit:1,dnsQuotaBytes:null},
  {planId:'vpn_30d_1device',product:'vpn',title:'30 дней',stars:60,rubMinor:9900,durationSeconds:30*86400,deviceLimit:1,dnsQuotaBytes:null},
 ];
-test('Apple-style purchase bubble fits Telegram 10.4 constraints and uses native chat theme',()=>{
+test('branded avatar bubble fits Telegram 10.4 payload and renders actual Earth/wall artwork',()=>{
  const html=vpnPurchaseWidgetHtml();
  assert.ok(Buffer.byteLength(html,'utf8')<=32768);
  assert.ok(deflateSync(Buffer.from(html),{level:9}).length<=3800);
  assert.match(html,/TelegramWidget/);
- assert.match(html,/#080d25/);
- assert.match(html,/#00d4df/);
- assert.match(html,/#b052f3/);
- assert.match(html,/class="planet"/);
- assert.match(html,/class="orbit"/);
+ assert.match(html,/data:image\/webp;base64,/);
+ assert.equal((html.match(/data:image\/webp;base64,/g)??[]).length,1);
+ const img=Buffer.from(html.match(/data:image\/webp;base64,([\w+/=]+)/)![1],'base64');
+ assert.equal(img.toString('ascii',0,4),'RIFF');
+ assert.equal(img.toString('ascii',8,12),'WEBP');
+ assert.match(html,/class="avatar"/);
+ assert.match(html,/class="art"/);
+ assert.match(html,/--art:url/);
  assert.match(html,/\.option\[aria-pressed=true\]/);
- assert.match(html,/@media\(max-width:320px\)/);
+ assert.match(html,/#13d9e8/);
  assert.doesNotMatch(html,/#edf5ff|#dbeafe|linear-gradient\(135deg,#edf5ff/);
  assert.match(html,/aria-live="polite"/);
  assert.match(html,/type="button"/);
@@ -61,12 +64,11 @@ test('invalid or unavailable prices fail closed rather than showing a fabricated
 test('tap selects the duration and requests only the fingerprint; invoice is not opened twice',async()=>{
  const state=vpnPurchaseWidgetData(offers);
  const elements=new Map<string,any>();
- const events=new Map<string,()=>void>();
  function element(id:string){
   if(!elements.has(id)){
    elements.set(id,{hidden:false,disabled:false,textContent:'',attributes:{} as Record<string,string>,
     setAttribute(k:string,v:string){this.attributes[k]=v},
-    addEventListener(ev:string,fn:()=>void){events.set(id+':'+ev,fn)}});
+    onclick:null as null | (()=>void)});
   }
   return elements.get(id);
  }
@@ -80,13 +82,13 @@ test('tap selects the duration and requests only the fingerprint; invoice is not
   TelegramWidget:tw,
  }));
  assert.equal(element('total').textContent,'60 ⭐'); // 30 days selected by default
- events.get('o3:click')?.();
+ element('o3').onclick?.();
  assert.equal(element('total').textContent,'140 ⭐');
- events.get('pay:click')?.();
+ element('pay').onclick?.();
  assert.deepEqual(requests,['buy:'+planWidgetKey(offers[0])]);
  await new Promise(resolve=>setImmediate(resolve));
  assert.match(element('notice').textContent,/Счёт отправлен в чат/);
  assert.equal(element('pay').disabled,true);
- events.get('pay:click')?.();
+ element('pay').onclick?.();
  assert.equal(requests.length,1);
 });
