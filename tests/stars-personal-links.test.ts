@@ -12,7 +12,8 @@ test('personal invoice payload binds order UUID, Telegram user, offer fingerprin
  assert.equal(x.telegramUserId,4198221122);
  assert.equal(x.offerKey,'Aa1234_____9999_');
  assert.equal(parseStarsPayload(payload,secret),x.orderId);
- assert.equal(parsePersonalStarsLinkPayload(payload.replace('4198','7777'),secret),null);
+ const tampered=payload.split(':');tampered[4]=(4198221123).toString(36);
+ assert.equal(parsePersonalStarsLinkPayload(tampered.join(':'),secret),null);
  const b=payload.split(':');
  b[3]='1';assert.equal(parsePersonalStarsLinkPayload(b.join(':'),secret),null);
  assert.equal(parsePersonalStarsLinkPayload(payload,secret+'changed'),null);
