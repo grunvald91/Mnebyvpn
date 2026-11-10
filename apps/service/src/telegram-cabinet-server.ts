@@ -21,7 +21,7 @@ import {
 import {activationView,deviceView,manualView}
   from './vpn-onboarding.ts';
 import {formatDuration,formatRoubles} from '../../../packages/telegram-ui/src/menu.ts';
-import {vpnPurchaseWidgetPayload} from '../../../packages/telegram-ui/src/purchase-widget.ts';
+import {vpnPurchaseWidgetPayload,vpnPurchaseWidgetData} from '../../../packages/telegram-ui/src/purchase-widget.ts';
 import {planWidgetKey} from '../../../packages/telegram-ui/src/widget-104.ts';
 import {dnsAdminOwner,dnsAdminIntro,dnsAdminPrompt,dnsAdminAction,dnsAdminAdd,DNS_ADMIN_PROMPT}
   from './dns-admin.ts';
@@ -168,6 +168,10 @@ async function vpnBubble(id:number) {
   if(!store)throw Error('DB unavailable');
   const offers=(await store.plans('telegram_stars'))
     .filter(p=>p.product==='vpn'&&p.stars!==null)
+    // Old/experimental published rows may not represent a sellable widget
+    // offer. Validate each row independently so one bad row cannot break
+    // the entire checkout, and never fabricate corrected terms.
+    .filter(p=>{try{vpnPurchaseWidgetData([p]);return true}catch{return false}})
     .sort((a,b)=>a.durationSeconds-b.durationSeconds||a.planId.localeCompare(b.planId));
   if(!offers.length)return {method:'sendMessage',chat_id:id,
     ...msg('🌐 VPN\\n\\nОпубликованных тарифов сейчас нет. Попробуйте позднее.',
