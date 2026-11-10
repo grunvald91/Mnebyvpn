@@ -25,6 +25,13 @@ export interface RelayResult {
   // NOT proof the peer received them; packet-capture E2E remains mandatory.
 }
 
+class QuotaDatabaseUnavailable extends Error {}
+
+async function quotaCall<T>(fn:()=>Promise<T>):Promise<T>{
+  try{return await fn();}
+  catch{throw new QuotaDatabaseUnavailable('quota backend unavailable');}
+}
+
 /**
  * No listener is created by this function. This only bridges sockets a
  * separate, trusted ingress has ALREADY accepted and attributed.
@@ -66,7 +73,7 @@ export function runMeteredTcpRelay(o:MeteredRelayOptions):{
     return {done:Promise.resolve({stopReason,uploadBytes,downloadBytes}),stop};
   }
 
-  const alive=async()=>!stopped && await o.quota.active(identity);
+  const alive=async()=>!stopped && await quotaCall(()=>o.quota.active(identity));
 
   const pump=async(from:Socket,to:Socket,direction:'upload'|'download')=>{
     try {
@@ -77,7 +84,7 @@ export function runMeteredTcpRelay(o:MeteredRelayOptions):{
           const bytes=Math.min(maxChunkBytes,buf.length-start);
           if(!await alive()){stop('revoked');return;}
           const eventId=randomUUID();
-          const permit=await o.quota.reserve(identity,eventId,bytes);
+          const permit=await quotaCall(()=>o.quota.reserve(identity,eventId,bytes));
           if(!permit||permit.reservedBytes!==bytes||permit.revision!==identity.revision){
             stop('quota-denied');return;
           }
@@ -106,17 +113,17 @@ export function runMeteredTcpRelay(o:MeteredRelayOptions):{
           });
           // Never classify an uncertain write as "zero bytes": it may have
           // reached the peer. A failed settlement intentionally retains HOLD.
-          const accounted=await o.quota.settle(
+          const accounted=await quotaCall(()=>o.quota.settle(
             identity,eventId,direction==='upload'?bytes:0,
-            direction==='download'?bytes:0);
+            direction==='download'?bytes:0));
           if(!accounted){stop('db-failure');return;}
           if(direction==='upload')uploadBytes+=bytes;
           else downloadBytes+=bytes;
         }
       }
       stop('peer-closed');
-    }catch{
-      stop('socket-failure');
+    }catch(error){
+      stop(error instanceof QuotaDatabaseUnavailable?'db-failure':'socket-failure');
     }
   };
 
