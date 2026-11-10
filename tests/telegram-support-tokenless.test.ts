@@ -98,8 +98,14 @@ test('main webhook bot relays private support requests and operator replies with
     const menu=await update({update_id:1905,message:{
       chat:{id:operator,type:'private'},from:{id:operator},text:'/start'}});
     const ordinary=await menu.json() as any;
-    assert.match(ordinary.text,/MNEBYVPN/);
-    const inboxButton=ordinary.reply_markup.inline_keyboard.flat()
+    assert.equal(ordinary.method,'sendWidget');
+    assert.equal(JSON.parse(ordinary.chat_data).o,1);
+    const ordinaryMenu=await update({update_id:1906,callback_query:{
+      id:'legacy-open',from:{id:operator},
+      message:{chat:{id:operator,type:'private'},message_id:19},
+      data:'nav:menu:legacy'}});
+    const oldMenu=await ordinaryMenu.json() as any;
+    const inboxButton=oldMenu.reply_markup.inline_keyboard.flat()
       .find((b:any)=>b.text.includes('Входящие'));
     assert.equal(inboxButton.callback_data,'support:page:0');
     const inbox=await update({update_id:1904,callback_query:{
