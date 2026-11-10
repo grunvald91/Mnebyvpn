@@ -43,6 +43,8 @@ test('domain operations are parameterized and remain pending, not active',async(
   const add=await dnsAdminAdd(pg,99887766,'ORACLE.COM');
   assert.match(add.text,/В ОЧЕРЕДЬ ПРОВЕРКИ/);
   assert.doesNotMatch(add.text,/DNS включён/);
+  assert.ok(add.reply_markup.inline_keyboard.flat().some(
+    b=>b.callback_data==='dnsadmin:domain:8'));
   assert.deepEqual(calls[0].args,['oracle.com','custom',99887766]);
   assert.match(calls[0].sql,/ON CONFLICT \(domain\) DO UPDATE/);
   assert.match(calls[0].sql,/status IN \('CANCELLED','FAILED'\)/);
@@ -180,6 +182,7 @@ test('confirmation and rollback controls appear only for temporary or live route
       return {rows:[]};
     }
   } as any;
+  assert.match((await dnsAdminList({query:async()=>({rows:[{id:'4',domain:'cloud.oracle.com',product:'Oracle',status:'PROBING'}]})} as any)).text,/Проверяется сервер/);
   const card=await dnsAdminAction(22,22,pg,'dnsadmin:domain:4');
   assert.match(card.text,/Тест 60 минут/);
   const items=card.reply_markup.inline_keyboard.flat().map(x=>x.callback_data);
