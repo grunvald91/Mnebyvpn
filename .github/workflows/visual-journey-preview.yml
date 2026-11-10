@@ -5,6 +5,7 @@ on:
     branches:
       - fix/restore-neon-compact-viewport-20261109
       - feat/trial-email-first-portal-20261109
+      - feat/neon-world-reference-20261110
     paths:
       - 'apps/web/public/**'
       - 'tests/visual-journey-preview.mjs'
