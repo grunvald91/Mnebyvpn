@@ -72,7 +72,9 @@ function safeId(value:string):number|null{
   return Number.isSafeInteger(n)?n:null;
 }
 function textRow(row:DomainRow):string{
-  const state=labels[row.status]??'Неизвестный статус';
+  const state=row.status==='ACTIVE'&&row.last_error_code==='ACTIVE_ROUTE_CHECK_FAILED'
+    ?'🟠 Работает с предупреждением: проверка недоступна'
+    :labels[row.status]??'Неизвестный статус';
   return row.domain+' — '+state+(row.product==='custom'?'':' · '+row.product);
 }
 export async function dnsAdminList(pool:Pool|null,pageNo=0):Promise<AdminPage>{
@@ -81,7 +83,7 @@ export async function dnsAdminList(pool:Pool|null,pageNo=0):Promise<AdminPage>{
   if(!pool)return dnsAdminError('База доменов недоступна. DNS не менялся.');
   try{
     const {rows}=await pool.query<DomainRow>(
-      'SELECT id,domain,product,status FROM dns_admin_domains ORDER BY updated_at DESC,id DESC LIMIT 9 OFFSET $1',
+      'SELECT id,domain,product,status,last_error_code FROM dns_admin_domains ORDER BY updated_at DESC,id DESC LIMIT 9 OFFSET $1',
       [pageNo*8]);
     const visible=rows.slice(0,8);
     const buttons:AdminButton[][]=visible.map(row=>[{
@@ -97,7 +99,9 @@ export async function dnsAdminList(pool:Pool|null,pageNo=0):Promise<AdminPage>{
     return page('📋 MNEBYDNS · домены · страница '+(pageNo+1)+'\n\n'+
       (visible.length?visible.map((row,i)=>(pageNo*8+i+1)+'. '+
         (row.domain.length>65?row.domain.slice(0,62)+'…':row.domain)+' — '+
-        (labels[row.status]??'Неизвестный статус')).join('\n'):'Список пуст.')+
+        (row.status==='ACTIVE'&&row.last_error_code==='ACTIVE_ROUTE_CHECK_FAILED'
+          ?'🟠 Требуется проверка маршрута'
+          :labels[row.status]??'Неизвестный статус')).join('\n'):'Список пуст.')+
       '\n\nПока тест не прошёл, маршрут не считается активным.',
       buttons);
   }catch{return dnsAdminError('Не удалось загрузить домены. DNS не менялся.');}
@@ -176,7 +180,9 @@ export async function dnsAdminDomain(pool:Pool|null,rawId:string):Promise<AdminP
     const error=row.last_error_code?'\nПоследняя проверка: '+row.last_error_code.slice(0,96):'';
     return page('🌍 '+textRow(row)+expires+error+'\n\n'+
       (row.status==='ACTIVE'
-        ?'Маршрут подтверждён. Для отключения нажми кнопку и подтверди действие.'
+        ?row.last_error_code==='ACTIVE_ROUTE_CHECK_FAILED'
+          ?'⚠️ Сервер обнаружил ошибку проверки DNS, закреплённого IP или TLS. Действующий маршрут не менялся. Требуется диагностика; не подтверждай его работоспособность без проверки.'
+          :'Маршрут подтверждён. Для отключения нажми кнопку и подтверди действие.'
         :row.status==='CANARY'
         ?'Сейчас временный тест. Проверь сайт на телефоне. Если не подтвердить, сервер вернёт прежнюю конфигурацию.'
         :'Статус заявки не означает работающий DNS-маршрут.'),buttons);
