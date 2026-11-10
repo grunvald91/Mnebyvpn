@@ -21,6 +21,8 @@ import {
 import {activationView,deviceView,manualView}
   from './vpn-onboarding.ts';
 import {formatDuration,formatRoubles} from '../../../packages/telegram-ui/src/menu.ts';
+import {dnsAdminOwner,dnsAdminIntro,dnsAdminPrompt,dnsAdminAction,dnsAdminAdd,DNS_ADMIN_PROMPT}
+  from './dns-admin.ts';
 import {effectiveAccessState,formatRemainingTime,formatRemainingQuota} from '../../../packages/telegram-ui/src/access-format.ts';
 
 const digest=process.env.TELEGRAM_WEBHOOK_SECRET_SHA256??'';
@@ -43,6 +45,7 @@ const pool=process.env.DATABASE_URL ? new Pool({
 }) : null;
 const store=pool?new PgBillingStore(pool):null;
 const support=supportConfig();
+const dnsAdminId=dnsAdminOwner();
 const bridgeSecret=process.env.SUPPORT_BRIDGE_SECRET??'';
 const supportAuthKey=/^[a-f0-9]{64}$/.test(bridgeSecret)
   ?bridgeSecret:(support?.botToken??'');
@@ -72,6 +75,7 @@ const main=(id:number)=>msg(
      {text:'💙 Поддержать проект',callback_data:'nav:share'}],
     [{text:'🧭 Smart DNS — в разработке',callback_data:'nav:dns'}],
     [{text:'❔ Помощь',callback_data:'nav:help'}],
+    ...(id===dnsAdminId ? [[{text:'🛠 Управление Smart DNS',callback_data:'dnsadmin:menu'}]] : []),
     [{text:support?.operatorId===id?'📥 Входящие заявки':'✉️ Поддержка',
       callback_data:support?.operatorId===id?'support:page:0':'nav:support'}],
     [siteButton],
@@ -107,7 +111,7 @@ function respond(res:ServerResponse,status:number,payload:unknown){
   res.writeHead(status);
   res.end(payload===null?'':JSON.stringify(payload));
 }
-function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string;currentText?:string;replyToSupport?:boolean}|null{
+function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string;currentText?:string;replyToSupport?:boolean;replyToDns?:boolean}|null{
   const cb=update.callback_query;
   if(cb){
     if(!validId(cb.from?.id)||!cb.message||cb.message.chat?.type!=='private'||
@@ -123,7 +127,9 @@ function privateActor(update:any):{id:number;messageId?:number;callbackId?:strin
   const replied=m.reply_to_message;
   const replyToSupport=replied?.from?.is_bot===true &&
     typeof replied.text==='string'&&replied.text.startsWith('✉️ MNEBYVPN — напишите вопрос');
-  return {id:m.from.id,text:typeof m.text==='string'?m.text:'',replyToSupport};
+  const replyToDns=replied?.from?.is_bot===true &&
+    typeof replied.text==='string'&&replied.text.startsWith(DNS_ADMIN_PROMPT);
+  return {id:m.from.id,text:typeof m.text==='string'?m.text:'',replyToSupport,replyToDns};
 }
 async function packages(id:number){
   if(!store)throw new Error('DB unavailable');
@@ -548,6 +554,22 @@ async function processUpdate(update:any){
   if(!actor)return null;
   const text=actor.text?.trim()??'';
   const operator=support&&actor.id===support.operatorId;
+  const dnsAction=actor.data?.startsWith('dnsadmin:')??false;
+  const dnsTextCommand=text==='/dnsadmin';
+  if((dnsAction||dnsTextCommand||actor.replyToDns)&&
+      (dnsAdminId===null||actor.id!==dnsAdminId)){
+    if(actor.callbackId)return {method:'answerCallbackQuery',
+      callback_query_id:actor.callbackId,text:'Недоступно',show_alert:true};
+    return oneAction(actor,msg('Эта функция недоступна.',[[homeButton]]));
+  }
+  if(dnsAdminId!==null&&actor.id===dnsAdminId){
+    if(actor.data==='dnsadmin:add')
+      return {method:'sendMessage',chat_id:actor.id,...dnsAdminPrompt()};
+    if(actor.replyToDns)return oneAction(actor,await dnsAdminAdd(pool,actor.id,text));
+    if(dnsAction)return oneAction(actor,
+      await dnsAdminAction(dnsAdminId,actor.id,pool,actor.data??''));
+    if(dnsTextCommand)return oneAction(actor,dnsAdminIntro());
+  }
   if(operator){
     const page=/^support:page:(0|[1-9][0-9]{0,2})$/.exec(actor.data??'');
     if(page)return operatorSupportInbox(actor,Number(page[1]));
