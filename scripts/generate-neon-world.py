@@ -16,7 +16,8 @@ import mpl_toolkits.basemap_data as basemap_data
 
 random.seed(9)
 W,H=900,790
-bmng=Path(basemap_data.__file__).parent/'bmng.jpg'
+# basemap_data is a namespace package, so __file__ may be None.
+bmng=Path(next(iter(basemap_data.__path__)))/'bmng.jpg'
 world=np.asarray(Image.open(bmng).convert('RGB'))
 cy,cx,R=490,450,465
 Y,X=np.mgrid[0:H,0:W].astype(np.float32)
