@@ -44,6 +44,11 @@ BEGIN
     SELECT e.id,'smart_dns',e.revision,clock_timestamp()
       FROM entitlements e WHERE e.id IN (entitlement_a,entitlement_b);
 
+  -- Simulate the final provider ACK, not merely an observed provisioning row.
+  -- New paid access is initially PAID_PENDING_PROVISIONING, never ACTIVE.
+  UPDATE entitlements SET state='ACTIVE'
+    WHERE id IN (entitlement_a,entitlement_b);
+
   SELECT t.entitlement_id,t.remaining_bytes INTO found_id,remaining
     FROM authorize_paid_smart_dns_ingress('2001:db8::84a'::inet) AS t;
   IF found_id IS DISTINCT FROM entitlement_a OR remaining <> 1000 THEN
