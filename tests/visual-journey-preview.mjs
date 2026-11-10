@@ -83,7 +83,14 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
         document.querySelector('.journey-world-halo').getBoundingClientRect().width>350,
       globeLoaded:!!(document.querySelector('.journey-world-image')?.complete &&
         document.querySelector('.journey-world-image')?.naturalWidth>=700),
-      schematicGlobePresent:!!document.querySelector('.journey-world-backdrop svg'),
+      schematicGlobePresent:!!document.querySelector('.journey-world-backdrop svg:not(.journey-stone-overlay)'),
+      brokenWallPortalVisible:!!document.querySelector('.journey-stone-overlay')&&
+        getComputedStyle(document.querySelector('.journey-stone-overlay')).display==='block'&&
+        document.querySelector('.journey-stone-overlay').getBoundingClientRect().width>450,
+      rockFacetCount:document.querySelectorAll('.journey-stone-overlay .journey-portal-rocks polygon').length,
+      trialStripLast:!!document.querySelector('.journey-trial-cta')&&
+        document.querySelector('.journey-secondary').compareDocumentPosition(
+          document.querySelector('.journey-trial-cta')) & Node.DOCUMENT_POSITION_FOLLOWING,
       isJourney:document.body.classList.contains('journey-active'),
     };
   });
@@ -91,7 +98,8 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
   await page.screenshot({path:file,type:'jpeg',quality:72,fullPage:true});
   console.log('VISUAL_METRICS_'+width+'='+JSON.stringify({...metrics,browserErrors}));
   if(metrics.scrollExtra>2||metrics.horizontalOverflow||browserErrors.length||
-    !metrics.globeLoaded||!metrics.haloRendered||metrics.globeNaturalWidth!==780||metrics.schematicGlobePresent||metrics.desktopDarkDisk||
+    !metrics.globeLoaded||!metrics.haloRendered||metrics.globeNaturalWidth!==780||metrics.schematicGlobePresent||
+    !metrics.brokenWallPortalVisible||metrics.rockFacetCount<90||!metrics.trialStripLast||metrics.desktopDarkDisk||
     (width<=390 && (metrics.cardToFooterGap<0||metrics.cardToFooterGap>50)))failed=true;
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('VISUAL_JPEG_'+width+'_BEGIN');
