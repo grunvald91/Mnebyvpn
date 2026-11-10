@@ -67,19 +67,21 @@ test('production cabinet: Stars invoice, checked payment, durable settlement and
     // "🌐 VPN и тарифы" button, not the parallel legacy bot-navigation path.
     const home=await post({update_id:80999,message:{chat:{id:user,type:'private'},
       from:{id:user},text:'/start'}});
-    assert.equal(JSON.parse(home.data).reply_markup.inline_keyboard[0][0].callback_data,'nav:vpn');
+    assert.equal(JSON.parse(home.data).method,'sendWidget');
+    assert.equal(JSON.parse(home.data).reply_markup.inline_keyboard[0][0].callback_data,'nav:menu:legacy');
     const menu=await post(button(81001,'nav:vpn'));
     assert.equal(menu.resp.status,200);
     const shown=JSON.parse(menu.data);
     assert.equal(shown.method,'sendWidget');
     assert.equal(shown.chat_id,user);
-    assert.equal(shown.allow_queries,true);
+    assert.equal(shown.allow_queries,false);
     assert.match(shown.html,/TelegramWidget/);
     assert.ok(shown.html.includes('data:image/webp;base64,'));
     const state=JSON.parse(shown.chat_data);
     const visible=validOffers.slice().sort((a,b)=>
       a.durationSeconds-b.durationSeconds||a.planId.localeCompare(b.planId)).slice(0,4);
     assert.deepEqual(state.p.map((p:(string|number)[])=>p[4]),visible.map(planWidgetKey));
+    assert.ok(state.p.every((p:(string|number)[])=>p[5]==='')); // tokenless integration
     // The entire purchase UX is now inside the HTML bubble. Do not attach
     // another tariff keyboard that asks the buyer to select twice.
     assert.equal(shown.reply_markup,undefined);
