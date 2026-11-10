@@ -6,12 +6,12 @@ import { deflateSync } from 'node:zlib';
 import { planWidgetKey } from './widget-104.ts';
 import type { PricedPlan } from '../../billing/src/channels.ts';
 
-type Offer=[number,number,number,number,string];
+type Offer=[number,number,number,number,string,string];
 type PurchaseState={v:1;p:Offer[];more:number};
 const DAY=86400;
 const MAX=4;
 
-export function vpnPurchaseWidgetData(plans:ReadonlyArray<PricedPlan>):string {
+export function vpnPurchaseWidgetData(plans:ReadonlyArray<PricedPlan>,invoiceLinks:Readonly<Record<string,string>>={}):string {
   const active=plans.filter(p=>p.product==='vpn'&&p.stars!==null)
     .slice().sort((a,b)=>a.durationSeconds-b.durationSeconds||a.planId.localeCompare(b.planId));
   const p=active.slice(0,MAX).map(plan=>{
@@ -21,8 +21,11 @@ export function vpnPurchaseWidgetData(plans:ReadonlyArray<PricedPlan>):string {
        (plan.deviceLimit!==undefined&&(!Number.isSafeInteger(plan.deviceLimit)||plan.deviceLimit<=0))||
        (plan.rubMinor!==null&&(!Number.isSafeInteger(plan.rubMinor)||plan.rubMinor<=0)))
       throw new Error('Invalid published VPN offer');
+    const url=invoiceLinks[plan.planId]??'';
+    if(url&&!/^https:\/\/t\.me\/(?:\$[A-Za-z0-9_=-]{4,160}|invoice\/[A-Za-z0-9_=-]{4,160})$/.test(url))
+      throw new Error('Invalid server-provided Telegram invoice deep link');
     return [plan.durationSeconds/DAY,plan.stars!,plan.deviceLimit??1,
-      plan.rubMinor??0,planWidgetKey(plan)] satisfies Offer;
+      plan.rubMinor??0,planWidgetKey(plan),url] satisfies Offer;
   });
   if(!p.length)throw new Error('No published VPN plans');
   const data:PurchaseState={v:1,p,more:active.length-p.length};
@@ -52,9 +55,9 @@ header{display:flex;align-items:center;gap:9px;margin-bottom:10px}.avatar{width:
 <button class="option" id="o2" type="button" hidden><span class="term" id="t2"></span><span class="amount" id="a2"></span></button>
 <button class="option" id="o3" type="button" hidden><span class="term" id="t3"></span><span class="amount" id="a3"></span></button>
 </div><section class="total"><div class="line"><span class="hint">Устройств</span><span class="value" id="devices">1</span></div><div class="separator"></div><div class="line"><span class="hint" id="duration">Выбранный период</span><span class="price" id="total">—</span></div></section>
-<button id="pay" type="button" disabled>Выберите тариф</button><div id="notice" aria-live="polite"></div><footer>Разовый пакет · счёт в Stars · доступ после оплаты</footer><script>(()=>{let w=typeof TelegramWidget=='undefined'?null:TelegramWidget,s={p:[]},i=1,b=0,k='';const e=id=>document.getElementById(id),term=n=>n===1?'1 день':n%10>1&&n%10<5&&(n%100<12||n%100>14)?n+' дня':n+' дней';function draw(){let p=s.p[i];for(let j=0;j<4;j++){let r=s.p[j],o=e('o'+j);o.hidden=!r;if(r){e('t'+j).textContent=term(r[0]);e('a'+j).textContent=r[1]+' ⭐';o.setAttribute('aria-pressed',String(i===j));o.disabled=!!b}}e('devices').textContent=p?p[2]:'—';e('duration').textContent=p?term(p[0])+' · к оплате':'Выбранный период';e('total').textContent=p?p[1]+' ⭐':'—';e('pay').textContent=p?'Оплатить '+p[1]+' ⭐':'Выберите тариф';e('pay').disabled=!p||b||k===p[4]||!w||typeof w.request!=='function'}
-function load(){try{let x=JSON.parse(w.chatData||'{}');if(x.v!==1||!Array.isArray(x.p)||!x.p.length||x.p.length>4||!x.p.every(r=>Array.isArray(r)&&r.length===5&&Number.isSafeInteger(r[0])&&r[0]>0&&Number.isSafeInteger(r[1])&&r[1]>0&&Number.isSafeInteger(r[2])&&r[2]>0&&typeof r[4]==='string'&&/^[\w-]{16}$/.test(r[4])))throw 0;s=x;i=Math.min(i,s.p.length-1);draw()}catch{s={p:[]};draw();e('notice').textContent='Откройте карточку в личном чате.'}}
-for(let j=0;j<4;j++)e('o'+j).onclick=()=>{if(b||!s.p[j])return;i=j;draw()};e('pay').onclick=()=>{let p=s.p[i];if(!p||b||k===p[4]||!w)return;b=1;k=p[4];draw();e('notice').textContent='Готовим счёт…';w.request('buy:'+k).then(a=>{e('notice').textContent=a&&a.result==='INVOICE_SENT'?'Счёт в чате. Подтвердите платёж.':a&&a.result==='PAYMENT_UNAVAILABLE'?'Оплата временно недоступна.':'Проверьте чат.'},()=>{e('notice').textContent='Нет ответа. Проверьте сообщения бота.'}).finally(()=>{b=0;draw()})};if(w){w.onEvent('chatDataChanged',load);load();w.ready()}else{draw();e('notice').textContent='Откройте в Telegram.'}})();</script></body></html>`;
+<button id="pay" type="button" disabled>Выберите тариф</button><div id="notice" aria-live="polite"></div><footer>Разовый пакет · счёт в Stars · доступ после оплаты</footer><script>(()=>{let w=typeof TelegramWidget=='undefined'?null:TelegramWidget,s={p:[]},i=1,b=0;const e=id=>document.getElementById(id),term=n=>n===1?'1 день':n%10>1&&n%10<5&&(n%100<12||n%100>14)?n+' дня':n+' дней';function draw(){let p=s.p[i];for(let j=0;j<4;j++){let r=s.p[j],o=e('o'+j);o.hidden=!r;if(r){e('t'+j).textContent=term(r[0]);e('a'+j).textContent=r[1]+' ⭐';o.setAttribute('aria-pressed',String(i===j));o.disabled=!!b}}e('devices').textContent=p?p[2]:'—';e('duration').textContent=p?term(p[0])+' · к оплате':'Выбранный период';e('total').textContent=p?p[1]+' ⭐':'—';e('pay').textContent=p?(p[5]?'Оплатить '+p[1]+' ⭐':'Оплата временно недоступна'):'Выберите тариф';e('pay').disabled=!p||b||!p[5]||!w||typeof w.openTelegramLink!=='function'}
+function load(){try{let x=JSON.parse(w.chatData||'{}');if(x.v!==1||!Array.isArray(x.p)||!x.p.length||x.p.length>4||!x.p.every(r=>Array.isArray(r)&&r.length===6&&typeof r[5]==='string'&&(!r[5]||/^https:\/\/t\.me\/(?:\$[A-Za-z0-9_=-]{4,160}|invoice\/[A-Za-z0-9_=-]{4,160})$/.test(r[5]))&&Number.isSafeInteger(r[0])&&r[0]>0&&Number.isSafeInteger(r[1])&&r[1]>0&&Number.isSafeInteger(r[2])&&r[2]>0&&typeof r[4]==='string'&&/^[\w-]{16}$/.test(r[4])))throw 0;s=x;i=Math.min(i,s.p.length-1);draw()}catch{s={p:[]};draw();e('notice').textContent='Откройте карточку в личном чате.'}}
+for(let j=0;j<4;j++)e('o'+j).onclick=()=>{if(b||!s.p[j])return;i=j;draw()};e('pay').onclick=()=>{let p=s.p[i];if(!p||b||!p[5]||!w)return;try{w.openTelegramLink(p[5]);e('notice').textContent='Подтвердите оплату в Telegram.'}catch{e('notice').textContent='Ссылка оплаты недоступна. Откройте карточку заново.'}};if(w){w.onEvent('chatDataChanged',load);load();w.ready()}else{draw();e('notice').textContent='Откройте в Telegram.'}})();</script></body></html>`;
 
 export function vpnPurchaseWidgetHtml():string {
   const original=Buffer.from(HTML,'utf8'),compressed=deflateSync(original,{level:9});
@@ -62,11 +65,9 @@ export function vpnPurchaseWidgetHtml():string {
     throw new Error('Telegram purchase widget exceeds payload limit ('+original.length+'/'+compressed.length+')');
   return HTML;
 }
-export function vpnPurchaseWidgetPayload(chatId:number,plans:ReadonlyArray<PricedPlan>) {
+export function vpnPurchaseWidgetPayload(chatId:number,plans:ReadonlyArray<PricedPlan>,invoiceLinks:Readonly<Record<string,string>>={}) {
   if(!Number.isSafeInteger(chatId)||chatId<=0)throw new Error('Invalid private chat');
-  const chat_data=vpnPurchaseWidgetData(plans);
-  const visible=JSON.parse(chat_data) as PurchaseState;
-  return {chat_id:chatId,html:vpnPurchaseWidgetHtml(),allow_queries:true,chat_data,
-    caption:'MNEBYVPN · VPN: '+visible.p.map(p=>p[0]+' дней — '+p[1]+' ⭐').join(' · ')+
-      '. Выберите срок в карточке и подтвердите оплату в Telegram.'};
+  const chat_data=vpnPurchaseWidgetData(plans,invoiceLinks);
+  return {chat_id:chatId,html:vpnPurchaseWidgetHtml(),allow_queries:false,chat_data,
+    caption:'VPN MNEBYVPN · Выбор и оплата внутри карточки.'};
 }

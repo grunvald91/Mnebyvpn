@@ -47,13 +47,21 @@ test('/start shows primary Telegram VPN, trial, status and optional site',async(
  from:{id:user},text:'/start'}});
  assert.equal(r.status,200);
  const data=await r.json() as any;
- assert.equal(data.method,'sendMessage');
+ assert.equal(data.method,'sendWidget');
  assert.equal(data.chat_id,user);
- assert.match(data.text,/24 часа/);
- const buttons=data.reply_markup.inline_keyboard.flat();
- for(const val of ['nav:vpn','nav:trial','nav:status','nav:renew','nav:share'])
-  assert.ok(buttons.some((b:any)=>b.callback_data===val));
- assert.ok(buttons.some((b:any)=>b.url==='https://mnebyvpn.site'));
+ assert.ok(data.html.includes('VPN и тарифы'));
+ for(const val of ['data-a="vpn"','data-a="trial"','data-a="status"',
+  'data-a="connect"','data-a="renew"','data-a="share"','data-a="dns"',
+  'data-a="help"','data-a="support"','data-a="site"'])
+  assert.ok(data.html.includes(val),val);
+ assert.match(data.caption,/Если новая функция недоступна/);
+ assert.deepEqual(data.reply_markup.inline_keyboard,
+  [[{text:'☰ Открыть обычное меню',callback_data:'nav:menu:legacy'}]]);
+ const legacy=await update({update_id:22,callback_query:{id:'legacy',from:{id:user},
+   message:{chat:{id:user,type:'private'},message_id:210},data:'nav:menu:legacy'}});
+ const old=await legacy.json() as any;
+ assert.equal(old.method,'sendMessage');
+ assert.ok(old.reply_markup.inline_keyboard.flat().some((b:any)=>b.callback_data==='nav:vpn'));
 });
 test('support is reached by a button and replies to its prompt without slash commands',async()=>{
  const button=await update({update_id:200,callback_query:{id:'support-200',from:{id:user},

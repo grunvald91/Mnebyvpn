@@ -1,3 +1,4 @@
+import {parsePersonalStarsLinkPayload} from './stars-links.ts';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { PricedPlan } from './channels.ts';
 
@@ -55,6 +56,8 @@ export function starsPayload(orderId: string, secret: string): string {
 }
 export function parseStarsPayload(payload: string, secret: string): string | null {
   if (typeof payload !== 'string' || secret.length < 32) return null;
+  const personal=parsePersonalStarsLinkPayload(payload,secret);
+  if(personal)return personal.orderId;
   const match = /^mnebyvpn:v1:([0-9a-f-]{36}):([a-f0-9]{64})$/.exec(payload);
   if (!match || !UUID.test(match[1])) return null;
   const expected = starsPayload(match[1], secret);
