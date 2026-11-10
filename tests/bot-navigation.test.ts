@@ -55,7 +55,7 @@ test('VPN purchase opens HTML widget with four actual catalogue prices',async()=
  await handleTelegramUpdate(callback('nav:plans:vpn'),f.db,f.tg,cfg);
  assert.deepEqual(f.calls.map(c=>c.method),['answerCallbackQuery','sendWidget']);
  const widget=f.calls[1].params;
- assert.equal(widget.allow_queries,true);
+ assert.equal(widget.allow_queries,false);
  const state=JSON.parse(String(widget.chat_data));
  assert.deepEqual(state.p.map((p:number[])=>p[0]),[15,30,60,90]);
  assert.deepEqual(state.p.map((p:number[])=>p[1]),[20,35,65,95]);
