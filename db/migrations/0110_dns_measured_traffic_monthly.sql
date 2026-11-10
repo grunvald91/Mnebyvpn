@@ -147,4 +147,17 @@ REVOKE ALL ON FUNCTION record_smart_dns_measured_traffic(uuid,text,bigint,bigint
   FROM PUBLIC;
 REVOKE ALL ON FUNCTION get_smart_dns_monthly_traffic(uuid,uuid)
   FROM PUBLIC;
+-- An authenticated website DB role must not receive table-wide event access.
+-- The narrow reporting function checks account_id + entitlement_id itself.
+-- The backend derives account_id from its verified session, not user input.
+ALTER FUNCTION get_smart_dns_monthly_traffic(uuid,uuid) SECURITY DEFINER;
+ALTER FUNCTION get_smart_dns_monthly_traffic(uuid,uuid)
+  SET search_path TO pg_catalog,public,pg_temp;
+DO $
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='mnebyvpn_site_auth') THEN
+    GRANT EXECUTE ON FUNCTION get_smart_dns_monthly_traffic(uuid,uuid)
+      TO mnebyvpn_site_auth;
+  END IF;
+END $;
 COMMIT;
