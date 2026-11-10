@@ -74,13 +74,17 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
       scrollExtra:document.documentElement.scrollHeight-innerHeight,
       card:rect(card),intro:rect(intro),footer:rect(footer),
       selected:document.querySelector('[data-journey-days="30"]')?.getAttribute('aria-pressed'),
+      globeLoaded:!!(document.querySelector('.journey-world-image')?.complete &&
+        document.querySelector('.journey-world-image')?.naturalWidth>=700),
+      schematicGlobePresent:!!document.querySelector('.journey-world-backdrop svg'),
       isJourney:document.body.classList.contains('journey-active'),
     };
   });
   const file=process.env.RUNNER_TEMP+'/mnebyvpn-'+width+'x'+height+'.jpg';
   await page.screenshot({path:file,type:'jpeg',quality:72,fullPage:true});
   console.log('VISUAL_METRICS_'+width+'='+JSON.stringify({...metrics,browserErrors}));
-  if(metrics.scrollExtra>2||metrics.horizontalOverflow||browserErrors.length)failed=true;
+  if(metrics.scrollExtra>2||metrics.horizontalOverflow||browserErrors.length||
+    !metrics.globeLoaded||metrics.schematicGlobePresent)failed=true;
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('VISUAL_JPEG_'+width+'_BEGIN');
     console.log(readFileSync(file).toString('base64'));
