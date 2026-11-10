@@ -84,16 +84,27 @@ BEGIN
     WHERE id=p_entitlement_id FOR UPDATE;
   IF NOT FOUND THEN RETURN 'DENY_UNKNOWN'; END IF;
 
+  v_now:=clock_timestamp();
   SELECT * INTO v_previous FROM smart_dns_quota_reservations
     WHERE entitlement_id=p_entitlement_id AND reservation_id=p_reservation_id;
   IF FOUND THEN
     IF v_previous.state='HELD' AND v_previous.reserved_bytes=p_bytes THEN
+      IF v_previous.allowed_until<=v_now THEN RETURN 'DENY_LEASE_EXPIRED'; END IF;
+      IF v_ent.product<>'smart_dns' OR v_ent.state<>'ACTIVE'
+         OR v_ent.quota_state<>'AVAILABLE'
+         OR v_ent.expires_at IS NULL OR v_ent.expires_at<=v_now
+         OR NOT EXISTS (
+           SELECT 1 FROM provisioning_state p
+           WHERE p.entitlement_id=p_entitlement_id AND p.adapter='smart_dns'
+             AND p.applied_revision=v_ent.revision
+             AND p.last_observed_at IS NOT NULL) THEN
+        RETURN 'DENY_INACTIVE';
+      END IF;
       RETURN 'DUPLICATE';
     END IF;
     RETURN 'DENY_RESERVATION_CONFLICT';
   END IF;
 
-  v_now:=clock_timestamp();
   IF v_ent.product<>'smart_dns' OR v_ent.state<>'ACTIVE'
      OR v_ent.quota_state<>'AVAILABLE' OR
      v_ent.starts_at IS NULL OR v_ent.starts_at>v_now
