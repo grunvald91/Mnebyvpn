@@ -242,7 +242,7 @@ function renderPurchaseResult(payload) {
       'Состояние заказа: '+(stateNames[order.state]||order.state)):
     ready?'✅ Ваш VPN готов!':'✅ Оплата подтверждена');
   text('purchase-result-text',!verified?
-    'Пока нет подтверждения оплаты от Prodamus. Если деньги списаны, не оплачивайте повторно — проверьте статус или напишите в поддержку.':
+    'Пока нет подтверждения оплаты. Если деньги списаны, не оплачивайте повторно — проверьте статус или напишите в поддержку.':
     ready?'Подключите VPN в несколько нажатий. Выберите приложение для своего устройства.':
     'Деньги получены. VPN-сервер готовит подключение. Инструкция появится после подтверждения активации.');
   text('purchase-result-details',
@@ -402,7 +402,7 @@ function applyLinkOptions() {
     toast('Вход не завершён. Попробуйте вход по email или повторите Telegram.');
   state.purchaseIntent=readPurchaseIntent();
   if(url.searchParams.get('payment')==='returned')
-    toast('Проверяем уведомление Prodamus. Вернуться на сайт — ещё не значит оплатить.');
+    toast('Проверяем подтверждение оплаты. Возврат на сайт ещё не означает, что платёж получен.');
 }
 async function purchase() {
   const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
@@ -442,13 +442,13 @@ async function purchase() {
   }catch(error){
     const messages={
       PAYMENT_NOT_AVAILABLE:'Оплата сейчас недоступна.',
-      PAYMENT_PROVIDER_UNAVAILABLE:'Prodamus не ответил. Заказ сохранён: нажмите оплату повторно.',
-      PAYMENT_PROVIDER_INVALID_LINK:'Prodamus вернул некорректную ссылку. Повторите попытку.',
+      PAYMENT_PROVIDER_UNAVAILABLE:'Платёжный сервис не ответил. Заказ сохранён: можно повторить переход к оплате.',
+      PAYMENT_PROVIDER_INVALID_LINK:'Не удалось получить ссылку оплаты. Повторите попытку.',
       CHECKOUT_RETRY_LIMIT:'Слишком много заказов за короткое время. Повторите позже.',
       INVALID_CHECKOUT:'Не удалось проверить параметры заказа.',
       LOGIN_REQUIRED:'Сессия истекла. Войдите повторно.',
       FORBIDDEN:'Сессия изменилась. Обновите страницу и войдите повторно.',
-      UNSAFE_PAYMENT_LINK:'Не удалось проверить ссылку Prodamus.',
+      UNSAFE_PAYMENT_LINK:'Не удалось проверить безопасный адрес оплаты.',
       VERIFIED_EMAIL_REQUIRED:'Перед оплатой подтвердите email в личном кабинете.',
     };
     const message=messages[error?.message] || 'Не удалось создать заказ или открыть оплату. Повторите попытку.';
