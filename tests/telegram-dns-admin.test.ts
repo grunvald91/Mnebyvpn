@@ -6,7 +6,7 @@ import {createServer} from 'node:net';
 import {fileURLToPath} from 'node:url';
 import {
   dnsAdminOwner,normalizeDnsDomain,dnsAdminAdd,dnsAdminOracle,
-  dnsAdminCancel,dnsAdminList,dnsAdminAction,DNS_ADMIN_PROMPT,
+  dnsAdminCancel,dnsAdminList,dnsAdminAction,dnsAdminReview,dnsAdminApply,dnsAdminKeep,DNS_ADMIN_PROMPT,
 } from '../apps/service/src/dns-admin.ts';
 
 test('public DNS hostname normalization never accepts URLs, wildcard or internal names',()=>{
@@ -43,21 +43,24 @@ test('domain operations are parameterized and remain pending, not active',async(
   const add=await dnsAdminAdd(pg,99887766,'ORACLE.COM');
   assert.match(add.text,/В ОЧЕРЕДЬ ПРОВЕРКИ/);
   assert.doesNotMatch(add.text,/DNS включён/);
+  assert.ok(add.reply_markup.inline_keyboard.flat().some(
+    b=>b.callback_data==='dnsadmin:domain:8'));
   assert.deepEqual(calls[0].args,['oracle.com','custom',99887766]);
   assert.match(calls[0].sql,/ON CONFLICT \(domain\) DO UPDATE/);
   assert.match(calls[0].sql,/status IN \('CANCELLED','FAILED'\)/);
   const oracle=await dnsAdminOracle(pg,99887766);
   assert.match(oracle.text,/cloud\.oracle\.com/);
   assert.deepEqual(calls[1].args,['oracle.com',99887766]);
-  assert.deepEqual(calls[2].args,['cloud.oracle.com',99887766]);
+  assert.deepEqual(calls[2].args,['www.oracle.com',99887766]);
+  assert.deepEqual(calls[3].args,['cloud.oracle.com',99887766]);
   const list=await dnsAdminList(pg);
-  assert.match(list.text,/На проверке/);
+  assert.match(list.text,/Ожидает проверки/);
   const cancel=await dnsAdminCancel(pg,99887766,'8');
   assert.match(cancel.text,/Заявка отменена/);
   assert.deepEqual(calls[calls.length-1].args,[8,99887766]);
   const denied=await dnsAdminAction(99887766,99887767,pg,'dnsadmin:list');
   assert.match(denied.text,/Доступ закрыт/);
-  assert.equal(calls.length,5);
+  assert.equal(calls.length,6);
 });
 test('failed DB and invalid domain never pretend to apply DNS rules',async()=>{
   const noDb=await dnsAdminAdd(null,99887766,'oracle.com');
@@ -144,4 +147,47 @@ test('owner can open panel, get force-reply prompt and add a pending request',as
 });
 test('unsigned updates do not gain owner access',async()=>{
   assert.equal((await request(callback(admin,107,'dnsadmin:oracle'),'not-the-secret')).status,401);
+});
+
+test('two-step route deployment confirms only owner and never immediately claims ACTIVE',async()=>{
+  const changes:string[]=[];
+  const pg={query:async(sql:string,args?:unknown[])=>{
+    changes.push(sql);
+    if(sql.includes('SELECT'))return {rows:[{id:'42',domain:'oracle.com',product:'Oracle',status:'PENDING'}]};
+    if(sql.includes('UPDATE')&&sql.includes('APPLY_REQUESTED'))
+      return {rows:[{id:'42',domain:'oracle.com',product:'Oracle',status:'APPLY_REQUESTED'}]};
+    if(sql.includes('UPDATE')&&sql.includes('CONFIRM_REQUESTED'))
+      return {rows:[{id:'42',domain:'oracle.com',product:'Oracle',status:'CONFIRM_REQUESTED'}]};
+    return {rows:[]};
+  }} as any;
+  const owner=333444555;
+  const review=await dnsAdminReview(pg,'apply','42');
+  assert.match(review.text,/60-минутный/);
+  assert.equal(review.reply_markup.inline_keyboard[0][0].callback_data,'dnsadmin:yes-apply:42');
+  const queued=await dnsAdminAction(owner,owner,pg,'dnsadmin:yes-apply:42');
+  assert.match(queued.text,/Запрос на тест записан/);
+  assert.doesNotMatch(queued.text,/уже активен/i);
+  assert.ok(changes.some(x=>x.includes("status='APPLY_REQUESTED'")));
+  const outsider=await dnsAdminAction(owner,owner+1,pg,'dnsadmin:yes-apply:42');
+  assert.match(outsider.text,/Доступ закрыт/);
+  assert.equal(changes.length,2);
+  assert.match((await dnsAdminApply(null,owner,'42')).text,/База доменов недоступна/);
+  assert.match((await dnsAdminKeep(null,owner,'42')).text,/База доменов недоступна/);
+});
+test('confirmation and rollback controls appear only for temporary or live routes',async()=>{
+  const pg={
+    query:async(sql:string,args?:unknown[])=>{
+      if(sql.includes('SELECT'))return {rows:[{id:'4',domain:'cloud.oracle.com',
+        product:'Oracle',status:'CANARY',canary_expires_at:new Date('2026-11-10T12:00:00Z')}]};
+      return {rows:[]};
+    }
+  } as any;
+  assert.match((await dnsAdminList({query:async()=>({rows:[{id:'4',domain:'cloud.oracle.com',product:'Oracle',status:'PROBING'}]})} as any)).text,/Проверяется сервер/);
+  const card=await dnsAdminAction(22,22,pg,'dnsadmin:domain:4');
+  assert.match(card.text,/Тест 60 минут/);
+  const items=card.reply_markup.inline_keyboard.flat().map(x=>x.callback_data);
+  assert.ok(items.includes('dnsadmin:keep:4'));
+  assert.ok(items.includes('dnsadmin:cancel:4'));
+  const cancelReview=await dnsAdminReview(pg,'cancel','4');
+  assert.equal(cancelReview.reply_markup.inline_keyboard[0][0].callback_data,'dnsadmin:yes-cancel:4');
 });
