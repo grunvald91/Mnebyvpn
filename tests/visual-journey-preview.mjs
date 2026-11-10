@@ -175,6 +175,11 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
   const image=process.env.RUNNER_TEMP+'/mnebyvpn-branded-order-390x844.jpg';
   await page.screenshot({path:image,type:'jpeg',quality:75,fullPage:true});
   console.log('BRANDED_CHECKOUT_METRICS='+JSON.stringify({...order,checkoutCalls}));
+  if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
+    console.log('BRANDED_ORDER_JPEG_BEGIN');
+    console.log(readFileSync(image).toString('base64'));
+    console.log('BRANDED_ORDER_JPEG_END');
+  }
   if(order.route!=='#checkout'||!order.email?.includes('visual-test@example.com')||
     order.total==='—'||!order.confirmEnabled||order.hasCardFields||
     order.screenHasProviderBrand||order.hasHorizontalOverflow||checkoutCalls!==0)failed=true;
