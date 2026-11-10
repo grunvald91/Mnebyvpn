@@ -1,0 +1,36 @@
+name: Generate reference-inspired real Earth backdrop
+on:
+  push:
+    branches: [feat/neon-world-reference-20261110]
+    paths:
+      - scripts/generate-neon-world.py
+      - .github/workflows/generate-neon-world.yml
+permissions:
+  contents: write
+jobs:
+  create-asset:
+    if: "!contains(github.event.head_commit.message, '[globe asset]')"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install renderer and NASA Blue Marble dataset
+        run: |
+          python -m pip install --disable-pip-version-check numpy==2.2.6 pillow==11.3.0 opencv-python-headless==4.12.0.88 basemap-data==2.0.0
+      - name: Render real globe (not wireframe)
+        run: python scripts/generate-neon-world.py
+      - name: Commit generated graphic to feature branch
+        run: |
+          git add apps/web/public/world-neon.webp
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'assets(web): luminous NASA Earth backdrop [globe asset]'
+          git fetch origin feat/neon-world-reference-20261110
+          git rebase origin/feat/neon-world-reference-20261110
+          git push origin HEAD:feat/neon-world-reference-20261110

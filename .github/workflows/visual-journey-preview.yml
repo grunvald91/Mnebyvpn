@@ -5,6 +5,7 @@ on:
     branches:
       - fix/restore-neon-compact-viewport-20261109
       - feat/trial-email-first-portal-20261109
+      - feat/neon-world-reference-20261110
     paths:
       - 'apps/web/public/**'
       - 'tests/visual-journey-preview.mjs'
@@ -30,7 +31,13 @@ jobs:
         run: |
           set -euo pipefail
           npm install --prefix "$RUNNER_TEMP/mnebyvpn-visual" --no-save playwright@1.56.1
-          "$RUNNER_TEMP/mnebyvpn-visual/node_modules/.bin/playwright" install --with-deps chromium
+          if command -v google-chrome >/dev/null 2>&1; then
+            echo "VISUAL_CHROME_PATH=$(command -v google-chrome)" >> "$GITHUB_ENV"
+          elif command -v chromium >/dev/null 2>&1; then
+            echo "VISUAL_CHROME_PATH=$(command -v chromium)" >> "$GITHUB_ENV"
+          else
+            "$RUNNER_TEMP/mnebyvpn-visual/node_modules/.bin/playwright" install --with-deps chromium
+          fi
       - name: Screenshot actual landing page with synthetic test-only plans
         shell: bash
         env:
