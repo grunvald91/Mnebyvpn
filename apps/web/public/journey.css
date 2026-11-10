@@ -831,3 +831,109 @@ body.journey-active[data-journey-view="plans"] .footer-links button{
   body.journey-active[data-journey-view="plans"] .journey-secondary{font-size:9px}
   body.journey-active[data-journey-view="plans"] .journey-notice-condition{font-size:9px}
 }
+
+
+/* Visual QA pass 2: reference prioritizes legible cyan-to-violet hero lettering
+   above the photographic planet; screen should not feel top/bottom padded. */
+body.journey-active[data-journey-view="plans"] .journey-world-backdrop .journey-world-image{
+  opacity:.71;
+  filter:brightness(.77) saturate(1.15) drop-shadow(0 0 26px rgba(22,141,253,.23));
+}
+body.journey-active[data-journey-view="plans"] .journey-world-backdrop::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:
+    radial-gradient(ellipse 62% 36% at 50% 100%,rgba(56,21,126,.28),transparent 78%),
+    radial-gradient(ellipse 77% 35% at 15% 45%,rgba(1,21,61,.15),transparent 83%);
+  pointer-events:none;
+}
+body.journey-active[data-journey-view="plans"] .journey-intro{
+  isolation:isolate;
+}
+body.journey-active[data-journey-view="plans"] .journey-intro::before{
+  content:"";
+  position:absolute;
+  z-index:-1;
+  inset:-18px -25px -12px;
+  border-radius:60%;
+  background:radial-gradient(ellipse at 50% 50%,rgba(4,15,43,.77) 0%,rgba(4,13,37,.57) 50%,transparent 77%);
+  pointer-events:none;
+}
+body.journey-active[data-journey-view="plans"] .journey-intro h1 span{
+  background:linear-gradient(93deg,#28e9ff 3%,#65acff 50%,#c279fc 97%);
+  -webkit-background-clip:text;
+  background-clip:text;
+  filter:drop-shadow(0 2px 5px rgba(1,5,30,.64));
+}
+body.journey-active[data-journey-view="plans"] .journey-intro h1{
+  text-shadow:0 3px 14px rgba(1,8,29,.78);
+}
+body.journey-active[data-journey-view="plans"] .journey-checkout{
+  box-shadow:0 0 19px rgba(15,224,245,.35),0 0 25px rgba(175,73,240,.28),inset 0 0 26px rgba(65,74,186,.12);
+}
+body.journey-active[data-journey-view="plans"] .journey-checkout h2{
+  font-weight:900;
+  letter-spacing:-.35px;
+}
+body.journey-active[data-journey-view="plans"] .journey-duration-grid button span{
+  font-size:15px;
+  font-weight:900;
+}
+body.journey-active[data-journey-view="plans"] .journey-duration-grid button strong{
+  font-size:16px;
+  font-weight:900;
+  letter-spacing:.2px;
+}
+body.journey-active[data-journey-view="plans"] .journey-summary{
+  font-size:12px;
+}
+body.journey-active[data-journey-view="plans"] #journey-buy{
+  font-size:17px;
+  letter-spacing:-.3px;
+}
+@media(max-width:700px){
+  body.journey-active[data-journey-view="plans"] .journey-checkout{
+    padding:clamp(17px,4.2vw,24px);
+  }
+  body.journey-active[data-journey-view="plans"] .journey-duration-grid button{
+    min-height:71px;
+    padding:10px 7px;
+  }
+  body.journey-active[data-journey-view="plans"] #journey-buy{
+    min-height:55px;
+    font-size:16px;
+  }
+  body.journey-active[data-journey-view="plans"] .journey-trial{
+    min-height:34px;
+    font-size:12px;
+  }
+  body.journey-active[data-journey-view="plans"] .journey-trial-label{
+    font-size:13px;
+  }
+  body.journey-active[data-journey-view="plans"] .journey-secondary{
+    font-size:11px;
+    line-height:1.35;
+  }
+  body.journey-active[data-journey-view="plans"] .journey-notice-condition{
+    font-size:10px;
+    line-height:1.35;
+  }
+  body.journey-active[data-journey-view="plans"] .journey-kicker{
+    font-size:11px;
+  }
+  body.journey-active[data-journey-view="plans"] .journey-intro>p:not(.journey-kicker){
+    font-size:13px;
+  }
+}
+@media(max-width:385px) and (max-height:760px){
+  body.journey-active[data-journey-view="plans"] .journey-checkout{
+    padding:13px;
+  }
+  body.journey-active[data-journey-view="plans"] .journey-duration-grid button{
+    min-height:66px;
+  }
+  body.journey-active[data-journey-view="plans"] .journey-secondary{
+    font-size:10px;
+  }
+}
