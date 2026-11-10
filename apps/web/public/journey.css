@@ -1009,3 +1009,39 @@ body.journey-active[data-journey-view="plans"] .footer-links button:hover{
     min-height:max(0px,calc(100dvh - 341px));
   }
 }
+
+
+/* Reference color and depth: visible illuminated globe and cyan-violet
+   floating glass, without sacrificing WCAG-friendly readable copy. */
+body.journey-active[data-journey-view="plans"] .journey-world-backdrop{
+  background:
+    radial-gradient(ellipse 72% 42% at 18% 33%,rgba(0,111,214,.28),transparent 75%),
+    radial-gradient(ellipse 68% 47% at 83% 34%,rgba(116,36,224,.28),transparent 74%),
+    radial-gradient(ellipse 75% 36% at 45% 85%,rgba(36,34,139,.22),transparent 76%);
+}
+body.journey-active[data-journey-view="plans"] .journey-world-backdrop .journey-world-image{
+  opacity:.97;
+  filter:brightness(1.03) saturate(1.31)
+         drop-shadow(0 0 31px rgba(16,161,252,.3))
+         drop-shadow(0 0 40px rgba(154,50,236,.23));
+}
+body.journey-active[data-journey-view="plans"] .journey-intro::before{
+  background:radial-gradient(ellipse at 50% 50%,rgba(2,12,36,.92) 0%,
+             rgba(3,14,37,.72) 46%,rgba(4,15,39,.22) 75%,transparent 94%);
+}
+body.journey-active[data-journey-view="plans"] .journey-checkout{
+  box-shadow:
+    -2px 1px 23px rgba(1,213,255,.38),
+    2px 1px 25px rgba(180,56,255,.32),
+    0 8px 29px rgba(8,21,64,.3),
+    inset 0 0 19px rgba(42,106,189,.1);
+}
+body.journey-active[data-journey-view="plans"] .journey-duration-grid button[aria-pressed="true"]{
+  box-shadow:0 0 16px rgba(10,236,253,.48),inset 0 0 0 1px rgba(157,248,254,.46);
+}
+body.journey-active[data-journey-view="plans"] #journey-buy{
+  box-shadow:
+    0 0 23px rgba(0,223,238,.45),
+    0 0 31px rgba(160,61,243,.31),
+    inset 0 1px rgba(255,255,255,.2);
+}
