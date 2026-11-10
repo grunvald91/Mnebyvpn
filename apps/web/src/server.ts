@@ -815,6 +815,42 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     const dashboard = await loadDashboard(authPool, auth.accountId, meteringVerified);
     json(res,200,{ ...dashboard, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
   }
+  // No monthly traffic numbers are published until independently verified
+  // ingress byte metering and network provisioning have been signed off.
+  if (req.method==='GET' && url.pathname==='/api/me/dns-monthly') {
+    if (!meteringVerified) {
+      json(res,503,{code:'DNS_METERING_NOT_VERIFIED'});return;
+    }
+    const entitlementId=url.searchParams.get('entitlementId');
+    if (!entitlementId ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entitlementId)) {
+      json(res,400,{code:'INVALID_ENTITLEMENT_ID'});return;
+    }
+    // accountId comes exclusively from the verified website session.
+    // SQL checks ownership and omits every other account's traffic.
+    const result=await authPool.query(
+      `SELECT to_char(month_utc,'YYYY-MM') AS month,
+         upload_bytes::text AS upload_bytes,
+         download_bytes::text AS download_bytes,
+         measured_total_bytes::text AS measured_total_bytes,
+         unattributed_bytes::text AS unattributed_bytes
+       FROM get_smart_dns_monthly_traffic($1::uuid,$2::uuid)`,
+      [auth.accountId,entitlementId]);
+    json(res,200,{
+      entitlementId,
+      timezone:'UTC',
+      bytesDefinition:'TLS_TCP_PAYLOAD_BOTH_DIRECTIONS',
+      months:result.rows.map((r:{month:string;upload_bytes:string;
+        download_bytes:string;measured_total_bytes:string;unattributed_bytes:string})=>({
+        month:r.month,
+        uploadBytes:r.upload_bytes,
+        downloadBytes:r.download_bytes,
+        measuredTotalBytes:r.measured_total_bytes,
+        unattributedBytes:r.unattributed_bytes,
+        complete:BigInt(r.unattributed_bytes)===0n,
+      })),
+    });return;
+  }
   if(req.method==='POST'&&url.pathname==='/api/referral-link'){
     if(!csrfAllowed(req,auth.raw)){json(res,403,{code:'FORBIDDEN'});return;}
     const invite=await store.websiteReferralInvite(auth.accountId);
