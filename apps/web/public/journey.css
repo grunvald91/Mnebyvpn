@@ -978,3 +978,34 @@ body.journey-active[data-journey-view="plans"] .footer-links button:hover{
     font-size:11px;
   }
 }
+
+
+/* Final reference-fitting pass: fill the actual device viewport, not a short
+   island in the middle. Mobile card expands proportionally to available
+   height while controls stay native/interactive and keyboard-accessible. */
+@media(max-width:700px){
+  body.journey-active[data-journey-view="plans"] .journey-landing{
+    transform:translateY(10px);
+  }
+  body.journey-active[data-journey-view="plans"] .journey-checkout{
+    min-height:max(0px,calc(100dvh - 341px));
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+  }
+  body.journey-active[data-journey-view="plans"] .journey-checkout .journey-duration-grid{
+    width:100%;
+  }
+  body.journey-active[data-journey-view="plans"] .journey-checkout #journey-buy,
+  body.journey-active[data-journey-view="plans"] .journey-payment-link{
+    width:100%;
+  }
+  body.journey-active[data-journey-view="plans"] .journey-intro h1{
+    text-shadow:0 0 21px rgba(1,10,31,.76);
+  }
+}
+@media(max-width:385px) and (max-height:750px){
+  body.journey-active[data-journey-view="plans"] .journey-checkout{
+    min-height:max(0px,calc(100dvh - 341px));
+  }
+}
