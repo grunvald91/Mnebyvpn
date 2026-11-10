@@ -44,14 +44,14 @@ test('catalogue, not browser, supplies all four approved Stars amounts and stabl
  assert.deepEqual(state.p.map((p:(number|string)[])=>p[4]),sorted.map(planWidgetKey));
  const payload=vpnPurchaseWidgetPayload(123456,offers);
  assert.equal(payload.chat_id,123456);
- assert.equal(payload.allow_queries,true);
+ assert.equal(payload.allow_queries,false);
  assert.equal('public_data' in payload,false);
  assert.equal('is_shared' in payload,false);
  assert.equal('width' in payload,false);
  assert.ok(Buffer.byteLength(payload.chat_data,'utf8')<=1024);
  assert.ok(!payload.html.includes('vpn_15d_1device'));
  assert.ok(!payload.html.includes('249,00'));
- assert.ok(payload.caption.includes('40 ⭐'));
+ assert.ok(!payload.caption.includes('40 ⭐'));
 });
 test('invalid or unavailable prices fail closed rather than showing a fabricated invoice',()=>{
  assert.throws(()=>vpnPurchaseWidgetData([]),/No published/);
@@ -61,8 +61,10 @@ test('invalid or unavailable prices fail closed rather than showing a fabricated
  assert.throws(()=>vpnPurchaseWidgetPayload(0,offers),/Invalid private chat/);
  assert.notEqual(planWidgetKey(offers[0]),planWidgetKey({...offers[0],stars:141}));
 });
-test('tap selects the duration and requests only the fingerprint; invoice is not opened twice',async()=>{
- const state=vpnPurchaseWidgetData(offers);
+test('tap on pay opens exactly the selected pre-created Telegram invoice link',async()=>{
+ const links=Object.fromEntries(offers.map((p,i)=>
+  [p.planId,'https://t.me/$invoice_slug_'+(10+i)]));
+ const state=vpnPurchaseWidgetData(offers,links);
  const elements=new Map<string,any>();
  function element(id:string){
   if(!elements.has(id)){
@@ -74,8 +76,8 @@ test('tap selects the duration and requests only the fingerprint; invoice is not
  }
  const html=vpnPurchaseWidgetHtml();
  const script=html.split('<script>')[1].split('</script>')[0];
- const requests:string[]=[];
- const tw={chatData:state,request:(data:string)=>{requests.push(data);return Promise.resolve({result:'INVOICE_SENT'})},
+ const opened:string[]=[];
+ const tw={chatData:state,openTelegramLink:(url:string)=>{opened.push(url)},
   onEvent:()=>{},ready:()=>{}};
  new Script(script).runInContext(createContext({
   document:{getElementById:element},
@@ -85,10 +87,10 @@ test('tap selects the duration and requests only the fingerprint; invoice is not
  element('o3').onclick?.();
  assert.equal(element('total').textContent,'140 ⭐');
  element('pay').onclick?.();
- assert.deepEqual(requests,['buy:'+planWidgetKey(offers[0])]);
- await new Promise(resolve=>setImmediate(resolve));
- assert.match(element('notice').textContent,/Счёт в чате/);
- assert.equal(element('pay').disabled,true);
+ assert.deepEqual(opened,[links[offers[0].planId]]);
+ assert.match(element('notice').textContent,/Подтвердите оплату/);
+ assert.equal(element('pay').disabled,false);
+ element('o0').onclick?.();
  element('pay').onclick?.();
- assert.equal(requests.length,1);
+ assert.deepEqual(opened,[links[offers[0].planId],links[offers[1].planId]]);
 });
