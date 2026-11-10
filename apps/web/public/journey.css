@@ -1045,3 +1045,23 @@ body.journey-active[data-journey-view="plans"] #journey-buy{
     0 0 31px rgba(160,61,243,.31),
     inset 0 1px rgba(255,255,255,.2);
 }
+
+
+/* Desktop visual review: the large radial pseudo-overlay made a visible dark
+   circular disk over the Earth. Keep only local mobile text contrast. */
+@media(min-width:701px){
+  body.journey-active[data-journey-view="plans"] .journey-intro::before{
+    display:none;
+  }
+  body.journey-active[data-journey-view="plans"] .journey-intro h1,
+  body.journey-active[data-journey-view="plans"] .journey-intro>p{
+    text-shadow:0 2px 15px rgba(2,8,29,.78),0 0 30px rgba(5,18,39,.65);
+  }
+}
+body.journey-active[data-journey-view="plans"] .journey-intro h1 span{
+  background:linear-gradient(95deg,#19eaff 0%,#66b7ff 43%,#cf82ff 96%);
+  -webkit-background-clip:text;
+  background-clip:text;
+  -webkit-text-stroke:.15px rgba(150,229,255,.33);
+  filter:drop-shadow(0 0 13px rgba(26,157,255,.17));
+}
