@@ -45,7 +45,7 @@ footer{font-size:10px;color:#b5c7e5;margin-top:7px;line-height:1.35}
 let data={v:1,a:0,o:0};try{data=JSON.parse(w&&w.chatData||'{}')}catch{}
 if(data.v!==1){data={v:1,a:0,o:0}}
 document.getElementById('admin').hidden=!data.a;
-if(data.o){document.getElementById('support').innerText='📥 Входящие заявки'}
+if(data.o){document.getElementById('support').textContent='📥 Входящие заявки'}
 for(const el of items)el.onclick=()=>{
 if(busy||!w)return;
 const key=el.getAttribute('data-a');
