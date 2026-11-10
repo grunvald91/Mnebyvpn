@@ -7,6 +7,7 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {parseStarsPayload} from '../../packages/billing/src/stars.ts';
 import {planWidgetKey} from '../../packages/telegram-ui/src/widget-104.ts';
+import {makePersonalStarsLinkPayload,parsePersonalStarsLinkPayload} from '../../packages/billing/src/stars-links.ts';
 import {PgBillingStore} from '../../packages/billing/src/store.ts';
 import {vpnPurchaseWidgetPayload,vpnPurchaseWidgetData} from '../../packages/telegram-ui/src/purchase-widget.ts';
 
@@ -103,6 +104,48 @@ test('production cabinet: Stars invoice, checked payment, durable settlement and
     assert.equal(JSON.parse(oldList.data).method,'editMessageText');
     assert.ok(JSON.parse(oldList.data).reply_markup.inline_keyboard.flat()
       .some((b:any)=>b.url==='https://mnebyvpn.site/?product=vpn&days=30'));
+
+    // Fresh direct invoice link: viewing four tariffs creates NO orders.
+    // Telegram pre-checkout creates exactly one order with the signed UUID.
+    const personalPlan=visible[0];
+    const linkPayload=makePersonalStarsLinkPayload(user,planWidgetKey(personalPlan),starsSecret);
+    const linkIdentity=parsePersonalStarsLinkPayload(linkPayload,starsSecret)!;
+    assert.ok(linkIdentity);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM orders WHERE id=$1',
+      [linkIdentity.orderId])).rows[0].n,0);
+    const mismatched=await post({update_id:81022,pre_checkout_query:{
+      id:'link-mismatch',from:{id:user+1},currency:'XTR',
+      total_amount:personalPlan.stars,invoice_payload:linkPayload}});
+    assert.equal(JSON.parse(mismatched.data).ok,false);
+    const incorrectAmount=await post({update_id:81023,pre_checkout_query:{
+      id:'link-incorrect-price',from:{id:user},currency:'XTR',
+      total_amount:personalPlan.stars!+1,invoice_payload:linkPayload}});
+    assert.equal(JSON.parse(incorrectAmount.data).ok,false);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM orders WHERE id=$1',
+      [linkIdentity.orderId])).rows[0].n,0);
+    const linkCheckout=await post({update_id:81024,pre_checkout_query:{
+      id:'link-valid',from:{id:user},currency:'XTR',
+      total_amount:personalPlan.stars,invoice_payload:linkPayload}});
+    assert.equal(linkCheckout.resp.status,200);
+    assert.equal(JSON.parse(linkCheckout.data).ok,true);
+    assert.equal((await pool.query('SELECT state FROM orders WHERE id=$1',
+      [linkIdentity.orderId])).rows[0].state,'PENDING');
+    const personalPayment=await post({update_id:81025,message:{
+      chat:{id:user,type:'private'},from:{id:user},
+      successful_payment:{currency:'XTR',total_amount:personalPlan.stars,
+        invoice_payload:linkPayload,telegram_payment_charge_id:'link-success-'+linkIdentity.orderId}}});
+    assert.equal(personalPayment.resp.status,200);
+    assert.match(JSON.parse(personalPayment.data).text,/Оплата Stars подтверждена/);
+    assert.equal((await pool.query('SELECT state FROM orders WHERE id=$1',
+      [linkIdentity.orderId])).rows[0].state,'PAID');
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM entitlements WHERE source_order_id=$1',
+      [linkIdentity.orderId])).rows[0].n,1);
+    assert.equal((await post({update_id:81026,message:{
+      chat:{id:user,type:'private'},from:{id:user},successful_payment:{
+        currency:'XTR',total_amount:personalPlan.stars,invoice_payload:linkPayload,
+        telegram_payment_charge_id:'link-success-'+linkIdentity.orderId}}})).data,'');
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM entitlements WHERE source_order_id=$1',
+      [linkIdentity.orderId])).rows[0].n,1);
 
     const first=await post(button(81002,'buy:stars:'+planId));
     assert.equal(first.resp.status,200);
