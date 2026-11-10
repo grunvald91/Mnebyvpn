@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {createServer, connect, type Server, type Socket} from 'node:net';
 import {once} from 'node:events';
 import {Pool} from 'pg';
-import {PostgresChunkQuota, type TrustedEntitlement} from
+import {PostgresChunkQuota, type ChunkQuota, type TrustedEntitlement} from
   '../../packages/dns-ingress/src/postgres-chunk-quota.ts';
 import {runMeteredTcpRelay, type RelayResult} from
   '../../packages/dns-ingress/src/metered-relay.ts';
@@ -206,6 +206,54 @@ test('SQL revocation cuts an already open TCP relay with no new payload billed',
     const usage=await pool.query('SELECT quota_used_bytes FROM entitlements WHERE id=$1',
       [identity.entitlementId]);
     assert.equal(usage.rows[0].quota_used_bytes,'128');
+  }finally{
+    client.destroy();
+    await new Promise<void>(resolve=>relay.close(()=>resolve()));
+    await new Promise<void>(resolve=>echo.close(()=>resolve()));
+  }
+});
+
+test('PostgreSQL outage fails closed before forwarding a single TCP payload byte',async()=>{
+  const identity=await paidSubscriber(1024);
+  let upstreamReceived=0;
+  const echo=createServer(s=>s.on('data',data=>{upstreamReceived+=data.length;s.write(data);}));
+  const echoPort=await listen(echo);
+  const finished:Promise<RelayResult>[]=[];
+  const unavailable:ChunkQuota={
+    active:async()=>{throw new Error('synthetic PostgreSQL unavailable');},
+    reserve:async()=>{throw new Error('synthetic PostgreSQL unavailable');},
+    settle:async()=>{throw new Error('synthetic PostgreSQL unavailable');},
+  };
+  const relay=createServer(async downstream=>{
+    downstream.pause();
+    const upstream=connect({host:'127.0.0.1',port:echoPort});
+    try{
+      await once(upstream,'connect');
+      const session=runMeteredTcpRelay({
+        client:downstream,upstream,identity,quota:unavailable,
+        maxChunkBytes:64,recheckMs:30,
+      });
+      finished.push(session.done);
+      downstream.resume();
+    }catch{downstream.destroy();upstream.destroy();}
+  });
+  const port=await listen(relay);
+  const client=await dial(port);
+  try{
+    client.write(Buffer.alloc(128,0x41));
+    await Promise.race([
+      once(client,'close'),
+      new Promise((_,reject)=>setTimeout(()=>reject(new Error('DB fail-close timeout')),3000)),
+    ]);
+    assert.equal(finished.length,1);
+    const result=await finished[0];
+    assert.equal(result.stopReason,'db-failure');
+    assert.equal(result.uploadBytes,0);
+    assert.equal(result.downloadBytes,0);
+    assert.equal(upstreamReceived,0);
+    const rows=await pool.query('SELECT quota_used_bytes FROM entitlements WHERE id=$1',
+      [identity.entitlementId]);
+    assert.equal(rows.rows[0].quota_used_bytes,'0');
   }finally{
     client.destroy();
     await new Promise<void>(resolve=>relay.close(()=>resolve()));
