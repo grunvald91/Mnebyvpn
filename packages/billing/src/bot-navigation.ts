@@ -6,6 +6,7 @@ import {
   MENU,menuReplyKeyboard,menuInlineKeyboard,formatDuration,formatRoubles,
 } from '../../telegram-ui/src/menu.ts';
 import { referralWidgetPayload } from '../../telegram-ui/src/referral-widget.ts';
+import { vpnPurchaseWidgetPayload } from '../../telegram-ui/src/purchase-widget.ts';
 import { vpnWidgetPayload,statusWidgetData,planWidgetKey } from '../../telegram-ui/src/widget-104.ts';
 import {
   PgBillingStore,pricedPlanForOrder,starsOrderFromDB,type Product,type OrderRecord,
@@ -50,13 +51,26 @@ export async function showCatalog(id:number,db:PgBillingStore,tg:BotSend):Promis
   });
 }
 export async function showProductPlans(
-  id:number,product:Product,db:PgBillingStore,tg:BotSend,
+  id:number,product:Product,db:PgBillingStore,tg:BotSend,plain=false,
 ):Promise<void> {
   const plans=(await db.plans('telegram_stars')).filter(p=>p.product===product)
     .sort((a,b)=>a.durationSeconds-b.durationSeconds || a.planId.localeCompare(b.planId));
   if(!plans.length){
     await tg.call('sendMessage',{chat_id:id,text:'В этой категории пока нет опубликованных тарифов.',
       reply_markup:{inline_keyboard:[[{text:'↩️ К услугам',callback_data:'nav:catalog'}]]}});
+    return;
+  }
+  // Native HTML checkout is the primary VPN purchase surface. Keep a small
+  // old-client fallback and the existing trial action on its native keyboard.
+  if(product==='vpn'&&!plain&&plans.length<=4) {
+    const trialAvailable=(await db.trialProducts()).includes('vpn');
+    const inline_keyboard=[
+      ...(trialAvailable?[[{text:'🎁 Попробовать 1 день бесплатно',callback_data:'trial:vpn'}]]:[]),
+      [{text:'📋 Список тарифов',callback_data:'nav:plans:vpn:list'}],
+    ];
+    await tg.call('sendWidget',{
+      ...vpnPurchaseWidgetPayload(id,plans),reply_markup:{inline_keyboard},
+    });
     return;
   }
   const visible=plans.slice(0,16);
@@ -173,6 +187,9 @@ export async function navigationCallback(
   if(data==='nav:help'){
     await tg.call('sendMessage',{chat_id:id,text:'Поддержка пока не подключена. Возможности: доступ, подписки, пробный день и приглашение.'});
     return true;
+  }
+  if(data==='nav:plans:vpn:list'){
+    await showProductPlans(id,'vpn',db,tg,true);return true;
   }
   if(/^nav:plans:(vpn|smart_dns|bundle)$/.test(data)){
     const product=data.slice('nav:plans:'.length) as Product;
