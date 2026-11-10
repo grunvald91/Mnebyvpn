@@ -7,22 +7,22 @@ import {vpnPurchaseWidgetHtml} from './purchase-widget.ts';
 const HOME=String.raw`<!doctype html><html lang="ru"><style>
 :root{--art:url('__BRAND__');font-family:system-ui,sans-serif;color:#f4f8ff;background:#080d27}
 *{box-sizing:border-box}
-body{margin:0;padding:12px 12px 16px;color:#f4f8ff;background:radial-gradient(circle at 89% 5%,#5b36a966,transparent 33%),linear-gradient(150deg,#081328,#101d4c 69%,#171036)}
-header{display:flex;gap:10px;align-items:center;margin-bottom:12px}
+body{margin:0;padding:10px 11px 12px;color:#f4f8ff;background:radial-gradient(circle at 89% 5%,#5b36a966,transparent 33%),linear-gradient(150deg,#081328,#101d4c 69%,#171036)}
+header{display:flex;gap:10px;align-items:center;margin-bottom:9px}
 .avatar{width:40px;height:40px;flex:none;border-radius:50%;background:var(--art) center/cover;box-shadow:0 0 16px #3eeaff6e}
 .name{font-size:17px;font-weight:850}.tag{color:#b9d9f2;font-size:11px}
-.hero{display:flex;align-items:center;justify-content:space-between;padding:13px 10px 12px 14px;border:1px solid #74dbff5c;border-radius:20px;background:linear-gradient(110deg,#0d375c,#41246a);height:113px}
+.hero{display:flex;align-items:center;justify-content:space-between;padding:13px 10px 12px 14px;border:1px solid #74dbff5c;border-radius:20px;background:linear-gradient(110deg,#0d375c,#41246a);height:101px}
 .hero .copy{max-width:58%}.hero h2{font-size:19px;line-height:1.1;margin:0 0 7px}.hero h2 span{color:#83f6ff}
 .hero p{font-size:10px;line-height:1.4;color:#d5e9ff;margin:0}
 .earth{width:91px;height:91px;border-radius:50%;flex:none;background:var(--art) center/cover}
-.label{font-size:10px;font-weight:850;letter-spacing:.8px;color:#88e7f8;margin:14px 0 9px}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.item{min-width:0;min-height:54px;color:white;padding:10px 8px;border:1px solid #9fbeef6b;border-radius:15px;background:linear-gradient(135deg,#1b567e,#343875 75%,#522e80);text-align:left;font:inherit;font-weight:700;font-size:11px;box-shadow:inset 0 1px #ffffff3a,0 7px 12px #03082650}
+.label{font-size:10px;font-weight:850;letter-spacing:.8px;color:#88e7f8;margin:11px 0 7px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.item{min-width:0;min-height:47px;color:white;padding:10px 8px;border:1px solid #9fbeef6b;border-radius:15px;background:linear-gradient(135deg,#1b567e,#343875 75%,#522e80);text-align:left;font:inherit;font-weight:700;font-size:11px;box-shadow:inset 0 1px #ffffff3a,0 7px 12px #03082650}
 .item:first-child{background:linear-gradient(115deg,#0bbbd2,#387dfa 58%,#8e54e8);border-color:#a7faff}
 .item:active{filter:brightness(1.25)}.item[disabled]{opacity:.55}.item strong{font-size:16px;font-weight:500;vertical-align:middle;margin-right:4px}
 .item.wide{grid-column:span 2;min-height:45px;text-align:center}
 #notice{font-size:10px;color:#a6efff;min-height:7px;margin:8px 0 0}
-footer{font-size:10px;color:#b5c7e5;margin-top:7px;line-height:1.35}
+footer{font-size:10px;color:#b5c7e5;margin-top:5px;line-height:1.3}
 @media(max-width:240px){.earth{width:57px;height:57px}.hero h2{font-size:16px}.item{font-size:10px;padding:8px 6px}}
 </style><body><header><div class="avatar" aria-hidden="true"></div><div><div class="name">Мне бы VPN</div><div class="tag">Ваш доступ · MNEBYVPN</div></div></header>
 <section class="hero"><div class="copy"><h2>Интернет<br><span>без стен.</span></h2><p>VPN, пробный доступ, подключение и помощь — в одном месте.</p></div><div class="earth" aria-hidden="true"></div></section>
