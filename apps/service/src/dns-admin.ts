@@ -22,6 +22,7 @@ const labels:Record<string,string>={
   CONFIRMING:'⏳ Закрепляется на сервере',
   ROLLBACK_REQUESTED:'⏳ Запрошен откат',
   ACTIVE:'🟢 Активен',
+  COVERED:'🟢 Уже работает через общий маршрут',
   FAILED:'🔴 Не прошёл проверку',
   CANCELLED:'⚪ Заявка отменена',
   REMOVAL_PENDING:'🟠 Отключение ожидает применения',
@@ -102,7 +103,7 @@ export async function dnsAdminList(pool:Pool|null,pageNo=0):Promise<AdminPage>{
         (row.status==='ACTIVE'&&row.last_error_code==='ACTIVE_ROUTE_CHECK_FAILED'
           ?'🟠 Требуется проверка маршрута'
           :labels[row.status]??'Неизвестный статус')).join('\n'):'Список пуст.')+
-      '\n\nПока тест не прошёл, маршрут не считается активным.',
+      '\n\nЗелёный статус означает проверенный маршрут. COVERED — уже действующее общее правило, не отдельная заявка.',
       buttons);
   }catch{return dnsAdminError('Не удалось загрузить домены. DNS не менялся.');}
 }
@@ -179,7 +180,9 @@ export async function dnsAdminDomain(pool:Pool|null,rawId:string):Promise<AdminP
       ?'\nАвтооткат: '+row.canary_expires_at.toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})+' МСК':'';
     const error=row.last_error_code?'\nПоследняя проверка: '+row.last_error_code.slice(0,96):'';
     return page('🌍 '+textRow(row)+expires+error+'\n\n'+
-      (row.status==='ACTIVE'
+      (row.status==='COVERED'
+        ?'Сервер подтвердил работу этого домена через существующее общее правило CoreDNS/Nginx. Отдельный маршрут не создавался, поэтому отключение здесь недоступно, чтобы не затронуть другие сервисы.'
+        :row.status==='ACTIVE'
         ?row.last_error_code==='ACTIVE_ROUTE_CHECK_FAILED'
           ?'⚠️ Сервер обнаружил ошибку проверки DNS, закреплённого IP или TLS. Действующий маршрут не менялся. Требуется диагностика; не подтверждай его работоспособность без проверки.'
           :'Маршрут подтверждён. Для отключения нажми кнопку и подтверди действие.'
