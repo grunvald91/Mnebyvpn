@@ -23,6 +23,8 @@ import {activationView,deviceView,manualView}
 import {formatDuration,formatRoubles} from '../../../packages/telegram-ui/src/menu.ts';
 import {vpnPurchaseWidgetPayload,vpnPurchaseWidgetData} from '../../../packages/telegram-ui/src/purchase-widget.ts';
 import {planWidgetKey} from '../../../packages/telegram-ui/src/widget-104.ts';
+import {homeWidgetPayload} from '../../../packages/telegram-ui/src/home-widget.ts';
+import {makePersonalStarsLinkPayload,parsePersonalStarsLinkPayload} from '../../../packages/billing/src/stars-links.ts';
 import {dnsAdminOwner,dnsAdminIntro,dnsAdminPrompt,dnsAdminAction,dnsAdminAdd,DNS_ADMIN_PROMPT}
   from './dns-admin.ts';
 import {effectiveAccessState,formatRemainingTime,formatRemainingQuota} from '../../../packages/telegram-ui/src/access-format.ts';
@@ -165,6 +167,48 @@ async function packages(id:number){
       {text:'🔌 Подключить VPN',callback_data:'nav:connect'}],
      [{text:'🌐 Тарифы VPN',callback_data:'nav:vpn'}],[homeButton]]);
 }
+
+// All outgoing Bot API requests are server-only; no credential reaches HTML.
+// The widget's chat_data carries only the personal link returned by Telegram.
+async function botApi(method:string,args:Record<string,unknown>):Promise<unknown>{
+  if(!outboundBotToken)throw Error('Outbound Telegram Bot API unavailable');
+  const response=await fetch('https://api.telegram.org/bot'+outboundBotToken+'/'+method,{
+    method:'POST',redirect:'error',signal:AbortSignal.timeout(4800),
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(args),
+  });
+  if(!response.ok)throw Error('Telegram Bot API HTTP failure');
+  const data:unknown=await response.json();
+  if(!data||typeof data!=='object'||(data as {ok?:boolean}).ok!==true)
+    throw Error('Telegram Bot API response failure');
+  return (data as {result?:unknown}).result;
+}
+async function widgetMenuAction(id:number,key:string):Promise<string>{
+  const map:Record<string,string>={
+    vpn:'nav:vpn',trial:'nav:trial',status:'nav:status',connect:'nav:connect',
+    renew:'nav:renew',share:'nav:share',dns:'nav:dns',help:'nav:help',
+    support:'nav:support',dnsadmin:'dnsadmin:menu',
+  };
+  if(key==='dnsadmin'&&id!==dnsAdminId)return 'NOT_ALLOWED';
+  const action=key==='support'&&support?.operatorId===id?'support:page:0':map[key];
+  if(!action)return 'NOT_ALLOWED';
+  const fake={update_id:0,callback_query:{id:'widget-menu',from:{id},
+    message:{chat:{id,type:'private'},message_id:1},data:action}};
+  try{
+    const reply=await processUpdate(fake);
+    if(!reply||typeof reply!=='object'||!('method' in reply))return 'UNAVAILABLE';
+    const r=reply as Record<string,unknown>;
+    let method=String(r.method),args:Record<string,unknown>={...r};
+    delete args.method;
+    if(method==='editMessageText'){
+      method='sendMessage';delete args.message_id;args.chat_id=id;
+    }
+    if(!['sendMessage','sendWidget','sendInvoice'].includes(method))return 'UNAVAILABLE';
+    if(args.chat_id!==id)return 'NOT_ALLOWED';
+    await botApi(method,args);
+    return 'OPENED';
+  }catch{return 'UNAVAILABLE'}
+}
+
 async function vpnBubble(id:number) {
   if(!store)throw Error('DB unavailable');
   const offers=(await store.plans('telegram_stars'))
@@ -177,10 +221,24 @@ async function vpnBubble(id:number) {
   if(!offers.length)return {method:'sendMessage',chat_id:id,
     ...msg('🌐 VPN\\n\\nОпубликованных тарифов сейчас нет. Попробуйте позднее.',
       [[{text:'🎁 Бесплатные 24 часа',callback_data:'trial:vpn'}],[homeButton]])};
-  // One purchase surface: terms and CTA live inside the bubble. Telegram
-  // sends its native invoice as a NEW message after the tap; no extra
-  // tariff selection or duplicate pay keyboard is attached to the bubble.
-  return {method:'sendWidget',...vpnPurchaseWidgetPayload(id,offers)};
+  // Direct Stars sheet: the Telegram invoice URLs are generated BEFORE
+  // sending the widget. openTelegramLink must be called synchronously on tap;
+  // a widget_query response cannot open a link later without another tap.
+  if(!outboundBotToken)return {method:'sendWidget',...vpnPurchaseWidgetPayload(id,offers)};
+  const links:Record<string,string>={};
+  const selected=offers.slice(0,4);
+  await Promise.all(selected.map(async plan=>{
+    const payload=makePersonalStarsLinkPayload(id,planWidgetKey(plan),starsSecret);
+    const title=Array.from(plan.title.trim()).slice(0,32).join('')||'Мне бы VPN';
+    const url=await botApi('createInvoiceLink',{
+      title,description:'Разовый пакет MNEBYVPN. Продление вручную.',
+      payload,currency:'XTR',prices:[{label:title,amount:plan.stars}],
+    });
+    if(typeof url!=='string'||!/^https:\/\/t\.me\/(?:\$[A-Za-z0-9_=-]{4,160}|invoice\/[A-Za-z0-9_=-]{4,160})$/.test(url))
+      throw Error('Telegram invoice link invalid');
+    links[plan.planId]=url;
+  }));
+  return {method:'sendWidget',...vpnPurchaseWidgetPayload(id,selected,links)};
 }
 async function vpnPlans(){
   if(!pool)throw new Error('DB unavailable');
@@ -305,6 +363,21 @@ async function receiveStars(update:any){
     try{
       const checked=await Promise.race([
         (async()=>{
+          const link=parsePersonalStarsLinkPayload(pc.invoice_payload,starsSecret);
+          if(link){
+            if(!validId(pc.from?.id)||link.telegramUserId!==pc.from.id)
+              return {ok:false as const,error_message:'Ссылка предназначена другому пользователю.'};
+            const offers=(await store.plans('telegram_stars'))
+              .filter(p=>p.product==='vpn'&&p.stars!==null)
+              .filter(p=>{try{vpnPurchaseWidgetData([p]);return true}catch{return false}})
+              .sort((a,b)=>a.durationSeconds-b.durationSeconds||a.planId.localeCompare(b.planId))
+              .slice(0,4);
+            const plan=offers.find(p=>planWidgetKey(p)===link.offerKey&&
+              p.stars===pc.total_amount);
+            if(!plan)return {ok:false as const,error_message:'Тариф изменился. Откройте новое меню.'};
+            await store.createTelegramOrder(pc.from.id,plan.planId,
+              'invoice-link:'+link.orderId,undefined,link.offerKey,link.orderId);
+          }
           const oid=typeof pc.invoice_payload==='string'
             ?parseStarsPayload(pc.invoice_payload,starsSecret):null;
           const order=oid?await store.order(oid):null;
@@ -621,7 +694,9 @@ async function processUpdate(update:any){
       w.chat.id===w.from.id&&validId(w.message_id)&&typeof w.data==='string'&&
       Buffer.byteLength(w.data,'utf8')<=64&&
       (w.type===undefined||w.type?.type==='data')&&!w.widget_id;
-    if(valid&&/^buy:[A-Za-z0-9_-]{16}$/.test(w.data)){
+    if(valid&&/^menu:(vpn|trial|status|connect|renew|share|dns|help|support|dnsadmin)$/.test(w.data)){
+      result=await widgetMenuAction(w.from.id,w.data.slice(5));
+    }else if(valid&&/^buy:[A-Za-z0-9_-]{16}$/.test(w.data)){
       try{result=await widgetStarsInvoice(w.from.id,w.data.slice(4),w.id)}
       catch{result='CHECK_CHAT'}
     }
@@ -681,6 +756,10 @@ async function processUpdate(update:any){
     else if(text==='/help')action='nav:help';
   }
   try {
+    if(action==='nav:menu:legacy')
+      return {method:'sendMessage',chat_id:actor.id,...main(actor.id)};
+    if(action==='nav:home'||action==='home')
+      return homeWidgetPayload(actor.id,actor.id===dnsAdminId,support?.operatorId===actor.id);
     if(['nav:vpn','info:vpn','nav:plans:vpn','nav:catalog','nav:plans'].includes(action))
       return await vpnBubble(actor.id);
     if(action==='nav:vpn:list')return oneAction(actor,await vpnPlans());
