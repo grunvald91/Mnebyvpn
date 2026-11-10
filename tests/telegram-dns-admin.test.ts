@@ -134,8 +134,11 @@ test('owner sees DNS admin button, visitor does not',async()=>{
       from:{id:userId},chat:{id:userId,type:'private'},text:'/start'}});
     assert.equal(r.status,200);
     const j=await r.json() as any;
-    const buttons=j.reply_markup.inline_keyboard.flat();
-    assert.equal(buttons.some((b:any)=>b.callback_data==='dnsadmin:menu'),expected);
+    assert.equal(j.method,'sendWidget');
+    assert.equal(JSON.parse(j.chat_data).a,expected?1:0);
+    assert.ok(j.html.includes('data-a="dnsadmin"'));
+    assert.deepEqual(j.reply_markup.inline_keyboard,
+      [[{text:'☰ Открыть обычное меню',callback_data:'nav:menu:legacy'}]]);
   }
 });
 test('visitor cannot call owner callback even if they guess its ID',async()=>{
