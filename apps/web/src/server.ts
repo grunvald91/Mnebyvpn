@@ -178,6 +178,7 @@ const privacyHtml = await readFile(new URL('../public/privacy.html',import.meta.
 const css = await readFile(new URL('../public/site.css', import.meta.url));
 const neoCss = await readFile(new URL('../public/neo.css', import.meta.url));
 const brandAvatar = await readFile(new URL('../public/brand-avatar.webp', import.meta.url));
+const worldNeon = await readFile(new URL('../public/world-neon.webp', import.meta.url));
 const js = await readFile(new URL('../public/app.js', import.meta.url));
 const journeyCss = await readFile(new URL('../public/journey.css', import.meta.url));
 const journeyJs = await readFile(new URL('../public/journey.js', import.meta.url));
@@ -543,6 +544,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === 'GET' && url.pathname === '/brand-avatar.webp') {
     send(res, 200, brandAvatar, 'image/webp'); return;
+  }
+  if (req.method === 'GET' && url.pathname === '/world-neon.webp') {
+    send(res, 200, worldNeon, 'image/webp'); return;
   }
   if (req.method === 'GET' && url.pathname === '/app.js') {
     send(res, 200, js, 'text/javascript; charset=utf-8'); return;
