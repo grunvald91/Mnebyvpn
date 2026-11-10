@@ -35,16 +35,16 @@ red,green,blue=tex[:,:,0],tex[:,:,1],tex[:,:,2]
 land=(((green>blue*.67)&(red>blue*.57)&(green>28)) |
       ((red>100)&(red>blue*.75)))&inside
 color=np.zeros((H,W,4),np.float32)
-ocean=np.stack((5+11*z,25+37*z,79+66*z),axis=-1)
-terrain=np.stack((35+65*z+red*.17,32+green*.14,92+blue*.22),axis=-1)
+ocean=np.stack((4+9*z,19+31*z,65+57*z),axis=-1)
+terrain=np.stack((23+47*z+red*.11,24+green*.1,75+blue*.17),axis=-1)
 color[:,:,:3]=np.where(land[:,:,None],terrain,ocean)
 coast=(cv2.morphologyEx(land.astype('uint8'),cv2.MORPH_GRADIENT,
        np.ones((3,3),'uint8'))>0)&inside
 coast_glow=cv2.GaussianBlur(coast.astype(np.float32),(0,0),3.1)
 # Amber city lights toward the west; purple lights toward eastern horizon.
-west=np.clip((.75-x)*.85,0,1)[:,:,None]
-coast_rgb=np.array([244,128,54])[None,None,:]*west + np.array([158,55,240])[None,None,:]*(1-west)
-color[:,:,:3]+=coast_glow[:,:,None]*coast_rgb*3.0
+west=np.clip((.82-x)*1.6,0,1)[:,:,None]
+coast_rgb=np.array([255,149,48])[None,None,:]*west + np.array([135,55,245])[None,None,:]*(1-west)
+color[:,:,:3]+=coast_glow[:,:,None]*coast_rgb*2.0
 color[:,:,:3]+=coast[:,:,None]*coast_rgb*.27
 lights=np.zeros((H,W),np.float32)
 candidates=np.argwhere(land&(z>.17)&(y>-.63)&(y<.8))
@@ -53,7 +53,7 @@ for _ in range(1100):
     lights[int(iy),int(ix)]+=random.uniform(.35,1)
 gold=cv2.GaussianBlur(lights,(0,0),2.0)
 gold+=cv2.GaussianBlur(lights,(0,0),7)*1.8
-color[:,:,:3]+=gold[:,:,None]*np.array([255,141,49])[None,None,:]*4.8
+color[:,:,:3]+=gold[:,:,None]*np.array([255,151,53])[None,None,:]*6.2
 color[:,:,:3]+=lights[:,:,None]*np.array([255,188,113])[None,None,:]*.5
 shade=np.clip(z**.45*.90+.08,0,1)*np.clip(.83+.25*y,.52,1.1)
 color[:,:,:3]*=shade[:,:,None]
@@ -80,6 +80,7 @@ for i in range(1,len(points)):
     if not all(-20<a<W+20 for a in (points[i-1][0],points[i][0])):continue
     col=(32,215,255,170) if i<210 else (166,61,248,175)
     d.line((points[i-1],points[i]),fill=col,width=3)
+planet=Image.alpha_composite(planet,arc.filter(ImageFilter.GaussianBlur(7)))
 planet=Image.alpha_composite(planet,arc)
 # Fade the globe naturally behind the opaque tariff card.
 alpha=np.asarray(planet.getchannel('A'),dtype=np.float32)
@@ -88,5 +89,5 @@ planet.putalpha(Image.fromarray(alpha.astype('uint8')))
 output=Path('apps/web/public/world-neon.webp')
 output.parent.mkdir(parents=True,exist_ok=True)
 planet.resize((780,685),Image.Resampling.LANCZOS).save(output,
-    'WEBP',quality=56,method=6)
+    'WEBP',quality=70,method=6)
 print(f'world_neon_webp={output.stat().st_size} bytes')
