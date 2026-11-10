@@ -17,6 +17,7 @@
   <div class="ambient ambient-a" aria-hidden="true"></div>
   <div class="ambient ambient-b" aria-hidden="true"></div>
   <div class="journey-world-backdrop" aria-hidden="true">
+    <span class="journey-world-halo"></span>
     <img class="journey-world-image" src="/world-neon.webp" alt="" width="780" height="685" decoding="async" fetchpriority="high">
   </div>
   <header class="header">
@@ -68,7 +69,7 @@
           <span class="journey-trial-label">⚡ Бесплатные 24 часа</span>
           <button type="button" class="journey-trial" id="journey-trial" disabled>Попробовать</button>
         </div>
-        <p class="journey-secondary">Без автосписаний. Защищённая оплата через Prodamus. Заранее напомним, когда срок будет заканчиваться.</p>
+        <p class="journey-secondary">Без автосписаний. Заранее напомним, когда срок будет заканчиваться.</p>
         <p class="journey-notice-condition">Напоминания в Telegram доступны после привязки бота.</p>
       </div>
     </section>
@@ -191,7 +192,7 @@
             <button type="button" class="button button-primary button-block" id="buy-button" disabled>Загрузка тарифов…</button>
             <p class="small-print hidden" id="checkout-error" role="alert" aria-live="assertive"></p>
             <a id="payment-link" class="button button-secondary button-block hidden"
-               target="_blank" rel="noopener noreferrer">Открыть оплату в Prodamus</a>
+               target="_blank" rel="noopener noreferrer">Открыть защищённую оплату</a>
             <p class="small-print" id="checkout-hint" role="status">Оплата станет доступна после проверки платёжного подключения. Способ оплаты выбирается на странице провайдера.</p>
             <button type="button" class="button button-secondary button-block trial-button" id="trial-button" disabled>🎁 Бесплатные 24 часа</button>
             <section id="guest-trial-card" class="guest-trial-card hidden" aria-live="polite" aria-label="Подключение бесплатного VPN">
@@ -274,10 +275,27 @@
       </form>
     </section>
 
+    <section class="journey-order shell" id="journey-order" aria-labelledby="journey-order-title" hidden>
+      <div class="journey-order-card">
+        <p class="journey-kicker">MNEBYVPN · ОФОРМЛЕНИЕ</p>
+        <h1 id="journey-order-title">Ваш заказ VPN</h1>
+        <p class="journey-order-subtitle">Проверьте тариф перед переходом к оплате.</p>
+        <div class="journey-order-plan">
+          <div><span>Ваш тариф</span><strong id="journey-order-period">VPN · 15 дней</strong></div>
+          <div><span>Аккаунт</span><strong id="journey-order-email">Подтверждённый email</strong></div>
+          <div class="journey-order-total"><span>Итого</span><strong id="journey-order-price">—</strong></div>
+        </div>
+        <p class="journey-order-disclaimer">Разовая покупка без автосписаний. Данные банковской карты не вводятся на сайте MNEBYVPN: для проведения платежа откроется защищённая форма платёжного партнёра. Доступ будет выдан после подтверждения оплаты сервером.</p>
+        <button type="button" class="button button-primary journey-primary" id="journey-order-pay">Перейти к защищённой оплате</button>
+        <a id="journey-order-link" class="button button-secondary journey-primary hidden" target="_blank" rel="noopener noreferrer">Открыть оплату вручную</a>
+        <p id="journey-order-error" class="journey-error" role="alert" aria-live="assertive"></p>
+        <a class="journey-back" id="journey-order-back" href="#plans">← Изменить тариф</a>
+      </div>
+    </section>
     <section class="journey-payment-intro shell" id="journey-payment-intro" aria-labelledby="journey-payment-heading" hidden>
       <p class="journey-kicker">MNEBYVPN · ВАШ ЗАКАЗ</p>
       <h1 id="journey-payment-heading">Проверяем оплату</h1>
-      <p id="journey-payment-info" role="status" aria-live="polite">Возврат из Prodamus ещё не означает успешную оплату. Проверяем статус заказа на сервере.</p>
+      <p id="journey-payment-info" role="status" aria-live="polite">Возврат на сайт ещё не подтверждает получение денег. Проверяем статус заказа на сервере.</p>
       <a class="journey-payment-cabinet" href="#account" id="journey-payment-to-account">Перейти в личный кабинет</a>
     </section>
     <section class="account-section shell" id="account">

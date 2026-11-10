@@ -78,6 +78,9 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
       desktopDarkDisk:innerWidth>700&&getComputedStyle(intro,'::before').display!=='none',
       selected:document.querySelector('[data-journey-days="30"]')?.getAttribute('aria-pressed'),
       globeNaturalWidth:document.querySelector('.journey-world-image')?.naturalWidth||0,
+      haloRendered:!!document.querySelector('.journey-world-halo')&&
+        getComputedStyle(document.querySelector('.journey-world-halo')).display==='block'&&
+        document.querySelector('.journey-world-halo').getBoundingClientRect().width>350,
       globeLoaded:!!(document.querySelector('.journey-world-image')?.complete &&
         document.querySelector('.journey-world-image')?.naturalWidth>=700),
       schematicGlobePresent:!!document.querySelector('.journey-world-backdrop svg'),
@@ -88,7 +91,7 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
   await page.screenshot({path:file,type:'jpeg',quality:72,fullPage:true});
   console.log('VISUAL_METRICS_'+width+'='+JSON.stringify({...metrics,browserErrors}));
   if(metrics.scrollExtra>2||metrics.horizontalOverflow||browserErrors.length||
-    !metrics.globeLoaded||metrics.globeNaturalWidth!==780||metrics.schematicGlobePresent||metrics.desktopDarkDisk||
+    !metrics.globeLoaded||!metrics.haloRendered||metrics.globeNaturalWidth!==780||metrics.schematicGlobePresent||metrics.desktopDarkDisk||
     (width<=390 && (metrics.cardToFooterGap<0||metrics.cardToFooterGap>50)))failed=true;
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('VISUAL_JPEG_'+width+'_BEGIN');
@@ -136,6 +139,52 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
   if(!returned.home||!returned.emailRestored){
     console.error('TRIAL_AUTH_BACK_FAILED',JSON.stringify(returned));failed=true;
   }
+  await page.close();
+}
+// Branded checkout visual acceptance: real authenticated route, no card data
+// entry and no provider HTTP call before the explicit confirmation click.
+{
+  const page=await browser.newPage({viewport:{width:390,height:844}});
+  let checkoutCalls=0;
+  page.on('pageerror',error=>{console.error('ORDER_PAGE_ERROR',String(error.message));failed=true;});
+  await page.route('**/api/me',route=>route.fulfill({
+    status:200,contentType:'application/json',
+    body:JSON.stringify({csrf:'visual-order-csrf',
+      identity:{email:'visual-test@example.com',emailLinked:true,telegramLinked:false},
+      access:[],orders:[]}),
+  }));
+  await page.route('**/api/checkout',route=>{
+    checkoutCalls++;
+    return route.fulfill({status:500,contentType:'application/json',body:'{"code":"BLOCKED_BY_VISUAL_TEST"}'});
+  });
+  await page.goto(base,{waitUntil:'networkidle'});
+  await page.waitForFunction(()=>document.body.classList.contains('journey-active')&&
+    !document.querySelector('#journey-buy').disabled);
+  await page.locator('#journey-buy').click();
+  await page.waitForFunction(()=>document.body.dataset.journeyView==='checkout');
+  const order=await page.evaluate(()=>({
+    route:location.hash,
+    total:document.querySelector('#journey-order-price')?.textContent,
+    period:document.querySelector('#journey-order-period')?.textContent,
+    email:document.querySelector('#journey-order-email')?.textContent,
+    confirmEnabled:!document.querySelector('#journey-order-pay')?.disabled,
+    hasCardFields:!!document.querySelector('.journey-order input[type="tel"],.journey-order input[autocomplete="cc-number"]'),
+    screenHasProviderBrand:document.querySelector('.journey-order')?.textContent?.includes('Prodamus'),
+    hasHorizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
+  }));
+  const image=process.env.RUNNER_TEMP+'/mnebyvpn-branded-order-390x844.jpg';
+  await page.screenshot({path:image,type:'jpeg',quality:75,fullPage:true});
+  console.log('BRANDED_CHECKOUT_METRICS='+JSON.stringify({...order,checkoutCalls}));
+  if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
+    console.log('BRANDED_ORDER_JPEG_BEGIN');
+    console.log(readFileSync(image).toString('base64'));
+    console.log('BRANDED_ORDER_JPEG_END');
+  }
+  if(order.route!=='#checkout'||!order.email?.includes('visual-test@example.com')||
+    order.total==='—'||!order.confirmEnabled||order.hasCardFields||
+    order.screenHasProviderBrand||order.hasHorizontalOverflow||checkoutCalls!==0)failed=true;
+  await page.locator('#journey-order-back').click();
+  if(await page.locator('#journey-landing').isHidden())failed=true;
   await page.close();
 }
 // Synthetic *end-to-end* email OTP and trial request (no customer records,

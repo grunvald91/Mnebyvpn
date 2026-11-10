@@ -5,10 +5,10 @@
   'use strict';
   const el=id=>document.getElementById(id);
   const root=document.body;
-  const landing=el('journey-landing'),setup=el('journey-setup'),paymentIntro=el('journey-payment-intro'),trialAuth=el('journey-trial-auth');
+  const landing=el('journey-landing'),setup=el('journey-setup'),paymentIntro=el('journey-payment-intro'),trialAuth=el('journey-trial-auth'),orderView=el('journey-order');
   const emailPanel=el('email-auth-panel'),emailHome=emailPanel?.parentNode;
   if(!landing||!setup||typeof state==='undefined')return;
-  const allViews=new Set(['plans','account','payment','setup','support','trial-auth']);
+  const allViews=new Set(['plans','account','checkout','payment','setup','support','trial-auth']);
   let view='plans', lastAccount=null, chosenPlatform='android', installed=false;
   const autoSetupOrders=new Set();
   const lastSetupAttempt=new Map();
@@ -26,6 +26,7 @@
     const hash=location.hash;
     if(paymentLanding)return 'payment';
     if(hash==='#try')return 'trial-auth';
+    if(hash==='#checkout')return 'checkout';
     if(hash==='#account')return 'account';
     if(hash==='#connect')return 'setup';
     if(hash==='#contact-support')return 'support';
@@ -46,12 +47,14 @@
     root.dataset.journeyView=next;
     landing.hidden=next!=='plans';
     setup.hidden=next!=='setup';
+    if(orderView)orderView.hidden=next!=='checkout';
     if(paymentIntro)paymentIntro.hidden=next!=='payment';
     if(trialAuth)trialAuth.hidden=next!=='trial-auth';
     if(next==='trial-auth')mountTrialEmail();
+    if(next==='checkout')updateOrder();
     if(writeHash){
       if(next!=='payment')paymentLanding=false;
-      const hash=next==='payment'?'#account':next==='trial-auth'?'#try':next==='setup'?'#connect':
+      const hash=next==='payment'?'#account':next==='checkout'?'#checkout':next==='trial-auth'?'#try':next==='setup'?'#connect':
         next==='support'?'#contact-support':next==='account'?'#account':'#plans';
       if(location.hash!==hash)history.replaceState(null,'',location.pathname+location.search+hash);
     }
@@ -114,6 +117,19 @@
       'Выбранный тариф пока не опубликован';
     el('journey-error').textContent=el('checkout-error').textContent||'';
   }
+  function updateOrder(){
+    const plan=state.plans.find(p=>p.product==='vpn'&&p.durationDays===state.days);
+    const verified=state.loggedIn&&lastAccount?.identity?.email;
+    el('journey-order-period').textContent='VPN · '+state.days+' дней';
+    el('journey-order-price').textContent=plan?priceFor(state.days):'—';
+    el('journey-order-email').textContent=verified?lastAccount.identity.email:'Требуется вход по email';
+    const pay=el('journey-order-pay');
+    pay.disabled=!plan||!state.checkoutEnabled||!verified||state.busy;
+    pay.textContent=state.busy?'Оформляем заказ…':
+      !state.checkoutEnabled?'Оплата временно недоступна':
+      !verified?'Войдите для оплаты':'Перейти к защищённой оплате';
+    el('journey-order-error').textContent=el('checkout-error')?.textContent||'';
+  }
   function storeIntent(){
     const d={product:state.product,days:state.days,createdAt:Date.now()};
     try{sessionStorage.setItem('mnebyvpn-pending-checkout',JSON.stringify(d));}catch{}
@@ -145,7 +161,7 @@
       storeIntent();beginEmailLink();return;
     }
     clearIntent();
-    void purchase();
+    setView('checkout',true);
   }
   function resumeCheckout(){
     const pending=pendingIntent();
@@ -158,7 +174,7 @@
     clearIntent();
     state.product='vpn';
     setSelection('vpn',pending.days);
-    void purchase();
+    setView('checkout',true);
   }
   const downloads={
     android:{name:'INCY',url:'https://play.google.com/store/apps/details?id=llc.itdev.incy',client:'incy'},
@@ -284,7 +300,7 @@
         description.textContent='Статус заказа: '+(stateNames[order.state]||order.state)+'. Проверьте историю или напишите в поддержку.';
       }else{
         heading.textContent='Проверяем оплату';
-        description.textContent='Подтверждения от Prodamus пока нет. Если деньги списаны, не создавайте повторный платёж.';
+        description.textContent='Подтверждения оплаты пока нет. Если деньги списаны, не создавайте повторный платёж.';
       }
     }
     // Open the installer only after the verified PAID order has an ACTIVE
@@ -325,8 +341,14 @@
   window.showPaymentLink=function(url){
     const result=originalShowPaymentLink(url);
     const link=el('journey-payment-link');
-    if(url){link.href=url;link.classList.remove('hidden');}
-    else{link.removeAttribute('href');link.classList.add('hidden');}
+    const orderLink=el('journey-order-link');
+    if(url){
+      link.href=url;link.classList.remove('hidden');
+      orderLink.href=url;orderLink.classList.remove('hidden');
+    }else{
+      link.removeAttribute('href');link.classList.add('hidden');
+      orderLink.removeAttribute('href');orderLink.classList.add('hidden');
+    }
     return result;
   };
   const originalRenderPlan=window.renderPlan;
@@ -334,16 +356,16 @@
   const originalLoggedOut=window.renderLoggedOut;
   const originalVpnSetup=window.renderVpnSetup;
   window.renderPlan=function(...args){
-    const result=originalRenderPlan(...args);updatePlan();
+    const result=originalRenderPlan(...args);updatePlan();updateOrder();
     if(pendingIntent()&&state.loggedIn&&lastAccount?.identity?.email)resumeCheckout();
     return result;
   };
   window.renderAccount=function(...args){
     const result=originalRenderAccount(...args);
-    enhanceAccount(args[0]);updatePlan();return result;
+    enhanceAccount(args[0]);updatePlan();updateOrder();return result;
   };
   window.renderLoggedOut=function(...args){
-    const result=originalLoggedOut(...args);loggedOut();updatePlan();return result;
+    const result=originalLoggedOut(...args);loggedOut();updatePlan();updateOrder();return result;
   };
   window.renderVpnSetup=function(...args){
     const result=originalVpnSetup(...args);
@@ -353,6 +375,14 @@
     setSelection('vpn',Number(btn.dataset.journeyDays));updatePlan();
   }));
   el('journey-buy').addEventListener('click',beginCheckout);
+  el('journey-order-pay').addEventListener('click',()=>{
+    updateOrder();
+    if(el('journey-order-pay').disabled)return;
+    void purchase();
+  });
+  el('journey-order-back').addEventListener('click',event=>{
+    event.preventDefault();setView('plans',true);
+  });
   el('journey-trial').addEventListener('click',async()=>{
     if(!state.trialOffers.includes('vpn'))return;
     if(!state.loggedIn){
@@ -404,6 +434,7 @@
   root.classList.add('journey-active');
   setView(getRoute());
   updatePlan();
+  updateOrder();
   window.MnebyvpnJourney={show:setView,beginCheckout,updatePlan,
     afterEmailAuthenticated(){
       if(view==='setup')return true; // successful trial already opened installer
