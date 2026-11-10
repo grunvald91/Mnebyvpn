@@ -7,6 +7,8 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {parseStarsPayload} from '../../packages/billing/src/stars.ts';
 import {planWidgetKey} from '../../packages/telegram-ui/src/widget-104.ts';
+import {PgBillingStore} from '../../packages/billing/src/store.ts';
+import {vpnPurchaseWidgetPayload} from '../../packages/telegram-ui/src/purchase-widget.ts';
 
 test('production cabinet: Stars invoice, checked payment, durable settlement and Prodamus website option',async()=>{
   const url='postgresql://'+(process.env.PGUSER||'test')+':'+
@@ -56,6 +58,9 @@ test('production cabinet: Stars invoice, checked payment, durable settlement and
       if(i===59)throw Error('Bot not ready: '+stderr);
       await new Promise(r=>setTimeout(r,100));
     }
+    const catalog=await new PgBillingStore(pool).plans('telegram_stars');
+    try{vpnPurchaseWidgetPayload(user,catalog.filter(p=>p.product==='vpn'&&p.stars!==null))}
+    catch(error){assert.fail('Published test catalogue rejected by widget: '+String(error))}
     // This is the ACTUAL production cabinet path behind the screenshot's
     // "🌐 VPN и тарифы" button, not the parallel legacy bot-navigation path.
     const home=await post({update_id:80999,message:{chat:{id:user,type:'private'},
