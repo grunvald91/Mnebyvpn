@@ -51,7 +51,8 @@ const listen=()=>new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 await listen();
 const base='http://127.0.0.1:'+server.address().port;
 const { chromium }=await import(process.env.VISUAL_PLAYWRIGHT_PACKAGE||'playwright');
-const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+const browser=await chromium.launch({headless:true,args:['--no-sandbox'],
+  ...(process.env.VISUAL_CHROME_PATH?{executablePath:process.env.VISUAL_CHROME_PATH}:{})});
 let failed=false;
 for(const [width,height] of [[390,844],[360,740],[1440,900]]){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
