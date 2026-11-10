@@ -52,7 +52,7 @@ test('domain operations are parameterized and remain pending, not active',async(
   assert.deepEqual(calls[2].args,['www.oracle.com',99887766]);
   assert.deepEqual(calls[3].args,['cloud.oracle.com',99887766]);
   const list=await dnsAdminList(pg);
-  assert.match(list.text,/На проверке/);
+  assert.match(list.text,/Ожидает проверки/);
   const cancel=await dnsAdminCancel(pg,99887766,'8');
   assert.match(cancel.text,/Заявка отменена/);
   assert.deepEqual(calls[calls.length-1].args,[8,99887766]);
