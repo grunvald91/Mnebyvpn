@@ -234,7 +234,7 @@ async function widgetStarsInvoice(id:number,key:string,queryId:string):Promise<s
   const published=(await store.plans('telegram_stars'))
     .filter(p=>p.product==='vpn'&&p.stars!==null)
     .filter(p=>{try{vpnPurchaseWidgetData([p]);return true}catch{return false}})
-    .sort((a,b)=>a.durationSeconds-b.durationSeconds||a.planId.localeCompare(b.planId)
+    .sort((a,b)=>a.durationSeconds-b.durationSeconds||a.planId.localeCompare(b.planId))
     .slice(0,4).filter(p=>planWidgetKey(p)===key);
   if(published.length!==1)return 'PLAN_UNAVAILABLE';
   const plan=await store.plan(published[0].planId);
