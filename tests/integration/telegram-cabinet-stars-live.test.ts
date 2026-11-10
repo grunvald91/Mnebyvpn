@@ -77,22 +77,23 @@ test('production cabinet: Stars invoice, checked payment, durable settlement and
     assert.match(shown.html,/TelegramWidget/);
     assert.ok(shown.html.includes('data:image/webp;base64,'));
     const state=JSON.parse(shown.chat_data);
-    assert.ok(state.p.some((p:(string|number)[])=>p[1]===17&&p[4]===
-      planWidgetKey({planId,product:'vpn',title:'VPN Stars testing',stars:17,
-        durationSeconds:2592000,dnsQuotaBytes:null})));
+    const visible=validOffers.slice().sort((a,b)=>
+      a.durationSeconds-b.durationSeconds||a.planId.localeCompare(b.planId)).slice(0,4);
+    assert.deepEqual(state.p.map((p:(string|number)[])=>p[4]),visible.map(planWidgetKey));
     const buttons=shown.reply_markup.inline_keyboard.flat();
-    assert.ok(buttons.some((b:any)=>b.callback_data==='buy:stars:'+planId));
+    assert.ok(buttons.some((b:any)=>b.callback_data==='buy:stars:'+visible[0].planId));
     assert.ok(buttons.some((b:any)=>b.callback_data==='nav:vpn:list'));
+    const selectedKey=state.p[0][4];
     const fromWidget=await post({update_id:81009,widget_query:{
       id:'wq-81009',from:{id:user},chat:{id:user,type:'private'},message_id:543,
-      type:{type:'data'},data:'buy:'+state.p.find((p:(string|number)[])=>p[1]===17)[4],
+      type:{type:'data'},data:'buy:'+selectedKey,
     }});
     const fallback=JSON.parse(fromWidget.data);
     assert.equal(fallback.method,'answerWidgetQuery');
     assert.equal(fallback.data,'USE_BUTTONS'); // tokenless backend, real invoice below the bubble
     const crossChat=await post({update_id:81010,widget_query:{
       id:'wq-81010',from:{id:user+1},chat:{id:user,type:'private'},message_id:543,
-      type:{type:'data'},data:'buy:'+state.p.find((p:(string|number)[])=>p[1]===17)[4],
+      type:{type:'data'},data:'buy:'+selectedKey,
     }});
     assert.equal(JSON.parse(crossChat.data).data,'NOT_ALLOWED');
     const oldList=await post(button(81011,'nav:vpn:list'));
