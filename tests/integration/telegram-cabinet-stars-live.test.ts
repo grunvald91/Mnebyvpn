@@ -72,7 +72,7 @@ test('production cabinet: Stars invoice, checked payment, durable settlement and
     const state=JSON.parse(shown.chat_data);
     assert.ok(state.p.some((p:(string|number)[])=>p[1]===17&&p[4]===
       planWidgetKey({planId,product:'vpn',title:'VPN Stars testing',stars:17,
-        rubMinor:9900,durationSeconds:2592000,dnsQuotaBytes:null})));
+        durationSeconds:2592000,dnsQuotaBytes:null})));
     const buttons=shown.reply_markup.inline_keyboard.flat();
     assert.ok(buttons.some((b:any)=>b.callback_data==='buy:stars:'+planId));
     assert.ok(buttons.some((b:any)=>b.callback_data==='nav:vpn:list'));
