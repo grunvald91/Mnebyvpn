@@ -50,15 +50,29 @@ test('visible durations are truthful fixed terms, RUB displayed independently of
  assert.match(formatDuration(90*86400),/90 дней/);
  assert.equal(formatRoubles(19900),'199,00 ₽');
 });
-test('inline navigation goes directly from service to the 4 configured prices',async()=>{
+test('VPN purchase opens HTML widget with four actual catalogue prices',async()=>{
  const f=fake();
  await handleTelegramUpdate(callback('nav:plans:vpn'),f.db,f.tg,cfg);
+ assert.deepEqual(f.calls.map(c=>c.method),['answerCallbackQuery','sendWidget']);
+ const widget=f.calls[1].params;
+ assert.equal(widget.allow_queries,true);
+ const state=JSON.parse(String(widget.chat_data));
+ assert.deepEqual(state.p.map((p:number[])=>p[0]),[15,30,60,90]);
+ assert.deepEqual(state.p.map((p:number[])=>p[1]),[20,35,65,95]);
+ assert.deepEqual(state.p.map((p:(number|string)[])=>p[4]),[0,2,4,6].map(i=>planWidgetKey(plans[i])));
+ const keyboard=widget.reply_markup as {inline_keyboard:Array<Array<{callback_data:string}>>};
+ const buttons=keyboard.inline_keyboard.flat().map(x=>x.callback_data);
+ assert.ok(buttons.includes('trial:vpn'));
+ assert.ok(buttons.includes('nav:plans:vpn:list'));
+});
+test('old Telegram clients retain a plain inline tariff list with Stars checkout',async()=>{
+ const f=fake();
+ await handleTelegramUpdate(callback('nav:plans:vpn:list'),f.db,f.tg,cfg);
  assert.deepEqual(f.calls.map(c=>c.method),['answerCallbackQuery','sendMessage']);
  const text=String(f.calls[1].params.text);
  for(const duration of [15,30,60,90])assert.match(text,new RegExp(duration+' дней'));
  const keyboard=f.calls[1].params.reply_markup as {inline_keyboard:Array<Array<{callback_data:string}>>};
  const buttons=keyboard.inline_keyboard.flat().map(x=>x.callback_data);
- assert.ok(buttons.includes('trial:vpn'));
  assert.ok(buttons.includes('buy:'+planWidgetKey(plans[0])));
  assert.ok(buttons.includes('buy:'+planWidgetKey(plans[6])));
  assert.ok(buttons.includes('nav:catalog'));
