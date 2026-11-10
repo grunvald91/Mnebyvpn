@@ -36,39 +36,33 @@ export function vpnPurchaseWidgetData(plans:ReadonlyArray<PricedPlan>):string {
 const HTML=String.raw`<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-:root{font-family:system-ui,-apple-system,sans-serif;color:#f7faff;background:#080d25;color-scheme:dark}
-*{box-sizing:border-box}html{background:#080d25}
-body{margin:0;padding:14px 13px 16px;overflow-x:hidden;background:radial-gradient(ellipse at 100% 0,#7831ad66,transparent 65%),linear-gradient(145deg,#080d25,#142459 60%,#100d34);font-size:13px}
+:root{font-family:system-ui,-apple-system,sans-serif;color:#f7faff;background:#080d25;color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;padding:14px 13px 16px;overflow-x:hidden;background:radial-gradient(circle at 94% 5%,#5b24a866,transparent 60%),linear-gradient(145deg,#080d25,#172451 62%,#100d34);font-size:13px}
 header{display:flex;gap:10px;align-items:center;margin-bottom:13px}
-.brand{position:relative;flex:0 0 39px;height:39px;border-radius:13px;overflow:hidden;background:radial-gradient(circle at 30% 22%,#8ffeff,#1689ff 34%,#261466 75%);border:1px solid #86f4ff;box-shadow:0 0 17px #0edfff77}
-.brand:before{content:"";position:absolute;width:55px;height:14px;border:2px solid #ac68ff;border-radius:50%;transform:rotate(-29deg);top:13px;left:-12px;box-shadow:0 0 9px #49eeff}
-.brand:after{content:"";position:absolute;right:-8px;top:7px;width:28px;height:5px;transform:rotate(-30deg);border-radius:9px;background:linear-gradient(90deg,#e5bc76,#fff4c6,#56faff)}
-.brandname{font-size:17px;font-weight:860;letter-spacing:-.5px;background:linear-gradient(95deg,#fff,#57eeff 65%,#bda4ff);color:transparent;-webkit-background-clip:text;background-clip:text}
-.meta{font-size:10px;color:#b2c7ec;margin-top:3px}
-.hero{display:flex;position:relative;align-items:center;justify-content:space-between;min-height:139px;gap:5px;padding:17px 12px 14px 16px;overflow:hidden;border:1px solid #80c5ff85;border-radius:23px;background:linear-gradient(125deg,#075073,#243b89 54%,#59288f);box-shadow:inset 0 1px #ffffff55,0 10px 26px #04082976}
-.hero-copy{position:relative;z-index:1;min-width:0;max-width:59%}
-.hero-chip{display:inline-block;padding:4px 9px;border-radius:20px;border:1px solid #a5f6ff75;color:#98efff;background:#051c417a;font-size:9px;font-weight:750;letter-spacing:.5px}
-.hero h2{font-size:22px;font-weight:850;line-height:1.07;letter-spacing:-.7px;margin:10px 0 6px;color:white}
-.hero h2 span{color:#93f9ff}.hero p{font-size:11px;line-height:1.42;color:#d7e5ff;margin:0}
-.energy{position:relative;flex:0 0 111px;width:111px;height:115px;transform:translate(8px,3px)}
-.planet{position:absolute;left:21px;top:17px;width:82px;height:82px;border-radius:50%;background:radial-gradient(circle at 30% 22%,#dcffff,#58eaff 17%,#146bfc 42%,#161063 82%);border:1px solid #a6f9ff;box-shadow:inset -10px -11px 14px #090c62,0 0 23px #23dfff9c}
-.orbit{position:absolute;left:3px;top:46px;width:119px;height:32px;border:3px solid #61f4ff;border-left-color:#ac67ff;border-radius:50%;transform:rotate(-28deg);box-shadow:0 0 11px #5ef4ff}
-.eyebrow{margin:16px 0 10px;color:#84e8ff;font-size:10px;font-weight:850;letter-spacing:1.1px}
+.brand{position:relative;flex:0 0 39px;height:39px;border-radius:13px;overflow:hidden;background:radial-gradient(circle at 30% 22%,#8ffeff,#1689ff 34%,#261466 75%);border:1px solid #86f4ff;box-shadow:0 0 15px #0edfff77}
+.brandname{font-size:17px;font-weight:860;color:#a9f4ff}
+.meta{font-size:10px;color:#b2c7ec}
+.hero{display:flex;align-items:center;justify-content:space-between;min-height:139px;gap:5px;padding:16px 11px 14px 15px;overflow:hidden;border:1px solid #80c5ff85;border-radius:23px;background:linear-gradient(125deg,#075073,#243b89 54%,#59288f);box-shadow:0 9px 25px #04082976}
+.hero-copy{min-width:0;max-width:59%}
+.hero-chip{color:#98efff;font-size:9px;font-weight:750}
+.hero h2{font-size:22px;font-weight:850;line-height:1.07;letter-spacing:-.7px;margin:10px 0 6px;color:white}.hero h2 span{color:#93f9ff}
+.hero p{font-size:11px;line-height:1.42;color:#d7e5ff;margin:0}
+.energy{position:relative;flex:0 0 111px;height:115px;transform:translate(8px,3px)}
+.planet{position:absolute;left:21px;top:17px;width:82px;height:82px;border-radius:50%;background:radial-gradient(circle at 30% 22%,#dcffff,#58eaff 17%,#146bfc 42%,#161063 82%);box-shadow:0 0 21px #23dfff9c}
+.orbit{position:absolute;left:3px;top:46px;width:119px;height:32px;border:3px solid #61f4ff;border-left-color:#ac67ff;border-radius:50%;transform:rotate(-28deg);box-shadow:0 0 9px #5ef4ff}
+.eyebrow{margin:16px 0 10px;color:#84e8ff;font-size:10px;font-weight:850}
 .options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
-.option{min-width:0;min-height:77px;padding:12px 12px 10px;text-align:left;color:#fff;font:inherit;background:linear-gradient(145deg,#2a5b87,#33316d 60%,#5a2a83);border:1px solid #9cbbff77;border-radius:18px;box-shadow:inset 0 1px #ffffff52,0 7px 15px #03092380;cursor:pointer}
-.option[aria-pressed=true]{background:linear-gradient(125deg,#05c8d3,#287fff 53%,#8a47f1);border:1px solid #bbffff;box-shadow:inset 0 1px #ffffffa0,0 0 0 1px #4cdcff78,0 0 19px #00deef70;transform:translateY(-1px)}
+.option{min-width:0;min-height:77px;padding:12px;text-align:left;color:#fff;font:inherit;background:linear-gradient(145deg,#2a5b87,#33316d 60%,#5a2a83);border:1px solid #9cbbff77;border-radius:18px;box-shadow:inset 0 1px #ffffff52,0 7px 15px #03092380}
+.option[aria-pressed=true]{background:linear-gradient(125deg,#05c8d3,#287fff 53%,#8a47f1);border:1px solid #bbffff;box-shadow:0 0 0 1px #4cdcff78,0 0 19px #00deef70}
 .option:focus-visible,#pay:focus-visible{outline:2px solid white;outline-offset:3px}
-.term{display:block;color:#e4eeff;font-size:13px;font-weight:720}
-.amount{display:block;margin-top:7px;color:white;font-size:18px;font-weight:850}
+.term{display:block;color:#e4eeff;font-size:13px;font-weight:720}.amount{display:block;margin-top:7px;font-size:18px;font-weight:850}
 .total{margin-top:12px;padding:13px 14px;border:1px solid #9ab8f44d;border-radius:17px;background:linear-gradient(120deg,#122f56,#24205b 65%,#2e1758)}
-.line{display:flex;justify-content:space-between;align-items:center;gap:9px}
-.hint{color:#b4c8e7;font-size:11px}.value{font-size:12px;font-weight:740}
-.separator{height:1px;background:#88b4fc52;margin:12px 0}
-.price{color:#9cfcff;font-size:23px;font-weight:860;letter-spacing:-.5px}
+.line{display:flex;justify-content:space-between;align-items:center;gap:9px}.hint{color:#b4c8e7;font-size:11px}.value{font-size:12px;font-weight:740}
+.separator{height:1px;background:#88b4fc52;margin:12px 0}.price{color:#9cfcff;font-size:23px;font-weight:860}
 #pay{width:100%;min-height:48px;margin-top:12px;border:1px solid #bffbff;border-radius:17px;background:linear-gradient(105deg,#00d4df,#3288ff 50%,#b052f3);color:white;font:inherit;font-size:15px;font-weight:840;box-shadow:inset 0 1px #ffffff8c,0 0 17px #00e8f46b,0 9px 20px #431ab15e}
-#pay:disabled{opacity:.62;box-shadow:none}#notice{min-height:10px;margin:8px 3px 0;color:#abe3ff;font-size:11px;line-height:1.45}
+#pay:disabled{opacity:.62;box-shadow:none}#notice{min-height:10px;margin:8px 3px 0;color:#abe3ff;font-size:11px}
 footer{margin-top:10px;color:#a7b7d9;font-size:10px;line-height:1.45;text-align:center}
-@media(max-width:320px){body{padding:11px 10px}.hero{padding:12px}.energy{transform:translate(9px,3px) scale(.82);margin-left:-11px}.hero h2{font-size:19px}.option{padding:10px 9px}}
+@media(max-width:320px){body{padding:11px 10px}.hero{padding:12px}.energy{transform:translate(9px,3px) scale(.82)}.hero h2{font-size:19px}}
 </style></head><body>
 <header><div class="brand" aria-hidden="true"></div><div><div class="brandname">MNEBYVPN</div><div class="meta">Личный VPN · Telegram Stars</div></div></header>
 <section class="hero"><div class="hero-copy"><span class="hero-chip">VPN ACCESS</span><h2>Твой интернет.<br><span>Твои правила.</span></h2><p>Выбери период. Оплата — прямо в Telegram.</p></div><div class="energy" aria-hidden="true"><div class="planet"></div><div class="orbit"></div></div></section>
