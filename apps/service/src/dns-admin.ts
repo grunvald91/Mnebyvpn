@@ -72,24 +72,32 @@ function textRow(row:DomainRow):string{
   const state=labels[row.status]??'Неизвестный статус';
   return row.domain+' — '+state+(row.product==='custom'?'':' · '+row.product);
 }
-export async function dnsAdminList(pool:Pool|null):Promise<AdminPage>{
+export async function dnsAdminList(pool:Pool|null,pageNo=0):Promise<AdminPage>{
+  if(!Number.isSafeInteger(pageNo)||pageNo<0||pageNo>99)
+    return dnsAdminError('Некорректная страница.');
   if(!pool)return dnsAdminError('База доменов недоступна. DNS не менялся.');
   try{
     const {rows}=await pool.query<DomainRow>(
-      'SELECT id,domain,product,status FROM dns_admin_domains ORDER BY updated_at DESC,id DESC LIMIT 15');
-    const buttons:AdminButton[][]=rows.map(row=>[{
-      text:(labels[row.status]?.slice(0,2)??'•')+' '+row.domain.slice(0,40),
+      'SELECT id,domain,product,status FROM dns_admin_domains ORDER BY updated_at DESC,id DESC LIMIT 9 OFFSET $1',
+      [pageNo*8]);
+    const visible=rows.slice(0,8);
+    const buttons:AdminButton[][]=visible.map(row=>[{
+      text:(labels[row.status]?.slice(0,2)??'•')+' '+row.domain.slice(0,42),
       callback_data:'dnsadmin:domain:'+row.id,
     }]);
-    buttons.push([{text:'🔄 Обновить',callback_data:'dnsadmin:list'}],
+    const nav:AdminButton[]=[];
+    if(pageNo>0)nav.push({text:'⬅️ Назад',callback_data:'dnsadmin:list:'+(pageNo-1)});
+    if(rows.length>8)nav.push({text:'Далее ➡️',callback_data:'dnsadmin:list:'+(pageNo+1)});
+    if(nav.length)buttons.push(nav);
+    buttons.push([{text:'🔄 Обновить',callback_data:'dnsadmin:list:'+pageNo}],
       [{text:'➕ Добавить',callback_data:'dnsadmin:add'}],[back],[home]);
-    return page('📋 MNEBYDNS · заявки\n\n'+
-      (rows.length?rows.map((row,i)=>(i+1)+'. '+
-        (row.domain.length>70?row.domain.slice(0,67)+'…':row.domain)+' — '+
+    return page('📋 MNEBYDNS · домены · страница '+(pageNo+1)+'\n\n'+
+      (visible.length?visible.map((row,i)=>(pageNo*8+i+1)+'. '+
+        (row.domain.length>65?row.domain.slice(0,62)+'…':row.domain)+' — '+
         (labels[row.status]??'Неизвестный статус')).join('\n'):'Список пуст.')+
-      '\n\nСтатус «На проверке» НЕ означает доступность сайта через Smart DNS.',
+      '\n\nПока тест не прошёл, маршрут не считается активным.',
       buttons);
-  }catch{return dnsAdminError('Не удалось загрузить заявки. DNS не менялся.');}
+  }catch{return dnsAdminError('Не удалось загрузить домены. DNS не менялся.');}
 }
 export async function dnsAdminAdd(pool:Pool|null,actorId:number,value:string,product='custom'):
   Promise<AdminPage>{
