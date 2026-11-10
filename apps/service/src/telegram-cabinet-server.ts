@@ -232,7 +232,7 @@ async function vpnBubble(id:number) {
     const title=Array.from(plan.title.trim()).slice(0,32).join('')||'Мне бы VPN';
     const url=await botApi('createInvoiceLink',{
       title,description:'Разовый пакет MNEBYVPN. Продление вручную.',
-      payload,currency:'XTR',prices:[{label:title,amount:plan.stars}],
+      payload,provider_token:'',currency:'XTR',prices:[{label:title,amount:plan.stars}],
     });
     if(typeof url!=='string'||!/^https:\/\/t\.me\/(?:\$[A-Za-z0-9_=-]{4,160}|invoice\/[A-Za-z0-9_=-]{4,160})$/.test(url))
       throw Error('Telegram invoice link invalid');
