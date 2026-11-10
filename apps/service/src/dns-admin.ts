@@ -16,6 +16,7 @@ const page=(text:string,buttons:AdminButton[][]):AdminPage=>({
 const labels:Record<string,string>={
   PENDING:'🟡 Ожидает проверки',
   APPLY_REQUESTED:'⏳ Запрошен запуск',
+  PROBING:'🔎 Проверяется сервер',
   CANARY:'🧪 Тест 60 минут',
   CONFIRM_REQUESTED:'⏳ Ожидает закрепления',
   CONFIRMING:'⏳ Закрепляется на сервере',
@@ -120,7 +121,8 @@ export async function dnsAdminAdd(pool:Pool|null,actorId:number,value:string,pro
     if(rows.length){
       return page('✅ '+domain+' добавлен В ОЧЕРЕДЬ ПРОВЕРКИ.\n\n'+
         'Маршрутизация НЕ включена. Сначала проверка TLS, DNS и безопасного отката.',
-        [[{text:'📋 Все заявки',callback_data:'dnsadmin:list'}],[back]]);
+        [[{text:'🌍 Открыть домен',callback_data:'dnsadmin:domain:'+rows[0].id}],
+         [{text:'📋 Все заявки',callback_data:'dnsadmin:list:0'}],[back]]);
     }
     return page('ℹ️ '+domain+' уже присутствует в списке. Второй раз не добавлял.',
       [[{text:'📋 Проверить статус',callback_data:'dnsadmin:list'}],[back]]);
