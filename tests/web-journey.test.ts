@@ -73,3 +73,14 @@ test('trial flow preserves pending login and automatically opens activated acces
   assert.match(journey,/view==='setup'&&!state\.guestSubscriptionUrl/);
   assert.match(journey,/lastSetupAttempt\.set\(target\.id,Date\.now\(\)\)/);
 });
+
+test('real Earth backdrop is explicitly served by the production HTTP router',()=>{
+  assert.match(index,/src="\/world-neon\.webp"/);
+  assert.match(server,/readFile\(new URL\('\.\.\/public\/world-neon\.webp'/);
+  assert.match(server,/url\.pathname === '\/world-neon\.webp'/);
+  assert.match(server,/send\(res, 200, worldNeon, 'image\/webp'\)/);
+  const image=readFileSync(new URL('../apps/web/public/world-neon.webp',import.meta.url));
+  assert.ok(image.byteLength>10000);
+  assert.equal(image.subarray(0,4).toString('ascii'),'RIFF');
+  assert.equal(image.subarray(8,12).toString('ascii'),'WEBP');
+});
