@@ -87,7 +87,7 @@ test('tap selects the duration and requests only the fingerprint; invoice is not
  element('pay').onclick?.();
  assert.deepEqual(requests,['buy:'+planWidgetKey(offers[0])]);
  await new Promise(resolve=>setImmediate(resolve));
- assert.match(element('notice').textContent,/Счёт отправлен в чат/);
+ assert.match(element('notice').textContent,/Счёт в чате/);
  assert.equal(element('pay').disabled,true);
  element('pay').onclick?.();
  assert.equal(requests.length,1);
