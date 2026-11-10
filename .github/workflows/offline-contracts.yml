@@ -8,6 +8,7 @@ on:
       # Stage 2 CI: remove this temporary branch trigger before main merge.
       - feat/dns-monthly-metering-ledger-84
       - feat/dns-reserved-chunks-84
+      - feat/dns-loopback-metered-relay-84
     paths:
       - 'apps/**'
       - 'ops/**'
