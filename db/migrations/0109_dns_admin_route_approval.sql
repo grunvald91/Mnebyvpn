@@ -2,8 +2,8 @@
 BEGIN;
 ALTER TABLE dns_admin_domains DROP CONSTRAINT dns_admin_domains_status_check;
 ALTER TABLE dns_admin_domains ADD CONSTRAINT dns_admin_domains_status_check
- CHECK (status IN ('PENDING','APPLY_REQUESTED','PROBING','CANARY','CONFIRM_REQUESTED',
-                  'ACTIVE','FAILED','CANCELLED','REMOVAL_PENDING',
+ CHECK (status IN ('PENDING','APPLY_REQUESTED','PROBING','CANARY','CONFIRM_REQUESTED','CONFIRMING',
+                  'ACTIVE','FAILED','CANCELLED','REMOVAL_PENDING','REMOVING',
                   'ROLLBACK_REQUESTED'));
 ALTER TABLE dns_admin_domains
  ADD COLUMN revision bigint NOT NULL DEFAULT 1 CHECK (revision>0),
@@ -14,7 +14,7 @@ ALTER TABLE dns_admin_domains
  ADD COLUMN applied_at timestamptz,
  ADD COLUMN confirmed_at timestamptz;
 CREATE INDEX dns_admin_domains_action_queue_idx ON dns_admin_domains (updated_at,id)
- WHERE status IN ('APPLY_REQUESTED','PROBING','CONFIRM_REQUESTED','REMOVAL_PENDING','ROLLBACK_REQUESTED');
+ WHERE status IN ('APPLY_REQUESTED','PROBING','CONFIRM_REQUESTED','CONFIRMING','REMOVAL_PENDING','REMOVING','ROLLBACK_REQUESTED');
 ALTER TABLE dns_admin_domains ADD CONSTRAINT dns_admin_domains_canary_deadline
  CHECK (status NOT IN ('CANARY','CONFIRM_REQUESTED') OR canary_expires_at IS NOT NULL);
 COMMIT;
