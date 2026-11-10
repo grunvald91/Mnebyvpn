@@ -28,11 +28,23 @@ BEGIN
 END $$;
 UPDATE dns_admin_domains SET status='CANCELLED',updated_by=99887766,
   updated_at=now() WHERE domain='owner-requested.example.org';
-DO $$
+DO $
 BEGIN
   IF (SELECT status FROM dns_admin_domains WHERE domain='owner-requested.example.org')
      <> 'CANCELLED' THEN
      RAISE EXCEPTION 'Cancelled domain must not remain pending';
   END IF;
-END $$;
+END $;
+-- Bot can reopen only CANCELLED/FAILED, never implicitly touch ACTIVE.
+INSERT INTO dns_admin_domains(domain,product,status,requested_by,updated_by)
+VALUES('owner-requested.example.org','custom','PENDING',99887766,99887766)
+ON CONFLICT(domain) DO UPDATE SET status='PENDING',updated_by=EXCLUDED.updated_by,
+  updated_at=now() WHERE dns_admin_domains.status IN ('CANCELLED','FAILED');
+DO $
+BEGIN
+  IF (SELECT status FROM dns_admin_domains WHERE domain='owner-requested.example.org')
+     <> 'PENDING' THEN
+     RAISE EXCEPTION 'Cancelled domain should be requeueable';
+  END IF;
+END $;
 ROLLBACK;
