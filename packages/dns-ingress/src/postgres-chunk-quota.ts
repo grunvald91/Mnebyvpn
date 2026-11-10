@@ -18,7 +18,8 @@ export interface ChunkQuota {
 }
 
 export class PostgresChunkQuota implements ChunkQuota {
-  constructor(private readonly db:Pick<Pool,'query'>){}
+  private readonly db:Pick<Pool,'query'>;
+  constructor(db:Pick<Pool,'query'>){this.db=db;}
 
   async active(i:TrustedEntitlement):Promise<boolean>{
     const q=await this.db.query(`
