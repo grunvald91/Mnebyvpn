@@ -35,8 +35,9 @@ const expected=Buffer.from(digest,'hex');
 // payload HMAC. A dedicated STARS_PAYLOAD_SECRET overrides it when configured.
 const starsSecret=process.env.STARS_PAYLOAD_SECRET||
   createHmac('sha256',expected).update('mnebyvpn:stars:invoice:v1').digest('hex');
-// Optional outbound Bot API token enables a widget query to BOTH send an invoice
-// and receive an answer. Without it, the widget retains native inline Stars buttons.
+// Outbound Bot API credential lets one widget tap create an invoice and return
+// answerWidgetQuery. Without it we explicitly report unavailable checkout;
+// we never create a second set of tariff buttons.
 const outboundBotToken=/^[0-9]{5,20}:[A-Za-z0-9_-]{25,}$/.test(process.env.TELEGRAM_TOKEN_BOT??'')
   ?process.env.TELEGRAM_TOKEN_BOT!:null;
 if(starsSecret.length<32)throw new Error('STARS_PAYLOAD_SECRET too short');
@@ -176,17 +177,10 @@ async function vpnBubble(id:number) {
   if(!offers.length)return {method:'sendMessage',chat_id:id,
     ...msg('🌐 VPN\\n\\nОпубликованных тарифов сейчас нет. Попробуйте позднее.',
       [[{text:'🎁 Бесплатные 24 часа',callback_data:'trial:vpn'}],[homeButton]])};
-  const shown=offers.slice(0,4);
-  // The widget itself owns duration selection; these standard inline buttons
-  // are a reliable invoice fallback (and work on older Telegram clients).
-  const keyboard:Button[][]=shown
-    .filter(p=>p.planId.length<=53)
-    .map(p=>[{text:'⭐ '+formatDuration(p.durationSeconds)+' · '+p.stars+' Stars',
-      callback_data:'buy:stars:'+p.planId}]);
-  keyboard.push([{text:'🧾 Все тарифы и ₽',callback_data:'nav:vpn:list'}],
-    [{text:'🎁 Бесплатные 24 часа',callback_data:'trial:vpn'}],[homeButton]);
-  return {method:'sendWidget',...vpnPurchaseWidgetPayload(id,offers),
-    reply_markup:{inline_keyboard:keyboard}};
+  // One purchase surface: terms and CTA live inside the bubble. Telegram
+  // sends its native invoice as a NEW message after the tap; no extra
+  // tariff selection or duplicate pay keyboard is attached to the bubble.
+  return {method:'sendWidget',...vpnPurchaseWidgetPayload(id,offers)};
 }
 async function vpnPlans(){
   if(!pool)throw new Error('DB unavailable');
@@ -238,14 +232,17 @@ async function widgetStarsInvoice(id:number,key:string,queryId:string):Promise<s
   // provided by the widget to create an order.
   if(!/^[A-Za-z0-9_-]{16}$/.test(key))return 'PLAN_UNAVAILABLE';
   const published=(await store.plans('telegram_stars'))
-    .filter(p=>p.product==='vpn'&&p.stars!==null&&planWidgetKey(p)===key);
+    .filter(p=>p.product==='vpn'&&p.stars!==null)
+    .filter(p=>{try{vpnPurchaseWidgetData([p]);return true}catch{return false}})
+    .sort((a,b)=>a.durationSeconds-b.durationSeconds||a.planId.localeCompare(b.planId)
+    .slice(0,4).filter(p=>planWidgetKey(p)===key);
   if(published.length!==1)return 'PLAN_UNAVAILABLE';
   const plan=await store.plan(published[0].planId);
   if(!plan||plan.product!=='vpn'||plan.stars===null||planWidgetKey(plan)!==key)
     return 'PLAN_UNAVAILABLE';
   // Tokenless webhook mode can only make one Bot API action. Do not reserve
   // or pretend to send an invoice when the outbound credential is absent.
-  if(!outboundBotToken)return 'USE_BUTTONS';
+  if(!outboundBotToken)return 'PAYMENT_UNAVAILABLE';
   try{
     const order=await store.createTelegramOrder(id,plan.planId,'cabinet-widget:'+queryId,
       undefined,key);
