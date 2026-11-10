@@ -7,7 +7,7 @@ import type {Pool} from 'pg';
 
 export type AdminButton={text:string;callback_data:string};
 export type AdminPage={text:string;reply_markup:{inline_keyboard:AdminButton[][]}};
-type DomainRow={id:string|number;domain:string;product:string;status:string};
+type DomainRow={id:string|number;domain:string;product:string;status:string;canary_expires_at?:Date|null;last_error_code?:string|null};
 const back:AdminButton={text:'↩️ DNS-меню',callback_data:'dnsadmin:menu'};
 const home:AdminButton={text:'🏠 Главное',callback_data:'nav:home'};
 const page=(text:string,buttons:AdminButton[][]):AdminPage=>({
@@ -126,7 +126,7 @@ export async function dnsAdminAdd(pool:Pool|null,actorId:number,value:string,pro
 }
 export async function dnsAdminOracle(pool:Pool|null,actorId:number):Promise<AdminPage>{
   if(!pool)return dnsAdminError('База доменов недоступна. Oracle не добавлен.');
-  const domains=['oracle.com','cloud.oracle.com'] as const;
+  const domains=['oracle.com','www.oracle.com','cloud.oracle.com'] as const;
   try{
     const outcomes:string[]=[];
     for(const domain of domains){
@@ -147,52 +147,140 @@ export async function dnsAdminOracle(pool:Pool|null,actorId:number):Promise<Admi
 }
 export async function dnsAdminDomain(pool:Pool|null,rawId:string):Promise<AdminPage>{
   const id=safeId(rawId);
-  if(!id)return dnsAdminError('Некорректный номер заявки.');
+  if(!id)return dnsAdminError('Некорректный номер записи.');
+  if(!pool)return dnsAdminError('База доменов недоступна.');
+  try{
+    const {rows}=await pool.query<DomainRow>(
+      'SELECT id,domain,product,status,canary_expires_at,last_error_code FROM dns_admin_domains WHERE id=$1',[id]);
+    const row=rows[0];
+    if(!row)return dnsAdminError('Домен не найден.');
+    const buttons:AdminButton[][]=[];
+    if(['PENDING','FAILED'].includes(row.status))
+      buttons.push([{text:'🧪 Проверить и включить на 60 минут',
+        callback_data:'dnsadmin:apply:'+row.id}]);
+    if(row.status==='CANARY')buttons.push([
+      {text:'✅ Работает — оставить',callback_data:'dnsadmin:keep:'+row.id},
+      {text:'↩️ Откат',callback_data:'dnsadmin:cancel:'+row.id},
+    ]);
+    if(['PENDING','FAILED','ACTIVE','APPLY_REQUESTED','CANARY','CONFIRM_REQUESTED'].includes(row.status)&&
+       row.status!=='CANARY')
+      buttons.push([{text:row.status==='ACTIVE'?'⏳ Запросить отключение':'🗑 Отменить / откатить',
+        callback_data:'dnsadmin:cancel:'+row.id}]);
+    buttons.push([{text:'📋 Список',callback_data:'dnsadmin:list:0'}],[back]);
+    const expires=row.canary_expires_at instanceof Date
+      ?'\nАвтооткат: '+row.canary_expires_at.toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})+' МСК':'';
+    const error=row.last_error_code?'\nПоследняя проверка: '+row.last_error_code.slice(0,96):'';
+    return page('🌍 '+textRow(row)+expires+error+'\n\n'+
+      (row.status==='ACTIVE'
+        ?'Маршрут подтверждён. Для отключения нажми кнопку и подтверди действие.'
+        :row.status==='CANARY'
+        ?'Сейчас временный тест. Проверь сайт на телефоне. Если не подтвердить, сервер вернёт прежнюю конфигурацию.'
+        :'Статус заявки не означает работающий DNS-маршрут.'),buttons);
+  }catch{return dnsAdminError('Не удалось прочитать домен.');}
+}
+export async function dnsAdminReview(pool:Pool|null,kind:'apply'|'keep'|'cancel',rawId:string):Promise<AdminPage>{
+  const id=safeId(rawId);
+  if(!id)return dnsAdminError('Некорректный номер домена.');
   if(!pool)return dnsAdminError('База доменов недоступна.');
   try{
     const {rows}=await pool.query<DomainRow>(
       'SELECT id,domain,product,status FROM dns_admin_domains WHERE id=$1',[id]);
     const row=rows[0];
-    if(!row)return dnsAdminError('Заявка не найдена.');
-    const buttons:AdminButton[][]=[];
-    if(['PENDING','FAILED','ACTIVE'].includes(row.status))
-      buttons.push([{text:row.status==='ACTIVE'?'⏳ Запросить отключение':'🗑 Отменить заявку',
-        callback_data:'dnsadmin:cancel:'+row.id}]);
-    buttons.push([{text:'📋 Список',callback_data:'dnsadmin:list'}],[back]);
-    return page('🌍 '+textRow(row)+'\n\n'+
-      (row.status==='ACTIVE'
-        ?'Запись в базе требует отдельного подтверждения реальной DNS-конфигурацией.'
-        :'Заявка не означает, что домен уже работает через DNS.'),buttons);
-  }catch{return dnsAdminError('Не удалось прочитать заявку.');}
+    if(!row)return dnsAdminError('Домен не найден.');
+    const allowed=kind==='apply'?['PENDING','FAILED']:
+      kind==='keep'?['CANARY']:
+      ['PENDING','FAILED','APPLY_REQUESTED','ACTIVE','CANARY','CONFIRM_REQUESTED'];
+    if(!allowed.includes(row.status))return dnsAdminError('Действие недоступно для текущего состояния.');
+    const description=kind==='apply'
+      ?'Это запустит предварительные проверки и 60-минутный тест DNS/TLS. Если маршрут не проходит проверки, он не включится.'
+      :kind==='keep'
+      ?'Подтверди ТОЛЬКО если лично проверил работу на телефоне. Сервер дополнительно проверит активный тест перед закреплением.'
+      :'Если маршрут работает, сервер отправит запрос на отключение/откат; если ещё не включён, заявка будет отменена.';
+    const label=kind==='apply'?'🚀 Запросить тест 60 минут':
+      kind==='keep'?'✅ Да, сохранить':'↩️ Подтвердить отключение';
+    return page('🌍 '+row.domain+'\n\n'+description,[
+      [{text:label,callback_data:'dnsadmin:yes-'+kind+':'+id}],
+      [{text:'Не менять',callback_data:'dnsadmin:domain:'+id}],
+      [back],
+    ]);
+  }catch{return dnsAdminError('Не удалось подготовить подтверждение.');}
+}
+export async function dnsAdminApply(pool:Pool|null,actorId:number,rawId:string):Promise<AdminPage>{
+  const id=safeId(rawId);
+  if(!id)return dnsAdminError('Некорректный номер домена.');
+  if(!pool)return dnsAdminError('База доменов недоступна.');
+  try{
+    const {rows}=await pool.query<DomainRow>(
+      `UPDATE dns_admin_domains SET status='APPLY_REQUESTED',revision=revision+1,
+       updated_by=$2,updated_at=now(),last_error_code=NULL
+       WHERE id=$1 AND status IN ('PENDING','FAILED')
+       RETURNING id,domain,product,status`,[id,actorId]);
+    if(!rows.length)return dnsAdminError('Состояние уже изменилось. Обнови карточку.');
+    return page('⏳ '+rows[0].domain+'\n\nЗапрос на тест записан. Сначала проверка TLS, DNS, SNI и исключений. '+
+      'Затем — временное подключение с независимым откатом. '+
+      'Следи за статусом в меню. Пока не написано «Тест 60 минут», домен не активен.',[
+       [{text:'🔄 Проверить статус',callback_data:'dnsadmin:domain:'+id}],
+       [back]]);
+  }catch{return dnsAdminError('Запрос не сохранён; рабочий DNS не менялся.');}
+}
+export async function dnsAdminKeep(pool:Pool|null,actorId:number,rawId:string):Promise<AdminPage>{
+  const id=safeId(rawId);
+  if(!id)return dnsAdminError('Некорректный номер домена.');
+  if(!pool)return dnsAdminError('База доменов недоступна.');
+  try{
+    const {rows}=await pool.query<DomainRow>(
+      `UPDATE dns_admin_domains SET status='CONFIRM_REQUESTED',revision=revision+1,
+       updated_by=$2,updated_at=now()
+       WHERE id=$1 AND status='CANARY' AND canary_expires_at>now()+interval '2 minutes'
+       RETURNING id,domain,product,status`,[id,actorId]);
+    if(!rows.length)return dnsAdminError('Тест уже завершён или срок слишком близок. Запроси новый тест.');
+    return page('⏳ '+rows[0].domain+'\n\nПодтверждение принято, но постоянное включение '+
+      'ещё не завершено. Статус изменится после сверки конфигураций сервером.',[
+        [{text:'🔄 Проверить статус',callback_data:'dnsadmin:domain:'+id}],
+        [back]]);
+  }catch{return dnsAdminError('Не удалось записать подтверждение.');}
 }
 export async function dnsAdminCancel(pool:Pool|null,actorId:number,rawId:string):Promise<AdminPage>{
   const id=safeId(rawId);
-  if(!id)return dnsAdminError('Некорректный номер заявки.');
+  if(!id)return dnsAdminError('Некорректный номер домена.');
   if(!pool)return dnsAdminError('База доменов недоступна.');
   try{
     const {rows}=await pool.query<DomainRow>(
       `UPDATE dns_admin_domains SET
-         status=CASE WHEN status='ACTIVE' THEN 'REMOVAL_PENDING' ELSE 'CANCELLED' END,
-         updated_by=$2, updated_at=now()
-       WHERE id=$1 AND status IN ('PENDING','FAILED','ACTIVE')
+         status=CASE
+          WHEN status='ACTIVE' THEN 'REMOVAL_PENDING'
+          WHEN status IN ('CANARY','CONFIRM_REQUESTED') THEN 'ROLLBACK_REQUESTED'
+          ELSE 'CANCELLED' END,
+         revision=revision+1,updated_by=$2,updated_at=now()
+       WHERE id=$1 AND status IN
+        ('PENDING','FAILED','APPLY_REQUESTED','ACTIVE','CANARY','CONFIRM_REQUESTED')
        RETURNING id,domain,product,status`,[id,actorId]);
-    if(!rows.length)return dnsAdminError('Запись не найдена или уже изменена.');
-    return page('✅ '+textRow(rows[0])+'\n\n'+
-      (rows[0].status==='REMOVAL_PENDING'
-        ?'Маршрут ещё не отключён. Требуется отдельное безопасное применение.'
-        :'Заявка отменена. Работающий DNS не изменён.'),[
-        [{text:'📋 Список',callback_data:'dnsadmin:list'}],[back]]);
+    if(!rows.length)return dnsAdminError('Состояние уже изменилось. Обнови список.');
+    const changed=rows[0];
+    return page('✅ '+textRow(changed)+'\n\n'+
+      (changed.status==='CANCELLED'?'Заявка отменена; новый DNS-маршрут не включался.':
+        'Заявка на изменение принята. Нельзя считать маршрут отключённым до проверки сервера.'),[
+        [{text:'🔄 Проверить',callback_data:'dnsadmin:domain:'+id}],[back]]);
   }catch{return dnsAdminError('Не удалось изменить заявку. DNS не менялся.');}
 }
 export async function dnsAdminAction(
   owner:number|null,actorId:number,pool:Pool|null,action:string):Promise<AdminPage>{
   if(owner===null||owner!==actorId)return dnsAdminError('Доступ закрыт.');
   if(action==='dnsadmin:menu')return dnsAdminIntro();
-  if(action==='dnsadmin:list')return dnsAdminList(pool);
+  if(action==='dnsadmin:list')return dnsAdminList(pool,0);
+  const list=/^dnsadmin:list:(0|[1-9][0-9]{0,1})$/.exec(action);
+  if(list)return dnsAdminList(pool,Number(list[1]));
   if(action==='dnsadmin:oracle')return dnsAdminOracle(pool,actorId);
   const domain=/^dnsadmin:domain:([1-9][0-9]{0,14})$/.exec(action);
   if(domain)return dnsAdminDomain(pool,domain[1]);
-  const cancel=/^dnsadmin:cancel:([1-9][0-9]{0,14})$/.exec(action);
-  if(cancel)return dnsAdminCancel(pool,actorId,cancel[1]);
+  const review=/^dnsadmin:(apply|keep|cancel):([1-9][0-9]{0,14})$/.exec(action);
+  if(review)return dnsAdminReview(pool,review[1] as 'apply'|'keep'|'cancel',review[2]);
+  const confirm=/^dnsadmin:yes-(apply|keep|cancel):([1-9][0-9]{0,14})$/.exec(action);
+  if(confirm){
+    const kind=confirm[1],id=confirm[2];
+    if(kind==='apply')return dnsAdminApply(pool,actorId,id);
+    if(kind==='keep')return dnsAdminKeep(pool,actorId,id);
+    return dnsAdminCancel(pool,actorId,id);
+  }
   return dnsAdminError('Неизвестное действие.');
 }
