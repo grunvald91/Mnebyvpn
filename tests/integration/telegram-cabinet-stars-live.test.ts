@@ -80,9 +80,10 @@ test('production cabinet: Stars invoice, checked payment, durable settlement and
     const visible=validOffers.slice().sort((a,b)=>
       a.durationSeconds-b.durationSeconds||a.planId.localeCompare(b.planId)).slice(0,4);
     assert.deepEqual(state.p.map((p:(string|number)[])=>p[4]),visible.map(planWidgetKey));
-    const buttons=shown.reply_markup.inline_keyboard.flat();
-    assert.ok(buttons.some((b:any)=>b.callback_data==='buy:stars:'+visible[0].planId));
-    assert.ok(buttons.some((b:any)=>b.callback_data==='nav:vpn:list'));
+    // The entire purchase UX is now inside the HTML bubble. Do not attach
+    // another tariff keyboard that asks the buyer to select twice.
+    assert.equal(shown.reply_markup,undefined);
+    assert.equal(shown.html.includes('Оплатите кнопкой под карточкой'),false);
     const selectedKey=state.p[0][4];
     const fromWidget=await post({update_id:81009,widget_query:{
       id:'wq-81009',from:{id:user},chat:{id:user,type:'private'},message_id:543,
@@ -90,7 +91,7 @@ test('production cabinet: Stars invoice, checked payment, durable settlement and
     }});
     const fallback=JSON.parse(fromWidget.data);
     assert.equal(fallback.method,'answerWidgetQuery');
-    assert.equal(fallback.data,'USE_BUTTONS'); // tokenless backend, real invoice below the bubble
+    assert.equal(fallback.data,'PAYMENT_UNAVAILABLE'); // no secondary checkout buttons without outbound bot credential
     const crossChat=await post({update_id:81010,widget_query:{
       id:'wq-81010',from:{id:user+1},chat:{id:user,type:'private'},message_id:543,
       type:{type:'data'},data:'buy:'+selectedKey,
