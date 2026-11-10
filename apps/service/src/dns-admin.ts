@@ -80,7 +80,9 @@ export async function dnsAdminList(pool:Pool|null):Promise<AdminPage>{
     buttons.push([{text:'🔄 Обновить',callback_data:'dnsadmin:list'}],
       [{text:'➕ Добавить',callback_data:'dnsadmin:add'}],[back],[home]);
     return page('📋 MNEBYDNS · заявки\n\n'+
-      (rows.length?rows.map((row,i)=>(i+1)+'. '+textRow(row)).join('\n'):'Список пуст.')+
+      (rows.length?rows.map((row,i)=>(i+1)+'. '+
+        (row.domain.length>70?row.domain.slice(0,67)+'…':row.domain)+' — '+
+        (labels[row.status]??'Неизвестный статус')).join('\n'):'Список пуст.')+
       '\n\nСтатус «На проверке» НЕ означает доступность сайта через Smart DNS.',
       buttons);
   }catch{return dnsAdminError('Не удалось загрузить заявки. DNS не менялся.');}
