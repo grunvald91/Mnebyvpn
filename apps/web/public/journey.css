@@ -937,3 +937,44 @@ body.journey-active[data-journey-view="plans"] #journey-buy{
     font-size:10px;
   }
 }
+
+
+/* Visual QA pass 3: restore luminous color without washing out text, and
+   frame the page/footer with the same thin sci-fi neon accents as reference. */
+body.journey-active[data-journey-view="plans"] .journey-world-backdrop .journey-world-image{
+  opacity:.82;
+  filter:brightness(.87) saturate(1.25) drop-shadow(0 0 31px rgba(22,159,253,.29));
+}
+body.journey-active[data-journey-view="plans"] .journey-intro::before{
+  background:radial-gradient(ellipse at 50% 50%,rgba(3,12,38,.85) 0%,rgba(4,13,38,.7) 51%,transparent 82%);
+}
+body.journey-active[data-journey-view="plans"] .footer{
+  position:relative;
+  isolation:isolate;
+  box-shadow:0 -2px 20px rgba(33,144,255,.18),0 1px 20px rgba(103,53,224,.12);
+}
+body.journey-active[data-journey-view="plans"] .footer::before{
+  content:"";
+  position:absolute;
+  z-index:-1;
+  inset:0;
+  border-top:1px solid transparent;
+  background:
+    linear-gradient(125deg,rgba(4,24,61,.95),rgba(20,14,58,.94)) padding-box,
+    linear-gradient(90deg,#19e6ff 0%,rgba(57,114,237,.8) 50%,#a04df5 100%) border-box;
+  pointer-events:none;
+}
+body.journey-active[data-journey-view="plans"] .footer-links a:hover,
+body.journey-active[data-journey-view="plans"] .footer-links button:hover{
+  color:#73f5ff;
+}
+@media(max-width:460px){
+  body.journey-active[data-journey-view="plans"] .header .brand-text{
+    font-size:14px;
+    letter-spacing:-.65px;
+  }
+  body.journey-active[data-journey-view="plans"] .journey-header-account,
+  body.journey-active[data-journey-view="plans"] .about-trigger{
+    font-size:11px;
+  }
+}
