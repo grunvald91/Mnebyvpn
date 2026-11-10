@@ -44,7 +44,8 @@ test('domain operations are parameterized and remain pending, not active',async(
   assert.match(add.text,/В ОЧЕРЕДЬ ПРОВЕРКИ/);
   assert.doesNotMatch(add.text,/DNS включён/);
   assert.deepEqual(calls[0].args,['oracle.com','custom',99887766]);
-  assert.match(calls[0].sql,/ON CONFLICT \(domain\) DO NOTHING/);
+  assert.match(calls[0].sql,/ON CONFLICT \(domain\) DO UPDATE/);
+  assert.match(calls[0].sql,/status IN \('CANCELLED','FAILED'\)/);
   const oracle=await dnsAdminOracle(pg,99887766);
   assert.match(oracle.text,/cloud\.oracle\.com/);
   assert.deepEqual(calls[1].args,['oracle.com',99887766]);
