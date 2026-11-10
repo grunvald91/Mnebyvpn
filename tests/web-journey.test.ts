@@ -84,3 +84,21 @@ test('real Earth backdrop is explicitly served by the production HTTP router',()
   assert.equal(image.subarray(0,4).toString('ascii'),'RIFF');
   assert.equal(image.subarray(8,12).toString('ascii'),'WEBP');
 });
+
+
+test('native checkout preview requires confirmed account and never captures card details',()=>{
+  for(const id of ['journey-order','journey-order-pay','journey-order-price','journey-order-period',
+    'journey-order-email','journey-order-link','journey-order-error'])
+    assert.match(index,new RegExp('id="'+id+'"'));
+  assert.match(journey,/setView\('checkout',true\)/);
+  assert.match(journey,/if\(el\('journey-order-pay'\)\.disabled\)return;/);
+  assert.match(journey,/const verified=state\.loggedIn&&lastAccount\?\.identity\?\.email/);
+  assert.doesNotMatch(index,/type="(?:password|tel)"[^>]*name="card/);
+  assert.doesNotMatch(index,/Prodamus/i);
+  assert.doesNotMatch(journey,/Prodamus/i);
+});
+test('real-world neon halo is visible without replacing the original globe',()=>{
+  assert.match(index,/class="journey-world-halo"/);
+  assert.match(css,/journey-world-halo/);
+  assert.match(index,/src="\/world-neon\.webp"/);
+});
