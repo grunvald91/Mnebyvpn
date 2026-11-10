@@ -18,8 +18,14 @@ test('Apple-style purchase bubble fits Telegram 10.4 constraints and uses native
  assert.ok(Buffer.byteLength(html,'utf8')<=32768);
  assert.ok(deflateSync(Buffer.from(html),{level:9}).length<=3800);
  assert.match(html,/TelegramWidget/);
- assert.match(html,/--tg-theme-bg-color/);
- assert.match(html,/--tg-theme-button-color/);
+ assert.match(html,/#080d25/);
+ assert.match(html,/#00d4df/);
+ assert.match(html,/#b052f3/);
+ assert.match(html,/class="planet"/);
+ assert.match(html,/class="orbit"/);
+ assert.match(html,/\.option\[aria-pressed=true\]/);
+ assert.match(html,/@media\(max-width:320px\)/);
+ assert.doesNotMatch(html,/#edf5ff|#dbeafe|linear-gradient\(135deg,#edf5ff/);
  assert.match(html,/aria-live="polite"/);
  assert.match(html,/type="button"/);
  assert.doesNotMatch(html,/fetch\(|XMLHttpRequest|WebSocket|<iframe|@font-face/);
