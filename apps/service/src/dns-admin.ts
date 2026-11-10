@@ -18,11 +18,13 @@ const labels:Record<string,string>={
   APPLY_REQUESTED:'⏳ Запрошен запуск',
   CANARY:'🧪 Тест 60 минут',
   CONFIRM_REQUESTED:'⏳ Ожидает закрепления',
+  CONFIRMING:'⏳ Закрепляется на сервере',
   ROLLBACK_REQUESTED:'⏳ Запрошен откат',
   ACTIVE:'🟢 Активен',
   FAILED:'🔴 Не прошёл проверку',
   CANCELLED:'⚪ Заявка отменена',
   REMOVAL_PENDING:'🟠 Отключение ожидает применения',
+  REMOVING:'⏳ Отключается на сервере',
 };
 const badSuffix=/\.(?:localhost|local|internal|test|invalid|example|onion|arpa|lan|home|corp)$/;
 const domainPattern=/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/;
