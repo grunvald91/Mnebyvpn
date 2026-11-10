@@ -2,7 +2,7 @@
 
 ## Результат инфраструктурной проверки 10.11.2026
 
-Read-only SSH-аудит действующих RU/foreign VPS: на обоих `public_ipv6_assigned_count=0`, `ipv6_default_route=false`, `ipv6_egress_tcp443=false`, при этом IPv6 TCP listeners присутствуют. Журнал в [telegram-proxy-infra Actions run 42792777276](https://github.com/grunvald91/telegram-proxy-infra/actions/runs/42792777276), workflow в [infra PR #62](https://github.com/grunvald91/telegram-proxy-infra/pull/62).
+Read-only SSH-аудит действующих RU/foreign VPS: на обоих `public_ipv6_assigned_count=0`, `ipv6_default_route=false`, `ipv6_egress_tcp443=false`, при этом IPv6 TCP listeners присутствуют. Журнал в [telegram-proxy-infra Actions run 42793733014](https://github.com/grunvald91/telegram-proxy-infra/actions/runs/42793733014) (повторная проверка подтвердила успешное выполнение `iproute2 -j` на обоих VPS), workflow в [infra PR #62](https://github.com/grunvald91/telegram-proxy-infra/pull/62).
 
 **Вывод: NO-GO для немедленного per-subscriber destination IPv6 в текущей конфигурации.** Это не доказательство отсутствия у провайдера возможности выделить IPv6; условия выделения/маршрутизации и входящий доступ клиентов ещё не проверены. Нельзя объявлять Android Private DNS персональным платным продуктом только на основании IPv6 listener. До реальной маршрутизации дополнительных IPv6 запрещено выдавать продаваемые ссылки для SNI/HTTPS relay и включать коммерческий checkout.
 
@@ -14,12 +14,13 @@ Read-only SSH-аудит действующих RU/foreign VPS: на обоих 
 - В `smart_dns_measured_traffic` нет истории сайтов, SNI, IP-адресов и токенов. Время события строго одно — `quota_usage_events.accepted_at`; нет второго часово́го источника для границы месяца.
 - `get_smart_dns_monthly_traffic(account_id,entitlement_id)` группирует данные по **календарным месяцам UTC** с раздельными upload/download. Чужой account_id возвращает ноль строк.
 - Прямые события старого `debit_smart_dns_quota`, для которых отсутствует достоверная запись upload/download, отдельно маркируются `unattributed_bytes`. Пока значение больше нуля, нельзя говорить клиенту, что месячная расшифровка охватывает весь оплаченный расход.
-- SQL event ID уникален внутри entitlement, payload конфликтующие повторы не принимаются; oversized/negative/zero bytes отклоняются.
+- SQL event ID уникален внутри entitlement, payload конфликтующие повторы не принимаются; oversized/negative/zero bytes отклоняются. Записи направлений неизменяемые; триггер сверяет их сумму с уже принятым quota event.
+- Защищённый `GET /api/me/dns-monthly?entitlementId=<uuid>` доступен **только авторизованному владельцу** и **только при одновременно проверенных** `WEB_NETWORK_PROVISIONING_VERIFIED=yes` и `WEB_DNS_METERING_VERIFIED=yes`. В текущем состоянии возвращает `503 DNS_METERING_NOT_VERIFIED`. SQL `get_smart_dns_monthly_traffic` выполняется с проверкой `account_id`, а backend передаёт ID только из проверенной сессии.
 - Только disposable PostgreSQL, существующие release flags и рабочие DNS/VPN не меняются.
 
 ## Важно: ограничения результата
 
-**НЕ ВЫПОЛНЕНО:** достоверная идентификация сетевого TCP потока; измерение байтов именно реальным ingress; резервирование квоты перед отправкой порции трафика; остановка существующего TCP потока после исчерпания; пользовательская DNS-ссылка; подтверждение платного срока на физическом устройстве; месячная витрина в UI.
+**НЕ ВЫПОЛНЕНО:** достоверная идентификация сетевого TCP потока; измерение байтов именно реальным ingress; резервирование квоты перед отправкой порции трафика; остановка существующего TCP потока после исчерпания; пользовательская DNS-ссылка; подтверждение платного срока на физическом устройстве; месячная витрина в UI (API подготовлено, но отключено до live E2E).
 
 Этот SQL-инструмент **постфактум** списывает значение, предоставленное будущим **доверенным** измерителем. Ни одна функция SQL не удостоверяет, что клиент переслал столько TCP-байтов, сколько ей передали. Старый `debit_smart_dns_quota` остаётся доступен старым доверенным backend-компонентам; для подтверждённого денежного учёта потребуется запрет неподтверждённых путей списания, выделенная роль, контроль полноты событий и сверка с ingress.
 
