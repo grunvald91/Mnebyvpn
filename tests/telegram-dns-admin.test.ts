@@ -191,3 +191,16 @@ test('confirmation and rollback controls appear only for temporary or live route
   const cancelReview=await dnsAdminReview(pg,'cancel','4');
   assert.equal(cancelReview.reply_markup.inline_keyboard[0][0].callback_data,'dnsadmin:yes-cancel:4');
 });
+
+
+test('ACTIVE health failure is visible to the owner in list and domain card',async()=>{
+  const row={id:'12',domain:'www.python.org',product:'custom',
+    status:'ACTIVE',last_error_code:'ACTIVE_ROUTE_CHECK_FAILED'};
+  const pg={query:async()=>({rows:[row]})} as any;
+  const list=await dnsAdminList(pg,0);
+  assert.match(list.text,/Требуется проверка маршрута/);
+  const card=await dnsAdminAction(999,999,pg,'dnsadmin:domain:12');
+  assert.match(card.text,/Сервер обнаружил ошибку проверки/);
+  assert.ok(card.reply_markup.inline_keyboard.flat().some(
+    b=>b.callback_data==='dnsadmin:cancel:12'));
+});
