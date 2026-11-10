@@ -21,7 +21,7 @@ REVOKE ALL ON smart_dns_measured_traffic FROM PUBLIC;
 -- Append-only measurements. Verify upload + download exactly matches the
 -- existing accepted quota event even for privileged direct SQL inserts.
 CREATE FUNCTION enforce_smart_dns_measured_traffic_integrity()
-RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER AS $
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER AS $$
 DECLARE
   v_charged bigint;
 BEGIN
@@ -38,7 +38,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$;
+$$;
 CREATE TRIGGER smart_dns_measured_traffic_integrity
   BEFORE INSERT OR UPDATE OR DELETE ON smart_dns_measured_traffic
   FOR EACH ROW EXECUTE FUNCTION enforce_smart_dns_measured_traffic_integrity();
@@ -153,11 +153,11 @@ REVOKE ALL ON FUNCTION get_smart_dns_monthly_traffic(uuid,uuid)
 ALTER FUNCTION get_smart_dns_monthly_traffic(uuid,uuid) SECURITY DEFINER;
 ALTER FUNCTION get_smart_dns_monthly_traffic(uuid,uuid)
   SET search_path TO pg_catalog,public,pg_temp;
-DO $
+DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='mnebyvpn_site_auth') THEN
     GRANT EXECUTE ON FUNCTION get_smart_dns_monthly_traffic(uuid,uuid)
       TO mnebyvpn_site_auth;
   END IF;
-END $;
+END $$;
 COMMIT;
