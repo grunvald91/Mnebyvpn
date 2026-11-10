@@ -68,7 +68,7 @@ test('production cabinet: Stars invoice, checked payment, durable settlement and
     assert.equal(shown.chat_id,user);
     assert.equal(shown.allow_queries,true);
     assert.match(shown.html,/TelegramWidget/);
-    assert.match(shown.html,/data:image\\/webp;base64/);
+    assert.ok(shown.html.includes('data:image/webp;base64,'));
     const state=JSON.parse(shown.chat_data);
     assert.ok(state.p.some((p:(string|number)[])=>p[1]===17&&p[4]===
       planWidgetKey({planId,product:'vpn',title:'VPN Stars testing',stars:17,
