@@ -103,6 +103,39 @@ BEGIN
   SELECT quota_used_bytes INTO n FROM entitlements WHERE id=ent_b;
   IF n<>205 THEN RAISE EXCEPTION 'B usage changed by A or reporting: %',n; END IF;
 
+  -- A separate SQL writer cannot rewrite the audit record or insert a
+  -- made-up directional split that disagrees with the accepted quota debit.
+  BEGIN
+    UPDATE smart_dns_measured_traffic SET upload_bytes=51
+      WHERE entitlement_id=ent_b AND usage_event_id='nov-B';
+    RAISE EXCEPTION 'measured bytes were mutable';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  BEGIN
+    DELETE FROM smart_dns_measured_traffic
+      WHERE entitlement_id=ent_b AND usage_event_id='nov-B';
+    RAISE EXCEPTION 'measured event was deleted';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  SELECT debit_smart_dns_quota(ent_b,'bad-split-B',10) INTO result;
+  IF result <> 'ACCEPTED' THEN RAISE EXCEPTION 'split test setup: %',result; END IF;
+  BEGIN
+    INSERT INTO smart_dns_measured_traffic(
+      entitlement_id,usage_event_id,upload_bytes,download_bytes)
+      VALUES(ent_b,'bad-split-B',6,5);
+    RAISE EXCEPTION 'invented 11 bytes on 10-byte debit';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  IF EXISTS (SELECT 1 FROM smart_dns_measured_traffic
+      WHERE entitlement_id=ent_b AND usage_event_id='bad-split-B') THEN
+    RAISE EXCEPTION 'invalid directional event committed';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM smart_dns_measured_traffic
+      WHERE entitlement_id=ent_b AND usage_event_id='nov-B'
+        AND upload_bytes=50 AND download_bytes=150) THEN
+    RAISE EXCEPTION 'valid existing directional event changed';
+  END IF;
+
   UPDATE entitlements SET state='EXPIRED' WHERE id=ent_b;
   SELECT record_smart_dns_measured_traffic(ent_b,'expired-B',1,0) INTO result;
   IF result <> 'DENY_INACTIVE' THEN RAISE EXCEPTION 'expired B charged: %',result; END IF;
