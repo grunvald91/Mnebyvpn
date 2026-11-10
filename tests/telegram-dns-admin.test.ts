@@ -62,6 +62,22 @@ test('domain operations are parameterized and remain pending, not active',async(
   assert.match(denied.text,/Доступ закрыт/);
   assert.equal(calls.length,6);
 });
+
+test('COVERED host represents verified pre-existing shared route and cannot be removed',async()=>{
+  const row={id:'911',domain:'daily-cloudcode-pa.googleapis.com',
+    product:'Antigravity',status:'COVERED'};
+  const db={query:async()=>({rows:[row]})} as any;
+  const list=await dnsAdminList(db);
+  assert.match(list.text,/Уже работает через общий маршрут/);
+  const detail=await dnsAdminAction(22,22,db,'dnsadmin:domain:911');
+  assert.match(detail.text,/Сервер подтвердил работу/);
+  const callbacks=detail.reply_markup.inline_keyboard.flat().map(x=>x.callback_data);
+  assert.ok(!callbacks.some(x=>x.startsWith('dnsadmin:apply:')));
+  assert.ok(!callbacks.some(x=>x.startsWith('dnsadmin:cancel:')));
+  const denied=await dnsAdminReview(db,'cancel','911');
+  assert.match(denied.text,/Действие недоступно/);
+});
+
 test('failed DB and invalid domain never pretend to apply DNS rules',async()=>{
   const noDb=await dnsAdminAdd(null,99887766,'oracle.com');
   assert.match(noDb.text,/Заявка не сохранена/);
