@@ -1,5 +1,5 @@
 -- Issue #84, disposable PostgreSQL-only test. No production node, DNS or
--- payment provider is touched. 0001..0108 migrations are prerequisites.
+-- payment provider is touched. 0001..0109 migrations are prerequisites.
 BEGIN;
 DO $$
 DECLARE

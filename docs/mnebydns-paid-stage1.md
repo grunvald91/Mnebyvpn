@@ -3,10 +3,10 @@
 **Статус: CODED / E2E BLOCKED.** Этот этап создаёт **только проверяемый SQL-контракт** персонального платного ingress. Никакого готового DoT/DoH endpoint, TCP proxy, измерителя байтов, работающих платных DNS-ссылок или выпуска на сервер он не создаёт.
 
 ## Что добавлено
-- `db/migrations/0108_smart_dns_paid_ingress_gate.sql`: `authorize_paid_smart_dns_ingress(destination_ipv6)` возвращает идентификатор подписки, текущую revision, expiry и остаток квоты **только** для активной оплаченной DNS-подписки с уникальным IPv6 и подтверждённой revision provisioning.
+- `db/migrations/0109_smart_dns_paid_ingress_gate.sql`: `authorize_paid_smart_dns_ingress(destination_ipv6)` возвращает идентификатор подписки, текущую revision, expiry и остаток квоты **только** для активной оплаченной DNS-подписки с уникальным IPv6 и подтверждённой revision provisioning.
 - Нулевой доступ для неизвестных/выведенных из обращения IPv6, IPv4, CIDR, неподтверждённой выдачи, неоплаченного/неучтённого кредита, `EXPIRED`, `EXHAUSTED`, устаревшей revision.
 - Триггер запрещает удалить, переназначить или восстановить выведенный из обращения IPv6. Разрешена только однонаправленная операция `retire_smart_dns_ipv6`.
-- `db/tests/0108_smart_dns_paid_ingress_contract.sql`: фиктивные счета и подписки, отдельные владельцы, независимые остатки, прямой вход по адресу после expiry, имитация stale ACK, расход квоты, защита tombstone. Только disposable PostgreSQL, все тестовые данные откатываются.
+- `db/tests/0109_smart_dns_paid_ingress_contract.sql`: фиктивные счета и подписки, отдельные владельцы, независимые остатки, прямой вход по адресу после expiry, имитация stale ACK, расход квоты, защита tombstone. Только disposable PostgreSQL, все тестовые данные откатываются.
 - `.github/workflows/offline-contracts.yml` проверяет миграции и негативные SQL-контракты. Проверка в PR **не деплоит** и не включает продажи.
 
 ## Что НЕ доказано
