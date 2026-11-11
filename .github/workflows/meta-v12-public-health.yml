@@ -5,6 +5,7 @@ on:
       - diagnostics/pcapdroid-meta-path-20261109
     paths:
       - .github/workflows/meta-v12-public-health.yml
+      - scripts/meta-v12-dns-answers.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,7 +17,7 @@ jobs:
       - name: Checkout diagnostic code
         uses: actions/checkout@v4
       - name: Verify diagnostic script syntax
-        run: python3 -m py_compile scripts/meta-v12-readonly-probe.py
+        run: python3 -m py_compile scripts/meta-v12-readonly-probe.py scripts/meta-v12-dns-answers.py
       - name: Collect public DNS-over-TLS and SNI statuses
         shell: bash
         run: |
@@ -25,4 +26,5 @@ jobs:
           echo 'Source is a GitHub runner, not a Russian mobile client. No production changes are performed.' >> "$GITHUB_STEP_SUMMARY"
           echo '```text' >> "$GITHUB_STEP_SUMMARY"
           python3 scripts/meta-v12-readonly-probe.py | tee -a "$GITHUB_STEP_SUMMARY"
+          python3 scripts/meta-v12-dns-answers.py | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
