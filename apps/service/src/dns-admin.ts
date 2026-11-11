@@ -8,6 +8,15 @@ import type {Pool} from 'pg';
 export type AdminButton={text:string;callback_data:string};
 export type AdminPage={text:string;reply_markup:{inline_keyboard:AdminButton[][]}};
 type DomainRow={id:string|number;domain:string;product:string;status:string;canary_expires_at?:Date|null;last_error_code?:string|null};
+// Exact names explicitly contained in the owner's 523-host study. These are
+// queue inventory entries, NOT an authorization to proxy shared Microsoft apexes.
+export const MICROSOFT_DOMAINS=[
+  'bing.com','copilot.microsoft.com','microsoft.com',
+  'software-static.download.prss.microsoft.com',
+  'xbox.com','xboxdesignlab.xbox.com',
+] as const;
+export const DNS_ADMIN_SEARCH_PROMPT='🔎 MNEBYDNS • поиск домена';
+type DomainView='all'|'pending'|'active'|'microsoft';
 const back:AdminButton={text:'↩️ DNS-меню',callback_data:'dnsadmin:menu'};
 const home:AdminButton={text:'🏠 Главное',callback_data:'nav:home'};
 const page=(text:string,buttons:AdminButton[][]):AdminPage=>({
@@ -49,13 +58,18 @@ export function normalizeDnsDomain(value:unknown):string|null{
   return domain;
 }
 export function dnsAdminIntro():AdminPage{
-  return page('🛠 MNEBYDNS · управление доменами\n\n'+
-    'Добавляй домены, затем из карточки запускай проверку и временное включение. '+
-    'Постоянное включение — только после проверки на телефоне и отдельного подтверждения. '+
-    'Если тест не подтверждён, маршрут отключится автоматически.',[
-      [{text:'➕ Добавить домен',callback_data:'dnsadmin:add'}],
-      [{text:'📋 Домены и статусы',callback_data:'dnsadmin:list:0'}],
-      [{text:'☁️ Oracle · проверить заявки',callback_data:'dnsadmin:oracle'}],
+  return page('🛠 MNEBYDNS · управление доменами Smart DNS\n\n'+
+    '1. Найди домен в ожидающих или через поиск. 2. Открой карточку. '+
+    '3. Запусти проверку и 60-минутный тест. 4. Проверь на телефоне '+
+    'и подтверди либо откати. Пока статус PENDING, реальный DNS не изменён.',[
+      [{text:'🪟 Microsoft · 6 доменов',callback_data:'dnsadmin:microsoft'}],
+      [{text:'🟡 Ожидающие',callback_data:'dnsadmin:list:pending:0'},
+       {text:'🟢 Работающие',callback_data:'dnsadmin:list:active:0'}],
+      [{text:'🔎 Найти по имени / продукту',callback_data:'dnsadmin:search'}],
+      [{text:'📋 Все домены',callback_data:'dnsadmin:list:0'}],
+      [{text:'📊 Очередь и ошибки',callback_data:'dnsadmin:queue'}],
+      [{text:'➕ Добавить один домен',callback_data:'dnsadmin:add'}],
+      [{text:'☁️ Oracle',callback_data:'dnsadmin:oracle'}],
       [home],
     ]);
 }
@@ -63,6 +77,10 @@ export const DNS_ADMIN_PROMPT='🛠 MNEBYDNS • новый домен';
 export function dnsAdminPrompt(){
   return {text:DNS_ADMIN_PROMPT+'\n\nОтправьте только адрес, например example.org. Без https://, пути или *.\n\nСохранение создаст ЗАЯВКУ, а не включит маршрутизацию.',
     reply_markup:{force_reply:true,input_field_placeholder:'domain.com'}};
+}
+export function dnsAdminSearchPrompt(){
+  return {text:DNS_ADMIN_SEARCH_PROMPT+'\n\nНапиши часть домена или название продукта: Microsoft, Xbox, Copilot.\nНичего не будет добавлено или переключено.',
+    reply_markup:{force_reply:true,input_field_placeholder:'Microsoft'}};
 }
 export function dnsAdminError(message:string):AdminPage{
   return page('⚠️ '+message,[[back],[home]]);
@@ -78,34 +96,127 @@ function textRow(row:DomainRow):string{
     :labels[row.status]??'Неизвестный статус';
   return row.domain+' — '+state+(row.product==='custom'?'':' · '+row.product);
 }
-export async function dnsAdminList(pool:Pool|null,pageNo=0):Promise<AdminPage>{
-  if(!Number.isSafeInteger(pageNo)||pageNo<0||pageNo>99)
+function viewTitle(view:DomainView):string{
+  return view==='pending'?'🟡 Ожидающие и проверки':
+    view==='active'?'🟢 Работающие маршруты':
+    view==='microsoft'?'🪟 Microsoft': '📋 Все домены';
+}
+export async function dnsAdminList(pool:Pool|null,pageNo=0,view:DomainView='all'):Promise<AdminPage>{
+  if(!Number.isSafeInteger(pageNo)||pageNo<0||pageNo>99||
+     !(['all','pending','active','microsoft'] as string[]).includes(view))
     return dnsAdminError('Некорректная страница.');
   if(!pool)return dnsAdminError('База доменов недоступна. DNS не менялся.');
   try{
-    const {rows}=await pool.query<DomainRow>(
-      'SELECT id,domain,product,status,last_error_code FROM dns_admin_domains ORDER BY updated_at DESC,id DESC LIMIT 9 OFFSET $1',
-      [pageNo*8]);
+    const base='SELECT id,domain,product,status,last_error_code FROM dns_admin_domains';
+    const order=' ORDER BY updated_at DESC,id DESC LIMIT 9 OFFSET ';
+    const where=view==='pending'?
+      " WHERE status IN ('PENDING','FAILED','APPLY_REQUESTED','PROBING','CANARY','CONFIRM_REQUESTED','CONFIRMING','ROLLBACK_REQUESTED','REMOVAL_PENDING','REMOVING')":
+      view==='active'?" WHERE status IN ('ACTIVE','COVERED')":'';
+    const microsoft=view==='microsoft';
+    const sql=microsoft?base+" WHERE domain=ANY($1::text[]) OR product='Microsoft'"+order+'$2':
+      base+where+order+'$1';
+    const {rows}=await pool.query<DomainRow>(sql,
+      microsoft?[MICROSOFT_DOMAINS,pageNo*8]:[pageNo*8]);
     const visible=rows.slice(0,8);
+    const callback=(n:number)=>view==='all'?'dnsadmin:list:'+n:
+      'dnsadmin:list:'+view+':'+n;
     const buttons:AdminButton[][]=visible.map(row=>[{
       text:(labels[row.status]?.slice(0,2)??'•')+' '+row.domain.slice(0,42),
       callback_data:'dnsadmin:domain:'+row.id,
     }]);
     const nav:AdminButton[]=[];
-    if(pageNo>0)nav.push({text:'⬅️ Назад',callback_data:'dnsadmin:list:'+(pageNo-1)});
-    if(rows.length>8)nav.push({text:'Далее ➡️',callback_data:'dnsadmin:list:'+(pageNo+1)});
+    if(pageNo>0)nav.push({text:'⬅️ Назад',callback_data:callback(pageNo-1)});
+    if(rows.length>8)nav.push({text:'Далее ➡️',callback_data:callback(pageNo+1)});
     if(nav.length)buttons.push(nav);
-    buttons.push([{text:'🔄 Обновить',callback_data:'dnsadmin:list:'+pageNo}],
-      [{text:'➕ Добавить',callback_data:'dnsadmin:add'}],[back],[home]);
-    return page('📋 MNEBYDNS · домены · страница '+(pageNo+1)+'\n\n'+
-      (visible.length?visible.map((row,i)=>(pageNo*8+i+1)+'. '+
-        (row.domain.length>65?row.domain.slice(0,62)+'…':row.domain)+' — '+
-        (row.status==='ACTIVE'&&row.last_error_code==='ACTIVE_ROUTE_CHECK_FAILED'
-          ?'🟠 Требуется проверка маршрута'
-          :labels[row.status]??'Неизвестный статус')).join('\n'):'Список пуст.')+
-      '\n\nЗелёный статус означает проверенный маршрут. COVERED — уже действующее общее правило, не отдельная заявка.',
-      buttons);
+    buttons.push([{text:'🔄 Обновить',callback_data:callback(pageNo)}]);
+    if(microsoft)buttons.push([{text:'➕ Поставить все 6 в очередь',callback_data:'dnsadmin:microsoft:confirm'}]);
+    else buttons.push([{text:'🔎 Поиск',callback_data:'dnsadmin:search'}]);
+    buttons.push([back],[home]);
+    const text=visible.map((row,i)=>(pageNo*8+i+1)+'. '+
+      (row.domain.length>65?row.domain.slice(0,62)+'…':row.domain)+' — '+
+      (row.status==='ACTIVE'&&row.last_error_code==='ACTIVE_ROUTE_CHECK_FAILED'
+        ?'🟠 Требуется проверка маршрута':labels[row.status]??'Неизвестный статус')).join('\n');
+    return page(viewTitle(view)+' · страница '+(pageNo+1)+'\n\n'+
+      (text||'Нет записей по этому фильтру.')+'\n\n'+
+      (microsoft?'Microsoft — группа отдельных имён из исследования. Общие microsoft.com и bing.com требуют особой проверки. ': '')+
+      'Нажми на адрес, чтобы открыть кнопки проверки, подтверждения и отключения.',buttons);
   }catch{return dnsAdminError('Не удалось загрузить домены. DNS не менялся.');}
+}
+export async function dnsAdminSearch(pool:Pool|null,input:string):Promise<AdminPage>{
+  if(!pool)return dnsAdminError('База доменов недоступна.');
+  const phrase=input.trim();
+  if(phrase.length<2||phrase.length>64||!/^[a-zA-Zа-яА-ЯёЁ0-9. -]+$/.test(phrase))
+    return dnsAdminError('Для поиска введи 2–64 символа: имя домена или продукта.');
+  try{
+    // SQL LIKE special characters are escaped; search is read-only and bounded.
+    const pattern='%'+phrase+'%';
+    const {rows}=await pool.query<DomainRow>(
+      'SELECT id,domain,product,status,last_error_code FROM dns_admin_domains '+
+      'WHERE domain ILIKE $1 OR product ILIKE $1 '+
+      'ORDER BY updated_at DESC,id DESC LIMIT 9',[pattern]);
+    const visible=rows.slice(0,8);
+    const buttons:AdminButton[][]=visible.map(row=>[{
+      text:(labels[row.status]?.slice(0,2)??'•')+' '+row.domain.slice(0,42),
+      callback_data:'dnsadmin:domain:'+row.id,
+    }]);
+    buttons.push([{text:'🔎 Искать ещё',callback_data:'dnsadmin:search'}],
+      [{text:'🪟 Microsoft',callback_data:'dnsadmin:microsoft'}],[back]);
+    return page('🔎 Поиск: '+phrase+'\n\n'+
+      (visible.map(x=>x.domain+' — '+(labels[x.status]??x.status)).join('\n')||'Ничего не найдено.')+
+      (rows.length>8?'\n\nПоказаны первые 8. Уточни запрос.':''),buttons);
+  }catch{return dnsAdminError('Ошибка поиска в базе доменов.');}
+}
+export async function dnsAdminQueue(pool:Pool|null):Promise<AdminPage>{
+  if(!pool)return dnsAdminError('База доменов недоступна.');
+  try{
+    const {rows}=await pool.query<{status:string;total:string}>(
+      'SELECT status,count(*)::text AS total FROM dns_admin_domains GROUP BY status ORDER BY status');
+    const active=new Set(['ACTIVE','COVERED']);
+    const waiting=new Set(['PENDING','APPLY_REQUESTED','PROBING','CANARY',
+      'CONFIRM_REQUESTED','CONFIRMING','ROLLBACK_REQUESTED','REMOVAL_PENDING','REMOVING','FAILED']);
+    const count=(states:Set<string>)=>rows.reduce((n,r)=>n+(states.has(r.status)?Number(r.total):0),0);
+    return page('📊 MNEBYDNS · очередь\n\n'+
+      'Ожидают / проверяются / ошибки: '+count(waiting)+'\n'+
+      'Работают / покрыты общим маршрутом: '+count(active)+'\n\n'+
+      'PENDING означает только запись в базе. Для начала проверки открой карточку '+
+      'и нажми «Проверить и включить на 60 минут». Серверный контроллер выполняет задачи по очереди.',[
+        [{text:'🟡 Ожидающие',callback_data:'dnsadmin:list:pending:0'}],
+        [{text:'🟢 Работающие',callback_data:'dnsadmin:list:active:0'}],
+        [{text:'🪟 Microsoft',callback_data:'dnsadmin:microsoft'}],[back]]);
+  }catch{return dnsAdminError('Не удалось прочитать состояние очереди.');}
+}
+export async function dnsAdminMicrosoft(pool:Pool|null,actorId:number,commit=false):Promise<AdminPage>{
+  if(!pool)return dnsAdminError('База доменов недоступна. Microsoft не изменён.');
+  if(!commit)return page('🪟 Microsoft · все домены из исследования\n\n'+
+    MICROSOFT_DOMAINS.join('\n')+'\n\n'+
+    'Добавление создаёт заявки PENDING — НЕ включает DNS. '+
+    'Microsoft.com и Bing.com — общие адреса; их нельзя переключать без отдельной проверки. '+
+    'Уже работающие ACTIVE/COVERED и другие текущие статусы не меняются.',[
+      [{text:'➕ Добавить недостающие 6',callback_data:'dnsadmin:microsoft:confirm'}],
+      [{text:'📋 Открыть Microsoft и статусы',callback_data:'dnsadmin:list:microsoft:0'}],
+      [back]]);
+  try{
+    // Single idempotent statement. Existing ACTIVE/COVERED/CANARY statuses and
+    // ALL route/proxy settings remain untouched. Retag only queued research rows.
+    await pool.query(
+      `INSERT INTO dns_admin_domains(domain,product,status,requested_by,updated_by)
+       SELECT domain,'Microsoft','PENDING',$2,$2 FROM unnest($1::text[]) AS domain
+       ON CONFLICT (domain) DO UPDATE SET
+         product='Microsoft', updated_at=now(),updated_by=EXCLUDED.updated_by
+       WHERE dns_admin_domains.status='PENDING' AND
+         dns_admin_domains.product IN ('Research 2026-11','custom','Microsoft')`,
+      [MICROSOFT_DOMAINS,actorId]);
+    const {rows}=await pool.query<{domain:string;status:string}>(
+      'SELECT domain,status FROM dns_admin_domains WHERE domain=ANY($1::text[]) ORDER BY domain',
+      [MICROSOFT_DOMAINS]);
+    if(rows.length!==MICROSOFT_DOMAINS.length)
+      return dnsAdminError('Не удалось подтвердить все шесть записей. Проверь список.');
+    return page('✅ Microsoft: записи сверены\n\n'+
+      rows.map(r=>r.domain+' — '+(labels[r.status]??r.status)).join('\n')+
+      '\n\nPENDING означает, что DNS ещё не переключён. '+
+      'Открой нужный домен и запусти контролируемую проверку.',[
+       [{text:'🪟 Все 6 и управление',callback_data:'dnsadmin:list:microsoft:0'}],[back]]);
+  }catch{return dnsAdminError('Не удалось сохранить Microsoft. Действующий DNS не изменён.');}
 }
 export async function dnsAdminAdd(pool:Pool|null,actorId:number,value:string,product='custom'):
   Promise<AdminPage>{
@@ -129,8 +240,14 @@ export async function dnsAdminAdd(pool:Pool|null,actorId:number,value:string,pro
         [[{text:'🌍 Открыть домен',callback_data:'dnsadmin:domain:'+rows[0].id}],
          [{text:'📋 Все заявки',callback_data:'dnsadmin:list:0'}],[back]]);
     }
-    return page('ℹ️ '+domain+' уже присутствует в списке. Второй раз не добавлял.',
-      [[{text:'📋 Проверить статус',callback_data:'dnsadmin:list'}],[back]]);
+    const existing=await pool.query<DomainRow>(
+      'SELECT id,domain,product,status FROM dns_admin_domains WHERE domain=$1',[domain]);
+    const found=existing.rows[0];
+    return page('ℹ️ '+domain+' уже в списке — '+
+      (found?(labels[found.status]??found.status):'статус недоступен')+'\n\n'+
+      'Новая заявка не создавалась.',
+      [[{text:'🌍 Открыть карточку',callback_data:found?'dnsadmin:domain:'+found.id:'dnsadmin:list:0'}],
+       [{text:'📋 Все домены',callback_data:'dnsadmin:list:0'}],[back]]);
   }catch{return dnsAdminError('Не удалось сохранить заявку. DNS не менялся.');}
 }
 export async function dnsAdminOracle(pool:Pool|null,actorId:number):Promise<AdminPage>{
@@ -175,7 +292,10 @@ export async function dnsAdminDomain(pool:Pool|null,rawId:string):Promise<AdminP
        row.status!=='CANARY')
       buttons.push([{text:row.status==='ACTIVE'?'⏳ Запросить отключение':'🗑 Отменить / откатить',
         callback_data:'dnsadmin:cancel:'+row.id}]);
-    buttons.push([{text:'📋 Список',callback_data:'dnsadmin:list:0'}],[back]);
+    buttons.push([{text:'🔄 Обновить статус',callback_data:'dnsadmin:domain:'+row.id}]);
+    if(row.product==='Microsoft'||(MICROSOFT_DOMAINS as readonly string[]).includes(row.domain))
+      buttons.push([{text:'🪟 Все Microsoft',callback_data:'dnsadmin:list:microsoft:0'}]);
+    buttons.push([{text:'📋 Все домены',callback_data:'dnsadmin:list:0'}],[back]);
     const expires=row.canary_expires_at instanceof Date
       ?'\nАвтооткат: '+row.canary_expires_at.toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})+' МСК':'';
     const error=row.last_error_code?'\nПоследняя проверка: '+row.last_error_code.slice(0,96):'';
@@ -281,6 +401,17 @@ export async function dnsAdminAction(
   if(owner===null||owner!==actorId)return dnsAdminError('Доступ закрыт.');
   if(action==='dnsadmin:menu')return dnsAdminIntro();
   if(action==='dnsadmin:list')return dnsAdminList(pool,0);
+  if(action==='dnsadmin:microsoft')return dnsAdminMicrosoft(pool,actorId);
+  if(action==='dnsadmin:microsoft:confirm')return page(
+    '🪟 Добавить 6 Microsoft в очередь?\n\n'+
+    MICROSOFT_DOMAINS.join('\n')+'\n\nНи один из них автоматически не включается. '+
+    'Действующие маршруты и статусы сохраняются.',[
+      [{text:'✅ Внести в очередь',callback_data:'dnsadmin:yes-microsoft'}],
+      [{text:'Отмена',callback_data:'dnsadmin:microsoft'}],[back]]);
+  if(action==='dnsadmin:yes-microsoft')return dnsAdminMicrosoft(pool,actorId,true);
+  if(action==='dnsadmin:queue')return dnsAdminQueue(pool);
+  const view=/^dnsadmin:list:(pending|active|microsoft):(0|[1-9][0-9]{0,1})$/.exec(action);
+  if(view)return dnsAdminList(pool,Number(view[2]),view[1] as DomainView);
   const list=/^dnsadmin:list:(0|[1-9][0-9]{0,1})$/.exec(action);
   if(list)return dnsAdminList(pool,Number(list[1]));
   if(action==='dnsadmin:oracle')return dnsAdminOracle(pool,actorId);
