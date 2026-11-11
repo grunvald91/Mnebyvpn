@@ -8,6 +8,13 @@ on:
       - feat/neon-world-reference-20261110
       - fix/neon-reference-fill-and-glow-20261110
       - feat/halo-branded-checkout-20261110
+      - fix/reference-parity-globe-auth-20261111
+    paths:
+      - 'apps/web/public/**'
+      - 'tests/visual-journey-preview.mjs'
+      - '.github/workflows/visual-journey-preview.yml'
+  pull_request:
+    branches: [main]
     paths:
       - 'apps/web/public/**'
       - 'tests/visual-journey-preview.mjs'
