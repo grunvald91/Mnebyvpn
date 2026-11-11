@@ -1,0 +1,12 @@
+# Foreign-VPS isolated smoke only: host-network listener bound STRICTLY to loopback.
+# No public DoT listener, no rewriting or Smart DNS routes.
+tls://.:1853 {
+    bind 127.0.0.1
+    tls /certs/dns.test.invalid.crt /certs/dns.test.invalid.key
+    cache 30
+    forward . tls://9.9.9.9 {
+        tls_servername dns.quad9.net
+        health_check 5s
+        max_concurrent 64
+    }
+}
