@@ -25,7 +25,7 @@ import {vpnPurchaseWidgetPayload,vpnPurchaseWidgetData} from '../../../packages/
 import {planWidgetKey} from '../../../packages/telegram-ui/src/widget-104.ts';
 import {homeWidgetPayload} from '../../../packages/telegram-ui/src/home-widget.ts';
 import {makePersonalStarsLinkPayload,parsePersonalStarsLinkPayload} from '../../../packages/billing/src/stars-links.ts';
-import {dnsAdminOwner,dnsAdminIntro,dnsAdminPrompt,dnsAdminAction,dnsAdminAdd,DNS_ADMIN_PROMPT}
+import {dnsAdminOwner,dnsAdminIntro,dnsAdminPrompt,dnsAdminSearchPrompt,dnsAdminSearch,dnsAdminAction,dnsAdminAdd,DNS_ADMIN_PROMPT,DNS_ADMIN_SEARCH_PROMPT}
   from './dns-admin.ts';
 import {effectiveAccessState,formatRemainingTime,formatRemainingQuota} from '../../../packages/telegram-ui/src/access-format.ts';
 
@@ -120,7 +120,7 @@ function respond(res:ServerResponse,status:number,payload:unknown){
   res.writeHead(status);
   res.end(payload===null?'':JSON.stringify(payload));
 }
-function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string;currentText?:string;replyToSupport?:boolean;replyToDns?:boolean}|null{
+function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string;currentText?:string;replyToSupport?:boolean;replyToDns?:boolean;replyToDnsSearch?:boolean}|null{
   const cb=update.callback_query;
   if(cb){
     if(!validId(cb.from?.id)||!cb.message||cb.message.chat?.type!=='private'||
@@ -138,7 +138,9 @@ function privateActor(update:any):{id:number;messageId?:number;callbackId?:strin
     typeof replied.text==='string'&&replied.text.startsWith('✉️ MNEBYVPN — напишите вопрос');
   const replyToDns=replied?.from?.is_bot===true &&
     typeof replied.text==='string'&&replied.text.startsWith(DNS_ADMIN_PROMPT);
-  return {id:m.from.id,text:typeof m.text==='string'?m.text:'',replyToSupport,replyToDns};
+  const replyToDnsSearch=replied?.from?.is_bot===true &&
+    typeof replied.text==='string'&&replied.text.startsWith(DNS_ADMIN_SEARCH_PROMPT);
+  return {id:m.from.id,text:typeof m.text==='string'?m.text:'',replyToSupport,replyToDns,replyToDnsSearch};
 }
 async function packages(id:number){
   if(!store)throw new Error('DB unavailable');
@@ -710,7 +712,7 @@ async function processUpdate(update:any){
   const operator=support&&actor.id===support.operatorId;
   const dnsAction=actor.data?.startsWith('dnsadmin:')??false;
   const dnsTextCommand=text==='/dnsadmin';
-  if((dnsAction||dnsTextCommand||actor.replyToDns)&&
+  if((dnsAction||dnsTextCommand||actor.replyToDns||actor.replyToDnsSearch)&&
       (dnsAdminId===null||actor.id!==dnsAdminId)){
     if(actor.callbackId)return {method:'answerCallbackQuery',
       callback_query_id:actor.callbackId,text:'Недоступно',show_alert:true};
@@ -719,7 +721,10 @@ async function processUpdate(update:any){
   if(dnsAdminId!==null&&actor.id===dnsAdminId){
     if(actor.data==='dnsadmin:add')
       return {method:'sendMessage',chat_id:actor.id,...dnsAdminPrompt()};
+    if(actor.data==='dnsadmin:search')
+      return {method:'sendMessage',chat_id:actor.id,...dnsAdminSearchPrompt()};
     if(actor.replyToDns)return oneAction(actor,await dnsAdminAdd(pool,actor.id,text));
+    if(actor.replyToDnsSearch)return oneAction(actor,await dnsAdminSearch(pool,text));
     if(dnsAction)return oneAction(actor,
       await dnsAdminAction(dnsAdminId,actor.id,pool,actor.data??''));
     if(dnsTextCommand)return oneAction(actor,dnsAdminIntro());
