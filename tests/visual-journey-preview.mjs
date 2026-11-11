@@ -54,7 +54,7 @@ const { chromium }=await import(process.env.VISUAL_PLAYWRIGHT_PACKAGE||'playwrig
 const browser=await chromium.launch({headless:true,args:['--no-sandbox'],
   ...(process.env.VISUAL_CHROME_PATH?{executablePath:process.env.VISUAL_CHROME_PATH}:{})});
 let failed=false;
-for(const [width,height] of [[390,844],[360,740],[1440,900]]){
+for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
   const browserErrors=[];
   page.on('pageerror',error=>browserErrors.push(String(error.message).slice(0,250)));
@@ -83,6 +83,8 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
         getComputedStyle(document.querySelector('.journey-world-orbit--upper')).display==='block',
       lowerOrbitVisible:!!document.querySelector('.journey-world-orbit--lower')&&
         getComputedStyle(document.querySelector('.journey-world-orbit--lower')).display==='block',
+      cleanOrbitInteriors:['.journey-world-orbit--upper','.journey-world-orbit--lower']
+        .every(selector=>getComputedStyle(document.querySelector(selector)).backgroundImage==='none'),
       tariffHeight:Math.round(document.querySelector('[data-journey-days="15"]').getBoundingClientRect().height),
       buyButtonHeight:Math.round(document.querySelector('#journey-buy').getBoundingClientRect().height),
       haloRendered:!!document.querySelector('.journey-world-halo')&&
@@ -99,6 +101,7 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
   console.log('VISUAL_METRICS_'+width+'='+JSON.stringify({...metrics,browserErrors}));
   if(metrics.scrollExtra>2||metrics.horizontalOverflow||browserErrors.length||
     !metrics.globeLoaded||!metrics.haloRendered||!metrics.upperOrbitVisible||!metrics.lowerOrbitVisible||
+    !metrics.cleanOrbitInteriors||
     metrics.globeNaturalWidth!==780||metrics.schematicGlobePresent||metrics.desktopDarkDisk||
     (width<=390 && (metrics.globeDisplayWidth<width*1.02||metrics.globeDisplayWidth>width*1.15||
       metrics.tariffHeight>64||metrics.buyButtonHeight>54))||
