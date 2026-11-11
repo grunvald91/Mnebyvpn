@@ -78,6 +78,13 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
       desktopDarkDisk:innerWidth>700&&getComputedStyle(intro,'::before').display!=='none',
       selected:document.querySelector('[data-journey-days="30"]')?.getAttribute('aria-pressed'),
       globeNaturalWidth:document.querySelector('.journey-world-image')?.naturalWidth||0,
+      globeDisplayWidth:Math.round(document.querySelector('.journey-world-image')?.getBoundingClientRect().width||0),
+      upperOrbitVisible:!!document.querySelector('.journey-world-orbit--upper')&&
+        getComputedStyle(document.querySelector('.journey-world-orbit--upper')).display==='block',
+      lowerOrbitVisible:!!document.querySelector('.journey-world-orbit--lower')&&
+        getComputedStyle(document.querySelector('.journey-world-orbit--lower')).display==='block',
+      tariffHeight:Math.round(document.querySelector('[data-journey-days="15"]').getBoundingClientRect().height),
+      buyButtonHeight:Math.round(document.querySelector('#journey-buy').getBoundingClientRect().height),
       haloRendered:!!document.querySelector('.journey-world-halo')&&
         getComputedStyle(document.querySelector('.journey-world-halo')).display==='block'&&
         document.querySelector('.journey-world-halo').getBoundingClientRect().width>350,
@@ -91,7 +98,10 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
   await page.screenshot({path:file,type:'jpeg',quality:72,fullPage:true});
   console.log('VISUAL_METRICS_'+width+'='+JSON.stringify({...metrics,browserErrors}));
   if(metrics.scrollExtra>2||metrics.horizontalOverflow||browserErrors.length||
-    !metrics.globeLoaded||!metrics.haloRendered||metrics.globeNaturalWidth!==780||metrics.schematicGlobePresent||metrics.desktopDarkDisk||
+    !metrics.globeLoaded||!metrics.haloRendered||!metrics.upperOrbitVisible||!metrics.lowerOrbitVisible||
+    metrics.globeNaturalWidth!==780||metrics.schematicGlobePresent||metrics.desktopDarkDisk||
+    (width<=390 && (metrics.globeDisplayWidth<width*1.02||metrics.globeDisplayWidth>width*1.15||
+      metrics.tariffHeight>64||metrics.buyButtonHeight>54))||
     (width<=390 && (metrics.cardToFooterGap<0||metrics.cardToFooterGap>50)))failed=true;
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('VISUAL_JPEG_'+width+'_BEGIN');
@@ -115,6 +125,18 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
       telegramExplained:document.querySelector('.journey-telegram-method .journey-telegram-note')?.textContent,
       horizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
       trialTitle:document.querySelector('#journey-trial-title')?.textContent,
+      emailButton:(()=>{
+        const input=document.querySelector('#email-input')?.getBoundingClientRect();
+        const button=document.querySelector('#email-send-button');
+        const rect=button?.getBoundingClientRect();
+        return rect&&input?{
+          width:Math.round(rect.width),height:Math.round(rect.height),
+          centerDelta:Math.round((rect.left+rect.width/2)-(input.left+input.width/2)),
+          radius:parseFloat(getComputedStyle(button).borderTopRightRadius),
+          leftRadius:parseFloat(getComputedStyle(button).borderTopLeftRadius),
+          background:getComputedStyle(button).backgroundImage,
+        }:null;
+      })(),
       pageErrors:[],
 
     };
@@ -124,7 +146,10 @@ for(const [width,height] of [[390,844],[360,740],[1440,900]]){
   await page.screenshot({path:authImage,type:'jpeg',quality:72,fullPage:true});
   console.log('TRIAL_AUTH_METRICS_'+width+'='+JSON.stringify(trial));
   if(!trial.emailMounted||!trial.emailVisible||!trial.telegramExplained?.includes('email')||
-     trial.horizontalOverflow||trial.pageErrors.length||trial.route!=='#try')failed=true;
+     trial.horizontalOverflow||trial.pageErrors.length||trial.route!=='#try'||
+     !trial.emailButton||Math.abs(trial.emailButton.centerDelta)>5||
+     trial.emailButton.width<200||trial.emailButton.height>54||
+     trial.emailButton.radius<20||trial.emailButton.leftRadius!==trial.emailButton.radius)failed=true;
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('TRIAL_AUTH_JPEG_'+width+'_BEGIN');
     console.log(readFileSync(authImage).toString('base64'));
