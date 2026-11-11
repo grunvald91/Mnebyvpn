@@ -5,7 +5,7 @@ import {spawn,type ChildProcess} from 'node:child_process';
 import {createServer} from 'node:net';
 import {fileURLToPath} from 'node:url';
 import {
-  dnsAdminOwner,normalizeDnsDomain,dnsAdminAdd,dnsAdminOracle,
+  dnsAdminOwner,normalizeDnsDomain,dnsAdminAdd,dnsAdminOracle,dnsAdminMicrosoft,dnsAdminSearch,dnsAdminIntro,MICROSOFT_DOMAINS,DNS_ADMIN_SEARCH_PROMPT,
   dnsAdminCancel,dnsAdminList,dnsAdminAction,dnsAdminReview,dnsAdminApply,dnsAdminKeep,DNS_ADMIN_PROMPT,
 } from '../apps/service/src/dns-admin.ts';
 
@@ -222,4 +222,90 @@ test('ACTIVE health failure is visible to the owner in list and domain card',asy
   assert.match(card.text,/Сервер обнаружил ошибку проверки/);
   assert.ok(card.reply_markup.inline_keyboard.flat().some(
     b=>b.callback_data==='dnsadmin:cancel:12'));
+});
+
+
+test('Microsoft group lists exactly six study hostnames and never changes DNS status on intake',async()=>{
+  assert.deepEqual(MICROSOFT_DOMAINS,[
+    'bing.com','copilot.microsoft.com','microsoft.com',
+    'software-static.download.prss.microsoft.com','xbox.com','xboxdesignlab.xbox.com',
+  ]);
+  const sqls:Array<{sql:string;args:unknown[]|undefined}>=[];
+  const pg={query:async(sql:string,args?:unknown[])=>{
+    sqls.push({sql,args});
+    if(sql.includes('SELECT domain,status'))return {rows:MICROSOFT_DOMAINS.map(domain=>({domain,status:'PENDING'}))};
+    if(sql.includes('SELECT id,domain'))return {rows:MICROSOFT_DOMAINS.map((domain,i)=>({id:String(i+1),domain,product:'Microsoft',status:'PENDING'}))};
+    return {rows:[],rowCount:6};
+  }} as any;
+  const intro=dnsAdminIntro();
+  assert.ok(intro.reply_markup.inline_keyboard.flat().some(b=>b.callback_data==='dnsadmin:microsoft'));
+  const preview=await dnsAdminAction(42,42,pg,'dnsadmin:microsoft');
+  assert.match(preview.text,/software-static\.download\.prss\.microsoft\.com/);
+  assert.equal(sqls.length,0,'preview must not write to database');
+  const confirm=await dnsAdminAction(42,42,pg,'dnsadmin:microsoft:confirm');
+  assert.equal(confirm.reply_markup.inline_keyboard[0][0].callback_data,'dnsadmin:yes-microsoft');
+  assert.equal(sqls.length,0);
+  const result=await dnsAdminAction(42,42,pg,'dnsadmin:yes-microsoft');
+  assert.match(result.text,/Microsoft: записи сверены/);
+  assert.equal(sqls.length,2);
+  assert.match(sqls[0].sql,/ON CONFLICT \(domain\) DO UPDATE/);
+  assert.match(sqls[0].sql,/status='PENDING'/);
+  assert.doesNotMatch(sqls[0].sql,/APPLY_REQUESTED|CANARY|ACTIVE/);
+  assert.deepEqual(sqls[0].args,[MICROSOFT_DOMAINS,42]);
+  const list=await dnsAdminAction(42,42,pg,'dnsadmin:list:microsoft:0');
+  assert.match(list.text,/Microsoft/);
+  assert.ok(list.reply_markup.inline_keyboard.flat().some(b=>b.callback_data==='dnsadmin:domain:1'));
+  assert.match(sqls[2].sql,/domain=ANY\(\$1::text\[\]\) OR product='Microsoft'/);
+  assert.deepEqual(sqls[2].args,[MICROSOFT_DOMAINS,0]);
+  assert.match((await dnsAdminAction(42,43,pg,'dnsadmin:yes-microsoft')).text,/Доступ закрыт/);
+});
+
+test('owner sees pending and active filtered views and a navigable queue',async()=>{
+  const queries:string[]=[];
+  const pg={query:async(sql:string,args?:unknown[])=>{
+    queries.push(sql);
+    if(sql.includes('GROUP BY'))return {rows:[{status:'PENDING',total:'506'},{status:'ACTIVE',total:'2'}]};
+    return {rows:[{id:'901',domain:'copilot.microsoft.com',product:'Microsoft',status:'PENDING'}]};
+  }} as any;
+  const pending=await dnsAdminAction(20,20,pg,'dnsadmin:list:pending:0');
+  assert.match(pending.text,/Ожидающие и проверки/);
+  assert.match(queries[0],/WHERE status IN \('PENDING'/);
+  const active=await dnsAdminAction(20,20,pg,'dnsadmin:list:active:0');
+  assert.match(active.text,/Работающие маршруты/);
+  assert.match(queries[1],/status IN \('ACTIVE','COVERED'\)/);
+  const queue=await dnsAdminAction(20,20,pg,'dnsadmin:queue');
+  assert.match(queue.text,/Ожидают \/ проверяются \/ ошибки: 506/);
+  assert.match(queue.text,/Работают \/ покрыты общим маршрутом: 2/);
+});
+
+test('search by Microsoft product or hostname is read only; owner receives a force reply prompt',async()=>{
+  const requests:Array<{sql:string;args:unknown[]|undefined}>=[];
+  const pg={query:async(sql:string,args?:unknown[])=>{
+    requests.push({sql,args});return {rows:[{id:'7',domain:'copilot.microsoft.com',product:'Microsoft',status:'PENDING'}]};
+  }} as any;
+  const search=await dnsAdminSearch(pg,'Microsoft');
+  assert.match(search.text,/copilot\.microsoft\.com/);
+  assert.equal(search.reply_markup.inline_keyboard[0][0].callback_data,'dnsadmin:domain:7');
+  assert.match(requests[0].sql,/WHERE domain ILIKE \$1 OR product ILIKE \$1/);
+  assert.deepEqual(requests[0].args,['%Microsoft%']);
+  assert.match((await dnsAdminSearch(pg,'bad%')).text,/Для поиска введи/);
+  assert.equal(requests.length,1);
+  const prompt=await (await request(callback(admin,180,'dnsadmin:search'))).json() as any;
+  assert.equal(prompt.method,'sendMessage');
+  assert.match(prompt.text,/поиск домена/);
+  assert.equal(prompt.reply_markup.force_reply,true);
+  const reply=await (await request({update_id:181,message:{
+    from:{id:admin},chat:{id:admin,type:'private'},text:'Microsoft',
+    reply_to_message:{from:{is_bot:true},text:DNS_ADMIN_SEARCH_PROMPT+'\nВведите'}}})).json() as any;
+  assert.match(reply.text,/База доменов недоступна/);
+});
+
+test('repeat addition opens existing card instead of sending owner to 500-item list',async()=>{
+  const pg={query:async(sql:string,args?:unknown[])=>{
+    if(sql.includes('INSERT INTO'))return {rows:[]};
+    return {rows:[{id:'18',domain:'copilot.microsoft.com',product:'Research 2026-11',status:'PENDING'}]};
+  }} as any;
+  const response=await dnsAdminAdd(pg,17,'copilot.microsoft.com');
+  assert.match(response.text,/уже в списке/);
+  assert.equal(response.reply_markup.inline_keyboard[0][0].callback_data,'dnsadmin:domain:18');
 });
