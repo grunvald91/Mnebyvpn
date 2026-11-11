@@ -1249,12 +1249,13 @@ body.journey-active[data-journey-view="plans"] .journey-world-orbit::before{
   -webkit-mask-composite:xor;
   mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
   mask-composite:exclude;
-  filter:drop-shadow(0 0 5px rgba(74,148,255,.45));
+  filter:drop-shadow(0 0 7px rgba(51,176,255,.6))
+    drop-shadow(0 0 8px rgba(184,58,251,.32));
 }
 body.journey-active[data-journey-view="plans"] .journey-world-orbit--upper{
   top:clamp(85px,12vh,150px);
   transform:translateX(-50%) rotate(-9deg);
-  opacity:.75;
+  opacity:.84;
   z-index:0; /* the upper orbit passes behind the opaque globe */
 }
 body.journey-active[data-journey-view="plans"] .journey-world-orbit--lower{
@@ -1382,13 +1383,13 @@ body.journey-active #journey-trial-telegram[aria-disabled="true"]{
   }
   body.journey-active[data-journey-view="plans"] .journey-world-backdrop .journey-world-image{
     width:clamp(385px,104vw,585px);
-    top:clamp(36px,5.1vh,54px);
+    top:clamp(50px,6.5vh,70px);
     opacity:.94;
   }
   body.journey-active[data-journey-view="plans"] .journey-world-halo{
     width:clamp(390px,106vw,605px);
-    top:clamp(39px,5.5vh,58px);
-    opacity:.72;
+    top:clamp(53px,6.8vh,74px);
+    opacity:.78;
   }
   body.journey-active[data-journey-view="plans"] .journey-world-orbit{
     width:clamp(462px,127vw,710px);
