@@ -58,7 +58,7 @@ export function normalizeDnsDomain(value:unknown):string|null{
   return domain;
 }
 export function dnsAdminIntro():AdminPage{
-  return page('🛠 MNEBYDNS · управление Smart DNS\n\n'+
+  return page('🛠 MNEBYDNS · управление доменами Smart DNS\n\n'+
     '1. Найди домен в ожидающих или через поиск. 2. Открой карточку. '+
     '3. Запусти проверку и 60-минутный тест. 4. Проверь на телефоне '+
     'и подтверди либо откати. Пока статус PENDING, реальный DNS не изменён.',[
