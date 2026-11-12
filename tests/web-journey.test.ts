@@ -145,11 +145,27 @@ test('Smart DNS is preview-only while VPN checkout and trial remain server-autho
   for(const service of ['YouTube','ChatGPT','Gemini','Claude','Antigravity','Grok','TikTok']){
     assert.ok(art.includes(service));
   }
-  assert.match(art,/if\(isDns\)\{/);
-  assert.match(art,/button\.disabled=true;/);
-  assert.match(art,/if\(activeProduct==='vpn'&&!button\.disabled\)send\('buy'\)/);
+  assert.match(art,/let vpnDays=15,vpnSelected=true,dnsDays=null/);
+  assert.match(art,/setPressed\(el,vpnSelected&&days===vpnDays\)/);
+  assert.match(art,/setPressed\(el,Number\(el\.dataset\.d\)===dnsDays\)/);
+  assert.match(art,/dnsDays=dnsDays===day\?null:day/);
+  assert.match(art,/if\(vpnSelected&&!button\.disabled\)send\('buy'\)/);
+  assert.match(art,/Оформить только VPN/);
   assert.match(art,/trialDnsStatus\.hidden=false/);
   assert.match(art,/send\('trial'\)/);
   assert.doesNotMatch(art,/send\('trial-dns'\)/);
   assert.match(art,/выдача индивидуальной ссылки Smart DNS ещё разрабатывается/i);
+});
+
+
+test('foreground taps avoid continuous expensive canvas, gyroscope and SVG DOM loops',()=>{
+  const art=file('apps/web/public/landing-art.html');
+  assert.doesNotMatch(art,/requestAnimationFrame\(f\)/);
+  assert.doesNotMatch(art,/deviceorientation/);
+  assert.doesNotMatch(art,/for\(let i=0;i<110;i\+\+\)/);
+  assert.doesNotMatch(art,/setInterval\(\(\)=>\{\s*const a=N/);
+  assert.match(art,/backdrop-filter:none!important/);
+  assert.match(art,/touch-action:manipulation/);
+  assert.match(art,/Сервисы с настроенной маршрутизацией Smart DNS:/);
+  assert.doesNotMatch(art,/Сервисы, для которых планируется и проверяется поддержка/);
 });
