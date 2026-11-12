@@ -828,7 +828,7 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     }
     // accountId comes exclusively from the verified website session.
     // SQL checks ownership and omits every other account's traffic.
-    const [result,audit]=await Promise.all([
+    const [result,audit,lateMonthly]=await Promise.all([
       authPool.query(
         `SELECT to_char(month_utc,'YYYY-MM') AS month,
            upload_bytes::text AS upload_bytes,
@@ -840,6 +840,13 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       authPool.query(
         `SELECT held_bytes::text,late_bytes::text
          FROM get_smart_dns_audit_totals($1::uuid,$2::uuid)`,
+        [auth.accountId,entitlementId]),
+      authPool.query(
+        `SELECT to_char(month_utc,'YYYY-MM') AS month,
+           upload_bytes::text AS upload_bytes,
+           download_bytes::text AS download_bytes,
+           event_count::text AS event_count
+         FROM get_smart_dns_monthly_late_traffic($1::uuid,$2::uuid)`,
         [auth.accountId,entitlementId]),
     ]);
     if(audit.rows.length===0){json(res,404,{code:'ENTITLEMENT_NOT_FOUND'});return;}
@@ -854,6 +861,16 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       bytesDefinition:'TLS_TCP_PAYLOAD_BOTH_DIRECTIONS',
       pendingHeldBytes:String(heldBytes),
       lateRecordedBytes:String(lateBytes),
+      // Late bytes were observed after their original reservation, but were
+      // NOT charged to a refunded/expired paid credit. Keep them distinct.
+      lateMonths:lateMonthly.rows.map((r:{month:string;upload_bytes:string;
+        download_bytes:string;event_count:string})=>({
+        month:r.month,
+        uploadBytes:r.upload_bytes,
+        downloadBytes:r.download_bytes,
+        eventCount:r.event_count,
+        basis:'LATE_AUDIT_RECORDED_AT_UTC',
+      })),
       billingReconciliationRequired:heldBytes>0n||lateBytes>0n,
       months:result.rows.map((r:{month:string;upload_bytes:string;
         download_bytes:string;measured_total_bytes:string;unattributed_bytes:string})=>({
