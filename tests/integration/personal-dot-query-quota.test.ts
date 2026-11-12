@@ -16,6 +16,7 @@ const accountId=randomUUID(),orderId=randomUUID(),entitlementId=randomUUID();
 const accountId2=randomUUID(),orderId2=randomUUID(),entitlementId2=randomUUID();
 const credential=makePersonalDoTIdentity(undefined,new Uint8Array(16).fill(31));
 const credential2=makePersonalDoTIdentity(undefined,new Uint8Array(16).fill(47));
+const rotatedCredential=makePersonalDoTIdentity(undefined,new Uint8Array(16).fill(63));
 
 before(async()=>{
   await pool.query('INSERT INTO accounts(id) VALUES($1),($2)',[accountId,accountId2]);
@@ -85,10 +86,36 @@ test('paid renewal does not erase used queries in the same 30-day interval',asyn
   assert.equal(rows[0].result,'DENY_QUOTA');
 });
 
+test('rotation instantly invalidates old hostname without resetting paid quota',async()=>{
+  const result=await pool.query(
+    'SELECT rotate_personal_dns_credential($1,$2,$3,$4) AS result',
+    [entitlementId,1,rotatedCredential.label,rotatedCredential.tokenSha256],
+  );
+  assert.equal(result.rows[0].result,'ROTATED');
+  const stale=await pool.query(
+    'SELECT rotate_personal_dns_credential($1,$2,$3,$4) AS result',
+    [entitlementId,1,credential.label,credential.tokenSha256],
+  );
+  assert.equal(stale.rows[0].result,'DENY_STALE');
+  const old=await pool.query(
+    'SELECT consume_personal_dns_query($1) AS result',[credential.label],
+  );
+  assert.equal(old.rows[0].result,'DENY_UNKNOWN');
+  const next=await pool.query(
+    'SELECT consume_personal_dns_query($1) AS result',[rotatedCredential.label],
+  );
+  assert.equal(next.rows[0].result,'DENY_QUOTA');
+  const status=await pool.query(
+    'SELECT * FROM personal_dns_query_status($1)',[entitlementId],
+  );
+  assert.equal(BigInt(status.rows[0].credential_revision),2n);
+  assert.equal(BigInt(status.rows[0].used_queries),5n);
+});
+
 test('revoked and expired grants can no longer consume queries',async()=>{
   const r=await pool.query('SELECT revoke_personal_dns_credential($1) AS ok',[entitlementId]);
   assert.equal(r.rows[0].ok,true);
-  const d=await pool.query('SELECT consume_personal_dns_query($1) AS result',[credential.label]);
+  const d=await pool.query('SELECT consume_personal_dns_query($1) AS result',[rotatedCredential.label]);
   assert.equal(d.rows[0].result,'DENY_INACTIVE');
   await pool.query('UPDATE entitlements SET state=$2 WHERE id=$1',[entitlementId2,'EXPIRED']);
   const v=await pool.query('SELECT consume_personal_dns_query($1) AS result',[credential2.label]);
