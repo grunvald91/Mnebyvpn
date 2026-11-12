@@ -19,6 +19,10 @@ BEGIN
     starts_at,expires_at,quota_limit_bytes
   ) VALUES(eid,aid,paid_order,'smart_dns','ACTIVE',1,
     clock_timestamp(),clock_timestamp()+interval '30 days',1000000);
+  SELECT issue_personal_dns_link(eid,digest,1) INTO outcome;
+  IF outcome<>'DENY_NO_PAID_CREDIT' THEN
+    RAISE EXCEPTION 'Unpaid package received a DNS link: %',outcome;
+  END IF;
   INSERT INTO entitlement_credits(
     entitlement_id,order_id,credit_sequence,
     starts_at,ends_at,duration_seconds,quota_bytes
@@ -27,6 +31,8 @@ BEGIN
 
   SELECT issue_personal_dns_link(eid,digest,1) INTO outcome;
   IF outcome<>'ISSUED' THEN RAISE EXCEPTION 'issue failed: %',outcome; END IF;
+  SELECT check_personal_dns_link(digest) INTO outcome;
+  IF outcome<>'KNOWN_LINK' THEN RAISE EXCEPTION 'valid link was not recognized'; END IF;
   SELECT issue_personal_dns_link(eid,digest,1) INTO outcome;
   IF outcome<>'ALREADY_ISSUED' THEN RAISE EXCEPTION 'not idempotent: %',outcome; END IF;
   SELECT issue_personal_dns_link(eid,repeat('b',64),2) INTO outcome;
@@ -89,5 +95,7 @@ BEGIN
     WHERE entitlement_id=eid;
   SELECT use_personal_dns_proxy_query(digest) INTO outcome;
   IF outcome<>'DENY_UNKNOWN_LINK' THEN RAISE EXCEPTION 'disabled credential active'; END IF;
+  SELECT check_personal_dns_link(digest) INTO outcome;
+  IF outcome<>'DENY_UNKNOWN_LINK' THEN RAISE EXCEPTION 'revoked link still known'; END IF;
 END $$;
 ROLLBACK;
