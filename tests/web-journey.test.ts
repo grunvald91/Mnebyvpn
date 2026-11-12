@@ -27,12 +27,15 @@ test('storefront has exactly four tariff actions and preserves legacy APIs',()=>
   assert.match(index,/id="guest-trial-card"/);
   assert.match(index,/id="account"/);
 });
-test('setup has all platform choices, installation gate and manual copy',()=>{
+test('setup offers direct import without a redundant installation confirmation',()=>{
   for(const os of ['android','ios','windows','macos','linux'])
     assert.match(index,new RegExp('data-journey-platform="'+os+'"'));
-  for(const id of ['journey-installed','journey-auto','journey-url','journey-copy'])
+  for(const id of ['journey-download','journey-auto','journey-url','journey-copy'])
     assert.match(index,new RegExp('id="'+id+'"'));
   assert.match(journey,/safeSubscriptionUrl/);
+  assert.doesNotMatch(index,/id="journey-installed"/);
+  assert.doesNotMatch(journey,/el\('journey-installed'\)/);
+  assert.match(journey,/el\('journey-import-step'\)\.hidden=false/);
 });
 test('browser return is only an order hint and never proof of payment',()=>{
   assert.match(journey,/Untrusted navigation is only a lookup hint/);
