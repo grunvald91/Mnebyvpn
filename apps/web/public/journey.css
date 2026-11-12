@@ -1464,3 +1464,11 @@ body.journey-active #journey-trial-telegram[aria-disabled="true"]{
 @media(prefers-reduced-motion:reduce){
   body.journey-active .journey-world-orbit{transition:none;animation:none}
 }
+
+
+/* Product availability is controlled by the published catalogue, not badges. */
+.journey-product-grid{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 16px}
+.journey-product-grid[hidden],.journey-product-grid button[hidden]{display:none!important}
+.journey-product-grid button{flex:1 1 115px;min-height:42px;padding:9px 11px;border:1px solid rgba(89,170,231,.28);border-radius:13px;background:rgba(9,18,42,.73);color:#c9eaff;font:inherit;font-size:13px;font-weight:750;cursor:pointer}
+.journey-product-grid button[aria-pressed="true"]{background:linear-gradient(115deg,rgba(20,110,168,.48),rgba(84,37,140,.36));border-color:rgba(66,223,239,.73);color:#fff;box-shadow:0 0 13px rgba(29,188,233,.16)}
+.journey-product-grid button:focus-visible{outline:2px solid #43e5f0;outline-offset:2px}
