@@ -224,6 +224,51 @@ footer nav a{padding:0 11px;white-space:nowrap}
   footer{margin-top:8px}
 }
 
+
+/* Two compact products in one card.  DNS offers are an explicit preview: the
+   backend still controls checkout, trials and all issued subscriptions. */
+.hero{min-height:clamp(207px,28svh,253px)}
+.card{margin:2px 15px 0;padding:12px 12px 10px}
+.ch{margin-bottom:7px}
+.ch h2{font-size:16px;gap:6px}
+.plan-heading-product,.dns-heading h2 span{color:#51e6ff;text-shadow:0 0 12px rgba(22,212,250,.3)}
+.plans{gap:5px}
+.plan{height:38px;gap:2px;border-radius:10px;min-width:0}
+.plan b{font-size:11px}
+.plan strong{font-size:15px}
+.dns-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:11px 3px 7px}
+.dns-heading h2{margin:0;display:flex;align-items:center;gap:4px;font:italic 800 16px/1.15 Inter}
+.dns-heading h2::before{content:'';width:5px;height:15px;margin-right:3px;transform:skewX(-18deg);border-radius:2px;background:linear-gradient(var(--cy),var(--vi))}
+.dns-plan{background:rgba(9,22,63,.6);border-color:rgba(80,183,245,.4)}
+.dns-plan strong{color:#9bd4ff}
+.plan[aria-pressed="true"]{background:linear-gradient(105deg,rgba(15,213,243,.85),rgba(86,73,238,.89));border-color:#97edff;box-shadow:0 0 13px rgba(65,182,248,.35)}
+.plan[aria-pressed="true"] strong{color:#fff}
+.info-circle{display:grid;place-items:center;width:26px;height:26px;min-width:26px;border:1.4px solid #51e6ff;border-radius:50%;color:#bbfaff;font:italic 800 16px Inter;background:rgba(17,48,91,.75);box-shadow:0 0 13px rgba(34,202,244,.22)}
+.info-circle:focus-visible,.dns-dialog button:focus-visible,.trial-choice:focus-visible{outline:2px solid #d5faff;outline-offset:3px}
+.sum{margin:9px 0 8px;font-size:11.5px}
+.cta{height:43px;font-size:16px}
+.cta:disabled{opacity:.65}
+.note{margin-top:8px;font-size:11px}
+.note2{font-size:9.5px}
+.free{margin-top:9px}
+.trial-options[hidden],.trial-dns-status[hidden]{display:none!important}
+.trial-options{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:8px 0 0;padding:0 2px}
+.trial-choice{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:51px;padding:6px 4px;border:1px solid rgba(74,213,245,.6);border-radius:12px;background:rgba(10,32,78,.94);font:italic 800 13px/1.1 Inter}
+.trial-choice small{font:500 9.5px/1.3 Inter;color:#c5ddfa}
+.trial-choice:disabled{opacity:.55;cursor:not-allowed}
+.trial-dns-status{grid-column:1/-1;font:400 11px/1.4 Inter;text-align:center;color:#b9d4f3;margin:0 2px 4px}
+.dns-dialog{position:fixed;inset:auto;box-sizing:border-box;width:min(390px,calc(100% - 28px));max-height:min(78vh,620px);overflow:auto;border:1px solid rgba(90,211,255,.7);border-radius:19px;padding:18px 16px;background:linear-gradient(155deg,#102049,#0a1030 75%);box-shadow:0 0 28px rgba(66,145,255,.45);color:#eaf4ff;text-align:left;font:400 12.5px/1.5 Inter}
+.dns-dialog::backdrop{background:rgba(2,5,18,.82);backdrop-filter:blur(5px)}
+.dns-dialog-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.dns-dialog h2{font:italic 800 20px/1.15 Inter;margin:0;color:#fff}
+.dns-dialog-close{width:32px;height:32px;min-width:32px;font-size:25px;line-height:1;border-radius:99px;background:rgba(70,106,168,.23)}
+.dns-dialog p{margin:11px 0 0}
+.dns-dialog-label{font-weight:750;color:#7feaff}
+.dns-service-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.dns-service-tags span{border-radius:99px;border:1px solid rgba(95,164,245,.45);padding:4px 8px;background:rgba(46,82,151,.25);font-size:11px}
+.dns-dialog-small{color:#bad0eb}
+.dns-request{display:block;width:100%;margin-top:14px;border:1px solid rgba(145,244,255,.7);border-radius:99px;padding:10px;background:linear-gradient(110deg,#14b7e9,#5f6be8);font:italic 800 13px Inter}
+@media(max-width:360px){.hero{min-height:205px}.dns-heading h2{font-size:14px}.ch h2{font-size:15px}.card{margin-inline:11px}}
 </style>
 </head>
 <body>
@@ -273,12 +318,22 @@ footer nav a{padding:0 11px;white-space:nowrap}
   </section>
 
   <main class="card rv" style="--d:.55s">
-    <div class="ch"><h2>Выберите тариф</h2><em aria-hidden="true">///</em></div>
-    <div class="plans" role="group" aria-label="Тарифы">
+    <div class="ch"><h2>Выберите тариф <span class="plan-heading-product">VPN</span></h2><em aria-hidden="true">///</em></div>
+    <div class="plans plans-vpn" role="group" aria-label="Тарифы VPN">
       <button class="plan" data-d="15" data-p="—" aria-pressed="true"><b>15 дней</b><strong>—</strong></button>
       <button class="plan" data-d="30" data-p="—" aria-pressed="false"><b>30 дней</b><strong>—</strong></button>
       <button class="plan" data-d="60" data-p="—" aria-pressed="false"><b>60 дней</b><strong>—</strong></button>
       <button class="plan" data-d="90" data-p="—" aria-pressed="false"><b>90 дней</b><strong>—</strong></button>
+    </div>
+    <div class="dns-heading">
+      <h2>Выберите тариф <span>Smart DNS</span></h2>
+      <button class="info-circle" id="dns-info-open" type="button" aria-label="Что такое Smart DNS" aria-haspopup="dialog" aria-controls="dns-info-dialog">i</button>
+    </div>
+    <div class="plans plans-dns" role="group" aria-label="Тарифы Smart DNS — предварительный просмотр">
+      <button class="plan dns-plan" type="button" data-d="15" data-p="120 ₽" aria-pressed="false"><b>15 дней</b><strong>120 ₽</strong></button>
+      <button class="plan dns-plan" type="button" data-d="30" data-p="199 ₽" aria-pressed="false"><b>30 дней</b><strong>199 ₽</strong></button>
+      <button class="plan dns-plan" type="button" data-d="60" data-p="379 ₽" aria-pressed="false"><b>60 дней</b><strong>379 ₽</strong></button>
+      <button class="plan dns-plan" type="button" data-d="90" data-p="549 ₽" aria-pressed="false"><b>90 дней</b><strong>549 ₽</strong></button>
     </div>
     <div class="sum" aria-live="polite"><span id="sum" class="pop">Загрузка тарифов…</span></div>
     <button class="cta" type="button" disabled>Загрузка тарифов…</button><p class="front-error" id="front-error" role="alert" aria-live="assertive" hidden></p><a class="front-retry" id="front-retry" href="/" target="_top" hidden>Не удалось получить тарифы. Обновить страницу</a>
@@ -289,7 +344,22 @@ footer nav a{padding:0 11px;white-space:nowrap}
       <b>Бесплатные 24 часа</b>
       <button class="try" type="button" disabled>Попробовать</button>
     </div>
+    <div class="trial-options" id="trial-options" role="group" aria-label="Выберите пробный продукт" hidden>
+      <button type="button" class="trial-choice" id="trial-vpn">VPN <small>Получить 24 часа</small></button>
+      <button type="button" class="trial-choice" id="trial-dns">Smart DNS <small>Индивидуальная ссылка — скоро</small></button>
+      <p class="trial-dns-status" id="trial-dns-status" hidden>Выдача индивидуальной ссылки Smart DNS ещё разрабатывается. Пробный VPN доступен отдельно.</p>
+    </div>
   </main>
+
+  <dialog class="dns-dialog" id="dns-info-dialog" aria-labelledby="dns-modal-title">
+    <div class="dns-dialog-head"><h2 id="dns-modal-title">Что такое Smart DNS?</h2><button class="dns-dialog-close" type="button" id="dns-info-close" aria-label="Закрыть">×</button></div>
+    <p>Smart DNS помогает открывать <b>поддерживаемые сайты без постоянного включения VPN</b> — система работает выборочно, а обычные ресурсы продолжают открываться по привычному маршруту.</p>
+    <p class="dns-dialog-label">Сервисы, для которых планируется и проверяется поддержка:</p>
+    <div class="dns-service-tags"><span>YouTube</span><span>ChatGPT</span><span>Gemini</span><span>Claude</span><span>Google Antigravity</span><span>Grok</span><span>TikTok</span><span>X</span></div>
+    <p class="dns-dialog-small">Преимущества: не нужно постоянно переключать VPN, обычный трафик идёт напрямую, меньше лишней маршрутизации. Smart DNS <b>не шифрует весь трафик и не заменяет VPN</b>. Доступность отдельных сервисов зависит от текущей конфигурации и вашей сети.</p>
+    <p>Нужен ещё один домен? Подайте заявку на его добавление. Если сайт пока не поддерживается, можно временно включить VPN. Вариант <b>Smart DNS + VPN</b> предусмотрен для будущего комплекта.</p>
+    <button type="button" class="dns-request" id="dns-request-domain">Запросить добавление домена</button>
+  </dialog>
 
   <footer class="rv" style="--d:.7s">
     <nav><a href="https://t.me/MNEBYVPN_bot" target="_blank" rel="noopener noreferrer">@MNEBYVPN_bot</a><a href="#roadmap">Roadmap</a><a href="#support">Поддержка</a></nav>
@@ -299,12 +369,8 @@ footer nav a{padding:0 11px;white-space:nowrap}
 
 <script>
 const $=s=>document.querySelector(s),R=matchMedia('(prefers-reduced-motion:reduce)').matches;
-const plans=[...document.querySelectorAll('.plan')],sum=$('#sum');
-plans.forEach(p=>p.addEventListener('click',()=>{
-  plans.forEach(x=>x.setAttribute('aria-pressed',x===p));
-  sum.textContent=`VPN · ${p.dataset.d} дней · ${p.dataset.p}`;
-  sum.classList.remove('pop');void sum.offsetWidth;sum.classList.add('pop');
-}));
+const sum=$('#sum');
+// All tariff interaction lives in the same-origin bridge below. No fake DNS checkout.
 document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e=>e.preventDefault()));
 const cta=$('.cta');
 cta.addEventListener('pointermove',e=>{const r=cta.getBoundingClientRect();cta.style.setProperty('--mx',e.clientX-r.left+'px');cta.style.setProperty('--my',e.clientY-r.top+'px')});
