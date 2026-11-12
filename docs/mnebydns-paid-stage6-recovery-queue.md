@@ -33,4 +33,12 @@
 
 [Ранее проверено](https://github.com/grunvald91/telegram-proxy-infra/actions/runs/42793733014), что публичного IPv6 на двух существующих VPS нет. Провайдерский публичный префикс /64, доступность IPv6 с мобильных сетей и IPv4-only fallback остаются **НЕ ПОДТВЕРЖДЕНЫ**. Альтернативный authenticated VPN/SOCKS/HTTPS CONNECT — *отдельный клиентский способ подключения*, не скрывать это под названием DNS-only.
 
+## Проверенная граница варианта с персональным HTTPS/SVCB port
+
+RFC 9460 действительно определяет HTTPS/SVCB DNS-запись с параметром альтернативного порта `port`, но **не гарантирует уникальный персональный порт для каждого клиента**: §9.2.4 прямо указывает, что HTTPS RR не предназначены для использования с гранулярностью отдельного клиента. Клиенты могут игнорировать неподдерживаемые HTTPS RR, отступать к обычному A/AAAA и соединяться с сервером по стандартному порту. Это не подтверждённый универсальный способ идентификации абонента для MNEBYDNS и не безопасная автоматическая альтернатива отсутствующему IPv6. Источник: [IETF RFC 9460, §9.2.4](https://www.rfc-editor.org/rfc/rfc9460.html#section-9.2.4).
+
+У Apple есть встроенная настройка зашифрованного DNS (DoT/DoH) через профиль или NetworkExtension. Однако её роль — выбрать **DNS-резолвер**, а не добавить уникальные реквизиты абонента в TLS-соединение с Instagram/YouTube/другим сайтом. Источники: [Apple NetworkExtension DNS settings](https://developer.apple.com/documentation/networkextension/dns-settings) и [Apple DNSSettings](https://developer.apple.com/documentation/devicemanagement/dnssettings).
+
+**Следующий GO/NO-GO по transport:** получить подтверждённый маршрутизируемый IPv6-пул или явно перейти к идентифицируемому прокси/VPN-транспорту. Действующие SNI/DoT маршруты не менять, пока нет полноценного E2E на реальных Android/iPhone в IPv4-only и IPv6 сетях.
+
 **До всех GO-критериев: PR draft, paid checkout disabled, WEB_DNS_METERING_VERIFIED=false, live DNS/VPN/Telegram proxy untouched.**
