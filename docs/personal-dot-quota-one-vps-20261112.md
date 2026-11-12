@@ -31,7 +31,8 @@ The route classifier must reuse the **authoritative deployed CoreDNS policy** or
 4. **Critical:** the existing shared IPv4 443 SNI proxy may be accessible directly without consulting DNS. Counting DoT queries does NOT enforce paid proxy access or prevent bypass via direct IP / cached DNS. Need a separate ingress control/migration strategy without breaking free existing services.
 5. Integrate credential issuance and status with the actual paid subscription, authenticated website/Telegram account, bot notifications (e.g. 80/95/100%), renewal and refund logic. No arbitrary unauthenticated lookup by entitlement UUID.
 6. Test query-level billing for `A`, `AAAA`, `HTTPS/SVCB`, DNS caching, concurrent requests, multiple devices sharing a link, expired periods, two networks, slow PostgreSQL, and full VPS restart.
-7. Decide published billing policy only **after observing real consumption**; one million queries is not a guaranteed estimate of heavy-use demand.
+7. **Early repurchase top-up is not implemented yet.** The current fixed 30-day counter does not reset when a buyer purchases an early renewal, because verified billing extends expiry in the existing entitlement. This would contradict the proposed “pay again to resume now” behavior. Before opening sales, add an atomic **per-verified-order query credit grant**, preserving previous usage and refund correctness; cover repeat payment events and concurrent purchases. Do not assume the current code resumes access immediately after a new payment.
+8. Decide published billing policy only **after observing real consumption**; one million queries is not a guaranteed estimate of heavy-use demand.
 
 ## Release evidence
 
