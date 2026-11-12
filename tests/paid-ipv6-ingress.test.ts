@@ -167,17 +167,17 @@ test('failed delivery closes the connection; no retry of ambiguously charged dat
 });
 
 test('stop during in-flight debit does not forward even a charged block',async()=>{
-  let completeDebit:((result:string)=>void)|null=null;
+  const signal:{resolve?:(result:string)=>void}={};
   let forwarded=0;
   const g=new MeteredChunkGate(admit(),{
-    debit:async()=>await new Promise<string>(resolve=>{completeDebit=resolve;}),
+    debit:async()=>await new Promise<string>(resolve=>{signal.resolve=resolve;}),
   },{send:async()=>{forwarded++;}});
   const pending=g.forward(new Uint8Array(24));
   // Wait for the task queued on the microtask chain.
   await new Promise(resolve=>setImmediate(resolve));
-  assert.ok(completeDebit);
+  assert.ok(signal.resolve);
   g.stop();
-  completeDebit!('ACCEPTED');
+  signal.resolve('ACCEPTED');
   await assert.rejects(pending,/connection closed/);
   assert.equal(forwarded,0);
 });
