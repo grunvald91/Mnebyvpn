@@ -12,6 +12,8 @@ import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,val
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
 import {subscriptionOwner,subscriptionLink,issueSubscriptionLinkForAccount}
   from '../../../packages/provisioning/src/subscription-links.ts';
+import {issuePersonalDnsAccess,revokePersonalDnsAccess,personalDnsAccessStatuses}
+  from '../../../packages/dns-access/src/personal.ts';
 import {
   prepareWebsiteProdamusCheckout, type PayformLinkTransport,
 } from '../../../packages/billing/src/website-checkout.ts';
@@ -83,6 +85,11 @@ const trialEnabled = loginEnabled && networkVerified &&
 // Anonymous guest claims cannot prove a stable user identity.
 // Deprecated WEB_GUEST_TRIAL_ENABLED is deliberately ignored. No anonymous grant routes.
 const meteringVerified = networkVerified && process.env.WEB_DNS_METERING_VERIFIED === 'yes';
+// Query-only MNEBYDNS credential flow; never implies paid TCP/SNI access.
+// Production remains OFF until the authenticated DoT frontend + wildcard
+// certificate, DNS mapping, renewal and revocation are E2E verified.
+const dnsAccessEnabled = loginEnabled && (offline||networkVerified) &&
+  process.env.WEB_DNS_ACCESS_VERIFIED === 'yes';
 // Brochure/support data remains isolated from the real VPN billing ledger.
 // Public checkout, signed callbacks and paid entitlements MUST use the
 // canonical VPN node database with an independent least-privilege role.
@@ -815,6 +822,48 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   }
   const auth = await authorized(req);
   if (!auth) { json(res, 401, { code: 'LOGIN_REQUIRED' }); return; }
+  if(req.method==='GET' && url.pathname==='/api/me/dns-access'){
+    if(!dnsAccessEnabled){json(res,503,{code:'DNS_ACCESS_NOT_VERIFIED'});return;}
+    const links=await personalDnsAccessStatuses(authPool,auth.accountId);
+    json(res,200,{links,metric:'AUTHORIZED_DNS_QUERIES_NOT_HTTPS_BYTES',
+      rawHostnameStored:false,clientEndToEndVerified:false});return;
+  }
+  if(req.method==='POST' && url.pathname==='/api/me/dns-access'){
+    if(!csrfAllowed(req,auth.raw)){json(res,403,{code:'FORBIDDEN'});return;}
+    if(!dnsAccessEnabled){json(res,503,{code:'DNS_ACCESS_NOT_VERIFIED'});return;}
+    const body=await bodyJson(req);
+    if(typeof body.entitlementId!=='string' ||
+       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.entitlementId) ||
+       (body.rotate!==undefined && typeof body.rotate!=='boolean')){
+      json(res,400,{code:'INVALID_DNS_REQUEST'});return;
+    }
+    const result=await issuePersonalDnsAccess(authPool,auth.accountId,
+      body.entitlementId,body.rotate===true);
+    if(result==='ALREADY_ISSUED'){
+      json(res,409,{code:'DNS_LINK_ALREADY_ISSUED',
+        detail:'Use explicit rotate=true to replace a lost link'});return;
+    }
+    if(!result){json(res,409,{code:'DNS_SUBSCRIPTION_NOT_ACTIVE'});return;}
+    // The hostname is a bearer credential: return only once, no URLs,
+    // email, telemetry or raw server logs contain this token.
+    json(res,200,{status:result.status,
+      privateDnsHostname:result.hostname,appleProfileXml:result.appleProfileXml,
+      secretShownOnce:true,profileSigned:false,
+      warning:'DNS queries only; does not authenticate an HTTPS proxy'});
+    return;
+  }
+  if(req.method==='POST' && url.pathname==='/api/me/dns-access/revoke'){
+    if(!csrfAllowed(req,auth.raw)){json(res,403,{code:'FORBIDDEN'});return;}
+    if(!dnsAccessEnabled){json(res,503,{code:'DNS_ACCESS_NOT_VERIFIED'});return;}
+    const body=await bodyJson(req);
+    if(typeof body.entitlementId!=='string' ||
+       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.entitlementId)){
+      json(res,400,{code:'INVALID_DNS_REQUEST'});return;
+    }
+    const status=await revokePersonalDnsAccess(authPool,auth.accountId,body.entitlementId);
+    if(status===null){json(res,404,{code:'DNS_SUBSCRIPTION_NOT_FOUND'});return;}
+    json(res,200,{status});return;
+  }
   if (req.method === 'GET' && url.pathname === '/api/me') {
     const dashboard = await loadDashboard(authPool, auth.accountId, meteringVerified);
     json(res,200,{ ...dashboard, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
