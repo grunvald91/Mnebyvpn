@@ -39,3 +39,11 @@ test('backend hides DNS plans and denies DNS paid checkout/trial before money is
   const payment=server.indexOf("prepareWebsiteProdamusCheckout(",checkout);
   assert.ok(checkout<denied && denied<payment,'billing guard must precede payment order');
 });
+
+test('production billing store blocks DNS product for BOTH website and Telegram',()=>{
+  const store=readFileSync(new URL('../packages/billing/src/store.ts',import.meta.url),'utf8');
+  assert.match(store,/process\.env\.MNEBYVPN_ENV==='production' && p\.product!=='vpn'/);
+  assert.match(store,/throw new Error\('DNS_PAID_NOT_READY'\)/);
+  assert.match(store,/process\.env\.MNEBYVPN_ENV==='production' && product!=='vpn'/);
+  assert.match(store,/return \{status:'UNAVAILABLE'\}/);
+});
