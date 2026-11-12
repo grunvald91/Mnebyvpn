@@ -7,7 +7,7 @@ const journey=readFileSync(new URL('../apps/web/public/journey.js',import.meta.u
 const orderId='11111111-1111-4111-8111-111111111111';
 const entitlementId='22222222-2222-4222-8222-222222222222';
 
-function browser(url:string,loggedIn:boolean){
+function browser(url:string,loggedIn:boolean,extraPlans:Array<{product:string;durationDays:number;rubMinor:number}>=[]){
   const map=new Map<string,any>();
   const actions:{setup:string[];trials:number;purchase:number}={setup:[],trials:0,purchase:0};
   const make=(id:string)=>{
@@ -29,8 +29,10 @@ function browser(url:string,loggedIn:boolean){
   };
   const days=[15,30,60,90].map(n=>({ ...make('days-'+n),dataset:{journeyDays:String(n)}}));
   const platforms=['android','ios','windows','macos','linux'].map(p=>({...make(p),dataset:{journeyPlatform:p}}));
+  const productButtons=['vpn','smart_dns','bundle'].map(p=>({...make(p),dataset:{journeyProduct:p}}));
   const landing=el('journey-landing');
-  landing.querySelectorAll=(q:string)=>q==='[data-journey-days]'?days:[];
+  landing.querySelectorAll=(q:string)=>q==='[data-journey-days]'?days:
+    q==='[data-journey-product]'?productButtons:[];
   landing.querySelector=(q:string)=>el(q);
   const setup=el('journey-setup');
   setup.querySelectorAll=(q:string)=>q==='[data-journey-platform]'?platforms:[];
@@ -47,7 +49,7 @@ function browser(url:string,loggedIn:boolean){
   const parsed=new URL(url);
   const location={href:url,pathname:parsed.pathname,hash:parsed.hash,search:parsed.search};
   const state:any={
-    loggedIn,plans:[{product:'vpn',durationDays:30,rubMinor:19900}],
+    loggedIn,plans:[{product:'vpn',durationDays:30,rubMinor:19900},...extraPlans],
     days:30,product:'vpn',guestSubscriptionUrl:null,setupLoading:false,
     csrf:'csrf',purchaseIntent:null,trialOffers:['vpn'],
   };
@@ -73,7 +75,7 @@ function browser(url:string,loggedIn:boolean){
     toast:()=>{},
   });
   vm.runInContext(journey,context,{filename:'journey.js'});
-  return {state,window,map,actions};
+  return {state,window,map,actions,productButtons};
 }
 
 test('returned unpaid order renders verification, never opens a VPN config',()=>{
@@ -135,4 +137,37 @@ test('anonymous checkout never calls the payment provider',async()=>{
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(b.actions.purchase,0);
   assert.equal(b.map.get('journey-order').hidden,true);
+});
+
+test('published DNS plan can be selected and checkout preserves product and price',async()=>{
+  const b=browser('https://mnebyvpn.site/#plans',true,[
+    {product:'smart_dns',durationDays:30,rubMinor:20000},
+    {product:'bundle',durationDays:30,rubMinor:29900},
+  ]);
+  b.state.checkoutEnabled=true;
+  b.window.renderAccount({orders:[],access:[],identity:{email:'checked@example.com'}});
+  const dns=b.productButtons.find(b=>b.dataset.journeyProduct==='smart_dns');
+  assert.ok(dns);
+  assert.equal(dns.disabled,false);
+  dns.handlers.get('click')?.();
+  assert.equal(b.state.product,'smart_dns');
+  assert.equal(b.map.get('journey-summary').textContent,'Smart DNS · 30 дней · 20000 ₽');
+  b.map.get('journey-buy').handlers.get('click')?.();
+  assert.equal(b.map.get('journey-order-period').textContent,'Smart DNS · 30 дней');
+  assert.equal(b.map.get('journey-order-price').textContent,'20000 ₽');
+  assert.equal(b.actions.purchase,0);
+  b.map.get('journey-order-pay').handlers.get('click')?.();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(b.actions.purchase,1);
+});
+
+test('unpublished DNS stays hidden and cannot be selected on VPN-only catalogue',()=>{
+  const b=browser('https://mnebyvpn.site/#plans',false);
+  const dns=b.productButtons.find(b=>b.dataset.journeyProduct==='smart_dns');
+  assert.ok(dns);
+  assert.equal(dns.disabled,true);
+  assert.equal(dns.hidden,true);
+  assert.equal(b.map.get('journey-product-grid').hidden,true);
+  dns.handlers.get('click')?.();
+  assert.equal(b.state.product,'vpn');
 });
