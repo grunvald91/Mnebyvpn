@@ -501,6 +501,12 @@ export class PgBillingStore {
     if(!(typeof telegramUserId==='number' && Number.isSafeInteger(telegramUserId) && telegramUserId>0 ||
        typeof telegramUserId==='string' && uuid.test(telegramUserId)) ||
        !['vpn','smart_dns','bundle'].includes(product))throw new Error('Invalid trial request');
+    // Trials must not create unverified DNS entitlements on production either.
+    if(process.env.MNEBYVPN_ENV==='production' && product!=='vpn' &&
+       !paidSmartDnsCheckoutReady(process.env,true,
+          process.env.WEB_NETWORK_PROVISIONING_VERIFIED==='yes',
+          process.env.WEB_DNS_METERING_VERIFIED==='yes'))
+      return {status:'UNAVAILABLE'};
     if(deviceHash!==undefined&&!/^[a-f0-9]{64}$/.test(deviceHash))
       throw new Error('Invalid hashed browser trial claim');
     if(inviteToken!==undefined&&!/^[A-Za-z0-9_-]{16,24}$/.test(inviteToken))
