@@ -73,6 +73,12 @@ BEGIN
     WHERE entitlement_id=e AND period_index=0 AND used_queries=3)
   THEN RAISE EXCEPTION 'history was erased'; END IF;
 
+  SELECT rotate_personal_dns_credential(b,e,1,repeat('z',12),
+    encode(sha256(convert_to(repeat('z',12),'UTF8')),'hex')) INTO result;
+  IF result<>'DENY_INACTIVE' THEN
+    RAISE EXCEPTION 'another account rotated credential: %',result; END IF;
+  IF NOT recognize_personal_dns_credential(label1) THEN
+    RAISE EXCEPTION 'valid old credential not recognized'; END IF;
   -- Regeneration: old hostname stops immediately, quota never resets.
   SELECT rotate_personal_dns_credential(a,e,1,repeat('c',12),
     encode(sha256(convert_to(repeat('c',12),'UTF8')),'hex')) INTO result;
@@ -82,6 +88,8 @@ BEGIN
   IF result<>'DENY_STALE' THEN RAISE EXCEPTION 'stale rotation accepted: %',result; END IF;
   SELECT consume_personal_dns_query(label1) INTO result;
   IF result<>'DENY_UNKNOWN' THEN RAISE EXCEPTION 'old credential still works: %',result; END IF;
+  IF recognize_personal_dns_credential(label1) THEN
+    RAISE EXCEPTION 'old rotated identity still recognized'; END IF;
   SELECT consume_personal_dns_query(repeat('c',12)) INTO result;
   IF result<>'ALLOWED' THEN RAISE EXCEPTION 'replacement cannot use old quota: %',result; END IF;
   IF NOT EXISTS(SELECT 1 FROM personal_dns_query_status(e) AS status
