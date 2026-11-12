@@ -65,6 +65,19 @@ BEGIN
 END;
 $$;
 
+-- The standalone DoT ingress checks bearer existence before ALL queries,
+-- including ordinary/direct lookups. Unknown/rotated labels cannot use it as
+-- an open free recursive resolver. Known expired credentials can still receive
+-- ordinary DNS answers under the separate direct-only policy.
+CREATE FUNCTION recognize_personal_dns_credential(p_label text)
+RETURNS boolean LANGUAGE sql STABLE AS $$
+  SELECT p_label ~ '^[a-z0-9]{12}$' AND EXISTS(
+    SELECT 1 FROM personal_dns_credentials
+    WHERE token_sha256=encode(sha256(convert_to(p_label,'UTF8')),'hex')
+      AND revoked_at IS NULL
+  )
+$$;
+
 -- Run exactly once for each valid DNS message on an authenticated TLS
 -- connection (including cached answers if returned by the gateway).
 -- Lock entitlement before updating the counter; parallel sockets cannot
@@ -210,6 +223,7 @@ $$;
 
 REVOKE ALL ON FUNCTION issue_personal_dns_credential(uuid,text,text,bigint) FROM PUBLIC;
 REVOKE ALL ON FUNCTION consume_personal_dns_query(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION recognize_personal_dns_credential(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION revoke_personal_dns_credential(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION rotate_personal_dns_credential(uuid,uuid,bigint,text,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION personal_dns_query_status(uuid) FROM PUBLIC;
