@@ -250,6 +250,33 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       emailMounted:mount?.contains(form),
       emailVisible:panel&&!panel.classList.contains('hidden'),
       telegram:button?.getAttribute('aria-disabled'),
+      disabledTelegramHidden:button?.getAttribute('aria-disabled')==='true' &&
+        getComputedStyle(button).display==='none',
+      header:(()=>{
+        const inner=document.querySelector('.header-inner').getBoundingClientRect();
+        const group=document.querySelector('.header-actions').getBoundingClientRect();
+        const about=document.querySelector('.header-actions .about-trigger').getBoundingClientRect();
+        const account=document.querySelector('.header-actions .journey-header-account').getBoundingClientRect();
+        return {
+          adjacent:Math.abs(about.top-account.top)<3 &&
+            account.left-about.right>=0&&account.left-about.right<=12,
+          rightAligned:Math.abs(group.right-inner.right)<=12,
+          insideViewport:about.left>=0&&account.right<=innerWidth,
+        };
+      })(),
+      footer:(()=>{
+        const outer=document.querySelector('.footer').getBoundingClientRect();
+        const inner=document.querySelector('.footer-inner');
+        const links=document.querySelector('.footer-links').getBoundingClientRect();
+        return {
+          height:Math.round(outer.height),
+          innerHeight:Math.round(inner.getBoundingClientRect().height),
+          layout:getComputedStyle(inner).display,
+          centered:Math.abs((links.left+links.right)/2-innerWidth/2)<=15,
+          links:document.querySelectorAll('.footer-links a,.footer-links button').length,
+          overflow:outer.left<0||outer.right>innerWidth+1,
+        };
+      })(),
       telegramExplained:document.querySelector('.journey-telegram-method .journey-telegram-note')?.textContent,
       horizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
       trialTitle:document.querySelector('#journey-trial-title')?.textContent,
@@ -271,6 +298,10 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   console.log('TRIAL_AUTH_METRICS_'+width+'='+JSON.stringify({...trial,browserErrors}));
   if(!trial.emailMounted||!trial.emailVisible||!trial.telegramExplained?.includes('email')||
      trial.horizontalOverflow||browserErrors.length||trial.route!=='#try'||
+     !trial.disabledTelegramHidden||!trial.header.adjacent||!trial.header.rightAligned||
+     !trial.header.insideViewport||trial.footer.layout!=='flex'||
+     trial.footer.height>130||trial.footer.innerHeight>129||!trial.footer.centered||
+     trial.footer.links!==5||trial.footer.overflow||
      !trial.emailButton||Math.abs(trial.emailButton.centerDelta)>5||
      trial.emailButton.width<200||trial.emailButton.height>54||
      trial.emailButton.radius<20||trial.emailButton.leftRadius!==trial.emailButton.radius)failed=true;
