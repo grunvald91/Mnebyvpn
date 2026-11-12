@@ -5,7 +5,8 @@ import {
   parseGlobalDelegated64,
 } from '../packages/dns-policy/src/paid-ipv6-prefix.ts';
 import {
-  authorizeSniIngress,MeteredChunkGate,
+  authorizeSniIngress,MeteredChunkGate,MeteredDuplexGate,
+  MAX_METERED_INPUT_BYTES,MAX_METERED_QUEUED_BYTES,
   type TrustedEntitlement,type IngressAdmission,
 } from '../packages/dns-policy/src/paid-ingress-gate.ts';
 
@@ -185,4 +186,68 @@ test('stop during in-flight debit does not forward even a charged block',async()
 test('unadmitted and unknown credentials cannot construct a metered connection',()=>{
   const denied:IngressAdmission={admitted:false,reason:'NO_TRUSTED_ENTITLEMENT'};
   assert.throws(()=>new MeteredChunkGate(denied,{debit:async()=> 'ACCEPTED'},{send:async()=>{}}));
+});
+
+test('duplex traffic debits both client upload and origin download',async()=>{
+  const charged:number[]=[];
+  const forwarded:{direction:string;bytes:number}[]=[];
+  const backend={
+    debit:async (_id:string,_event:string,n:number)=>{
+      charged.push(n);
+      return 'ACCEPTED';
+    },
+  };
+  const flow=new MeteredDuplexGate(admit(),backend,
+    {send:async bytes=>{forwarded.push({direction:'origin',bytes:bytes.length});}},
+    {send:async bytes=>{forwarded.push({direction:'client',bytes:bytes.length});}});
+  await Promise.all([
+    flow.forwardToOrigin(new Uint8Array(11)),
+    flow.forwardToClient(new Uint8Array(19)),
+  ]);
+  assert.deepEqual(charged.sort((a,b)=>a-b),[11,19]);
+  assert.deepEqual(forwarded.sort((a,b)=>a.bytes-b.bytes),[
+    {direction:'origin',bytes:11},
+    {direction:'client',bytes:19},
+  ]);
+});
+
+test('one direction quota denial shuts down both directions',async()=>{
+  let forwarded=0;
+  const flow=new MeteredDuplexGate(admit(),{
+    debit:async (_id,_event,n)=>n>10?'DENY_QUOTA':'ACCEPTED',
+  },{
+    send:async bytes=>{forwarded+=bytes.length;},
+  },{
+    send:async bytes=>{forwarded+=bytes.length;},
+  });
+  await assert.rejects(()=>flow.forwardToClient(new Uint8Array(20)),/closed/);
+  await assert.rejects(()=>flow.forwardToOrigin(new Uint8Array(3)),/closed/);
+  assert.equal(forwarded,0);
+});
+
+test('oversized and queued streams are rejected before copying unbounded data',async()=>{
+  let release:((value:string)=>void)|undefined;
+  const gate=new MeteredChunkGate(admit(),{
+    debit:()=>new Promise<string>(resolve=>{release=resolve;}),
+  },{send:async()=>{throw new Error('must not send after buffer overload');}});
+  assert.ok(MAX_METERED_INPUT_BYTES<MAX_METERED_QUEUED_BYTES);
+  const pending:Array<Promise<void>>=[];
+  for(let i=0;i<MAX_METERED_QUEUED_BYTES/MAX_METERED_INPUT_BYTES;i++)
+    pending.push(gate.forward(new Uint8Array(MAX_METERED_INPUT_BYTES)));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(release);
+  await assert.rejects(
+    ()=>gate.forward(new Uint8Array(1)),
+    /buffer limit/,
+  );
+  release('ACCEPTED');
+  const results=await Promise.allSettled(pending);
+  assert.ok(results.every(x=>x.status==='rejected'));
+  const immediate=new MeteredChunkGate(admit(),{
+    debit:async()=>{throw new Error('must not reach DB');},
+  },{send:async()=>{throw new Error('must not forward');}});
+  await assert.rejects(
+    ()=>immediate.forward(new Uint8Array(MAX_METERED_INPUT_BYTES+1)),
+    /buffer limit/,
+  );
 });
