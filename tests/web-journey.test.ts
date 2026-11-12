@@ -27,6 +27,17 @@ test('storefront has exactly four tariff actions and preserves legacy APIs',()=>
   assert.match(index,/id="guest-trial-card"/);
   assert.match(index,/id="account"/);
 });
+test('trial screen groups header controls, compacts footer, and keeps VPN install gate',()=>{
+  assert.match(index,/class="header-actions"/);
+  assert.match(index,/id="journey-trial-auth"/);
+  assert.match(css,/data-journey-view="trial-auth"\] \.header-inner/);
+  assert.match(css,/data-journey-view="trial-auth"\] \.journey-trial-auth-card/);
+  assert.match(css,/not\(\[data-journey-view="plans"\]\) \.footer-inner/);
+  assert.match(css,/\.footer-links\{/);
+  assert.match(css,/#journey-trial-telegram\[aria-disabled="true"\]/);
+  assert.match(index,/id="journey-installed"/);
+  assert.match(journey,/el\('journey-installed'\)\.addEventListener/);
+});
 test('setup has all platform choices, installation gate and manual copy',()=>{
   for(const os of ['android','ios','windows','macos','linux'])
     assert.match(index,new RegExp('data-journey-platform="'+os+'"'));
