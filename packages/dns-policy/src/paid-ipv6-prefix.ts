@@ -93,3 +93,13 @@ export function ipv6PaidLaunchCandidate(
   // real quota enforcement and end-user tests still need independent evidence.
   return{candidate:reasons.length===0,reasons,productionCheckoutEnabled:false};
 }
+
+
+/** Subnet inclusion check only. Does not claim the subnet is routed. */
+export function isWithinDelegated64(destination:string,prefix:string):boolean{
+  try {
+    const routed=ipv6Words(parseGlobalDelegated64(prefix).slice(0,-3));
+    const candidate=ipv6Words(destination);
+    return routed.slice(0,4).every((word,i)=>word===candidate[i]);
+  } catch {return false;}
+}
