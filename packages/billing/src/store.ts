@@ -4,7 +4,7 @@ import { planWidgetKey } from '../../telegram-ui/src/widget-104.ts';
 import type { PaymentProvider, PricedPlan } from './channels.ts';
 import type { StarsOrder } from './stars.ts';
 import type { ProdamusOrder } from './prodamus.ts';
-import {paidSmartDnsCheckoutReady} from './dns-paid-release.ts';
+import {isDnsSalesEnabled} from './dns-paid-release.ts';
 
 export type Product = 'vpn' | 'smart_dns' | 'bundle';
 export interface OrderRecord {
@@ -134,12 +134,9 @@ export class PgBillingStore {
       if (existing.rowCount) {
         const r = await c.query(orderSQL,[existing.rows[0].order_id]);
         const order = mapOrder(r.rows[0]);
-        // Previously issued pending DNS checkout must not be replayed while
-        // paid ingress remains unverified, even with the same requestId.
+        // One centralized sales switch also applies to pending checkout retries.
         if (process.env.MNEBYVPN_ENV==='production' && order.product!=='vpn' &&
-            !paidSmartDnsCheckoutReady(process.env,true,
-              process.env.WEB_NETWORK_PROVISIONING_VERIFIED==='yes',
-              process.env.WEB_DNS_METERING_VERIFIED==='yes'))
+            !isDnsSalesEnabled(process.env))
           throw new Error('DNS_PAID_NOT_READY');
         if (order.planId !== planId ||
             ('accountId' in who ? order.accountId !== who.accountId : order.telegramUserId !== who.telegramUserId))
@@ -194,13 +191,9 @@ export class PgBillingStore {
       const plan = await c.query('SELECT * FROM billing_plans WHERE id=$1 AND enabled=true FOR SHARE',[planId]);
       if (!plan.rowCount) throw new Error('Plan not offered');
       const p = plan.rows[0];
-      // Production defence in depth for BOTH website and Telegram ordering.
-      // A published SQL plan is not evidence that per-customer DNS data-plane
-      // auth, IPv6 routing, expiry and quota are functional.
+      // Use the same explicit operator switch for website and Telegram.
       if (process.env.MNEBYVPN_ENV==='production' && p.product!=='vpn' &&
-          !paidSmartDnsCheckoutReady(process.env,true,
-            process.env.WEB_NETWORK_PROVISIONING_VERIFIED==='yes',
-            process.env.WEB_DNS_METERING_VERIFIED==='yes'))
+          !isDnsSalesEnabled(process.env))
         throw new Error('DNS_PAID_NOT_READY');
       if(expectedKey!==undefined && planWidgetKey(mapPlan(p))!==expectedKey)
         throw new Error('OFFER_CHANGED');
@@ -508,11 +501,9 @@ export class PgBillingStore {
     if(!(typeof telegramUserId==='number' && Number.isSafeInteger(telegramUserId) && telegramUserId>0 ||
        typeof telegramUserId==='string' && uuid.test(telegramUserId)) ||
        !['vpn','smart_dns','bundle'].includes(product))throw new Error('Invalid trial request');
-    // Trials must not create unverified DNS entitlements on production either.
+    // The same single operator sales switch governs DNS trials.
     if(process.env.MNEBYVPN_ENV==='production' && product!=='vpn' &&
-       !paidSmartDnsCheckoutReady(process.env,true,
-          process.env.WEB_NETWORK_PROVISIONING_VERIFIED==='yes',
-          process.env.WEB_DNS_METERING_VERIFIED==='yes'))
+       !isDnsSalesEnabled(process.env))
       return {status:'UNAVAILABLE'};
     if(deviceHash!==undefined&&!/^[a-f0-9]{64}$/.test(deviceHash))
       throw new Error('Invalid hashed browser trial claim');
