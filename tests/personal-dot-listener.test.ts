@@ -101,6 +101,21 @@ test('local TCP DNS resolver rejects same-ID reply for wrong domain',async()=>{
   }
 });
 
+test('two known certificate SANs never substitute for an actual wildcard SAN',()=>{
+  const limitedKeyFile=join(dir,'limited-key.pem');
+  const limitedCertFile=join(dir,'limited-cert.pem');
+  execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes',
+    '-keyout',limitedKeyFile,'-out',limitedCertFile,'-days','1',
+    '-subj','/CN=aaaaaaaaaaaa.dns.mnebyvpn.site',
+    '-addext','subjectAltName=DNS:aaaaaaaaaaaa.dns.mnebyvpn.site,DNS:bbbbbbbbbbbb.dns.mnebyvpn.site'],
+    {stdio:'ignore'});
+  assert.throws(()=>createPersonalDotListener({
+    key:readFileSync(limitedKeyFile),cert:readFileSync(limitedCertFile),
+    db:{} as Pick<Pool,'query'>,classify:()=> 'direct',
+    mapped:async()=>new Uint8Array(),direct:async()=>new Uint8Array(),
+  }),/wildcard SAN/);
+});
+
 test('listener refuses certificate not covering the customer wildcard',()=>{
   assert.throws(()=>createPersonalDotListener({
     key,cert:Buffer.from('not a certificate'),db:{} as Pick<Pool,'query'>,
