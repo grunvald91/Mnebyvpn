@@ -97,6 +97,30 @@ test('database outage cannot grant free SmartDNS mapping',async()=>{
   assert.deepEqual([...res],[8]);
 });
 
+test('classifier outage preserves ordinary DNS without premium mapping',async()=>{
+  let charged=false,mappedUsed=false;
+  const response=await resolvePersonalDnsMessage(host,query('claude.ai'),
+    async()=>{throw new Error('classifier unavailable');},
+    async()=>{charged=true;return 'ALLOWED';},
+    async()=>{mappedUsed=true;return Uint8Array.from([1]);},
+    async()=>Uint8Array.from([9]));
+  assert.deepEqual([...response],[9]);
+  assert.equal(charged,false);
+  assert.equal(mappedUsed,false);
+});
+
+test('mapped resolver failure preserves direct DNS after one paid debit',async()=>{
+  let charged=0,directCalls=0;
+  const response=await resolvePersonalDnsMessage(host,query('claude.ai'),
+    async()=> 'premium',
+    async()=>{charged++;return 'ALLOWED';},
+    async()=>{throw new Error('mapped upstream offline');},
+    async()=>{directCalls++;return Uint8Array.from([6]);});
+  assert.deepEqual([...response],[6]);
+  assert.equal(charged,1);
+  assert.equal(directCalls,1);
+});
+
 test('invalid DoT identity, DNS wire or non-authoritative classification cannot forward',async()=>{
   let calls=0;
   const classify=()=>{calls++;return 'premium' as const;};
