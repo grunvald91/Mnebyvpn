@@ -174,6 +174,8 @@ class MerchantTransport implements PayformLinkTransport {
 
 const html = await readFile(new URL('../public/index.html', import.meta.url));
 const landingArtHtml = await readFile(new URL('../public/landing-art.html', import.meta.url));
+const bg3Webm = await readFile(new URL('../public/bg3.webm', import.meta.url));
+const bg3Mp4 = await readFile(new URL('../public/bg3.mp4', import.meta.url));
 const termsHtml = await readFile(new URL('../public/terms.html',import.meta.url));
 const privacyHtml = await readFile(new URL('../public/privacy.html',import.meta.url));
 const css = await readFile(new URL('../public/site.css', import.meta.url));
@@ -197,7 +199,7 @@ const policy = [
 const landingArtPolicy = [
   "default-src 'none'", "script-src 'unsafe-inline'",
   "style-src 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src https://fonts.gstatic.com", "img-src 'self' data:",
+  "font-src https://fonts.gstatic.com", "img-src 'self' data:", "media-src 'self'",
   "base-uri 'none'", "form-action 'none'", "object-src 'none'",
   "frame-ancestors 'self'",
 ].join('; ');
@@ -554,6 +556,12 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === 'GET' && url.pathname === '/landing-art.html') {
     sendArt(res); return;
+  }
+  if (req.method === 'GET' && url.pathname === '/bg3.webm') {
+    send(res, 200, bg3Webm, 'video/webm'); return;
+  }
+  if (req.method === 'GET' && url.pathname === '/bg3.mp4') {
+    send(res, 200, bg3Mp4, 'video/mp4'); return;
   }
   if (req.method === 'GET' && (url.pathname === '/terms' || url.pathname === '/terms.html')) {
     send(res,200,termsHtml,'text/html; charset=utf-8');return;
