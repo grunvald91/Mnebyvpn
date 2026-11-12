@@ -71,8 +71,13 @@ test('only exact proxied A answers consume allowance; ordinary websites stay dir
 
 test('counter never overflows and fails on contradictory balance',()=>{
   const end=new Date('2027-01-01T00:00:00Z');
-  for(const [used,limit] of [[-1,10],[11,10],[0,-1],[Number.MAX_SAFE_INTEGER+1,1000000]]){
+  for(const [used,limit] of [[-1,10],[0,-1],[Number.MAX_SAFE_INTEGER+1,1000000]]){
     assert.throws(()=>queryQuotaView(used,limit,end));
   }
   assert.equal(queryQuotaView(0,1_000_000,end).remaining,1_000_000);
+  const afterRefund=queryQuotaView(1_000_001,1_000_000,end);
+  assert.equal(afterRefund.used,1_000_001);
+  assert.equal(afterRefund.remaining,0);
+  assert.equal(afterRefund.renewalAction,'renew_dns_package');
+  assert.equal(queryQuotaView(5,1_000_000,new Date('2020-01-01')).expired,true);
 });
