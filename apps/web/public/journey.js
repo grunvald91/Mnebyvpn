@@ -301,7 +301,7 @@
     const valid=typeof value==='string'&&safeSubscriptionUrl(value);
     el('journey-setup-controls').hidden=!valid;
     el('journey-setup-status').textContent=valid?
-      'Ваш VPN готов. Установите приложение и добавьте подписку.':
+      'Ваш VPN готов. Откройте подписку в приложении или сначала установите его.':
       'Проверяем активацию VPN на сервере. Если оплата прошла недавно, подключение может ещё подготавливаться.';
     if(!valid){
       el('journey-url').value='';
@@ -495,7 +495,7 @@
     setView('plans',true);
   });
   setup.querySelectorAll('[data-journey-platform]').forEach(btn=>btn.addEventListener('click',()=>setPlatform(btn.dataset.journeyPlatform)));
-    el('journey-copy').addEventListener('click',()=>void copyLink(el('journey-url').value));
+  el('journey-copy').addEventListener('click',()=>void copyLink(el('journey-url').value));
   // Following My VPN from the payment wizard deliberately exits result-only mode.
   document.querySelector('.journey-header-account')?.addEventListener('click',event=>{
     event.preventDefault();paymentLanding=false;setView('account',true);
