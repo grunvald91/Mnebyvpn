@@ -45,7 +45,7 @@ async function listen(server:Server):Promise<number>{
   return a.port;
 }
 async function dial(port:number):Promise<Socket>{
-  const socket=connect({host:'127.0.0.1',port});
+  const socket=connect({host:'127.0.0.1',port,allowHalfOpen:true});
   await once(socket,'connect');
   return socket;
 }
@@ -77,9 +77,9 @@ test('real loopback TCP echo is billed by PostgreSQL for BOTH payload directions
   const echo=createServer(s=>s.on('data',data=>{s.write(data);}));
   const echoPort=await listen(echo);
   const finished:Promise<RelayResult>[]=[];
-  const relay=createServer(async downstream=>{
+  const relay=createServer({allowHalfOpen:true},async downstream=>{
     downstream.pause();
-    const upstream=connect({host:'127.0.0.1',port:echoPort});
+    const upstream=connect({host:'127.0.0.1',port:echoPort,allowHalfOpen:true});
     try{
       await once(upstream,'connect');
       const session=runMeteredTcpRelay({
@@ -125,9 +125,9 @@ test('TCP transport stops on paid byte cap instead of forwarding the full buffer
   const echo=createServer(s=>s.on('data',data=>{s.write(data);}));
   const echoPort=await listen(echo);
   const finished:Promise<RelayResult>[]=[];
-  const relay=createServer(async downstream=>{
+  const relay=createServer({allowHalfOpen:true},async downstream=>{
     downstream.pause();
-    const upstream=connect({host:'127.0.0.1',port:echoPort});
+    const upstream=connect({host:'127.0.0.1',port:echoPort,allowHalfOpen:true});
     try{
       await once(upstream,'connect');
       const session=runMeteredTcpRelay({
@@ -171,9 +171,9 @@ test('SQL revocation cuts an already open TCP relay with no new payload billed',
   const echo=createServer(s=>s.on('data',data=>{s.write(data);}));
   const echoPort=await listen(echo);
   const results:Promise<RelayResult>[]=[];
-  const relay=createServer(async downstream=>{
+  const relay=createServer({allowHalfOpen:true},async downstream=>{
     downstream.pause();
-    const upstream=connect({host:'127.0.0.1',port:echoPort});
+    const upstream=connect({host:'127.0.0.1',port:echoPort,allowHalfOpen:true});
     try{
       await once(upstream,'connect');
       const session=runMeteredTcpRelay({
@@ -224,9 +224,9 @@ test('PostgreSQL outage fails closed before forwarding a single TCP payload byte
     reserve:async()=>{throw new Error('synthetic PostgreSQL unavailable');},
     settle:async()=>{throw new Error('synthetic PostgreSQL unavailable');},
   };
-  const relay=createServer(async downstream=>{
+  const relay=createServer({allowHalfOpen:true},async downstream=>{
     downstream.pause();
-    const upstream=connect({host:'127.0.0.1',port:echoPort});
+    const upstream=connect({host:'127.0.0.1',port:echoPort,allowHalfOpen:true});
     try{
       await once(upstream,'connect');
       const session=runMeteredTcpRelay({
@@ -264,9 +264,9 @@ test('PostgreSQL outage fails closed before forwarding a single TCP payload byte
 test('missing trusted identity closes loopback TCP without forwarding',async()=>{
   const echo=createServer(s=>s.on('data',data=>{s.write(data);}));
   const echoPort=await listen(echo);
-  const relay=createServer(async downstream=>{
+  const relay=createServer({allowHalfOpen:true},async downstream=>{
     downstream.pause();
-    const upstream=connect({host:'127.0.0.1',port:echoPort});
+    const upstream=connect({host:'127.0.0.1',port:echoPort,allowHalfOpen:true});
     try{
       await once(upstream,'connect');
       runMeteredTcpRelay({client:downstream,upstream,identity:null,quota});
