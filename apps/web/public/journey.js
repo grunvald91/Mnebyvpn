@@ -24,6 +24,14 @@
   };
   window.addEventListener('resize',sizeFront);
   sizeFront();
+  // The hidden storefront must not keep decoding video while the user
+  // navigates the native, much faster personal cabinet.
+  function syncVisual(){
+    if(!frontFrame?.contentWindow)return;
+    frontFrame.contentWindow.postMessage({
+      channel:frontChannel,type:'visual',active:view==='plans',
+    },location.origin);
+  }
   function syncFront(){
     if(!frontReady||!frontFrame?.contentWindow)return;
     frontFrame.contentWindow.postMessage({
@@ -43,7 +51,7 @@
     if(!frontFrame||event.source!==frontFrame.contentWindow||event.origin!==location.origin||
        event.data?.channel!==frontChannel)return;
     const msg=event.data;
-    if(msg.type==='ready'){frontReady=true;syncFront();return;}
+    if(msg.type==='ready'){frontReady=true;syncFront();syncVisual();return;}
     if(msg.type==='height'){
       const h=Number(msg.height);
       if(Number.isFinite(h)&&h>=380&&h<=2400){
@@ -84,6 +92,7 @@
     frontFrame.addEventListener('load',()=>{
       frontReady=true;
       syncFront();
+      syncVisual();
     });
     try {
       if(frontFrame.contentDocument?.readyState==='complete'){
@@ -144,6 +153,7 @@
     if(heading)heading.hidden=next!=='payment';
     if(next==='setup')updateSetup();
     if(next==='plans')syncFront();
+    syncVisual();
     window.scrollTo?.({top:0,behavior:'instant'});
   }
   // The same existing email OTP forms are used in both the cabinet and trial
