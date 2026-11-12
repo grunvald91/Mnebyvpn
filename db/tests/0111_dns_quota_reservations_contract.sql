@@ -155,14 +155,17 @@ BEGIN
   SELECT reserve_smart_dns_chunk(ent_b,'b-chunk-02',1) INTO outcome;
   IF outcome<>'DENY_INACTIVE' THEN RAISE EXCEPTION 'B expiry ignored: %',outcome; END IF;
   SELECT settle_smart_dns_chunk(ent_b,'b-chunk-01',100,100) INTO outcome;
-  IF outcome<>'DENY_INACTIVE' THEN
-    RAISE EXCEPTION 'B late settlement should require recovery: %',outcome;
+  IF outcome<>'LATE_RECORDED' THEN
+    RAISE EXCEPTION 'B late traffic was not audited: %',outcome;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM smart_dns_quota_reservations
      WHERE entitlement_id=ent_b AND reservation_id='b-chunk-01'
-       AND state='HELD') THEN RAISE EXCEPTION 'B failed settle lost its hold'; END IF;
-  -- Only a trusted caller that has *stopped* the socket may clear the hold.
-  SELECT settle_smart_dns_chunk(ent_b,'b-chunk-01',0,0) INTO outcome;
-  IF outcome<>'RELEASED' THEN RAISE EXCEPTION 'B explicit quiescent release: %',outcome; END IF;
+       AND state='SETTLED' AND upload_bytes=100 AND download_bytes=100)
+     OR NOT EXISTS (SELECT 1 FROM smart_dns_late_traffic
+       WHERE entitlement_id=ent_b AND reservation_id='b-chunk-01'
+         AND upload_bytes=100 AND download_bytes=100) THEN
+    RAISE EXCEPTION 'B late settlement missing immutable audit'; END IF;
+  SELECT settle_smart_dns_chunk(ent_b,'b-chunk-01',100,100) INTO outcome;
+  IF outcome<>'DUPLICATE' THEN RAISE EXCEPTION 'B late retry double-counted: %',outcome; END IF;
 END $$;
 ROLLBACK;
