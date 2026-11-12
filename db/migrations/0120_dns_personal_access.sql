@@ -35,7 +35,7 @@ SET search_path=pg_catalog,public,pg_temp
 AS $dns120$
 DECLARE
   v_ent entitlements%ROWTYPE;
-  v_now timestamptz:=clock_timestamp();
+  v_now timestamptz;
 BEGIN
   IF p_account IS NULL OR p_entitlement IS NULL OR p_rotate IS NULL OR
      p_token_sha256 IS NULL OR p_token_sha256 !~ '^[a-f0-9]{64}$'
@@ -44,6 +44,9 @@ BEGIN
     WHERE id=p_entitlement AND account_id=p_account AND product='smart_dns'
     FOR UPDATE;
   IF NOT FOUND THEN RETURN 'DENY_ACCOUNT'; END IF;
+  -- Calculate NOW *after* waiting for the row lock. A concurrent renewal
+  -- or expiry may commit while we are blocked acquiring this lock.
+  v_now:=clock_timestamp();
   IF v_ent.state<>'ACTIVE' OR v_ent.starts_at IS NULL
      OR v_ent.starts_at>v_now OR v_ent.expires_at IS NULL
      OR v_ent.expires_at<=v_now THEN RETURN 'DENY_INACTIVE'; END IF;
@@ -126,7 +129,7 @@ AS $dns120$
 DECLARE
   v_link dns_subscription_links%ROWTYPE;
   v_ent entitlements%ROWTYPE;
-  v_now timestamptz:=clock_timestamp();
+  v_now timestamptz;
 BEGIN
   IF p_token_sha256 IS NULL OR
      p_token_sha256 !~ '^[a-f0-9]{64}$'
@@ -137,6 +140,9 @@ BEGIN
   -- Entitlement lock serializes against refund, renewal and account revoke.
   SELECT * INTO v_ent FROM entitlements
     WHERE id=v_link.entitlement_id FOR UPDATE;
+  -- Do not authorize an already expired credential when a refund or renewal
+  -- transaction held the entitlement lock past the subscription deadline.
+  v_now:=clock_timestamp();
   IF NOT FOUND OR v_ent.product<>'smart_dns'
      OR v_ent.state<>'ACTIVE' OR v_ent.starts_at IS NULL
      OR v_ent.starts_at>v_now OR v_ent.expires_at IS NULL
