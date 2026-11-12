@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import {parsePersonalDoTHostname} from './personal-dot-identity.ts';
 
 /**
@@ -12,7 +13,7 @@ export interface DnsQuestion {
   dnsClass:number;
 }
 export type Classifier=(query:DnsQuestion)=>Promise<DnsRoute>|DnsRoute;
-export type DnsResolver=(wire:Uint8Array)=>Promise<Uint8Array>;
+export type DnsResolver=(wire:Uint8Array,signal?:AbortSignal)=>Promise<Uint8Array>;
 export type DnsUsageAuthorizer=(label:string)=>Promise<string>;
 
 const MAX_MESSAGE_SIZE=16384;
@@ -157,4 +158,61 @@ export async function resolvePersonalDnsMessage(
   }
   // Quota expired, refunded, unknown: no mapped answer.
   return direct(dnsWire);
+}
+
+
+export type DnsQueryReserve=(label:string,id:string)=>Promise<string>;
+export type DnsQueryFinish=(id:string,successful:boolean)=>Promise<string>;
+
+/** Quota is *settled* only after a verified mapped upstream response.
+ * Reserve blocks concurrent oversubscription; release on backend errors.
+ * The accounting metric is successful upstream DNS answers, not guaranteed
+ * delivery to the handset after TLS writes. Pending reservations expire in SQL.
+ */
+export async function resolvePersonalDnsWithSettlement(
+  tlsSni:string,dnsWire:Uint8Array,classify:Classifier,
+  reserve:DnsQueryReserve,finish:DnsQueryFinish,
+  mapped:DnsResolver,direct:DnsResolver,
+  signal?:AbortSignal,
+):Promise<Uint8Array>{
+  const label=parsePersonalDoTHostname(tlsSni);
+  if(!label)throw Error('Unknown DoT identity');
+  const question=parseDnsQuestion(dnsWire);
+  if(signal?.aborted)throw Error('DNS request aborted');
+  let route:DnsRoute;
+  try{route=await classify(question);}
+  catch{return direct(dnsWire,signal);}
+  if(route==='direct')return direct(dnsWire,signal);
+  if(route!=='premium')throw Error('Untrusted DNS route classification');
+  const id=randomUUID();
+  let status:string;
+  try{status=await reserve(label,id);}
+  catch{return direct(dnsWire,signal);}
+  if(status!=='RESERVED')return direct(dnsWire,signal);
+  let released=false;
+  const release=async()=>{
+    if(released)return;
+    released=true;
+    try{await finish(id,false);}catch{/* SQL expiry recovers abandoned holds */}
+  };
+  if(signal?.aborted){await release();throw Error('DNS request aborted');}
+  try{
+    const result=await mapped(dnsWire,signal);
+    if(signal?.aborted||!dnsResponseMatchesQuestion(dnsWire,result)){
+      await release();
+      if(signal?.aborted)throw Error('DNS request aborted');
+      return direct(dnsWire,signal);
+    }
+    // Do not send a paid mapping if a DB commit failed or the credential was
+    // rotated/revoked while this request was in flight.
+    const verdict=await finish(id,true);
+    released=true;
+    if(signal?.aborted)throw Error('DNS request aborted');
+    if(verdict==='SETTLED')return result;
+    return direct(dnsWire,signal);
+  }catch(err){
+    await release();
+    if(signal?.aborted)throw Error('DNS request aborted');
+    return direct(dnsWire,signal);
+  }
 }
