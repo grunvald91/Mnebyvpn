@@ -13,10 +13,10 @@ import {tmpdir} from 'node:os';
 import {isAbsolute,join} from 'node:path';
 
 const run=promisify(execFile);
-const dnsName=/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,24}$/;
+const dnsName=/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/;
 const profileId=/^[a-z][a-z0-9.-]{5,150}$/;
 const xml=(s:string):string=>{
-  if(s.length>1024||/[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]/.test(s))
+  if(s.length>1024||/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(s))
     throw Error('INVALID_PROFILE_TEXT');
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
