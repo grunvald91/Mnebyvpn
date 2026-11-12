@@ -7,7 +7,8 @@ import {connect as connectTcp} from 'node:net';
 import {createServer as createTlsServer,type Server as TlsServer} from 'node:tls';
 import type {Pool} from 'pg';
 import {
-  resolvePersonalDnsMessage,type Classifier,type DnsResolver,
+  resolvePersonalDnsMessage,dnsResponseMatchesQuestion,
+  type Classifier,type DnsResolver,
 } from './personal-dot-gateway-core.ts';
 import {parsePersonalDoTHostname} from './personal-dot-identity.ts';
 
@@ -60,8 +61,7 @@ export function queryLoopbackDnsTcp(
       if(received.length<size+2)return;
       const answer=received.subarray(2,size+2);
       const original=Buffer.from(query.buffer,query.byteOffset,query.byteLength);
-      if(received.length!==size+2||answer.readUInt16BE(0)!==original.readUInt16BE(0)||
-         (answer.readUInt16BE(2)&0x8000)===0){
+      if(received.length!==size+2||!dnsResponseMatchesQuestion(original,answer)){ 
         finish(Error('Unmatched or invalid DNS answer'));return;
       }
       finish(undefined,Buffer.from(answer));
@@ -132,8 +132,7 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
           if(closed)return;
           if(answer.byteLength<12||answer.byteLength>MAX_DNS){stop();return;}
           const output=Buffer.from(answer);
-          if((output.readUInt16BE(2)&0x8000)===0||
-             output.readUInt16BE(0)!==request.readUInt16BE(0)){
+          if(!dnsResponseMatchesQuestion(request,output)){
             stop();return;
           }
           const framed=Buffer.alloc(output.length+2);
