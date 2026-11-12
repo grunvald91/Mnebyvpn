@@ -5,6 +5,8 @@
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {Pool} from 'pg';
+import {queryVerifiedDotTls,type VerifiedDotUpstream}
+  from '../../../packages/dns-policy/src/verified-dot-upstream.ts';
 import {
   createPersonalDotListener,queryLoopbackDnsTcp,
 } from '../../../packages/dns-policy/src/personal-dot-listener.ts';
@@ -52,10 +54,27 @@ async function main():Promise<void>{
      process.env.MNEBYDNS_PERSONAL_DOT_GATEWAY!=='canary')
     throw Error('Production personal DNS ingress is not approved');
   const listenPort=port('MNEBYDNS_CANARY_PORT','8853');
+  const mode=process.env.MNEBYDNS_CANARY_UPSTREAM_MODE??'loopback';
+  if(!['loopback','verified-dot'].includes(mode))
+    throw Error('Unknown personal DNS canary upstream mode');
   const mappedPort=port('MNEBYDNS_CANARY_MAPPED_TCP_PORT','53');
   const directPort=port('MNEBYDNS_CANARY_DIRECT_TCP_PORT','5353');
   if(listenPort<1024||listenPort===mappedPort||listenPort===directPort||
      mappedPort===directPort)throw Error('Unsafe overlapping canary ports');
+  const dotConfig=(name:'MAPPED'|'DIRECT'):VerifiedDotUpstream=>({
+    address:required('MNEBYDNS_CANARY_'+name+'_DOT_IP'),
+    servername:required('MNEBYDNS_CANARY_'+name+'_DOT_TLS_NAME'),
+    port:port('MNEBYDNS_CANARY_'+name+'_DOT_PORT','853'),
+  });
+  let mappedDot:VerifiedDotUpstream|undefined,directDot:VerifiedDotUpstream|undefined;
+  if(mode==='verified-dot'){
+    if(process.env.MNEBYDNS_CANARY_VERIFIED_UPSTREAM_APPROVED!=='yes')
+      throw Error('External verified DoT upstream needs explicit canary approval');
+    mappedDot=dotConfig('MAPPED');
+    directDot=dotConfig('DIRECT');
+    if(mappedDot.address===directDot.address && mappedDot.port===directDot.port)
+      throw Error('Direct resolver must be independent of mapped CoreDNS');
+  }
   const classify=pinnedCanaryPolicy(
     readFileSync(required('MNEBYDNS_CANARY_ROUTE_POLICY_FILE')),
     required('MNEBYDNS_CANARY_ROUTE_POLICY_SHA256'),
@@ -70,9 +89,13 @@ async function main():Promise<void>{
     const server=createPersonalDotListener({
       key:readFileSync(required('MNEBYDNS_CANARY_TLS_KEY_FILE')),
       cert:readFileSync(required('MNEBYDNS_CANARY_TLS_CERT_FILE')),
-      db,classify,
-      mapped:(query,signal)=>queryLoopbackDnsTcp({host:'127.0.0.1',port:mappedPort},query,2000,signal),
-      direct:(query,signal)=>queryLoopbackDnsTcp({host:'127.0.0.1',port:directPort},query,2000,signal),
+      db,classify,queryTimeoutMs:mode==='verified-dot'?8500:2500,
+      mapped:(query,signal)=>mappedDot
+        ?queryVerifiedDotTls(mappedDot,query,7000,signal)
+        :queryLoopbackDnsTcp({host:'127.0.0.1',port:mappedPort},query,2000,signal),
+      direct:(query,signal)=>directDot
+        ?queryVerifiedDotTls(directDot,query,7000,signal)
+        :queryLoopbackDnsTcp({host:'127.0.0.1',port:directPort},query,2000,signal),
     });
     server.on('error',()=>{console.error('Private DNS canary listener failed');process.exitCode=1;});
     process.once('SIGTERM',()=>server.close(()=>{void db.end();}));
