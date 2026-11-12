@@ -152,24 +152,54 @@ function renderAccess(accesses) {
           : 'Срок начнётся после подтверждённой активации.';
     item.append(top,node('p','',accessDetail));
     if (a.product==='smart_dns') {
-      item.append(node('p','',a.quotaLimitBytes?
-        'Пакет DNS: '+fmtBytes(a.quotaLimitBytes):'DNS-квота пока не установлена'));
-      if (a.meteringVerified && a.quotaUsedBytes!==null && a.quotaRemainingBytes!==null) {
-        const used=safeBigInt(a.quotaUsedBytes),limit=safeBigInt(a.quotaLimitBytes);
-        const pct=(used!==null && limit!==null && limit>0n)?
-          Math.max(0,Math.min(100,Number(used*100n/limit))):0;
-        const box=node('div','usage');
-        const track=node('div','usage-track');
-        const fill=node('div','usage-fill');
-        fill.style.width=pct+'%';
-        track.append(fill);
-        const totals=node('div','usage-info');
-        totals.append(node('span','','Израсходовано: '+fmtBytes(a.quotaUsedBytes)),
-          node('span','','Осталось: '+fmtBytes(a.quotaRemainingBytes)));
-        box.append(track,totals);item.append(box);
-      } else {
-        item.append(node('div','usage-unavailable',
-          'Учёт расхода DNS пока не подтверждён. Использовано / осталось: нет достоверных данных.'));
+      item.append(node('p','',
+        'Учитываются DNS-запросы к поддерживаемым сервисам, а не просмотренные видео или гигабайты.'));
+      if(a.state==='ACTIVE' && a.secondsRemaining>0 && a.id){
+        const show=node('button','button button-secondary','Мой DNS и остаток запросов');
+        show.type='button';
+        const details=node('div','dns-personal-details');
+        show.addEventListener('click',async()=>{
+          show.disabled=true;
+          details.replaceChildren(node('p','','Проверяем персональную ссылку…'));
+          try{
+            const data=await api('/api/dns-personal?entitlementId='+encodeURIComponent(a.id));
+            details.replaceChildren();
+            const q=data.quota;
+            details.append(node('p','dns-personal-usage',
+              'Запросы: '+Number(q.used).toLocaleString('ru-RU')+' / '+
+              Number(q.limit).toLocaleString('ru-RU')+
+              ' · Осталось: '+Number(q.remaining).toLocaleString('ru-RU')));
+            for(const [caption,value] of [
+              ['Android · Частный DNS',data.dotHostname],
+              ['iPhone / Mac · персональный DoH',data.dohUrl],
+            ]){
+              const field=node('div','dns-personal-link');
+              field.append(node('strong','',caption));
+              const input=node('input','',undefined);
+              input.type='text';input.readOnly=true;input.value=value;
+              input.setAttribute('aria-label',caption);
+              const copy=node('button','button button-secondary','Копировать');
+              copy.type='button';
+              copy.addEventListener('click',async()=>{
+                try{
+                  if(navigator.clipboard)await navigator.clipboard.writeText(value);
+                  else{input.focus();input.select();}
+                }catch{input.focus();input.select();}
+              });
+              field.append(input,copy);details.append(field);
+            }
+            if(q.exhausted)details.append(node('p','dns-personal-usage',
+              'Лимит исчерпан. Продлите DNS-подписку, чтобы получить новый пакет запросов.'));
+            details.append(node('p','muted','Не публикуйте персональную ссылку: она служит вашим ключом доступа.'));
+          }catch{
+            details.replaceChildren(node('p','usage-unavailable',
+              'Персональная DNS-ссылка ещё не доступна. Проверяем подключение услуги.'));
+          }finally{show.disabled=false;}
+        });
+        item.append(show,details);
+      }else{
+        item.append(node('p','usage-unavailable',
+          'Персональный DNS станет доступен после подтверждения активации подписки.'));
       }
     }
     if(a.product==='vpn' &&

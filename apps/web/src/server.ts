@@ -10,6 +10,8 @@ import { Pool } from 'pg';
 import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
   from '../../../packages/support/src/telegram-relay.ts';
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
+import {PgPersonalDnsLinks,personalDnsSigningKey}
+  from '../../../packages/billing/src/personal-dns-store.ts';
 import {subscriptionOwner,subscriptionLink,issueSubscriptionLinkForAccount}
   from '../../../packages/provisioning/src/subscription-links.ts';
 import {
@@ -92,6 +94,11 @@ const billingPool=billingDbUrl
   ?new Pool({connectionString:billingDbUrl,max:4,connectionTimeoutMillis:3000})
   :pool;
 const store = new PgBillingStore(billingPool);
+// One required secret for deterministic personal URLs, not a sales/feature
+// flag. Do NOT expose any bearer URL without the owner's signed session.
+const personalDnsKey=personalDnsSigningKey();
+const personalDnsStore=personalDnsKey
+  ?new PgPersonalDnsLinks(billingPool,personalDnsKey):null;
 // Public website and Telegram bot have independent databases. Never silently
 // look up a Telegram subscription token in the public website's database.
 // Only subscription routes may use the private read connection to the bot DB.
@@ -818,6 +825,32 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   if (req.method === 'GET' && url.pathname === '/api/me') {
     const dashboard = await loadDashboard(authPool, auth.accountId, meteringVerified);
     json(res,200,{ ...dashboard, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
+  }
+  if(req.method==='GET'&&url.pathname==='/api/dns-personal'){
+    // The raw DNS credential is secret. Never cache or log its value.
+    res.setHeader('Cache-Control','no-store, private');
+    res.setHeader('Referrer-Policy','no-referrer');
+    res.setHeader('Vary','Cookie');
+    if(!personalDnsStore){
+      json(res,503,{code:'PERSONAL_DNS_NOT_AVAILABLE'});return;
+    }
+    const entitlementId=url.searchParams.get('entitlementId')??'';
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entitlementId)){
+      json(res,400,{code:'INVALID_DNS_PACKAGE'});return;
+    }
+    try{
+      const issued=await personalDnsStore.issueForAccount(auth.accountId,entitlementId);
+      json(res,200,{
+        dotHostname:issued.link.dotHostname,
+        dohUrl:issued.link.dohUrl,
+        quota:issued.quota,
+        countedMetric:'proxied_dns_queries',
+        disclaimer:'DNS-запросы, не HTTPS-подключения и не гигабайты',
+      });return;
+    }catch{
+      // Do not distinguish foreign account IDs from unavailable entitlements.
+      json(res,404,{code:'DNS_PACKAGE_NOT_AVAILABLE'});return;
+    }
   }
   if(req.method==='POST'&&url.pathname==='/api/referral-link'){
     if(!csrfAllowed(req,auth.raw)){json(res,403,{code:'FORBIDDEN'});return;}
