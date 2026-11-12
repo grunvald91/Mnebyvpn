@@ -42,6 +42,12 @@ BEGIN
   SELECT used_queries INTO used FROM personal_dns_query_windows
     WHERE entitlement_id=e AND period_index=0;
   IF used<>3 THEN RAISE EXCEPTION 'unexpected counter %',used; END IF;
+  IF NOT EXISTS(
+    SELECT 1 FROM personal_dns_query_status(e) AS status
+    WHERE status.access_status='QUOTA_EXHAUSTED'
+      AND status.used_queries=3 AND status.remaining_queries=0
+      AND status.allowed_queries=3 AND status.next_reset_at>clock_timestamp()
+  ) THEN RAISE EXCEPTION 'cabinet quota status incorrect at cap'; END IF;
 
   -- Existing 30-day bucket never zeroes on paid renewal (expiry extension).
   UPDATE entitlements SET expires_at=expires_at+interval '30 days' WHERE id=e;
