@@ -74,6 +74,41 @@ export function parseDnsQuestion(wire:Uint8Array):DnsQuestion{
   throw new Error('Too many DNS labels');
 }
 
+/** Confirm the upstream DNS reply echoes the exact question we sent.
+ * DNS IDs are only 16 bits: an ID match alone cannot validate a response.
+ * In a standard response the first question follows the 12-byte header.
+ * Compressed/ambiguous question names are intentionally refused here.
+ */
+export function dnsResponseMatchesQuestion(
+  query:Uint8Array,reply:Uint8Array,
+):boolean{
+  try{
+    if(!(reply instanceof Uint8Array)||reply.length<17||
+       reply.length>MAX_MESSAGE_SIZE)return false;
+    const sent=parseDnsQuestion(query);
+    const packet=Buffer.from(reply.buffer,reply.byteOffset,reply.byteLength);
+    const request=Buffer.from(query.buffer,query.byteOffset,query.byteLength);
+    if(packet.readUInt16BE(0)!==request.readUInt16BE(0)||
+       (packet.readUInt16BE(2)&0xF800)!==0x8000||
+       packet.readUInt16BE(4)!==1)return false;
+    let pos=12,terminated=false;
+    for(let i=0;i<127;i++){
+      if(pos>=packet.length)return false;
+      const length=packet[pos++];
+      if(length===0){terminated=true;break;}
+      if(length>63||pos+length>packet.length)return false;
+      pos+=length;
+    }
+    if(!terminated||pos+4>packet.length)return false;
+    const synthetic=Buffer.alloc(pos+4);
+    synthetic.writeUInt16BE(1,4);
+    packet.copy(synthetic,12,12,pos+4);
+    const echoed=parseDnsQuestion(synthetic);
+    return sent.name===echoed.name&&sent.type===echoed.type&&
+      sent.dnsClass===echoed.dnsClass;
+  }catch{return false;}
+}
+
 /**
  * After a customer's quota is used or a subscription is inactive,
  * fall back to trusted DIRECT upstream DNS, not to the SmartDNS-mapped
