@@ -82,6 +82,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     const art=inner.querySelector('.app');
     return{
       width:innerWidth,height:innerHeight,
+      frontTop:Math.round(frame.getBoundingClientRect().top),
       outerScrollHeight:document.documentElement.scrollHeight,
       outerCanScroll:document.documentElement.scrollHeight>innerHeight+2,
       headerSingleRow:(()=>{
@@ -119,7 +120,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     !metrics.iframeHasHeader||!metrics.iframeHasEarth||!metrics.iframeHasTariffs||
     !metrics.videoPresent||metrics.cardOpacity<0.99||
     !metrics.headerSingleRow||!metrics.topButtonsUnwrapped||!metrics.headerFits||
-    !metrics.legalSingleRow||
+    !metrics.legalSingleRow||metrics.frontTop>12||
     (width<=390&&(!metrics.footerVisible||metrics.outerCanScroll))||
     !metrics.trialVisible||metrics.selected!=='true'||
     metrics.frameWidth>480||metrics.frameWidth<Math.min(360,width)||
@@ -183,6 +184,61 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   if(!returned.home||!returned.emailRestored){
     console.error('TRIAL_AUTH_BACK_FAILED',JSON.stringify(returned));failed=true;
   }
+  await page.close();
+}
+
+/* Real Android regression: iframe may load before journey.js is available.
+ * Delaying the parent controller must NOT leave the tariff grid in 'loading'.
+ */
+{
+  const page=await browser.newPage({viewport:{width:360,height:740},
+    userAgent:'Mozilla/5.0 (Linux; Android 13; SM-N985F) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36'});
+  await page.route('**/journey.js',async route=>{
+    await new Promise(resolve=>setTimeout(resolve,1800));
+    await route.continue();
+  });
+  await page.goto(base,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>{
+    const doc=document.querySelector('#journey-front-frame')?.contentDocument;
+    return document.body.classList.contains('journey-active') &&
+      doc?.querySelector('.plan[data-d="30"] strong')?.textContent?.includes('₽') &&
+      !doc.querySelector('.cta')?.disabled;
+  },null,{timeout:15000});
+  const result=await page.evaluate(()=>{
+    const frame=document.querySelector('#journey-front-frame');
+    return {
+      top:Math.round(frame.getBoundingClientRect().top),
+      price:frame.contentDocument.querySelector('.plan[data-d="30"] strong').textContent,
+      button:frame.contentDocument.querySelector('.cta').textContent,
+      reloadVisible:!frame.contentDocument.querySelector('#front-retry').hidden,
+      error:frame.contentDocument.querySelector('#front-error').textContent,
+    };
+  });
+  console.log('ANDROID_SLOW_PARENT_HANDSHAKE='+JSON.stringify(result));
+  if(result.top>12||result.reloadVisible||!result.price.includes('₽')||result.error)failed=true;
+  await page.close();
+}
+// The tariff service can fail. Never leave the visual frame spinning forever.
+{
+  const page=await browser.newPage({viewport:{width:390,height:700}});
+  await page.route('**/api/plans',route=>route.fulfill({
+    status:503,contentType:'application/json',body:'{"code":"TEMP_UNAVAILABLE"}',
+  }));
+  await page.goto(base,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>{
+    const doc=document.querySelector('#journey-front-frame')?.contentDocument;
+    return doc?.querySelector('.cta')?.textContent==='Тариф пока недоступен';
+  },null,{timeout:15000});
+  const result=await page.evaluate(()=>{
+    const doc=document.querySelector('#journey-front-frame').contentDocument;
+    return {
+      loading:doc.querySelector('.cta').textContent.includes('Загрузка'),
+      retryVisible:!doc.querySelector('#front-retry').hidden,
+      purchaseDisabled:doc.querySelector('.cta').disabled,
+    };
+  });
+  console.log('CATALOG_FAILURE_FALLBACK='+JSON.stringify(result));
+  if(result.loading||!result.retryVisible||!result.purchaseDisabled)failed=true;
   await page.close();
 }
 // Verify the original owner video loads on normal connections and stays
