@@ -228,7 +228,7 @@ function sendBackgroundVideo(req: IncomingMessage, res: ServerResponse, data: Bu
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('Cross-Origin-Resource-Policy','same-origin');
   if(raw!==undefined) {
-    const match=/^bytes=(\\d*)-(\\d*)$/.exec(raw);
+    const match=/^bytes=(\d*)-(\d*)$/.exec(raw);
     let valid=Boolean(match&&(match[1]||match[2]));
     if(valid&&match) {
       if(match[1]) {
