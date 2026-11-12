@@ -106,10 +106,10 @@ test('CMS embedded DER signed profile verifies with a trusted test CA, tampering
     '-in',cliOut,'-out',join(dir,'operator-checked.plist'),'-CAfile',rootCert],
     {timeout:15000});
   assert.match((await readFile(join(dir,'operator-checked.plist'))).toString('utf8'),
-    /dns\\.mnebyvpn\\.site/);
+    /dns\.mnebyvpn\.site/);
   await assert.rejects(run(process.execPath,['--experimental-strip-types',
     'scripts/issue-ios-dns-profile.ts'],{env:cliEnv,timeout:15000}));
-    const altered=Buffer.from(signed);
+  const altered=Buffer.from(signed);
   altered[altered.length-15]^=1;
   await writeFile(signedFile,altered);
   await assert.rejects(run('openssl',['cms','-verify','-binary','-inform','DER',
