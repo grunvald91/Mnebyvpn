@@ -140,6 +140,12 @@ footer a:hover{color:#fff;text-shadow:0 0 12px var(--cy)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.rv{opacity:1;transform:none;filter:none}}
 
 /* Live-site bridge: server-authoritative plan prices and purchase state. */
+/* Original SVG neon arcs deliberately extend beyond their 941-unit canvas.
+   Clip them inside the scene to prevent mobile iframe horizontal scrolling. */
+html{overflow-x:clip}
+.app{overflow-x:clip}
+.scene{overflow:hidden}
+
 .mark{display:block;object-fit:cover;flex:none}
 .cta:disabled,.try:disabled{cursor:not-allowed;opacity:.72;animation:none;filter:saturate(.58)}
 .cta:disabled:hover,.try:disabled:hover{transform:none;box-shadow:0 0 12px rgba(60,160,255,.2)}
