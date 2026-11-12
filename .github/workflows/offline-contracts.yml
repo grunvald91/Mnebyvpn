@@ -112,9 +112,11 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0107_website_referral_permissions.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0108_dns_admin_domains.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0109_dns_admin_route_approval.sql >/dev/null
-          psql -v ON_ERROR_STOP=1 -f db/migrations/0111_smart_dns_routed_ipv6_gate.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0002_billing_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0003_ipv6_claims_contract.sql
+          # Exercise the original 0003 contract BEFORE replacing the
+          # allocation function with the routed-prefix check in migration 0111.
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0111_smart_dns_routed_ipv6_gate.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0005_outbox_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0007_trials_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0008_pricing_drafts_contract.sql
