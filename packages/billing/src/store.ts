@@ -134,6 +134,13 @@ export class PgBillingStore {
       if (existing.rowCount) {
         const r = await c.query(orderSQL,[existing.rows[0].order_id]);
         const order = mapOrder(r.rows[0]);
+        // Previously issued pending DNS checkout must not be replayed while
+        // paid ingress remains unverified, even with the same requestId.
+        if (process.env.MNEBYVPN_ENV==='production' && order.product!=='vpn' &&
+            !paidSmartDnsCheckoutReady(process.env,true,
+              process.env.WEB_NETWORK_PROVISIONING_VERIFIED==='yes',
+              process.env.WEB_DNS_METERING_VERIFIED==='yes'))
+          throw new Error('DNS_PAID_NOT_READY');
         if (order.planId !== planId ||
             ('accountId' in who ? order.accountId !== who.accountId : order.telegramUserId !== who.telegramUserId))
           throw new Error('Request key reused for another customer or plan');
