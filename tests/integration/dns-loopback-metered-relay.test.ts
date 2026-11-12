@@ -261,6 +261,98 @@ test('PostgreSQL outage fails closed before forwarding a single TCP payload byte
   }
 });
 
+test('TCP half-close drains a delayed server response after the client FIN',async()=>{
+  const identity=await paidSubscriber(4096);
+  const payload=Buffer.from('client sends FIN, then waits for response');
+  const response=Buffer.from('delayed response remains readable after FIN');
+  const echo=createServer({allowHalfOpen:true},s=>{
+    const received:Buffer[]=[];
+    s.on('data',(data:Buffer)=>received.push(data));
+    s.on('end',()=>{
+      assert.deepEqual(Buffer.concat(received),payload);
+      setTimeout(()=>s.end(response),35);
+    });
+  });
+  const echoPort=await listen(echo);
+  const finished:Promise<RelayResult>[]=[];
+  const relay=createServer({allowHalfOpen:true},async downstream=>{
+    downstream.pause();
+    const upstream=connect({host:'127.0.0.1',port:echoPort,allowHalfOpen:true});
+    try{
+      await once(upstream,'connect');
+      const session=runMeteredTcpRelay({
+        client:downstream,upstream,identity,quota,
+        maxChunkBytes:64,recheckMs:100,
+      });
+      finished.push(session.done);
+      downstream.resume();
+    }catch{downstream.destroy();upstream.destroy();}
+  });
+  const port=await listen(relay);
+  const client=await dial(port);
+  try{
+    const received=receive(client,response.length);
+    client.end(payload);
+    assert.deepEqual(await received,response);
+    if(!client.destroyed)await Promise.race([
+      once(client,'close'),
+      new Promise((_,reject)=>setTimeout(()=>reject(Error('FIN close timeout')),3000)),
+    ]);
+    const result=await finished[0];
+    assert.equal(result.stopReason,'peer-closed');
+    assert.equal(result.uploadBytes,payload.length);
+    assert.equal(result.downloadBytes,response.length);
+  }finally{
+    client.destroy();
+    await new Promise<void>(resolve=>relay.close(()=>resolve()));
+    await new Promise<void>(resolve=>echo.close(()=>resolve()));
+  }
+});
+
+test('a never-resolving quota backend is bounded by a relay watchdog',async()=>{
+  const identity=await paidSubscriber(4096);
+  let forwarded=0;
+  const echo=createServer(s=>s.on('data',(b:Buffer)=>{forwarded+=b.length;}));
+  const echoPort=await listen(echo);
+  const never:ChunkQuota={
+    active:()=>new Promise<boolean>(()=>{}),
+    reserve:()=>new Promise(()=>{}),
+    settle:()=>new Promise(()=>{}),
+  };
+  const finished:Promise<RelayResult>[]=[];
+  const relay=createServer({allowHalfOpen:true},async downstream=>{
+    downstream.pause();
+    const upstream=connect({host:'127.0.0.1',port:echoPort,allowHalfOpen:true});
+    try{
+      await once(upstream,'connect');
+      const session=runMeteredTcpRelay({
+        client:downstream,upstream,identity,quota:never,
+        maxChunkBytes:64,recheckMs:20,quotaTimeoutMs:100,
+      });
+      finished.push(session.done);
+      downstream.resume();
+    }catch{downstream.destroy();upstream.destroy();}
+  });
+  const port=await listen(relay);
+  const client=await dial(port);
+  try{
+    client.write(Buffer.alloc(400,0x3d));
+    await Promise.race([
+      once(client,'close'),
+      new Promise((_,reject)=>setTimeout(()=>reject(Error('DB hang was not cut')),1500)),
+    ]);
+    assert.equal(finished.length,1);
+    const result=await finished[0];
+    assert.equal(result.stopReason,'db-failure');
+    assert.equal(result.uploadBytes+result.downloadBytes,0);
+    assert.equal(forwarded,0);
+  }finally{
+    client.destroy();
+    await new Promise<void>(resolve=>relay.close(()=>resolve()));
+    await new Promise<void>(resolve=>echo.close(()=>resolve()));
+  }
+});
+
 test('missing trusted identity closes loopback TCP without forwarding',async()=>{
   const echo=createServer(s=>s.on('data',data=>{s.write(data);}));
   const echoPort=await listen(echo);
