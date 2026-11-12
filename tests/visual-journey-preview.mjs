@@ -58,62 +58,51 @@ for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
   const browserErrors=[];
   page.on('pageerror',error=>browserErrors.push(String(error.message).slice(0,250)));
-  await page.goto(base,{waitUntil:'networkidle'});
-  await page.waitForFunction(()=>document.body.classList.contains('journey-active')&&
-    document.querySelector('[data-journey-price="30"]')?.textContent!=='—');
+  await page.goto(base,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>{
+    const frame=document.querySelector('#journey-front-frame');
+    const btn=frame?.contentDocument?.querySelector('.plan[data-d="30"] strong');
+    return document.body.classList.contains('journey-active')&&btn&&btn.textContent!=='—'
+      && !frame?.contentDocument?.querySelector('.cta')?.disabled;
+  },{timeout:15000});
   const metrics=await page.evaluate(()=>{
-    const card=document.querySelector('.journey-checkout');
-    const intro=document.querySelector('.journey-intro');
-    const footer=document.querySelector('.footer');
-    const rect=x=>{const r=x.getBoundingClientRect();
-      return {top:Math.round(r.top),bottom:Math.round(r.bottom),height:Math.round(r.height)}};
+    const frame=document.querySelector('#journey-front-frame');
+    const inner=frame.contentDocument;
+    const art=inner.querySelector('.app');
     return{
       width:innerWidth,height:innerHeight,
-      documentHeight:document.documentElement.scrollHeight,
-      bodyHeight:document.body.scrollHeight,
       horizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
-      scrollExtra:document.documentElement.scrollHeight-innerHeight,
-      card:rect(card),intro:rect(intro),footer:rect(footer),
-      cardToFooterGap:Math.round(footer.getBoundingClientRect().top-card.getBoundingClientRect().bottom),
-      desktopDarkDisk:innerWidth>700&&getComputedStyle(intro,'::before').display!=='none',
-      selected:document.querySelector('[data-journey-days="30"]')?.getAttribute('aria-pressed'),
-      globeNaturalWidth:document.querySelector('.journey-world-image')?.naturalWidth||0,
-      globeDisplayWidth:Math.round(document.querySelector('.journey-world-image')?.getBoundingClientRect().width||0),
-      upperOrbitVisible:!!document.querySelector('.journey-world-orbit--upper')&&
-        getComputedStyle(document.querySelector('.journey-world-orbit--upper')).display==='block',
-      lowerOrbitVisible:!!document.querySelector('.journey-world-orbit--lower')&&
-        getComputedStyle(document.querySelector('.journey-world-orbit--lower')).display==='block',
-      cleanOrbitInteriors:['.journey-world-orbit--upper','.journey-world-orbit--lower']
-        .every(selector=>getComputedStyle(document.querySelector(selector)).backgroundImage==='none'),
-      tariffHeight:Math.round(document.querySelector('[data-journey-days="15"]').getBoundingClientRect().height),
-      buyButtonHeight:Math.round(document.querySelector('#journey-buy').getBoundingClientRect().height),
-      haloRendered:!!document.querySelector('.journey-world-halo')&&
-        getComputedStyle(document.querySelector('.journey-world-halo')).display==='block'&&
-        document.querySelector('.journey-world-halo').getBoundingClientRect().width>350,
-      globeLoaded:!!(document.querySelector('.journey-world-image')?.complete &&
-        document.querySelector('.journey-world-image')?.naturalWidth>=700),
-      schematicGlobePresent:!!document.querySelector('.journey-world-backdrop svg'),
-      isJourney:document.body.classList.contains('journey-active'),
+      frameWidth:Math.round(frame.getBoundingClientRect().width),
+      frameHeight:Math.round(frame.getBoundingClientRect().height),
+      artBottom:Math.round(art.getBoundingClientRect().bottom),
+      innerHorizontalOverflow:inner.documentElement.scrollWidth>frame.contentWindow.innerWidth+1,
+      iframeHasHeader:Boolean(inner.querySelector('.top .brand')),
+      iframeHasEarth:Boolean(inner.querySelector('.kb')),
+      iframeHasTariffs:inner.querySelectorAll('.plan').length===4,
+      price:inner.querySelector('.plan[data-d="30"] strong').textContent,
+      selected:inner.querySelector('.plan[data-d="15"]').getAttribute('aria-pressed'),
+      buyText:inner.querySelector('.cta').textContent,
+      trialVisible:getComputedStyle(inner.querySelector('.free')).display!=='none',
     };
   });
   const file=process.env.RUNNER_TEMP+'/mnebyvpn-'+width+'x'+height+'.jpg';
-  await page.screenshot({path:file,type:'jpeg',quality:72,fullPage:true});
+  await page.screenshot({path:file,type:'jpeg',quality:72,fullPage:true,timeout:20000});
   console.log('VISUAL_METRICS_'+width+'='+JSON.stringify({...metrics,browserErrors}));
-  if(metrics.scrollExtra>2||metrics.horizontalOverflow||browserErrors.length||
-    !metrics.globeLoaded||!metrics.haloRendered||!metrics.upperOrbitVisible||!metrics.lowerOrbitVisible||
-    !metrics.cleanOrbitInteriors||
-    metrics.globeNaturalWidth!==780||metrics.schematicGlobePresent||metrics.desktopDarkDisk||
-    (width<=390 && (metrics.globeDisplayWidth<width*1.02||metrics.globeDisplayWidth>width*1.15||
-      metrics.tariffHeight>64||metrics.buyButtonHeight>54))||
-    (width<=390 && (metrics.cardToFooterGap<0||metrics.cardToFooterGap>50)))failed=true;
+  if(metrics.horizontalOverflow||metrics.innerHorizontalOverflow||browserErrors.length||
+    !metrics.iframeHasHeader||!metrics.iframeHasEarth||!metrics.iframeHasTariffs||
+    !metrics.trialVisible||metrics.selected!=='true'||
+    metrics.frameWidth>480||metrics.frameWidth<Math.min(360,width)||
+    Math.abs(metrics.frameHeight-metrics.artBottom)>28||
+    !metrics.price.includes('₽'))failed=true;
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('VISUAL_JPEG_'+width+'_BEGIN');
     console.log(readFileSync(file).toString('base64'));
     console.log('VISUAL_JPEG_'+width+'_END');
   }
-  // Auth is a real separate client-side page. Click through the displayed
-  // trial CTA and assert the exact EXISTING OTP form has moved there.
-  await page.locator('#journey-trial').click();
+  // The uploaded visible CTA must lead to the existing email OTP flow.
+  await page.frameLocator('#journey-front-frame').locator('.plan[data-d="30"]').click();
+  await page.waitForFunction(()=>document.querySelector('#journey-summary')?.textContent?.includes('30 дней'));
+  await page.frameLocator('#journey-front-frame').locator('.try').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='trial-auth');
   const trial=await page.evaluate(()=>{
     const form=document.querySelector('#email-start-form');
@@ -137,19 +126,15 @@ for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
           centerDelta:Math.round((rect.left+rect.width/2)-(input.left+input.width/2)),
           radius:parseFloat(getComputedStyle(button).borderTopRightRadius),
           leftRadius:parseFloat(getComputedStyle(button).borderTopLeftRadius),
-          background:getComputedStyle(button).backgroundImage,
         }:null;
       })(),
-      pageErrors:[],
-
     };
   });
-  trial.pageErrors=browserErrors;
   const authImage=process.env.RUNNER_TEMP+'/mnebyvpn-trial-auth-'+width+'x'+height+'.jpg';
-  await page.screenshot({path:authImage,type:'jpeg',quality:72,fullPage:true});
-  console.log('TRIAL_AUTH_METRICS_'+width+'='+JSON.stringify(trial));
+  await page.screenshot({path:authImage,type:'jpeg',quality:72,fullPage:true,timeout:20000});
+  console.log('TRIAL_AUTH_METRICS_'+width+'='+JSON.stringify({...trial,browserErrors}));
   if(!trial.emailMounted||!trial.emailVisible||!trial.telegramExplained?.includes('email')||
-     trial.horizontalOverflow||trial.pageErrors.length||trial.route!=='#try'||
+     trial.horizontalOverflow||browserErrors.length||trial.route!=='#try'||
      !trial.emailButton||Math.abs(trial.emailButton.centerDelta)>5||
      trial.emailButton.width<200||trial.emailButton.height>54||
      trial.emailButton.radius<20||trial.emailButton.leftRadius!==trial.emailButton.radius)failed=true;
@@ -188,7 +173,7 @@ for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
   await page.goto(base,{waitUntil:'networkidle'});
   await page.waitForFunction(()=>document.body.classList.contains('journey-active')&&
     !document.querySelector('#journey-buy').disabled);
-  await page.locator('#journey-buy').click();
+  await page.frameLocator('#journey-front-frame').locator('.cta').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='checkout');
   const order=await page.evaluate(()=>({
     route:location.hash,
@@ -246,7 +231,7 @@ for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
   await page.goto(base,{waitUntil:'networkidle'});
   await page.waitForFunction(()=>document.body.classList.contains('journey-active')&&
     !document.querySelector('#journey-trial').disabled);
-  await page.locator('#journey-trial').click();
+  await page.frameLocator('#journey-front-frame').locator('.try').click();
   if(trialCalls!==0)failed=true;
   await page.locator('#email-input').fill('visual-test@example.com');
   await page.locator('#email-send-button').click();

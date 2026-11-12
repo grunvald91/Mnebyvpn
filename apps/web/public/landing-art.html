@@ -140,11 +140,18 @@ footer a:hover{color:#fff;text-shadow:0 0 12px var(--cy)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.rv{opacity:1;transform:none;filter:none}}
 
 /* Live-site bridge: server-authoritative plan prices and purchase state. */
+/* Original SVG neon arcs deliberately extend beyond their 941-unit canvas.
+   Clip them inside the scene to prevent mobile iframe horizontal scrolling. */
+html{overflow-x:clip}
+.app{overflow-x:clip}
+.scene{overflow:hidden}
+
 .mark{display:block;object-fit:cover;flex:none}
 .cta:disabled,.try:disabled{cursor:not-allowed;opacity:.72;animation:none;filter:saturate(.58)}
 .cta:disabled:hover,.try:disabled:hover{transform:none;box-shadow:0 0 12px rgba(60,160,255,.2)}
 .plan:disabled{cursor:not-allowed;opacity:.48}
 .plan:disabled:hover{transform:none;box-shadow:none}
+.free[hidden]{display:none!important}
 .front-error{font-size:12px;line-height:1.4;color:#ffc1d1;text-align:center;margin:10px 0 0}
 </style>
 </head>
@@ -269,7 +276,7 @@ const rs=()=>{W=cv.width=innerWidth;H=cv.height=innerHeight};rs();addEventListen
   const error=document.getElementById('front-error');
   const selections=[...document.querySelectorAll('.plan[data-d]')];
   let currentDays=15,ready=false;
-  const resize=()=>send('height',{height:Math.ceil(document.documentElement.scrollHeight)});
+  const resize=()=>send('height',{height:Math.ceil(document.querySelector('.app').getBoundingClientRect().bottom+8)});
   const showSummary=()=>{
     const selected=selections.find(b=>Number(b.dataset.d)===currentDays);
     if(selected&&!selected.disabled&&selected.dataset.p!=='—')
@@ -302,6 +309,7 @@ const rs=()=>{W=cv.width=innerWidth;H=cv.height=innerHeight};rs();addEventListen
   selections.forEach(el=>el.addEventListener('click',()=>send('select',{days:Number(el.dataset.d)})));
   button.addEventListener('click',()=>{if(!button.disabled)send('buy')});
   trial.addEventListener('click',()=>{if(!trial.disabled)send('trial')});
+  document.querySelector('.logo')?.addEventListener('click',e=>{e.preventDefault();send('plans')});
   document.querySelector('a[href="#about"]')?.addEventListener('click',e=>{e.preventDefault();send('about')});
   document.querySelector('a[href="#account"]')?.addEventListener('click',e=>{e.preventDefault();send('account')});
   document.querySelector('a[href="#roadmap"]')?.addEventListener('click',e=>{e.preventDefault();send('roadmap')});

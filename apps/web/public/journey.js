@@ -10,6 +10,58 @@
   if(!landing||!setup||typeof state==='undefined')return;
   const allViews=new Set(['plans','account','checkout','payment','setup','support','trial-auth']);
   let view='plans', lastAccount=null, chosenPlatform='android', installed=false;
+  const frontFrame=el('journey-front-frame');
+  const frontChannel='mnebyvpn-front-v1';
+  let frontReady=false;
+  function syncFront(){
+    if(!frontReady||!frontFrame?.contentWindow)return;
+    frontFrame.contentWindow.postMessage({
+      channel:frontChannel,type:'sync',days:state.days,
+      offers:[15,30,60,90].map(days=>{
+        const plan=state.plans.find(p=>p.product==='vpn'&&p.durationDays===days);
+        return {days,available:Boolean(plan),price:plan?.rubMinor?formatMoney(plan.rubMinor):'—'};
+      }),
+      buyDisabled:Boolean(el('journey-buy').disabled),
+      buyText:el('journey-buy').textContent||'Оплата пока недоступна',
+      trialAvailable:state.trialOffers.includes('vpn'),
+      trialDisabled:Boolean(el('journey-trial').disabled),
+      error:el('journey-error').textContent||'',
+    },location.origin);
+  }
+  window.addEventListener('message',event=>{
+    if(!frontFrame||event.source!==frontFrame.contentWindow||event.origin!==location.origin||
+       event.data?.channel!==frontChannel)return;
+    const msg=event.data;
+    if(msg.type==='ready'){frontReady=true;syncFront();return;}
+    if(msg.type==='height'){
+      const h=Number(msg.height);
+      if(Number.isFinite(h)&&h>=540&&h<=1600)frontFrame.style.height=Math.ceil(h)+'px';
+      return;
+    }
+    if(!frontReady)return;
+    if(msg.type==='plans'){paymentLanding=false;setView('plans',true);return;}
+    if(msg.type==='about'){
+      document.querySelector('[data-about-open="about"]')?.click();return;
+    }
+    if(msg.type==='roadmap'){
+      document.querySelector('[data-about-open="roadmap"]')?.click();return;
+    }
+    if(msg.type==='account'){paymentLanding=false;setView('account',true);return;}
+    if(msg.type==='support'){paymentLanding=false;setView('support',true);return;}
+    if(view!=='plans')return;
+    if(msg.type==='select'){
+      const days=Number(msg.days);
+      if([15,30,60,90].includes(days)&&state.plans.some(p=>p.product==='vpn'&&p.durationDays===days))
+        setSelection('vpn',days);
+      syncFront();return;
+    }
+    if(msg.type==='buy'){
+      if(!el('journey-buy').disabled)el('journey-buy').click();
+      return;
+    }
+    if(msg.type==='trial'&&!el('journey-trial').disabled)
+      el('journey-trial').click();
+  });
   const autoSetupOrders=new Set();
   const lastSetupAttempt=new Map();
   const request=new URL(location.href);
@@ -61,6 +113,7 @@
     const heading=el('journey-payment-heading');
     if(heading)heading.hidden=next!=='payment';
     if(next==='setup')updateSetup();
+    if(next==='plans')syncFront();
     window.scrollTo?.({top:0,behavior:'instant'});
   }
   // The same existing email OTP forms are used in both the cabinet and trial
@@ -116,6 +169,7 @@
     el('journey-summary').textContent=plan?'VPN · '+state.days+' дней · '+priceFor(state.days):
       'Выбранный тариф пока не опубликован';
     el('journey-error').textContent=el('checkout-error').textContent||'';
+    syncFront();
   }
   function updateOrder(){
     const plan=state.plans.find(p=>p.product==='vpn'&&p.durationDays===state.days);
