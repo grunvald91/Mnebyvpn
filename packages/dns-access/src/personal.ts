@@ -125,12 +125,20 @@ export async function personalDnsAccessStatuses(
  * connections towards the SNI passthrough proxy.
  */
 export async function authorizePersonalDnsQuery(
-  db:Pick<Pool,'query'>,token:string,
+  db:Pick<Pool,'query'>,token:string,timeoutMs=1500,
 ):Promise<boolean>{
-  if(!TOKEN.test(token))return false;
+  if(!TOKEN.test(token)||!Number.isSafeInteger(timeoutMs)||
+     timeoutMs<50||timeoutMs>5000)return false;
+  let watchdog:NodeJS.Timeout|undefined;
   try{
-    const {rows}=await db.query(
-      'SELECT dns_authorize_and_count_query($1::text) AS status',[digest(token)]);
-    return rows[0]?.status==='AUTHORIZED';
+    const result=await Promise.race([
+      db.query(
+        'SELECT dns_authorize_and_count_query($1::text) AS status',[digest(token)]),
+      new Promise<never>((_,reject)=>{
+        watchdog=setTimeout(()=>reject(Error('DNS authorization timeout')),timeoutMs);
+      }),
+    ]);
+    return result.rows[0]?.status==='AUTHORIZED';
   }catch{return false;}
+  finally{if(watchdog)clearTimeout(watchdog);}
 }
