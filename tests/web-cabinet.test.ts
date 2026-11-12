@@ -117,7 +117,7 @@ test('web cabinet reserves OIDC login for explicit BotFather integration',async(
   assert.match(ui,/cabinet-login-link/);
 });
 
-test('mobile VPN purchase is compact and unlaunched features are clearly unavailable',async()=>{
+test('mobile purchase is compact and DNS offers follow published catalogue',async()=>{
   const {readFileSync}=await import('node:fs');
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
   const css=readFileSync(new URL('../apps/web/public/site.css',import.meta.url),'utf8');
@@ -152,8 +152,8 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
   assert.doesNotMatch(html,/Не входит/);
   assert.doesNotMatch(client,/Перейти к оплате →|Не входит/);
   assert.match(css,/\.hero-art,\.hero-actions,\.hero-notes,\.features\{display:none\}/);
-  assert.match(client,/const inDevelopment=state\.product!=='vpn'/);
-  assert.match(client,/if\(state\.product!=='vpn'\|\|!plan/);
+  assert.doesNotMatch(client,/const inDevelopment=state\.product!=='vpn'/);
+  assert.doesNotMatch(client,/if\(state\.product!=='vpn'\|\|!plan/);
   assert.match(client,/Способ оплаты выбирается на защищённой странице/);
 });
 
