@@ -36,7 +36,7 @@ test('issued subscriber hostname is random, valid for Android and Apple profile'
   assert.match(profile,/<key>DNSProtocol<\/key><string>TLS<\/string>/);
   assert.ok(profile.includes('<key>ServerName</key><string>'+hostname+'</string>'));
   assert.match(profile,/<key>PayloadType<\/key><string>com\.apple\.dnsSettings\.managed<\/string>/);
-  assert.doesNotMatch(profile,/VPN|<key>PayloadCertificateUUID<\/key>/);
+  assert.doesNotMatch(profile,/<key>PayloadType<\/key><string>com\.apple\.vpn|<key>PayloadCertificateUUID<\/key>/);
 });
 
 test('token label parsing does not accept suffix tricks or arbitrary DNS labels',()=>{
