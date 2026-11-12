@@ -24,27 +24,36 @@ BEGIN
   IF v<>'APPLIED' THEN RAISE EXCEPTION 'payment B: %',v; END IF;
   SELECT id INTO entitlement_a FROM entitlements WHERE source_order_id=order_a;
   SELECT id INTO entitlement_b FROM entitlements WHERE source_order_id=order_b;
-  SELECT claim_smart_dns_ipv6(entitlement_a,'2001:db8::a'::inet) INTO v;
+  -- This is a DISPOSABLE test database, not a real routed IPv6 allocation.
+  SELECT claim_smart_dns_ipv6(entitlement_a,'2a03:1234:5678:abcd::a'::inet) INTO v;
+  IF v<>'DENY_PREFIX_NOT_VERIFIED' THEN
+    RAISE EXCEPTION 'Must reject unrouted IPv6: %',v;
+  END IF;
+  INSERT INTO smart_dns_routed_prefixes(
+    network,approved_for_existing_foreign_vps,
+    provider_confirmed_at,public_reachability_verified_at
+  ) VALUES('2a03:1234:5678:abcd::/64',true,clock_timestamp(),clock_timestamp());
+  SELECT claim_smart_dns_ipv6(entitlement_a,'2a03:1234:5678:abcd::a'::inet) INTO v;
   IF v<>'BOUND' THEN RAISE EXCEPTION 'A claim: %',v; END IF;
-  SELECT claim_smart_dns_ipv6(entitlement_b,'2001:db8::b'::inet) INTO v;
+  SELECT claim_smart_dns_ipv6(entitlement_b,'2a03:1234:5678:abcd::b'::inet) INTO v;
   IF v<>'BOUND' THEN RAISE EXCEPTION 'B claim: %',v; END IF;
-  SELECT claim_smart_dns_ipv6(entitlement_b,'2001:db8::a'::inet) INTO v;
+  SELECT claim_smart_dns_ipv6(entitlement_b,'2a03:1234:5678:abcd::a'::inet) INTO v;
   IF v<>'DENY_ALREADY_CLAIMED' THEN RAISE EXCEPTION 'B attempt second claim: %',v; END IF;
   IF NOT retire_smart_dns_ipv6(entitlement_a) THEN RAISE EXCEPTION 'retire A failed'; END IF;
   SELECT settle_verified_payment(order_c,'mock','event3','tx3',repeat('c',64),
                                  10000,'RUB',3600,1000) INTO v;
   IF v<>'APPLIED' THEN RAISE EXCEPTION 'payment C: %',v; END IF;
   SELECT id INTO entitlement_c FROM entitlements WHERE source_order_id=order_c;
-  SELECT claim_smart_dns_ipv6(entitlement_c,'2001:db8::a'::inet) INTO v;
+  SELECT claim_smart_dns_ipv6(entitlement_c,'2a03:1234:5678:abcd::a'::inet) INTO v;
   IF v<>'DENY_ADDRESS_RESERVED' THEN RAISE EXCEPTION 'reused retired IP: %',v; END IF;
 
-  SELECT claim_smart_dns_ipv6(entitlement_a,'2001:db8::a'::inet) INTO v;
+  SELECT claim_smart_dns_ipv6(entitlement_a,'2a03:1234:5678:abcd::a'::inet) INTO v;
   IF v<>'DENY_ALREADY_CLAIMED' THEN RAISE EXCEPTION 'revived retired IP: %',v; END IF;
   -- New subscription is not allowed to acquire an address held by a tombstone.
   UPDATE entitlements SET state='EXPIRED',revision=revision+1 WHERE id=entitlement_b;
   -- Only B is expired. IP of A remains reserved, unique and attached to A.
   IF NOT EXISTS (SELECT 1 FROM smart_dns_ipv6_claims
-       WHERE destination_ipv6='2001:db8::a'::inet AND entitlement_id=entitlement_a
+       WHERE destination_ipv6='2a03:1234:5678:abcd::a'::inet AND entitlement_id=entitlement_a
          AND retired_at IS NOT NULL) THEN
     RAISE EXCEPTION 'missing permanent tombstone';
   END IF;
