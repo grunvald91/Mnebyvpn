@@ -8,6 +8,8 @@ const state = {
   telegramLoginEnabled:false,emailLoginEnabled:false,emailLinkMode:false,
   trialStatus:'NONE',guestSubscriptionUrl:null,setupLoading:false,
   purchaseIntent:null,
+  dnsAccessEnabled:false,dnsStatuses:[],dnsCredentials:{},
+  lastAccesses:[],dnsSessionEpoch:0,
 };
 const productNames = { vpn:'VPN', smart_dns:'Smart DNS', bundle:'VPN + Smart DNS' };
 const stateNames = {
@@ -128,6 +130,119 @@ function statusLabel(access) {
   if(access.state==='ACTIVE' && access.secondsRemaining===0) return 'Истёк';
   return stateNames[access.state] || access.state;
 }
+function dnsStatusFor(entitlementId){
+  return state.dnsStatuses.find(x=>x.entitlementId===entitlementId);
+}
+function renderPersonalDnsAccess(item,access){
+  const info=dnsStatusFor(access.id);
+  const active=access.state==='ACTIVE'&&access.secondsRemaining>0;
+  if(info){
+    const label=info.authorizedQueries||'0';
+    item.append(node('p','dns-personal-stat','DNS-запросов по текущему ключу: '+label+
+      ' · '+(info.status==='ACTIVE'?'Подключение активно':info.status==='NOT_ISSUED'?
+        'Ключ ещё не выдан':'Сейчас не активно')));
+  }else{
+    item.append(node('p','dns-personal-stat','DNS-подписка по сроку действия.'));
+  }
+  const wrap=node('div','dns-personal-actions');
+  if(active){
+    const issued=info?.issuedAt!==null&&info?.issuedAt!==undefined;
+    const known=!!state.dnsCredentials[access.id];
+    const issue=node('button','button button-secondary',
+      issued?'Сменить персональный DNS':'Создать персональный DNS');
+    issue.type='button';
+    issue.addEventListener('click',()=>void createDnsCredential(access.id,issued));
+    wrap.append(issue);
+    if(issued){
+      const revoke=node('button','button button-secondary','Отключить ключ');
+      revoke.type='button';
+      revoke.addEventListener('click',()=>void revokeDnsCredential(access.id));
+      wrap.append(revoke);
+    }
+    if(known){
+      const credential=state.dnsCredentials[access.id];
+      const label=node('label','dns-personal-label','Ваш адрес Private DNS (секретный)');
+      const input=node('input','dns-personal-host');
+      input.type='text';input.readOnly=true;input.value=credential.privateDnsHostname;
+      input.setAttribute('aria-label','Персональный DNS адрес для Android');
+      const copy=node('button','button button-secondary','Копировать адрес');
+      copy.type='button';
+      copy.addEventListener('click',()=>void copyPersonalDns(credential.privateDnsHostname,input));
+      const mobile=node('button','button button-secondary','Профиль для iPhone / Mac');
+      mobile.type='button';
+      mobile.addEventListener('click',()=>downloadDnsProfile(credential.appleProfileXml));
+      wrap.append(label,input,copy,mobile,
+        node('p','dns-personal-stat','Сохраните адрес. Он показывается только при выдаче ключа. Не передавайте его другим людям.'));
+    }
+  }else if(info?.status==='INACTIVE'){
+    wrap.append(node('p','dns-personal-stat',
+      'После подтверждения оплаты и активации можно получить персональный адрес.'));
+  }
+  item.append(wrap);
+}
+async function refreshDnsStatuses(){
+  if(!state.loggedIn||!state.dnsAccessEnabled)return;
+  const epoch=state.dnsSessionEpoch;
+  try{
+    const data=await api('/api/me/dns-access');
+    if(epoch!==state.dnsSessionEpoch||!state.loggedIn)return;
+    state.dnsStatuses=Array.isArray(data.links)?data.links:[];
+    renderAccess(state.lastAccesses);
+  }catch(error){
+    if(epoch!==state.dnsSessionEpoch)return;
+    if(error.status===401)return;
+    toast('Не удалось обновить состояние DNS. Попробуйте ещё раз.');
+  }
+}
+async function createDnsCredential(id,rotate){
+  if(rotate&&!confirm('Старый адрес DNS перестанет работать. Выпустить новый?'))return;
+  try{
+    const data=await api('/api/me/dns-access',{method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
+      body:JSON.stringify({entitlementId:id,rotate})});
+    if(!data.privateDnsHostname||!data.appleProfileXml)throw Error('DNS_ACCESS_INVALID_REPLY');
+    state.dnsCredentials[id]={
+      privateDnsHostname:data.privateDnsHostname,appleProfileXml:data.appleProfileXml,
+    };
+    await refreshDnsStatuses();
+    toast('Персональный DNS готов. Сохраните адрес и профиль.');
+  }catch(error){
+    toast(error.message==='DNS_LINK_ALREADY_ISSUED'?
+      'Ключ уже есть. Чтобы получить новый, выберите «Сменить персональный DNS».':
+      error.message==='DNS_SUBSCRIPTION_NOT_ACTIVE'?
+      'Оплата или активация DNS ещё не подтверждены.':
+      'Не удалось выдать DNS-ключ. Повторите позже.');
+  }
+}
+async function revokeDnsCredential(id){
+  if(!confirm('Отключить персональный DNS? Для повторного подключения понадобится новый ключ.'))return;
+  try{
+    await api('/api/me/dns-access/revoke',{method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
+      body:JSON.stringify({entitlementId:id})});
+    delete state.dnsCredentials[id];
+    await refreshDnsStatuses();
+    toast('DNS-ключ отозван.');
+  }catch{toast('Не удалось отозвать DNS-ключ. Повторите позже.');}
+}
+async function copyPersonalDns(value,input){
+  try{
+    await navigator.clipboard.writeText(value);
+    toast('DNS-адрес скопирован.');
+  }catch{
+    input.focus();input.select();
+    if(document.execCommand('copy'))toast('DNS-адрес скопирован.');
+    else toast('Выделите адрес и скопируйте вручную.');
+  }
+}
+function downloadDnsProfile(xml){
+  // Never upload the secret profile to any third-party conversion service.
+  const url=URL.createObjectURL(new Blob([xml],{type:'application/x-apple-aspen-config'}));
+  const a=document.createElement('a');
+  a.href=url;a.download='MNEBYDNS.mobileconfig';
+  document.body.append(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+}
 function renderAccess(accesses) {
   const list=byId('access-list');
   list.replaceChildren();
@@ -151,7 +266,9 @@ function renderAccess(accesses) {
           ? 'До '+formatDate(a.expiresAt)+' · Осталось: '+remaining(a.secondsRemaining)
           : 'Срок начнётся после подтверждённой активации.';
     item.append(top,node('p','',accessDetail));
-    if (a.product==='smart_dns') {
+    if (a.product==='smart_dns'&&state.dnsAccessEnabled) {
+      renderPersonalDnsAccess(item,a);
+    }else if (a.product==='smart_dns') {
       item.append(node('p','',a.quotaLimitBytes?
         'Пакет DNS: '+fmtBytes(a.quotaLimitBytes):'DNS-квота пока не установлена'));
       if (a.meteringVerified && a.quotaUsedBytes!==null && a.quotaRemainingBytes!==null) {
@@ -263,12 +380,15 @@ function renderAccount(payload) {
   text('account-name','Мой аккаунт');
   text('account-subtitle','Защищённый вход · '+(payload.identity?.email||'Telegram'));
   const accesses=payload.access||[];
+  state.lastAccesses=accesses;
   const active=accesses.filter(a=>a.state==='ACTIVE' && a.secondsRemaining>0);
   text('active-count',active.length);
   const timed=active.filter(a=>a.secondsRemaining!==null).sort((a,b)=>a.secondsRemaining-b.secondsRemaining);
   text('days-left',timed.length?remaining(timed[0].secondsRemaining):'—');
   text('days-hint',timed.length?'До ближайшего окончания':'Нет активных подписок');
   renderAccess(accesses);renderOrders(payload.orders||[]);
+  if(state.dnsAccessEnabled&&accesses.some(a=>a.product==='smart_dns'))
+    void refreshDnsStatuses();
   renderPurchaseResult(payload);
   byId('link-email').classList.toggle('hidden',!state.emailLoginEnabled||payload.identity?.emailLinked);
   byId('link-telegram').classList.toggle('hidden',!state.telegramLoginEnabled||payload.identity?.telegramLinked);
@@ -315,6 +435,7 @@ function renderLoggedOut() {
   // A session that expires or is revoked must not leave stale private data on
   // a shared browser screen. Keep the public catalog and selected product.
   state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;
+  state.dnsSessionEpoch++;state.dnsCredentials={};state.dnsStatuses=[];state.lastAccesses=[];
   byId('guest-trial-card').classList.add('hidden');
   byId('purchase-result').classList.add('hidden');
   byId('link-email').classList.add('hidden');
@@ -346,6 +467,7 @@ async function loadCatalog() {
     const data=await api('/api/plans');
     state.plans=Array.isArray(data.plans)?data.plans:[];
     state.checkoutEnabled=data.checkoutEnabled===true;
+    state.dnsAccessEnabled=data.dnsAccessEnabled===true;
     state.loginEnabled=data.loginEnabled===true;
     state.telegramLoginEnabled=data.telegramLoginEnabled===true;
     state.emailLoginEnabled=data.emailLoginEnabled===true;
