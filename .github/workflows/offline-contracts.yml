@@ -129,6 +129,9 @@ jobs:
           psql -v ON_ERROR_STOP=1 -c "UPDATE vpn_release_flags SET enabled=true WHERE feature='paid_vpn_clock_on_node'" >/dev/null
       - name: Payment integration with disposable PostgreSQL
         env:
+          # Disposable fixtures exercise paid DNS ON; separate unit tests
+          # verify the same single switch blocks sales when absent.
+          MNEBYDNS_PAID_SALES_ENABLED: 'yes'
           PGPASSWORD: test
           PGHOST: localhost
           PGPORT: '5432'
