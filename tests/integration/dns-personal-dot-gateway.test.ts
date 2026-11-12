@@ -277,7 +277,7 @@ test('fragmented DNS-over-TCP responses and pipelined unique queries are preserv
       s.write(combined.subarray(0,3));
       s.write(combined.subarray(3,combined.length-4));
       s.write(combined.subarray(combined.length-4));
-    }else if(ready.length===1){
+    }else if(ready.length===1 && forwarded===1){
       // First reply may precede second query's authorization: buffer it until
       // both queries have arrived. Only this integration fake behaves so.
       (s as typeof s & {firstResponse?:Buffer}).firstResponse=ready[0];
