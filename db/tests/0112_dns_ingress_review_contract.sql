@@ -37,12 +37,21 @@ BEGIN
     RAISE EXCEPTION 'extra reserve did not fail closed %',stat.status;
   END IF;
 
+  SELECT * INTO audit FROM get_smart_dns_audit_totals(a,e);
+  IF audit.held_bytes<>1000 OR audit.late_bytes<>0 THEN
+    RAISE EXCEPTION 'unsettled holds must suppress completeness';
+  END IF;
+
   UPDATE entitlements SET state='EXPIRED',revision=revision+1 WHERE id=e;
   SELECT * INTO stat FROM dns_ingress_reserve(e,1,'late-112-d',1);
   IF stat.status<>'DENY_REVISION' THEN
     RAISE EXCEPTION 'stale revision allowed after expiry %',stat.status;
   END IF;
 
+  SELECT dns_ingress_settle(e,999,'late-112-a',100,250) INTO v;
+  IF v<>'DENY_REVISION' THEN
+    RAISE EXCEPTION 'unowned reservation revision was accepted %',v;
+  END IF;
   SELECT dns_ingress_settle(e,1,'late-112-a',100,250) INTO v;
   IF v<>'LATE_RECORDED' THEN RAISE EXCEPTION 'late settlement lost %',v; END IF;
   SELECT dns_ingress_settle(e,1,'late-112-a',100,250) INTO v;
@@ -74,7 +83,45 @@ BEGIN
   END;
 END $$;
 
-DO $$
+-- A real REFUND occurs between reservation and settlement.
+-- The captured wire bytes must remain immutable audit data even though
+-- the purchased quota was refunded, and must not be charged a second time.
+DO $
+DECLARE
+  a uuid:='c1120000-0000-4000-8000-000000000011';
+  o uuid:='c1120000-0000-4000-8000-000000000012';
+  e uuid;
+  v text;
+  r record;
+BEGIN
+  INSERT INTO accounts(id) VALUES(a);
+  INSERT INTO orders(id,account_id,product,provider,amount_minor,currency)
+    VALUES(o,a,'smart_dns','mock',10000,'RUB');
+  SELECT settle_verified_payment(o,'mock','p112-b','c112-b',repeat('c',64),
+    10000,'RUB',3600,500) INTO v;
+  IF v<>'APPLIED' THEN RAISE EXCEPTION 'refund setup payment failed %',v; END IF;
+  SELECT id INTO e FROM entitlements WHERE source_order_id=o;
+  UPDATE entitlements SET state='ACTIVE' WHERE id=e;
+  INSERT INTO provisioning_state(entitlement_id,adapter,applied_revision,last_observed_at)
+    SELECT e,'smart_dns',revision,clock_timestamp() FROM entitlements WHERE id=e;
+  SELECT * INTO r FROM dns_ingress_reserve(e,1,'refund-hold-112',500);
+  IF r.status<>'RESERVED' THEN RAISE EXCEPTION 'refund reserve failed %',r.status; END IF;
+  SELECT apply_verified_refund(o,'mock','refund-112','c112-b',repeat('d',64)) INTO v;
+  IF v<>'APPLIED' THEN RAISE EXCEPTION 'refund event failed %',v; END IF;
+  SELECT dns_ingress_settle(e,1,'refund-hold-112',120,180) INTO v;
+  IF v<>'LATE_RECORDED' THEN RAISE EXCEPTION 'refund raced away traffic %',v; END IF;
+  SELECT dns_ingress_settle(e,1,'refund-hold-112',120,180) INTO v;
+  IF v<>'DUPLICATE' THEN RAISE EXCEPTION 'refund replay double counted %',v; END IF;
+  IF (SELECT quota_used_bytes FROM entitlements WHERE id=e)<>0 THEN
+    RAISE EXCEPTION 'refunded credit was charged again'; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM smart_dns_late_traffic l
+    WHERE l.entitlement_id=e AND l.reservation_id='refund-hold-112'
+      AND l.upload_bytes=120 AND l.download_bytes=180
+  ) THEN RAISE EXCEPTION 'refunded traffic missing from immutable audit'; END IF;
+END $;
+
+DO $
 BEGIN
   IF has_table_privilege('mnebyvpn_dns_ingress','public.entitlements','SELECT')
      OR has_table_privilege('mnebyvpn_dns_ingress',
