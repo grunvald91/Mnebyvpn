@@ -4,6 +4,7 @@ import { planWidgetKey } from '../../telegram-ui/src/widget-104.ts';
 import type { PaymentProvider, PricedPlan } from './channels.ts';
 import type { StarsOrder } from './stars.ts';
 import type { ProdamusOrder } from './prodamus.ts';
+import {paidSmartDnsCheckoutReady} from './dns-paid-release.ts';
 
 export type Product = 'vpn' | 'smart_dns' | 'bundle';
 export interface OrderRecord {
@@ -186,6 +187,14 @@ export class PgBillingStore {
       const plan = await c.query('SELECT * FROM billing_plans WHERE id=$1 AND enabled=true FOR SHARE',[planId]);
       if (!plan.rowCount) throw new Error('Plan not offered');
       const p = plan.rows[0];
+      // Production defence in depth for BOTH website and Telegram ordering.
+      // A published SQL plan is not evidence that per-customer DNS data-plane
+      // auth, IPv6 routing, expiry and quota are functional.
+      if (process.env.MNEBYVPN_ENV==='production' && p.product!=='vpn' &&
+          !paidSmartDnsCheckoutReady(process.env,true,
+            process.env.WEB_NETWORK_PROVISIONING_VERIFIED==='yes',
+            process.env.WEB_DNS_METERING_VERIFIED==='yes'))
+        throw new Error('DNS_PAID_NOT_READY');
       if(expectedKey!==undefined && planWidgetKey(mapPlan(p))!==expectedKey)
         throw new Error('OFFER_CHANGED');
       if (renewalTargetId!==undefined) {
