@@ -58,7 +58,7 @@ test('upstream response must echo requested DNS name, class and type',()=>{
   good.writeUInt16BE(0x8180,2);
   assert.equal(dnsResponseMatchesQuestion(a,good),true);
   const wrongName=Buffer.from(b);
-  wrongName.writeUInt16BE(a.readUInt16BE(0),0);
+  wrongName.writeUInt16BE(Buffer.from(a).readUInt16BE(0),0);
   wrongName.writeUInt16BE(0x8180,2);
   assert.equal(dnsResponseMatchesQuestion(a,wrongName),false);
   const wrongType=Buffer.from(query('claude.ai',28));
