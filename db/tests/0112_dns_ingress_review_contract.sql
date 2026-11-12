@@ -86,7 +86,7 @@ END $$;
 -- A real REFUND occurs between reservation and settlement.
 -- The captured wire bytes must remain immutable audit data even though
 -- the purchased quota was refunded, and must not be charged a second time.
-DO $
+DO $$
 DECLARE
   a uuid:='c1120000-0000-4000-8000-000000000011';
   o uuid:='c1120000-0000-4000-8000-000000000012';
@@ -119,9 +119,9 @@ BEGIN
     WHERE l.entitlement_id=e AND l.reservation_id='refund-hold-112'
       AND l.upload_bytes=120 AND l.download_bytes=180
   ) THEN RAISE EXCEPTION 'refunded traffic missing from immutable audit'; END IF;
-END $;
+END $$;
 
-DO $
+DO $$
 BEGIN
   IF has_table_privilege('mnebyvpn_dns_ingress','public.entitlements','SELECT')
      OR has_table_privilege('mnebyvpn_dns_ingress',
