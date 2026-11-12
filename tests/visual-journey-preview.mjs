@@ -55,7 +55,7 @@ const { chromium }=await import(process.env.VISUAL_PLAYWRIGHT_PACKAGE||'playwrig
 const browser=await chromium.launch({headless:true,args:['--no-sandbox'],
   ...(process.env.VISUAL_CHROME_PATH?{executablePath:process.env.VISUAL_CHROME_PATH}:{})});
 let failed=false;
-for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[1440,900]]){
+for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[390,1000],[1440,900]]){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
   const browserErrors=[];
   page.on('pageerror',error=>browserErrors.push(String(error.message).slice(0,250)));
@@ -83,6 +83,11 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     return{
       width:innerWidth,height:innerHeight,
       frontTop:Math.round(frame.getBoundingClientRect().top),
+      footerBottomGap:Math.round(height-inner.querySelector('footer').getBoundingClientRect().bottom),
+      iframeBottomGap:Math.round(height-frame.getBoundingClientRect().bottom),
+      fullFrameBackground:inner.querySelector('.app').getBoundingClientRect().height>=height-2,
+      videoUncroppedAspect:Math.abs(inner.querySelector('.scene').getBoundingClientRect().width/
+        inner.querySelector('.scene').getBoundingClientRect().height-(9/16))<0.005,
       outerScrollHeight:document.documentElement.scrollHeight,
       outerCanScroll:document.documentElement.scrollHeight>innerHeight+2,
       headerSingleRow:(()=>{
@@ -122,6 +127,9 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     !metrics.videoPresent||metrics.retryVisible||metrics.cardOpacity<0.99||
     !metrics.headerSingleRow||!metrics.topButtonsUnwrapped||!metrics.headerFits||
     !metrics.legalSingleRow||metrics.frontTop>12||
+    (width<=390&&(Math.abs(metrics.footerBottomGap)>12||
+      Math.abs(metrics.iframeBottomGap)>12||!metrics.fullFrameBackground||
+      !metrics.videoUncroppedAspect))||
     (width<=390&&(!metrics.footerVisible||metrics.outerCanScroll))||
     !metrics.trialVisible||metrics.selected!=='true'||
     metrics.frameWidth>480||metrics.frameWidth<Math.min(360,width)||
@@ -250,7 +258,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.goto(base,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>{
     const v=document.querySelector('#journey-front-frame')?.contentDocument?.querySelector('#bgv');
-    return v?.videoWidth===432 && v?.videoHeight===720 &&
+    return v?.videoWidth===432 && v?.videoHeight===768 &&
       v.querySelectorAll('source').length===2;
   },{timeout:15000});
   console.log('VIDEO_ASSET_SMOKE=played_or_loaded_metadata');
