@@ -107,7 +107,9 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
   // Keep only SHA-256 key digests; no bearer hostname in cache or logs.
   const authCache=new Map<string,number>();
   const labelRates=new Map<string,{tokens:number,last:number}>();
-  const sourceConnections=new Map<string,number>();
+  // TLS clients forwarded by Nginx stream often all have loopback source IP.
+  // Limit *per credential*, not by that shared proxy socket source.
+  const credentialConnections=new Map<string,number>();
   const trim=<T>(map:Map<string,T>)=>{
     while(map.size>MAX_AUTH_CACHE){const old=map.keys().next().value;
       if(old===undefined)break;map.delete(old);}
@@ -120,10 +122,9 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
     const label=parsePersonalDoTHostname(name);
     if(!label){socket.destroy();return;}
     const digest=createHash('sha256').update(label).digest('hex');
-    const source=socket.remoteAddress??'unknown';
-    const connected=sourceConnections.get(source)??0;
-    if(connected>=12){socket.destroy();return;}
-    sourceConnections.set(source,connected+1);
+    const connected=credentialConnections.get(digest)??0;
+    if(connected>=8){socket.destroy();return;}
+    credentialConnections.set(digest,connected+1);
     const activeSignals=new Set<AbortController>();
     let buffer=Buffer.alloc(0),busy=false,closed=false;
     const pending:Buffer[]=[];
@@ -132,9 +133,9 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
       closed=true;pending.length=0;buffer=Buffer.alloc(0);
       for(const controller of activeSignals)controller.abort();
       activeSignals.clear();
-      const count=sourceConnections.get(source)??1;
-      if(count<=1)sourceConnections.delete(source);
-      else sourceConnections.set(source,count-1);
+      const count=credentialConnections.get(digest)??1;
+      if(count<=1)credentialConnections.delete(digest);
+      else credentialConnections.set(digest,count-1);
       socket.destroy();
     };
     socket.setTimeout(30000,stop);
