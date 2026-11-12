@@ -68,7 +68,7 @@ test('release fails closed unless real E2E and revocation are both attested',()=
   assert.equal(bonusReleaseReady(env),true);
 });
 test('customer secret delivery is backed by paid, active, owned DNS entitlement query',async()=>{
-  const box=sealProxySecret(raw,key,id,name);
+  const box=sealProxySecret(raw,key,other,name);
   let called=0;
   const db={async query(sql:string,values:unknown[]){
     called++;
