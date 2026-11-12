@@ -27,6 +27,12 @@ BEGIN
 
   SELECT issue_personal_dns_credential(e,label1,encode(sha256(convert_to(label1,'UTF8')),'hex'),3) INTO result;
   IF result<>'ISSUED' THEN RAISE EXCEPTION 'issue failed: %',result; END IF;
+  -- Only the SHA-256 digest is persisted. A database reader must not
+  -- get reusable DNS bearer hostnames from this credential table.
+  IF EXISTS(SELECT 1 FROM pg_attribute
+    WHERE attrelid='personal_dns_credentials'::regclass
+      AND attname='label' AND NOT attisdropped)
+  THEN RAISE EXCEPTION 'plaintext DNS bearer label column detected'; END IF;
   SELECT issue_personal_dns_credential(e,label1,encode(sha256(convert_to(label1,'UTF8')),'hex'),3) INTO result;
   IF result<>'ALREADY_ISSUED' THEN RAISE EXCEPTION 'idempotency failed: %',result; END IF;
   SELECT issue_personal_dns_credential(e2,label2,repeat('e',64),3) INTO result;
