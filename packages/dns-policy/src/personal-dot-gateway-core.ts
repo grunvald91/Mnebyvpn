@@ -43,7 +43,12 @@ export function parseDnsQuestion(wire:Uint8Array):DnsQuestion{
     total+=length+1;
     if(total>255)throw new Error('DNS QNAME too long');
     const bytes=view.subarray(pos,pos+length);
-    if(bytes.some(byte=>byte<33||byte>126))throw new Error('Invalid DNS label bytes');
+    // A literal '.' inside a wire label must not be mistaken for an actual
+    // DNS label boundary by the authoritative route classifier.
+    if(bytes.some(byte=>!
+        ((byte>=48&&byte<=57)||(byte>=65&&byte<=90)||
+         (byte>=97&&byte<=122)||byte===45||byte===95)))
+      throw new Error('Invalid DNS label bytes');
     labels.push(bytes.toString('ascii'));
     pos+=length;
   }
