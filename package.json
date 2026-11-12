@@ -11,6 +11,7 @@
     "test:integration": "node --experimental-strip-types --test --test-concurrency=1 tests/integration/*.test.ts",
     "start:diagnostics": "node --experimental-strip-types apps/service/src/server.ts",
     "start:payments": "node --experimental-strip-types apps/service/src/payments-server.ts",
+    "start:dns-gateway": "node --experimental-strip-types apps/service/src/dns-access-gateway.ts",
     "start:web": "node --experimental-strip-types apps/web/src/server.ts",
     "start:expiry-worker": "node --experimental-strip-types apps/service/src/expiry-worker.ts",
     "start:vpn-worker": "node --experimental-strip-types apps/service/src/vpn-provisioning-worker.ts",
