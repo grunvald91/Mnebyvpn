@@ -19,12 +19,12 @@ CREATE TABLE smart_dns_recovery_evidence (
 REVOKE ALL ON smart_dns_recovery_evidence FROM PUBLIC;
 
 CREATE FUNCTION reject_dns_recovery_evidence_changes()
-RETURNS trigger LANGUAGE plpgsql AS $
+RETURNS trigger LANGUAGE plpgsql AS $dnsrev$
 BEGIN
   RAISE EXCEPTION 'DNS recovery evidence is immutable'
     USING ERRCODE='23514';
 END;
-$;
+$dnsrev$;
 CREATE TRIGGER dns_recovery_evidence_append_only
   BEFORE UPDATE OR DELETE ON smart_dns_recovery_evidence
   FOR EACH ROW EXECUTE FUNCTION reject_dns_recovery_evidence_changes();
@@ -38,12 +38,12 @@ CREATE INDEX smart_dns_late_recorded_idx
 
 -- Only a separately-provisioned reviewer may call queue/evidence methods.
 -- This role has NO LOGIN and is not granted to production API or ingress.
-DO $
+DO $dnsrev$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='mnebyvpn_dns_reviewer') THEN
     CREATE ROLE mnebyvpn_dns_reviewer NOLOGIN;
   END IF;
-END $;
+END $dnsrev$;
 
 -- Cases are computed from held and late ledgers; never delete or silently
 -- change them. Last observation time is NOT proof of network disconnection.
@@ -60,7 +60,7 @@ RETURNS TABLE(
 )
 LANGUAGE sql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,public,pg_temp
-AS $
+AS $dnsrev$
   SELECT s.entitlement_id,s.reservation_id,s.kind,s.reference_at,
          s.held_bytes,s.late_upload_bytes,s.late_download_bytes,
          (SELECT count(*) FROM smart_dns_recovery_evidence ev
@@ -86,7 +86,7 @@ AS $
     WHERE p_limit BETWEEN 1 AND 100
     ORDER BY s.reference_at,s.entitlement_id,s.reservation_id
     LIMIT LEAST(p_limit,100);
-$;
+$dnsrev$;
 REVOKE ALL ON FUNCTION dns_list_unresolved_recovery(integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION dns_list_unresolved_recovery(integer)
   TO mnebyvpn_dns_reviewer;
@@ -100,7 +100,7 @@ CREATE FUNCTION dns_attach_recovery_evidence(
 ) RETURNS text
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=pg_catalog,public,pg_temp
-AS $
+AS $dnsrev$
 DECLARE v_old smart_dns_recovery_evidence%ROWTYPE;
 BEGIN
   IF p_ent IS NULL OR p_evidence IS NULL OR p_reservation IS NULL
@@ -138,7 +138,7 @@ BEGIN
   IF FOUND THEN RETURN 'RECORDED'; END IF;
   RETURN 'DENY_DUPLICATE_EVIDENCE';
 END;
-$;
+$dnsrev$;
 REVOKE ALL ON FUNCTION dns_attach_recovery_evidence(uuid,text,uuid,text,text)
   FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION dns_attach_recovery_evidence(uuid,text,uuid,text,text)
@@ -155,7 +155,7 @@ CREATE FUNCTION get_smart_dns_monthly_late_traffic(
 )
 LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path=pg_catalog,public,pg_temp
-AS $
+AS $dnsrev$
   SELECT date_trunc('month',l.recorded_at AT TIME ZONE 'UTC')::date,
          COALESCE(sum(l.upload_bytes),0)::numeric,
          COALESCE(sum(l.download_bytes),0)::numeric,
@@ -165,15 +165,15 @@ AS $
     WHERE p_account IS NOT NULL AND p_ent IS NOT NULL
       AND e.id=p_ent AND e.account_id=p_account AND e.product='smart_dns'
     GROUP BY 1 ORDER BY 1;
-$;
+$dnsrev$;
 REVOKE ALL ON FUNCTION get_smart_dns_monthly_late_traffic(uuid,uuid)
   FROM PUBLIC;
-DO $
+DO $dnsrev$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='mnebyvpn_site_auth') THEN
     GRANT EXECUTE ON FUNCTION get_smart_dns_monthly_late_traffic(uuid,uuid)
       TO mnebyvpn_site_auth;
   END IF;
-END $;
+END $dnsrev$;
 
 COMMIT;
