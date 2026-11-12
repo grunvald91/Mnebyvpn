@@ -9,7 +9,7 @@
   const emailPanel=el('email-auth-panel'),emailHome=emailPanel?.parentNode;
   if(!landing||!setup||typeof state==='undefined')return;
   const allViews=new Set(['plans','account','checkout','payment','setup','support','trial-auth']);
-  let view='plans', lastAccount=null, chosenPlatform='android', installed=false;
+  let view='plans', lastAccount=null, chosenPlatform='android';
   const frontFrame=el('journey-front-frame');
   const frontChannel='mnebyvpn-front-v1';
   let frontReady=false;
@@ -279,8 +279,7 @@
   };
   function setPlatform(platform){
     if(!Object.hasOwn(downloads,platform))return;
-    chosenPlatform=platform;installed=false;
-    el('journey-import-step').hidden=true;
+    chosenPlatform=platform;
     for(const button of setup.querySelectorAll('[data-journey-platform]')){
       button.setAttribute('aria-pressed',String(button.dataset.journeyPlatform===platform));
     }
@@ -316,7 +315,9 @@
       auto.href=href;
     else auto.removeAttribute('href');
     el('journey-url').value=value;
-    el('journey-import-step').hidden=!installed;
+    // Once the server issued an ACTIVE VPN subscription, do not hide the
+    // direct import behind a redundant "I installed the app" confirmation.
+    el('journey-import-step').hidden=false;
   }
   async function copyLink(value,visibleField=el('journey-url')) {
     if(!safeSubscriptionUrl(value))return;
@@ -463,7 +464,7 @@
   };
   window.renderVpnSetup=function(...args){
     const result=originalVpnSetup(...args);
-    installed=false;updateSetup();setView('setup',true);return result;
+    updateSetup();setView('setup',true);return result;
   };
   landing.querySelectorAll('[data-journey-days]').forEach(btn=>btn.addEventListener('click',()=>{
     setSelection('vpn',Number(btn.dataset.journeyDays));updatePlan();
@@ -494,10 +495,7 @@
     setView('plans',true);
   });
   setup.querySelectorAll('[data-journey-platform]').forEach(btn=>btn.addEventListener('click',()=>setPlatform(btn.dataset.journeyPlatform)));
-  el('journey-installed').addEventListener('click',()=>{
-    installed=true;updateSetup();el('journey-auto').focus();
-  });
-  el('journey-copy').addEventListener('click',()=>void copyLink(el('journey-url').value));
+    el('journey-copy').addEventListener('click',()=>void copyLink(el('journey-url').value));
   // Following My VPN from the payment wizard deliberately exits result-only mode.
   document.querySelector('.journey-header-account')?.addEventListener('click',event=>{
     event.preventDefault();paymentLanding=false;setView('account',true);
