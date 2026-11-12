@@ -108,6 +108,12 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       innerHorizontalOverflow:inner.documentElement.scrollWidth>frame.contentWindow.innerWidth+1,
       iframeHasHeader:Boolean(inner.querySelector('.top .brand')),
       iframeHasEarth:Boolean(inner.querySelector('.kb')),
+      lockTop:Math.round(inner.querySelector('.lock').getBoundingClientRect().top),
+      lockWidth:Math.round(inner.querySelector('.lock').getBoundingClientRect().width),
+      cardTop:Math.round(inner.querySelector('.card').getBoundingClientRect().top),
+      backdropFilter:getComputedStyle(inner.querySelector('.card')).backdropFilter,
+      canvasPresent:Boolean(inner.querySelector('canvas')),
+      introFilter:getComputedStyle(inner.querySelector('.card')).filter,
       videoPresent:Boolean(inner.querySelector('video#bgv')),
       videoSources:inner.querySelectorAll('video#bgv source').length,
       iframeHasTariffs:inner.querySelectorAll('.plans-vpn .plan').length===4 && inner.querySelectorAll('.plans-dns .plan').length===4,
@@ -128,6 +134,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     !metrics.iframeHasHeader||!metrics.iframeHasEarth||!metrics.iframeHasTariffs||
     JSON.stringify(metrics.dnsPrices)!==JSON.stringify(['120 ₽','199 ₽','379 ₽','549 ₽'])||
     !metrics.videoPresent||metrics.retryVisible||metrics.cardOpacity<0.99||
+    metrics.backdropFilter!=='none'||metrics.canvasPresent||metrics.introFilter!=='none'||
+    (width<=390&&(metrics.lockWidth>52||metrics.cardTop>270))||
     !metrics.headerSingleRow||!metrics.topButtonsUnwrapped||!metrics.headerFits||
     !metrics.legalSingleRow||metrics.frontTop>12||
     (width<=390&&(metrics.iframeBottomGap>12||!metrics.fullFrameBackground||
@@ -152,22 +160,72 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     !infoContent.includes('домен')||!infoContent.includes('VPN'))failed=true;
   await page.frameLocator('#journey-front-frame').locator('#dns-info-close').click();
   if(await info.isVisible())failed=true;
-  // Selecting DNS previews the proposed price, never purchases an unrelated VPN.
+  // One VPN and one DNS may be selected at the same time. No iframe
+  // reloads, fade-ins or route changes are allowed during tariff taps.
+  await page.evaluate(()=>{
+    window.__frontLoads=0;
+    document.querySelector('#journey-front-frame')
+      .addEventListener('load',()=>window.__frontLoads++);
+  });
   await page.frameLocator('#journey-front-frame').locator('.plans-dns .plan[data-d="30"]').click();
-  const dnsState=await page.evaluate(()=>{
+  const bothSelected=await page.evaluate(()=>{
     const inner=document.querySelector('#journey-front-frame').contentDocument;
     return{
+      vpn:inner.querySelector('.plans-vpn .plan[data-d="15"]').getAttribute('aria-pressed'),
+      dns:inner.querySelector('.plans-dns .plan[data-d="30"]').getAttribute('aria-pressed'),
       summary:inner.querySelector('#sum').textContent,
-      buyDisabled:inner.querySelector('.cta').disabled,
-      label:inner.querySelector('.cta').textContent,
-      selected:inner.querySelector('.plans-dns .plan[data-d="30"]').getAttribute('aria-pressed'),
+      buyText:inner.querySelector('.cta').textContent,
+      buyEnabled:!inner.querySelector('.cta').disabled,
+      frameLoads:window.__frontLoads,
+      opacity:getComputedStyle(inner.querySelector('.card')).opacity,
     };
   });
-  console.log('DNS_PREVIEW_'+width+'='+JSON.stringify(dnsState));
-  if(dnsState.selected!=='true'||!dnsState.summary.includes('199 ₽')||
-     !dnsState.buyDisabled||!dnsState.label.includes('скоро'))failed=true;
+  console.log('DUAL_SELECTION_'+width+'='+JSON.stringify(bothSelected));
+  if(bothSelected.vpn!=='true'||bothSelected.dns!=='true'||
+     !bothSelected.summary.includes('VPN')||!bothSelected.summary.includes('Smart DNS')||
+     !bothSelected.summary.includes('199 ₽')||
+     bothSelected.buyText!=='Оформить только VPN'||!bothSelected.buyEnabled||
+     bothSelected.frameLoads!==0||Number(bothSelected.opacity)<0.99)failed=true;
   await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="30"]').click();
   await page.waitForFunction(()=>document.querySelector('#journey-summary')?.textContent?.includes('30 дней'));
+  const persisted=await page.evaluate(()=>{
+    const inner=document.querySelector('#journey-front-frame').contentDocument;
+    return{
+      vpn30:inner.querySelector('.plans-vpn .plan[data-d="30"]').getAttribute('aria-pressed'),
+      dns30:inner.querySelector('.plans-dns .plan[data-d="30"]').getAttribute('aria-pressed'),
+      frameLoads:window.__frontLoads,
+    };
+  });
+  console.log('DUAL_PERSISTED_'+width+'='+JSON.stringify(persisted));
+  if(persisted.vpn30!=='true'||persisted.dns30!=='true'||persisted.frameLoads!==0)failed=true;
+  // A second tap removes only the selected DNS tariff; VPN stays selected.
+  await page.frameLocator('#journey-front-frame').locator('.plans-dns .plan[data-d="30"]').click();
+  const cleared=await page.evaluate(()=>{
+    const inner=document.querySelector('#journey-front-frame').contentDocument;
+    return{
+      vpn30:inner.querySelector('.plans-vpn .plan[data-d="30"]').getAttribute('aria-pressed'),
+      dns30:inner.querySelector('.plans-dns .plan[data-d="30"]').getAttribute('aria-pressed'),
+      price:inner.querySelector('#sum').textContent,
+      frameLoads:window.__frontLoads,
+    };
+  });
+  if(cleared.vpn30!=='true'||cleared.dns30!=='false'||cleared.frameLoads!==0||
+     !cleared.price.includes('VPN'))failed=true;
+  // DNS alone is a preview, never sends a VPN purchase by accident.
+  await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="30"]').click();
+  await page.frameLocator('#journey-front-frame').locator('.plans-dns .plan[data-d="60"]').click();
+  const dnsOnly=await page.evaluate(()=>{
+    const inner=document.querySelector('#journey-front-frame').contentDocument;
+    return{
+      selected:inner.querySelector('.plans-dns .plan[data-d="60"]').getAttribute('aria-pressed'),
+      disabled:inner.querySelector('.cta').disabled,
+      text:inner.querySelector('.cta').textContent,
+      frameLoads:window.__frontLoads,
+    };
+  });
+  if(dnsOnly.selected!=='true'||!dnsOnly.disabled||
+    !dnsOnly.text.includes('скоро')||dnsOnly.frameLoads!==0)failed=true;
+  await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="30"]').click();
   await page.frameLocator('#journey-front-frame').locator('.try').click();
   if(!await page.frameLocator('#journey-front-frame').locator('#trial-options').isVisible())failed=true;
   await page.frameLocator('#journey-front-frame').locator('#trial-dns').click();
@@ -325,6 +383,9 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.goto(base,{waitUntil:'networkidle'});
   await page.waitForFunction(()=>document.body.classList.contains('journey-active')&&
     !document.querySelector('#journey-buy').disabled);
+  // Initial VPN 15-day tariff is already active; a second tap deselects it.
+  // Change to 30 and back to exercise the parent's real catalog selection.
+  await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="30"]').click();
   await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="15"]').click();
   await page.frameLocator('#journey-front-frame').locator('.cta').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='checkout');
