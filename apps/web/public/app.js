@@ -478,12 +478,12 @@ async function loadCatalog() {
     state.plans=Array.isArray(data.plans)?data.plans:[];
     state.checkoutEnabled=data.checkoutEnabled===true;
     state.dnsAccessEnabled=data.dnsAccessEnabled===true;
-    const dnsTab=document.querySelector('[data-product="smart_dns"]');
-    if(dnsTab){
+    document.querySelectorAll('[data-product]').forEach(dnsTab=>{
+      if(dnsTab.dataset.product!=='smart_dns')return;
       dnsTab.disabled=!state.dnsAccessEnabled;
       dnsTab.setAttribute('aria-disabled',String(!state.dnsAccessEnabled));
       dnsTab.textContent=state.dnsAccessEnabled?'Smart DNS':'DNS · скоро';
-    }
+    });
     state.loginEnabled=data.loginEnabled===true;
     state.telegramLoginEnabled=data.telegramLoginEnabled===true;
     state.emailLoginEnabled=data.emailLoginEnabled===true;
