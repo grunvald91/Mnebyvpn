@@ -107,6 +107,12 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       artBottom:Math.round(art.getBoundingClientRect().bottom),
       innerHorizontalOverflow:inner.documentElement.scrollWidth>frame.contentWindow.innerWidth+1,
       iframeHasHeader:Boolean(inner.querySelector('.top .brand')),
+      headerNavGrouped:(()=>{
+        const links=[...inner.querySelectorAll('.top-links .pill')];
+        return links.length===2 &&
+          Math.abs(links[0].getBoundingClientRect().top-links[1].getBoundingClientRect().top)<=2 &&
+          links[1].getBoundingClientRect().left-links[0].getBoundingClientRect().right<=8;
+      })(),
       iframeHasEarth:Boolean(inner.querySelector('.kb')),
       lockTop:Math.round(inner.querySelector('.lock').getBoundingClientRect().top),
       lockWidth:Math.round(inner.querySelector('.lock').getBoundingClientRect().width),
@@ -136,7 +142,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     !metrics.videoPresent||metrics.retryVisible||metrics.cardOpacity<0.99||
     metrics.backdropFilter!=='none'||metrics.canvasPresent||metrics.introFilter!=='none'||
     (width<=390&&(metrics.lockWidth>52||metrics.cardTop>270))||
-    !metrics.headerSingleRow||!metrics.topButtonsUnwrapped||!metrics.headerFits||
+    !metrics.headerSingleRow||!metrics.headerNavGrouped||!metrics.topButtonsUnwrapped||!metrics.headerFits||
     !metrics.legalSingleRow||metrics.frontTop>12||
     (width<=390&&(metrics.iframeBottomGap>12||!metrics.fullFrameBackground||
       !metrics.videoUncroppedAspect))||
@@ -363,6 +369,90 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   console.log('VIDEO_REDUCED_MOTION='+JSON.stringify(optOut));
   if(optOut.videoSources!==0||!optOut.fallbackVisible)failed=true;
   await reduced.close();
+}
+// Mobile regression: the video used to be disabled on 2-core devices and
+// networks classified 3g. The restored MP4 must autoplay muted when allowed;
+// entering the fast native cabinet pauses it until returning to the storefront.
+{
+  const page=await browser.newPage({viewport:{width:390,height:844},
+    userAgent:'Mozilla/5.0 (Linux; Android 13; Pixel 5) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36'});
+  page.on('pageerror',e=>{console.error('VIDEO_ACCOUNT_PAGE_ERROR',String(e));failed=true;});
+  await page.addInitScript(()=>{
+    Object.defineProperty(navigator,'hardwareConcurrency',{configurable:true,get:()=>2});
+    if(navigator.connection)
+      try{Object.defineProperty(navigator.connection,'effectiveType',{configurable:true,get:()=>'3g'});}catch{}
+  });
+  await page.goto(base,{waitUntil:'domcontentloaded'});
+  try{
+    await page.waitForFunction(()=>{
+      const inner=document.querySelector('#journey-front-frame')?.contentDocument;
+      const video=inner?.querySelector('#bgv');
+      return video?.currentTime>0.1 && !video.paused &&
+        inner.querySelector('.scene')?.classList.contains('vid');
+    },null,{timeout:12000});
+  }catch{failed=true;}
+  const before=await page.evaluate(()=>{
+    const inner=document.querySelector('#journey-front-frame')?.contentDocument;
+    const video=inner?.querySelector('#bgv');
+    return {
+      time:video?.currentTime,paused:video?.paused,
+      source:video?.currentSrc,videoWidth:video?.videoWidth,videoHeight:video?.videoHeight,
+      scenePlaying:inner?.querySelector('.scene')?.classList.contains('vid'),
+      navGrouped:inner?.querySelector('.top-links')?.childElementCount===2,
+      artworkExternal:getComputedStyle(inner.querySelector('.kb')).backgroundImage.includes('landing-earth.webp'),
+      error:video?.error?.code||null,
+    };
+  });
+  console.log('ANDROID_VIDEO_2CORE_3G='+JSON.stringify(before));
+  if(!before.scenePlaying||before.paused||before.time<=0.1||
+    !before.artworkExternal||!before.navGrouped||before.error)failed=true;
+
+  await page.frameLocator('#journey-front-frame').locator('.top-links a[href="#account"]').click();
+  await page.waitForFunction(()=>document.body.dataset.journeyView==='account');
+  await page.waitForFunction(()=>{
+    const v=document.querySelector('#journey-front-frame')?.contentDocument?.querySelector('#bgv');
+    return !v||v.paused;
+  },null,{timeout:4000});
+  const account=await page.evaluate(()=>{
+    const top=document.querySelector('.header-inner');
+    const about=top.querySelector('.about-trigger').getBoundingClientRect();
+    const access=top.querySelector('.journey-header-account').getBoundingClientRect();
+    const heading=document.querySelector('.account-section>.section-head');
+    const panel=document.querySelector('.account-panel');
+    const video=document.querySelector('#journey-front-frame')?.contentDocument?.querySelector('#bgv');
+    return {
+      route:location.hash,view:document.body.dataset.journeyView,
+      viewportOverflow:document.documentElement.scrollWidth>innerWidth+1,
+      buttonsAdjacent:Math.abs(about.top-access.top)<3 && access.left-about.right<=12,
+      headingVisible:getComputedStyle(heading).display!=='none',
+      headerTextVisible:getComputedStyle(top.querySelector('.brand-text')).display!=='none',
+      brandImage:getComputedStyle(document.querySelector('.account-heading .avatar')).backgroundImage,
+      panelBlur:getComputedStyle(panel).backdropFilter,
+      videoPaused:video?.paused,
+      backLinkVisible:getComputedStyle(document.querySelector('.account-back-to-plans')).display!=='none',
+    };
+  });
+  console.log('ACCOUNT_BRANDED_METRICS='+JSON.stringify(account));
+  const accountImage=process.env.RUNNER_TEMP+'/mnebyvpn-branded-account-390x844.jpg';
+  await page.screenshot({path:accountImage,type:'jpeg',quality:75,fullPage:true});
+  if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
+    console.log('ACCOUNT_JPEG_390_BEGIN');
+    console.log(readFileSync(accountImage).toString('base64'));
+    console.log('ACCOUNT_JPEG_390_END');
+  }
+  if(account.view!=='account'||!account.buttonsAdjacent||
+    !account.headingVisible||!account.headerTextVisible||
+    !account.brandImage.includes('brand-avatar.webp')||
+    account.panelBlur!=='none'||!account.videoPaused||account.viewportOverflow||
+    !account.backLinkVisible)failed=true;
+  await page.locator('.account-back-to-plans').click();
+  await page.waitForFunction(()=>document.body.dataset.journeyView==='plans');
+  await page.waitForFunction(()=>{
+    const v=document.querySelector('#journey-front-frame')?.contentDocument?.querySelector('#bgv');
+    return v&&!v.paused&&v.currentTime>0.1;
+  },null,{timeout:8000}).catch(()=>{failed=true;});
+  console.log('ACCOUNT_RETURN_VIDEO_RESUMED=true');
+  await page.close();
 }
 // Branded checkout visual acceptance: real authenticated route, no card data
 // entry and no provider HTTP call before the explicit confirmation click.
