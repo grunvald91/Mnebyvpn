@@ -1508,3 +1508,139 @@ body.journey-active[data-journey-view="plans"] main {
 body.journey-active[data-journey-view="plans"] .journey-landing {
   align-self:flex-start;
 }
+
+
+/* Account is the same MNEBYVPN product, not a separate legacy theme.
+   Static cached Earth: no autoplay video or filter-heavy animation here. */
+body.journey-active[data-journey-view="account"]{
+  background:radial-gradient(ellipse 90% 55% at 50% 14%,#16204a 0%,#080e28 63%,#04071a 100%);
+  color:#f5faff;
+}
+body.journey-active[data-journey-view="account"] .ambient,
+body.journey-active[data-journey-view="account"] .journey-world-backdrop{
+  display:none!important;
+}
+body.journey-active[data-journey-view="account"]::before{
+  content:"";position:fixed;z-index:-1;pointer-events:none;
+  top:0;left:50%;transform:translateX(-50%);
+  width:min(100vw,480px);height:min(76vh,520px);
+  background:url('/landing-earth.webp') center top/100% auto no-repeat;
+  opacity:.4;
+  -webkit-mask-image:linear-gradient(black 0%,black 40%,transparent 100%);
+  mask-image:linear-gradient(black 0%,black 40%,transparent 100%);
+}
+body.journey-active[data-journey-view="account"] .header{
+  background:rgba(5,9,27,.96);border-bottom:1px solid rgba(88,178,254,.25);
+  box-shadow:none;
+}
+body.journey-active[data-journey-view="account"] .header-inner{
+  width:min(calc(100% - 20px),460px);min-height:54px;
+  display:flex;gap:7px;align-items:center;
+}
+body.journey-active[data-journey-view="account"] .brand{
+  flex:0 0 auto;min-width:0;gap:6px;
+}
+body.journey-active[data-journey-view="account"] .header .brand-text{
+  display:inline-block!important;font:italic 800 clamp(12px,3.5vw,16px)/1 Inter,system-ui,sans-serif;
+  letter-spacing:-.05em;white-space:nowrap;
+}
+body.journey-active[data-journey-view="account"] .header .brand-avatar{
+  width:30px;height:30px;border-radius:50%;
+}
+body.journey-active[data-journey-view="account"] .about-trigger,
+body.journey-active[data-journey-view="account"] .journey-header-account{
+  display:inline-flex;align-items:center;justify-content:center;
+  flex:0 0 auto;min-height:36px;padding:7px 10px;white-space:nowrap;
+  border:1px solid rgba(107,149,255,.65);border-radius:99px;
+  background:rgba(15,24,64,.9);color:#f9fbff;
+  font:italic 750 clamp(11px,3vw,13px)/1 Inter,system-ui,sans-serif;
+  box-shadow:none;transform:none;
+}
+body.journey-active[data-journey-view="account"] .about-trigger{margin-left:auto}
+body.journey-active[data-journey-view="account"] .journey-header-account{
+  border-color:rgba(59,225,255,.85);
+  background:linear-gradient(115deg,rgba(17,106,176,.5),rgba(108,40,184,.4));
+}
+body.journey-active[data-journey-view="account"] .account-section{
+  width:min(calc(100% - 26px),480px);padding:16px 0 34px;
+}
+body.journey-active[data-journey-view="account"] .account-section>.section-head{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  padding:10px 6px 17px;text-align:center;
+}
+body.journey-active[data-journey-view="account"] .account-section .eyebrow{
+  font:italic 750 10px/1.3 Inter,system-ui,sans-serif;
+  letter-spacing:.13em;color:#80dcff;
+}
+body.journey-active[data-journey-view="account"] .account-section .section-head h2{
+  margin:1px 0;font:italic 850 clamp(23px,7vw,31px)/1.1 Inter,system-ui,sans-serif;
+  color:#fff;letter-spacing:-.04em;text-transform:none;
+}
+body.journey-active[data-journey-view="account"] .account-section .section-head h2 span{
+  background:linear-gradient(90deg,#36dffa,#a35bff);color:transparent;
+  -webkit-background-clip:text;background-clip:text;
+}
+body.journey-active[data-journey-view="account"] .account-section .section-desc{
+  display:block;margin:3px 0;color:#cad7ef;font-size:12px;
+}
+body.journey-active[data-journey-view="account"] .account-back-to-plans{
+  display:inline-flex;align-items:center;justify-content:center;min-height:32px;
+  border:1px solid rgba(71,196,236,.57);border-radius:99px;
+  background:rgba(8,26,57,.83);padding:6px 15px;
+  font:750 11px/1.2 Inter,system-ui,sans-serif;color:#9aeaff;
+}
+body.journey-active[data-journey-view="account"] .account-panel{
+  max-width:100%;width:100%;border:1px solid rgba(97,148,252,.68);
+  border-radius:22px;overflow:hidden;
+  background:linear-gradient(145deg,rgba(13,25,65,.96),rgba(8,15,43,.97));
+  box-shadow:0 0 0 1px rgba(36,216,255,.08),0 14px 35px rgba(0,0,15,.38);
+  -webkit-backdrop-filter:none;backdrop-filter:none;
+}
+body.journey-active[data-journey-view="account"] .account-toolbar{
+  border-bottom:1px solid rgba(90,150,233,.24);
+  background:linear-gradient(125deg,rgba(8,40,86,.62),rgba(22,18,62,.42));
+  padding:15px;
+}
+body.journey-active[data-journey-view="account"] .account-toolbar .avatar{
+  width:38px;height:38px;border-radius:50%;color:transparent;
+  background:#081127 url('/brand-avatar.webp') center/cover no-repeat;
+  border:1px solid #5ee8ff;box-shadow:0 0 11px rgba(50,200,248,.24);
+}
+body.journey-active[data-journey-view="account"] .account-heading strong{color:#f8ffff}
+body.journey-active[data-journey-view="account"] .login-prompt,
+body.journey-active[data-journey-view="account"] .email-auth-panel{
+  background:transparent;box-shadow:none;border:0;
+}
+body.journey-active[data-journey-view="account"] .login-prompt h3{
+  color:#fff;font:italic 800 19px/1.2 Inter,system-ui,sans-serif;
+}
+body.journey-active[data-journey-view="account"] .button-primary,
+body.journey-active[data-journey-view="account"] #email-send-button,
+body.journey-active[data-journey-view="account"] #email-verify-button{
+  border:1px solid rgba(164,242,255,.84);border-radius:999px;
+  background:linear-gradient(110deg,#12cde6,#487ffb 58%,#a451f1);color:#fff;
+  box-shadow:none;min-height:44px;
+}
+body.journey-active[data-journey-view="account"] .button-secondary{
+  border:1px solid rgba(80,202,242,.6);border-radius:999px;
+  background:rgba(10,34,82,.8);color:#e4fbff;box-shadow:none;
+}
+body.journey-active[data-journey-view="account"] .metric-card,
+body.journey-active[data-journey-view="account"] .access-item,
+body.journey-active[data-journey-view="account"] .journey-history{
+  border:1px solid rgba(99,159,239,.27);
+  border-radius:15px;background:rgba(9,22,58,.7);box-shadow:none;
+}
+body.journey-active[data-journey-view="account"] .metric-card strong{
+  color:#8eeaff;
+}
+body.journey-active[data-journey-view="account"] .footer{
+  background:transparent;border:0;box-shadow:none;
+}
+@media(max-width:365px){
+  body.journey-active[data-journey-view="account"] .header-inner{width:calc(100% - 12px);gap:4px}
+  body.journey-active[data-journey-view="account"] .header .brand-text{font-size:12px}
+  body.journey-active[data-journey-view="account"] .header .brand-avatar{width:27px;height:27px}
+  body.journey-active[data-journey-view="account"] .about-trigger,
+  body.journey-active[data-journey-view="account"] .journey-header-account{font-size:11px;padding:7px 8px}
+}
