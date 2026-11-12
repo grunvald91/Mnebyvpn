@@ -57,6 +57,11 @@
       </div>
       <div class="journey-checkout">
         <h2>Выберите тариф</h2>
+        <div class="journey-product-grid" id="journey-product-grid" role="group" aria-label="Тип подключения" hidden>
+          <button type="button" data-journey-product="vpn" aria-pressed="true">VPN</button>
+          <button type="button" data-journey-product="smart_dns" aria-pressed="false">Smart DNS</button>
+          <button type="button" data-journey-product="bundle" aria-pressed="false">VPN + DNS</button>
+        </div>
         <div class="journey-duration-grid" role="group" aria-label="Срок подписки">
           <button type="button" data-journey-days="15" aria-pressed="true"><span>15 дней</span><strong data-journey-price="15">—</strong></button>
           <button type="button" data-journey-days="30" aria-pressed="false"><span>30 дней</span><strong data-journey-price="30">—</strong></button>
@@ -153,22 +158,22 @@
       </div>
       <div class="feature-grid">
         <article class="feature-card"><span class="feature-icon">◈</span><h3>VPN</h3><p>Защищённый туннель для интернет-соединений через совместимый VPN-клиент.</p><span class="feature-meta">Отдельный VPN-доступ</span></article>
-        <article class="feature-card"><span class="feature-icon">◎</span><h3>Smart DNS</h3><p>Отдельный способ настройки DNS. Функция ещё разрабатывается и не продаётся.</p><span class="feature-meta">В разработке</span></article>
-        <article class="feature-card"><span class="feature-icon">⌘</span><h3>VPN + DNS</h3><p>Совместный вариант планируется после проверки совместимости.</p><span class="feature-meta">В разработке</span></article>
+        <article class="feature-card"><span class="feature-icon">◎</span><h3>Smart DNS</h3><p>DNS-подключение для выбранных сервисов без постоянного VPN-туннеля. Доступность тарифов смотрите в каталоге.</p><span class="feature-meta">Сервис Smart DNS</span></article>
+        <article class="feature-card"><span class="feature-icon">⌘</span><h3>VPN + DNS</h3><p>Комбинация двух способов подключения. Наличие тарифа и стоимость — в каталоге.</p><span class="feature-meta">Комбинированный доступ</span></article>
       </div>
     </section>
 
     <section class="plans-section" id="plans">
       <div class="shell">
         <div class="section-head">
-          <div><p class="eyebrow">ПОДПИСКИ</p><h2>Выберите тариф VPN</h2></div>
+          <div><p class="eyebrow">ПОДПИСКИ</p><h2>Выберите тариф</h2></div>
           <p class="section-desc">1. Выберите срок. 2. Перейдите к оплате. Цены — только из опубликованных тарифов.</p>
         </div>
         <div class="plan-controls">
           <div class="tabs" role="group" aria-label="Тип доступа">
             <button class="tab selected" data-product="vpn" type="button" aria-pressed="true">VPN</button>
-            <button class="tab tab-soon" data-product="smart_dns" type="button" aria-pressed="false" disabled aria-disabled="true">DNS · скоро</button>
-            <button class="tab tab-soon" data-product="bundle" type="button" aria-pressed="false" disabled aria-disabled="true">VPN + DNS · скоро</button>
+            <button class="tab tab-soon" data-product="smart_dns" type="button" aria-pressed="false" disabled aria-disabled="true">Smart DNS</button>
+            <button class="tab tab-soon" data-product="bundle" type="button" aria-pressed="false" disabled aria-disabled="true">VPN + DNS</button>
           </div>
           <div class="days-tabs" role="group" aria-label="Срок тарифа">
             <button class="days-tab selected" data-days="15" type="button" aria-pressed="true">15 дней</button>
@@ -230,7 +235,7 @@
         </div>
         <section class="coming-soon" aria-label="Что появится позже">
           <h3 class="upcoming-heading">Скоро в проекте</h3>
-          <div class="coming-item coming-dns"><span class="coming-icon" aria-hidden="true"><span class="layered-icon"></span></span><p><strong>Smart DNS и тариф VPN + DNS</strong><span>В разработке. Станут доступны после проверки совместной работы.</span></p><span class="coming-status">В разработке</span></div>
+          <div class="coming-item coming-dns"><span class="coming-icon" aria-hidden="true"><span class="layered-icon"></span></span><p><strong>Smart DNS и тариф VPN + DNS</strong><span>Выберите опубликованный тариф в каталоге. Если тарифа нет, заказ пока недоступен.</span></p><span class="coming-status">По наличию</span></div>
           <div class="coming-item coming-network"><span class="coming-icon" aria-hidden="true"><span class="signal-icon">▂▅▇</span></span><p><strong>Обычный интернет при ограничениях мобильной сети</strong><span>Планируем отдельный режим для ситуаций, когда привычные сайты и приложения недоступны. Пока не работает; возможности зависят от сети и устройства.</span></p><span class="coming-status">Планируется</span></div>
         </section>
       </div>
@@ -405,8 +410,8 @@
       <h3>К чему идём</h3>
       <ol class="about-roadmap">
         <li><strong>Удобный VPN</strong><span>Развиваем подключение и личный кабинет.</span></li>
-        <li><strong>Smart DNS</strong><span>В разработке; пока не продаётся.</span></li>
-        <li><strong>VPN + Smart DNS одновременно</strong><span>Планируем совместную работу без ручного переключения.</span></li>
+        <li><strong>Smart DNS</strong><span>Опубликованные тарифы отображаются в каталоге.</span></li>
+        <li><strong>VPN + Smart DNS</strong><span>Доступность комбинированного тарифа проверяйте в каталоге.</span></li>
         <li><strong>Более устойчивое соединение</strong><span>Исследуем запасные узлы и режимы для сложных сетевых условий.</span></li>
         <li><strong>Собственное приложение</strong><span>Долгосрочная цель: единый удобный интерфейс для Android, iOS, Windows, macOS и Linux.</span></li>
       </ol>
