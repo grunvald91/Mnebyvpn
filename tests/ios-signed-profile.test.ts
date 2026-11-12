@@ -85,7 +85,31 @@ test('CMS embedded DER signed profile verifies with a trusted test CA, tampering
   await run('openssl',['cms','-verify','-binary','-inform','DER',
     '-in',signedFile,'-out',out,'-CAfile',rootCert],{timeout:15000});
   assert.deepEqual(await readFile(out),xml);
-  const altered=Buffer.from(signed);
+  // Exercise the operator's complete automated profile issuance path, too.
+  const cliOut=join(dir,'operator-test.mobileconfig');
+  const cliEnv={...process.env,
+    MNEBYDNS_IOS_OUTPUT:cliOut,
+    MNEBYDNS_SIGN_CERT_FILE:signerCert,
+    MNEBYDNS_SIGN_KEY_FILE:signerKey,
+    MNEBYDNS_SIGN_TRUST_ROOTS_FILE:rootCert,
+    MNEBYDNS_SIGN_CHAIN_FILE:'',
+    MNEBYDNS_VERIFIED_PERSONAL_DOH_URL:'',
+    MNEBYDNS_PERSONAL_DOH_ISSUANCE_VERIFIED:'',
+    MNEBYDNS_DNS_INGRESS_VERIFIED:'',
+  };
+  await run(process.execPath,['--experimental-strip-types',
+    'scripts/issue-ios-dns-profile.ts'],{env:cliEnv,timeout:15000});
+  const issued=await readFile(cliOut);
+  assert.equal(issued[0],0x30);
+  await writeFile(join(dir,'operator-checked.plist'),Buffer.alloc(0));
+  await run('openssl',['cms','-verify','-binary','-inform','DER',
+    '-in',cliOut,'-out',join(dir,'operator-checked.plist'),'-CAfile',rootCert],
+    {timeout:15000});
+  assert.match((await readFile(join(dir,'operator-checked.plist'))).toString('utf8'),
+    /dns\\.mnebyvpn\\.site/);
+  await assert.rejects(run(process.execPath,['--experimental-strip-types',
+    'scripts/issue-ios-dns-profile.ts'],{env:cliEnv,timeout:15000}));
+    const altered=Buffer.from(signed);
   altered[altered.length-15]^=1;
   await writeFile(signedFile,altered);
   await assert.rejects(run('openssl',['cms','-verify','-binary','-inform','DER',
