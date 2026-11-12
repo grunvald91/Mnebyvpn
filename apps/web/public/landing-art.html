@@ -271,11 +271,31 @@ footer nav a{padding:0 11px;white-space:nowrap}
 .dns-dialog-small{color:#bad0eb}
 .dns-request{display:block;width:100%;margin-top:14px;border:1px solid rgba(145,244,255,.7);border-radius:99px;padding:10px;background:linear-gradient(110deg,#14b7e9,#5f6be8);font:italic 800 13px Inter}
 @media(max-width:360px){.hero{min-height:205px}.dns-heading h2{font-size:14px}.ch h2{font-size:15px}.card{margin-inline:11px}}
+
+/* 2026-11 mobile responsiveness + performance: keep the original premium
+   artwork, but stop broad animated blurs, repaints and tap-shifts. */
+.hero{min-height:clamp(183px,24svh,217px)}
+.card{margin:-5px 15px 0!important;background:linear-gradient(145deg,rgba(14,25,66,.94),rgba(11,17,46,.96))!important;
+  -webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+.lock{top:27%;left:1.8%;width:11.6%;animation:none!important;
+  filter:drop-shadow(0 0 4px rgba(98,162,255,.35))}
+.rv{opacity:1!important;transform:none!important;filter:none!important;animation:none!important}
+.plan,.plan:hover,.plan:active,.plan[aria-pressed="true"]{
+  transform:none!important;transition:border-color .12s ease, background-color .12s ease!important;
+  box-shadow:none!important}
+.plan[aria-pressed="true"]{border-color:#a8faff;box-shadow:inset 0 0 0 1px rgba(192,252,255,.5)!important}
+.plan{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.sum{line-height:1.28;min-height:20px;justify-content:center;text-align:center}
+.sum #sum{overflow-wrap:normal}
+.dns-preview-note{margin:2px auto 5px}
+.bg i,.sun,.hz,.gold,.gh,.ss,.fg .rk,.fx .c,.fx .rg,.fx .n{animation:none!important}
+.info-circle,.trial-choice,.cta,.try{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+@media(prefers-reduced-motion:reduce){.plan,.card,.cta{transition:none!important}}
 </style>
 </head>
 <body>
 <div class="bg" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-<canvas id="st" aria-hidden="true"></canvas>
+<!-- Canvas particle loop removed: background video already provides the motion. -->
 
 <div class="app">
   <div class="scene" aria-hidden="true">
@@ -357,9 +377,9 @@ footer nav a{padding:0 11px;white-space:nowrap}
   <dialog class="dns-dialog" id="dns-info-dialog" aria-labelledby="dns-modal-title">
     <div class="dns-dialog-head"><h2 id="dns-modal-title">Что такое Smart DNS?</h2><button class="dns-dialog-close" type="button" id="dns-info-close" aria-label="Закрыть">×</button></div>
     <p>Smart DNS помогает открывать <b>поддерживаемые сайты без постоянного включения VPN</b> — система работает выборочно, а обычные ресурсы продолжают открываться по привычному маршруту.</p>
-    <p class="dns-dialog-label">Сервисы, для которых планируется и проверяется поддержка:</p>
+    <p class="dns-dialog-label">Сервисы с настроенной маршрутизацией Smart DNS:</p>
     <div class="dns-service-tags"><span>YouTube</span><span>ChatGPT</span><span>Gemini</span><span>Claude</span><span>Google Antigravity</span><span>Grok</span><span>TikTok</span><span>X</span></div>
-    <p class="dns-dialog-small">Преимущества: не нужно постоянно переключать VPN, обычный трафик идёт напрямую, меньше лишней маршрутизации. Smart DNS <b>не шифрует весь трафик и не заменяет VPN</b>. Доступность отдельных сервисов зависит от текущей конфигурации и вашей сети.</p>
+    <p class="dns-dialog-small">Преимущества: не нужно постоянно переключать VPN, обычный трафик идёт напрямую, меньше лишней маршрутизации. Smart DNS <b>не шифрует весь трафик и не заменяет VPN</b>. Доступность сервисов может различаться у разных провайдеров и сетей.</p>
     <p>Нужен ещё один домен? Подайте заявку на его добавление. Если сайт пока не поддерживается, можно временно включить VPN. Вариант <b>Smart DNS + VPN</b> предусмотрен для будущего комплекта.</p>
     <button type="button" class="dns-request" id="dns-request-domain">Запросить добавление домена</button>
   </dialog>
@@ -376,24 +396,9 @@ const sum=$('#sum');
 // All tariff interaction lives in the same-origin bridge below. No fake DNS checkout.
 document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e=>e.preventDefault()));
 const cta=$('.cta');
-cta.addEventListener('pointermove',e=>{const r=cta.getBoundingClientRect();cta.style.setProperty('--mx',e.clientX-r.left+'px');cta.style.setProperty('--my',e.clientY-r.top+'px')});
-const S=$('#fx'),NS='http://www.w3.org/2000/svg';
-const mk=(n,a)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);S.appendChild(e);return e};
-const N=[[432,563],[543,497],[717,491],[811,510],[920,539],[861,611],[712,550]];
-N.forEach(([x,y],i)=>{mk('circle',{class:'n',cx:x,cy:y,r:5,style:`animation-delay:${i*.45}s`});mk('circle',{class:'rg',cx:x,cy:y,r:9,style:`animation-delay:${i*.7}s`})});
-const rnd=()=>(Math.random()+Math.random()+Math.random()-1.5)/1.5;
-for(let i=0;i<110;i++){const u=rnd(),x=625+u*125;mk('circle',{class:'c',cx:x.toFixed(1),cy:(545+rnd()*55-u*22).toFixed(1),r:(Math.random()*1.6+.7).toFixed(1),style:`--t:${(Math.random()*3+1.8).toFixed(1)}s;animation-delay:${(Math.random()*3).toFixed(1)}s`})}
-if(!R)setInterval(()=>{
-  const a=N[Math.random()*7|0],b=N[Math.random()*7|0];if(a===b)return;
-  const p=mk('path',{class:'fl',pathLength:100,d:`M${a[0]} ${a[1]}Q${(a[0]+b[0])/2} ${Math.min(a[1],b[1])-60-Math.random()*90} ${b[0]} ${b[1]}`});
-  p.animate([{strokeDashoffset:100,opacity:1},{strokeDashoffset:0,opacity:1,offset:.5},{strokeDashoffset:0,opacity:0}],{duration:1800,easing:'ease-in-out'}).onfinish=()=>p.remove();
-},1600);
-// parallax
-if(!R)addEventListener('pointermove',e=>{
-  const s=document.documentElement.style;
-  s.setProperty('--px',(e.clientX/innerWidth-.5).toFixed(3));s.setProperty('--py',(e.clientY/innerHeight-.5).toFixed(3));
-});
-if(!R)addEventListener('deviceorientation',e=>{if(e.gamma==null)return;const s=document.documentElement.style,c=v=>Math.max(-.5,Math.min(.5,v));s.setProperty('--px',c(e.gamma/50).toFixed(3));s.setProperty('--py',c((e.beta-45)/60).toFixed(3))});
+// No pointermove gradient: touching a tariff must not repaint the entire card.
+// Video and CSS scene provide the only background animation. No gyroscope,
+// per-pointer CSS invalidations, 110 animated circles or SVG intervals.
 // Background video supplied by the owner (bg3.webm / bg3.mp4).
 // Kept optional: reduced motion, data saver and slow links use the CSS/SVG scene.
 (()=>{
@@ -432,15 +437,7 @@ if(!R)addEventListener('deviceorientation',e=>{if(e.gamma==null)return;const s=d
     :new Promise(resolve=>addEventListener('load',resolve,{once:true}))
   ).then(()=>idle(start));
 })();
-// drifting sparkles
-const cv=$('#st'),x=cv.getContext('2d');let W,H;
-const P=Array.from({length:28},()=>({x:Math.random(),y:Math.random(),r:Math.random()*1.4+.3,s:Math.random()*.00005+.00001,p:Math.random()*6.28}));
-const rs=()=>{W=cv.width=innerWidth;H=cv.height=innerHeight};rs();addEventListener('resize',rs);
-(function f(t){
-  x.clearRect(0,0,W,H);x.fillStyle='#c4ecff';
-  for(const p of P){p.y-=p.s*16;if(p.y<0)p.y=1;x.globalAlpha=.2+.5*Math.sin(t/900+p.p)**2;x.beginPath();x.arc(p.x*W,p.y*H,p.r,0,6.3);x.fill()}
-  if(!R)requestAnimationFrame(f);
-})(0);
+// Continuous canvas rendering is intentionally disabled to keep taps responsive.
 
 ;(()=>{
   'use strict';
