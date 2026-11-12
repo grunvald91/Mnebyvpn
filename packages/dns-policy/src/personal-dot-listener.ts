@@ -111,16 +111,24 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
           const {rows}=await o.db.query(
             'SELECT recognize_personal_dns_credential($1) AS known',[label]);
           if(rows.length!==1||rows[0].known!==true){stop();return;}
-          const answer=await Promise.race([
-            resolvePersonalDnsMessage(name,request,o.classify,
-              async token=>{
-                const r=await o.db.query(
-                  'SELECT consume_personal_dns_query($1) AS verdict',[token]);
-                return String(r.rows[0]?.verdict??'DENY_UNKNOWN');
-              },o.mapped,o.direct),
-            new Promise<never>((_,reject)=>setTimeout(
-              ()=>reject(Error('DNS query deadline exceeded')),timeout)),
-          ]);
+          let deadline:NodeJS.Timeout|undefined;
+          let answer:Uint8Array;
+          try{
+            answer=await Promise.race([
+              resolvePersonalDnsMessage(name,request,o.classify,
+                async token=>{
+                  const r=await o.db.query(
+                    'SELECT consume_personal_dns_query($1) AS verdict',[token]);
+                  return String(r.rows[0]?.verdict??'DENY_UNKNOWN');
+                },o.mapped,o.direct),
+              new Promise<never>((_,reject)=>{
+                deadline=setTimeout(
+                  ()=>reject(Error('DNS query deadline exceeded')),timeout);
+              }),
+            ]);
+          }finally{
+            if(deadline)clearTimeout(deadline);
+          }
           if(closed)return;
           if(answer.byteLength<12||answer.byteLength>MAX_DNS){stop();return;}
           const output=Buffer.from(answer);
