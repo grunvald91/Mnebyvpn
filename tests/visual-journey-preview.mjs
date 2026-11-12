@@ -94,7 +94,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
         const links=[...inner.querySelectorAll('.legal-links a')];
         return links.length===2&&Math.abs(links[0].getBoundingClientRect().top-links[1].getBoundingClientRect().top)<=2;
       })(),
-      footerVisible:inner.querySelector('footer').getBoundingClientRect().bottom<=height+3,
+      footerVisible:inner.querySelector('footer').getBoundingClientRect().bottom<=innerHeight+3,
       horizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
       frameWidth:Math.round(frame.getBoundingClientRect().width),
       frameHeight:Math.round(frame.getBoundingClientRect().height),
