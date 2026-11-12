@@ -19,10 +19,21 @@ CREATE TABLE personal_dns_query_windows (
     ON DELETE RESTRICT,
   period_index bigint NOT NULL CHECK(period_index >= 0),
   used_queries bigint NOT NULL DEFAULT 0 CHECK(used_queries >= 0),
+  reserved_queries bigint NOT NULL DEFAULT 0 CHECK(reserved_queries >= 0),
   updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   PRIMARY KEY (entitlement_id,period_index)
 );
 REVOKE ALL ON personal_dns_query_windows FROM PUBLIC;
+
+CREATE TABLE personal_dns_query_reservations (
+  request_id uuid PRIMARY KEY,
+  entitlement_id uuid NOT NULL REFERENCES personal_dns_credentials(entitlement_id) ON DELETE RESTRICT,
+  period_index bigint NOT NULL CHECK(period_index>=0),
+  token_sha256 text NOT NULL CHECK(token_sha256 ~ '^[a-f0-9]{64}$'),
+  expires_at timestamptz NOT NULL
+);
+CREATE INDEX personal_dns_pending_by_entitlement ON personal_dns_query_reservations(entitlement_id,expires_at);
+REVOKE ALL ON personal_dns_query_reservations FROM PUBLIC;
 
 -- Only trusted provisioning worker may call this function. Label is a
 -- bearer capability delivered once to the subscriber; store only its digest.
@@ -123,10 +134,109 @@ BEGIN
   UPDATE personal_dns_query_windows
     SET used_queries=used_queries+1,updated_at=v_now
     WHERE entitlement_id=e.id AND period_index=v_index
-      AND used_queries < c.query_limit_per_30d
+      AND used_queries + reserved_queries < c.query_limit_per_30d
     RETURNING used_queries INTO v_used;
   IF NOT FOUND THEN RETURN 'DENY_QUOTA'; END IF;
   RETURN 'ALLOWED';
+END;
+$$;
+
+-- Canonical paid ingress uses reservations, NOT the older attempt counter.
+-- Lock-order is ALWAYS entitlement -> reservation -> window. A pending
+-- reservation counts against quota until settlement or bounded expiry.
+CREATE FUNCTION reserve_personal_dns_query(p_label text,p_request uuid)
+RETURNS text LANGUAGE plpgsql AS $$
+DECLARE
+  e entitlements%ROWTYPE;
+  c personal_dns_credentials%ROWTYPE;
+  v_entitlement uuid;
+  v_idx bigint;
+  v_now timestamptz;
+  expired record;
+BEGIN
+  IF p_label IS NULL OR p_label !~ '^[a-z0-9]{12}$' OR p_request IS NULL
+  THEN RETURN 'DENY_INVALID'; END IF;
+  SELECT entitlement_id INTO v_entitlement FROM personal_dns_credentials
+    WHERE token_sha256=encode(sha256(convert_to(p_label,'UTF8')),'hex');
+  IF NOT FOUND THEN RETURN 'DENY_UNKNOWN'; END IF;
+  SELECT * INTO e FROM entitlements WHERE id=v_entitlement FOR UPDATE;
+  IF NOT FOUND THEN RETURN 'DENY_UNKNOWN'; END IF;
+  v_now:=clock_timestamp();
+  SELECT * INTO c FROM personal_dns_credentials WHERE entitlement_id=e.id;
+  IF NOT FOUND OR c.revoked_at IS NOT NULL OR
+     c.token_sha256<>encode(sha256(convert_to(p_label,'UTF8')),'hex')
+     OR e.product<>'smart_dns' OR e.state<>'ACTIVE'
+     OR e.starts_at IS NULL OR e.expires_at IS NULL OR
+     e.starts_at>v_now OR e.expires_at<=v_now
+  THEN RETURN 'DENY_INACTIVE'; END IF;
+  v_idx:=floor(extract(epoch FROM(v_now-e.starts_at))/2592000)::bigint;
+  IF v_idx<0 THEN RETURN 'DENY_INACTIVE'; END IF;
+  -- Recover after worker crashes, and prevent abandoned reservations from
+  -- starving the quota. Expired requests can NEVER be settled afterwards.
+  FOR expired IN
+    DELETE FROM personal_dns_query_reservations
+    WHERE entitlement_id=e.id AND expires_at<=v_now
+    RETURNING period_index
+  LOOP
+    UPDATE personal_dns_query_windows SET
+      reserved_queries=reserved_queries-1,updated_at=v_now
+    WHERE entitlement_id=e.id AND period_index=expired.period_index;
+  END LOOP;
+  INSERT INTO personal_dns_query_windows(entitlement_id,period_index)
+    VALUES(e.id,v_idx) ON CONFLICT DO NOTHING;
+  UPDATE personal_dns_query_windows SET
+    reserved_queries=reserved_queries+1,updated_at=v_now
+    WHERE entitlement_id=e.id AND period_index=v_idx
+      AND used_queries+reserved_queries < c.query_limit_per_30d;
+  IF NOT FOUND THEN RETURN 'DENY_QUOTA'; END IF;
+  INSERT INTO personal_dns_query_reservations(
+    request_id,entitlement_id,period_index,token_sha256,expires_at
+  ) VALUES(p_request,e.id,v_idx,c.token_sha256,v_now+interval '15 seconds')
+    ON CONFLICT DO NOTHING;
+  IF NOT FOUND THEN
+    UPDATE personal_dns_query_windows SET reserved_queries=reserved_queries-1
+      WHERE entitlement_id=e.id AND period_index=v_idx;
+    RETURN 'DENY_DUPLICATE';
+  END IF;
+  RETURN 'RESERVED';
+END;
+$$;
+
+-- Call SETTLE only AFTER a valid upstream answer and before sending that
+-- answer to the client. Any failure/timeout calls RELEASE. Idempotent calls
+-- cannot double-spend. A release after a worker crash is also recovered by
+-- the 15-second reservation expiry on the next user request.
+CREATE FUNCTION finish_personal_dns_query(p_request uuid,p_success boolean)
+RETURNS text LANGUAGE plpgsql AS $$
+DECLARE
+  v_entitlement uuid;
+  e entitlements%ROWTYPE;
+  c personal_dns_credentials%ROWTYPE;
+  r personal_dns_query_reservations%ROWTYPE;
+  v_now timestamptz;
+  v_charge boolean;
+BEGIN
+  IF p_request IS NULL OR p_success IS NULL THEN RETURN 'DENY_INVALID'; END IF;
+  SELECT entitlement_id INTO v_entitlement
+    FROM personal_dns_query_reservations WHERE request_id=p_request;
+  IF NOT FOUND THEN RETURN 'DENY_UNKNOWN'; END IF;
+  SELECT * INTO e FROM entitlements WHERE id=v_entitlement FOR UPDATE;
+  IF NOT FOUND THEN RETURN 'DENY_UNKNOWN'; END IF;
+  SELECT * INTO r FROM personal_dns_query_reservations WHERE request_id=p_request;
+  IF NOT FOUND THEN RETURN 'DENY_UNKNOWN'; END IF;
+  v_now:=clock_timestamp();
+  SELECT * INTO c FROM personal_dns_credentials WHERE entitlement_id=e.id;
+  v_charge:=p_success AND r.expires_at>v_now
+    AND c.revoked_at IS NULL AND c.token_sha256=r.token_sha256
+    AND e.product='smart_dns' AND e.state='ACTIVE'
+    AND e.starts_at<=v_now AND e.expires_at>v_now;
+  DELETE FROM personal_dns_query_reservations WHERE request_id=p_request;
+  UPDATE personal_dns_query_windows SET
+    reserved_queries=reserved_queries-1,
+    used_queries=used_queries+CASE WHEN v_charge THEN 1 ELSE 0 END,
+    updated_at=v_now
+  WHERE entitlement_id=e.id AND period_index=r.period_index;
+  RETURN CASE WHEN v_charge THEN 'SETTLED' ELSE 'RELEASED' END;
 END;
 $$;
 
@@ -202,11 +312,11 @@ RETURNS TABLE(
       WHEN e.state <> 'ACTIVE' OR e.expires_at IS NULL OR
            e.expires_at<=now() OR e.starts_at IS NULL OR e.starts_at>now()
         THEN 'INACTIVE'
-      WHEN COALESCE(w.used_queries,0)>=c.query_limit_per_30d THEN 'QUOTA_EXHAUSTED'
+      WHEN COALESCE(w.used_queries,0)+COALESCE(w.reserved_queries,0)>=c.query_limit_per_30d THEN 'QUOTA_EXHAUSTED'
       ELSE 'ACTIVE'
     END,
     COALESCE(w.used_queries,0),
-    GREATEST(0::bigint,c.query_limit_per_30d-COALESCE(w.used_queries,0)),
+    GREATEST(0::bigint,c.query_limit_per_30d-COALESCE(w.used_queries,0)-COALESCE(w.reserved_queries,0)),
     c.query_limit_per_30d,
     e.starts_at +
       make_interval(secs => ((GREATEST(0::bigint,floor(
@@ -223,6 +333,8 @@ $$;
 
 REVOKE ALL ON FUNCTION issue_personal_dns_credential(uuid,text,text,bigint) FROM PUBLIC;
 REVOKE ALL ON FUNCTION consume_personal_dns_query(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION reserve_personal_dns_query(text,uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION finish_personal_dns_query(uuid,boolean) FROM PUBLIC;
 REVOKE ALL ON FUNCTION recognize_personal_dns_credential(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION revoke_personal_dns_credential(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION rotate_personal_dns_credential(uuid,uuid,bigint,text,text) FROM PUBLIC;
