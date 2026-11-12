@@ -35,7 +35,9 @@ DECLARE
 BEGIN
   IF p_entitlement IS NULL OR p_label IS NULL
      OR p_label !~ '^[a-z0-9]{12}$'
-     OR p_token_hash IS NULL OR p_token_hash !~ '^[a-f0-9]{64}
+     OR p_token_hash IS NULL OR p_token_hash !~ '^[a-f0-9]{64}$'
+     OR p_token_hash <> encode(sha256(convert_to(p_label,'UTF8')),'hex')
+     OR p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 100000000
   THEN RETURN 'DENY_INVALID'; END IF;
 
   SELECT * INTO e FROM entitlements WHERE id=p_entitlement FOR UPDATE;
