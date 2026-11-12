@@ -124,6 +124,65 @@ test('two known certificate SANs never substitute for an actual wildcard SAN',()
   }),/wildcard SAN/);
 });
 
+test('short DB outage grace expires and never becomes an open resolver',async()=>{
+  let offline=false,clock=1000;
+  const db={query:async()=>{
+    if(offline)throw Error('database unavailable');
+    return{rows:[{known:true}]};
+  }} as unknown as Pick<Pool,'query'>;
+  const listener=createPersonalDotListener({
+    key,cert,db,now:()=>clock,queryTimeoutMs:2000,
+    classify:()=> 'direct',
+    mapped:async()=>{throw Error('premium must never be used');},
+    direct:async q=>answer(q),
+  });
+  await new Promise<void>(resolve=>listener.listen(0,'127.0.0.1',resolve));
+  const socket=connectTls({host:'127.0.0.1',port:(listener.address() as AddressInfo).port,
+    servername:hostname,rejectUnauthorized:false});
+  socket.on('error',()=>{});
+  try{
+    await once(socket,'secureConnect');
+    const reply=once(socket,'data');
+    socket.write(frame(request('example.org')));
+    await reply;
+    offline=true;clock=1000+90001;
+    const closing=once(socket,'close');
+    socket.write(frame(request('example.org')));
+    await closing;
+  }finally{
+    socket.destroy();
+    await new Promise<void>(resolve=>listener.close(()=>resolve()));
+  }
+});
+
+test('personal hostname enforces a bounded 60-query burst',async()=>{
+  const db={query:async()=>({rows:[{known:true}]})} as unknown as Pick<Pool,'query'>;
+  const listener=createPersonalDotListener({
+    key,cert,db,now:()=>1000,queryTimeoutMs:2000,
+    classify:()=> 'direct',
+    mapped:async()=>{throw Error('premium must never be used');},
+    direct:async q=>answer(q),
+  });
+  await new Promise<void>(resolve=>listener.listen(0,'127.0.0.1',resolve));
+  const socket=connectTls({host:'127.0.0.1',port:(listener.address() as AddressInfo).port,
+    servername:hostname,rejectUnauthorized:false});
+  socket.on('error',()=>{});
+  try{
+    await once(socket,'secureConnect');
+    for(let i=0;i<60;i++){
+      const reply=once(socket,'data');
+      socket.write(frame(request('example.org')));
+      await reply;
+    }
+    const closing=once(socket,'close');
+    socket.write(frame(request('example.org')));
+    await closing;
+  }finally{
+    socket.destroy();
+    await new Promise<void>(resolve=>listener.close(()=>resolve()));
+  }
+});
+
 test('listener refuses certificate not covering the customer wildcard',()=>{
   assert.throws(()=>createPersonalDotListener({
     key,cert:Buffer.from('not a certificate'),db:{} as Pick<Pool,'query'>,
