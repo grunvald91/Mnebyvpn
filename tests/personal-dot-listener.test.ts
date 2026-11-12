@@ -7,9 +7,9 @@ import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {connect as connectTls} from 'node:tls';
 import {once} from 'node:events';
-import type {AddressInfo} from 'node:net';
+import {createServer as createTcpServer,type AddressInfo} from 'node:net';
 import type {Pool} from 'pg';
-import {createPersonalDotListener} from '../packages/dns-policy/src/personal-dot-listener.ts';
+import {createPersonalDotListener,queryLoopbackDnsTcp} from '../packages/dns-policy/src/personal-dot-listener.ts';
 
 const dir=mkdtempSync(join(tmpdir(),'dot-private-'));
 const keyFile=join(dir,'key.pem'),certFile=join(dir,'cert.pem');
@@ -76,6 +76,31 @@ test('personal DoT server accepts framed TLS requests, meters mapped only and di
     await new Promise<void>(resolve=>server.close(()=>resolve()));
   }
 });
+test('local TCP DNS resolver rejects same-ID reply for wrong domain',async()=>{
+  const mock=createTcpServer(socket=>{
+    let received=Buffer.alloc(0);
+    socket.on('data',(chunk:Buffer)=>{
+      received=Buffer.concat([received,chunk]);
+      if(received.length<2)return;
+      const size=received.readUInt16BE(0);
+      if(received.length<size+2)return;
+      // Same DNS transaction ID 42, but wrong answer question.
+      socket.end(frame(answer(request('wrong.example'))));
+    });
+  });
+  await new Promise<void>(resolve=>mock.listen(0,'127.0.0.1',resolve));
+  try{
+    const port=(mock.address() as AddressInfo).port;
+    await assert.rejects(
+      queryLoopbackDnsTcp({host:'127.0.0.1',port},request('claude.ai')),
+      /Unmatched or invalid DNS answer/,
+    );
+  }finally{
+    mock.closeAllConnections();
+    await new Promise<void>(resolve=>mock.close(()=>resolve()));
+  }
+});
+
 test('listener refuses certificate not covering the customer wildcard',()=>{
   assert.throws(()=>createPersonalDotListener({
     key,cert:Buffer.from('not a certificate'),db:{} as Pick<Pool,'query'>,
