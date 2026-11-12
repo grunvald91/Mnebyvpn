@@ -84,7 +84,10 @@ export class PgBillingStore {
     const { rows } = await this.pool.query(
       'SELECT * FROM billing_plans WHERE enabled=true AND '+field+' IS NOT NULL ORDER BY id'
     );
-    return rows.map(mapPlan);
+    // Same single sales switch for the public site AND Telegram catalogue.
+    // Do not advertise plans that the checkout refuses.
+    const salesOn=isDnsSalesEnabled(process.env);
+    return rows.map(mapPlan).filter(p=>p.product==='vpn'||salesOn);
   }
   async order(orderId: string): Promise<OrderRecord | null> {
     if (!uuid.test(orderId)) return null;
@@ -135,7 +138,7 @@ export class PgBillingStore {
         const r = await c.query(orderSQL,[existing.rows[0].order_id]);
         const order = mapOrder(r.rows[0]);
         // One centralized sales switch also applies to pending checkout retries.
-        if (process.env.MNEBYVPN_ENV==='production' && order.product!=='vpn' &&
+        if (order.product!=='vpn' &&
             !isDnsSalesEnabled(process.env))
           throw new Error('DNS_PAID_NOT_READY');
         if (order.planId !== planId ||
@@ -192,7 +195,7 @@ export class PgBillingStore {
       if (!plan.rowCount) throw new Error('Plan not offered');
       const p = plan.rows[0];
       // Use the same explicit operator switch for website and Telegram.
-      if (process.env.MNEBYVPN_ENV==='production' && p.product!=='vpn' &&
+      if (p.product!=='vpn' &&
           !isDnsSalesEnabled(process.env))
         throw new Error('DNS_PAID_NOT_READY');
       if(expectedKey!==undefined && planWidgetKey(mapPlan(p))!==expectedKey)
@@ -502,7 +505,7 @@ export class PgBillingStore {
        typeof telegramUserId==='string' && uuid.test(telegramUserId)) ||
        !['vpn','smart_dns','bundle'].includes(product))throw new Error('Invalid trial request');
     // The same single operator sales switch governs DNS trials.
-    if(process.env.MNEBYVPN_ENV==='production' && product!=='vpn' &&
+    if(product!=='vpn' &&
        !isDnsSalesEnabled(process.env))
       return {status:'UNAVAILABLE'};
     if(deviceHash!==undefined&&!/^[a-f0-9]{64}$/.test(deviceHash))
