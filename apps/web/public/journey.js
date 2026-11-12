@@ -4,6 +4,7 @@
 (() => {
   'use strict';
   const el=id=>document.getElementById(id);
+  const journeyProductNames={vpn:'VPN',smart_dns:'Smart DNS',bundle:'VPN + Smart DNS'};
   const root=document.body;
   const landing=el('journey-landing'),setup=el('journey-setup'),paymentIntro=el('journey-payment-intro'),trialAuth=el('journey-trial-auth'),orderView=el('journey-order');
   const emailPanel=el('email-auth-panel'),emailHome=emailPanel?.parentNode;
@@ -123,14 +124,14 @@
     el('journey-trial').disabled=el('trial-button').disabled;
     el('journey-trial-offer').hidden=!trialAvailable;
     updateTrialAuth();
-    el('journey-summary').textContent=plan?productNames[state.product]+' · '+state.days+' дней · '+priceFor(state.days):
+    el('journey-summary').textContent=plan?journeyProductNames[state.product]+' · '+state.days+' дней · '+priceFor(state.days):
       'Выбранный тариф пока не опубликован';
     el('journey-error').textContent=el('checkout-error').textContent||'';
   }
   function updateOrder(){
     const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
     const verified=state.loggedIn&&lastAccount?.identity?.email;
-    el('journey-order-period').textContent=productNames[state.product]+' · '+state.days+' дней';
+    el('journey-order-period').textContent=journeyProductNames[state.product]+' · '+state.days+' дней';
     el('journey-order-price').textContent=plan?priceFor(state.days):'—';
     el('journey-order-email').textContent=verified?lastAccount.identity.email:'Требуется вход по email';
     const pay=el('journey-order-pay');
@@ -147,7 +148,7 @@
   function pendingIntent(){
     try{
       const v=JSON.parse(sessionStorage.getItem('mnebyvpn-pending-checkout')||'null');
-      return v&&Object.hasOwn(productNames,v.product)&&[15,30,60,90].includes(v.days)&&
+      return v&&Object.hasOwn(journeyProductNames,v.product)&&[15,30,60,90].includes(v.days)&&
         Number.isSafeInteger(v.createdAt)&&Date.now()-v.createdAt<30*60*1000?v:null;
     }catch{return null;}
   }
