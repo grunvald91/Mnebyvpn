@@ -114,8 +114,8 @@ export class MeteredChunkGate {
 
   forward(input:Uint8Array):Promise<void>{
     const payload=Uint8Array.from(input);
-    if(!payload.length)return this.tail;
     if(this.stopped)return Promise.reject(new Error('Ingress is closed'));
+    if(!payload.length)return this.tail;
     const queued=this.tail.then(async()=>{
       if(this.stopped)throw new Error('Ingress is closed');
       try {
@@ -124,7 +124,7 @@ export class MeteredChunkGate {
           // A never-reused event ID avoids double charge on mistaken retries.
           // Ambiguous backend outcome FAILS CLOSED: never send unknown-charge data.
           const result=await this.debitBackend.debit(this.entitlementId,randomUUID(),chunk.length);
-          if(result!=='ACCEPTED')throw new Error('Debit rejected or unknown');
+          if(result!=='ACCEPTED'||this.stopped)throw new Error('Debit rejected, closed or unknown');
           await this.sink.send(chunk);
         }
       }catch{
