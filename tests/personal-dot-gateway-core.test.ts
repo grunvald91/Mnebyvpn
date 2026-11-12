@@ -112,7 +112,7 @@ test('classifier outage preserves ordinary DNS without premium mapping',async()=
 test('mapped resolver failure preserves direct DNS after one paid debit',async()=>{
   let charged=0,directCalls=0;
   const response=await resolvePersonalDnsMessage(host,query('claude.ai'),
-    async()=> 'premium',
+    async()=> 'premium' as const,
     async()=>{charged++;return 'ALLOWED';},
     async()=>{throw new Error('mapped upstream offline');},
     async()=>{directCalls++;return Uint8Array.from([6]);});
