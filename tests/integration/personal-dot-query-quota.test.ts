@@ -88,13 +88,13 @@ test('paid renewal does not erase used queries in the same 30-day interval',asyn
 
 test('rotation instantly invalidates old hostname without resetting paid quota',async()=>{
   const result=await pool.query(
-    'SELECT rotate_personal_dns_credential($1,$2,$3,$4) AS result',
-    [entitlementId,1,rotatedCredential.label,rotatedCredential.tokenSha256],
+    'SELECT rotate_personal_dns_credential($1,$2,$3,$4,$5) AS result',
+    [accountId,entitlementId,1,rotatedCredential.label,rotatedCredential.tokenSha256],
   );
   assert.equal(result.rows[0].result,'ROTATED');
   const stale=await pool.query(
-    'SELECT rotate_personal_dns_credential($1,$2,$3,$4) AS result',
-    [entitlementId,1,credential.label,credential.tokenSha256],
+    'SELECT rotate_personal_dns_credential($1,$2,$3,$4,$5) AS result',
+    [accountId,entitlementId,1,credential.label,credential.tokenSha256],
   );
   assert.equal(stale.rows[0].result,'DENY_STALE');
   const old=await pool.query(
