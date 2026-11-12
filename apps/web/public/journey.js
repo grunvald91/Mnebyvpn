@@ -93,34 +93,44 @@
     }
   }
   function priceFor(days) {
-    const p=state.plans.find(p=>p.product==='vpn'&&p.durationDays===days);
+    const p=state.plans.find(p=>p.product===state.product&&p.durationDays===days);
     return p?.rubMinor?formatMoney(p.rubMinor):'—';
   }
   function updatePlan(){
+    const offered=new Set(state.plans.map(p=>p.product));
+    const productOptions=landing.querySelectorAll('[data-journey-product]');
+    const selector=el('journey-product-grid');
+    if(selector)selector.hidden=offered.size<2;
+    for(const button of productOptions){
+      const available=offered.has(button.dataset.journeyProduct);
+      button.hidden=!available;
+      button.disabled=!available;
+      button.setAttribute('aria-pressed',String(button.dataset.journeyProduct===state.product));
+    }
     for(const button of landing.querySelectorAll('[data-journey-days]')){
       const day=Number(button.dataset.journeyDays);
       const selected=day===state.days;
       button.setAttribute('aria-pressed',String(selected));
       const price=landing.querySelector('[data-journey-price="'+day+'"]');
       if(price)price.textContent=priceFor(day);
-      button.disabled=!state.plans.some(p=>p.product==='vpn'&&p.durationDays===day);
+      button.disabled=!state.plans.some(p=>p.product===state.product&&p.durationDays===day);
     }
     const original=el('buy-button'),buy=el('journey-buy');
-    const plan=state.plans.find(p=>p.product==='vpn'&&p.durationDays===state.days);
+    const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
     buy.disabled=original.disabled;
     buy.textContent=original.textContent;
-    const trialAvailable=state.trialOffers.includes('vpn');
+    const trialAvailable=state.trialOffers.includes(state.product);
     el('journey-trial').disabled=el('trial-button').disabled;
     el('journey-trial-offer').hidden=!trialAvailable;
     updateTrialAuth();
-    el('journey-summary').textContent=plan?'VPN · '+state.days+' дней · '+priceFor(state.days):
+    el('journey-summary').textContent=plan?productNames[state.product]+' · '+state.days+' дней · '+priceFor(state.days):
       'Выбранный тариф пока не опубликован';
     el('journey-error').textContent=el('checkout-error').textContent||'';
   }
   function updateOrder(){
-    const plan=state.plans.find(p=>p.product==='vpn'&&p.durationDays===state.days);
+    const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
     const verified=state.loggedIn&&lastAccount?.identity?.email;
-    el('journey-order-period').textContent='VPN · '+state.days+' дней';
+    el('journey-order-period').textContent=productNames[state.product]+' · '+state.days+' дней';
     el('journey-order-price').textContent=plan?priceFor(state.days):'—';
     el('journey-order-email').textContent=verified?lastAccount.identity.email:'Требуется вход по email';
     const pay=el('journey-order-pay');
@@ -137,7 +147,7 @@
   function pendingIntent(){
     try{
       const v=JSON.parse(sessionStorage.getItem('mnebyvpn-pending-checkout')||'null');
-      return v&&v.product==='vpn'&&[15,30,60,90].includes(v.days)&&
+      return v&&Object.hasOwn(productNames,v.product)&&[15,30,60,90].includes(v.days)&&
         Number.isSafeInteger(v.createdAt)&&Date.now()-v.createdAt<30*60*1000?v:null;
     }catch{return null;}
   }
@@ -165,15 +175,15 @@
   }
   function resumeCheckout(){
     const pending=pendingIntent();
-    if(!pending||!state.loggedIn||!state.plans.some(p=>p.product==='vpn'&&p.durationDays===pending.days))return;
+    if(!pending||!state.loggedIn||!state.plans.some(p=>p.product===pending.product&&p.durationDays===pending.days))return;
     if(!lastAccount?.identity?.email){
       beginEmailLink();return;
     }
     // Clear before setSelection, which synchronously triggers renderPlan.
     // Otherwise its wrapper would recursively resume the same checkout.
     clearIntent();
-    state.product='vpn';
-    setSelection('vpn',pending.days);
+    state.product=pending.product;
+    setSelection(pending.product,pending.days);
     setView('checkout',true);
   }
   const downloads={
@@ -294,7 +304,7 @@
           (a.sourceOrderId===order.id || a.id===intent.renewalTargetId));
         heading.textContent=ready?'VPN готов к подключению':'Оплата подтверждена';
         description.textContent=ready?'Подготавливаем инструкцию для вашего устройства…':
-          'Платёж получен. Ожидаем подтверждения активации VPN на сервере.';
+          'Платёж получен. Проверяем активацию доступа на сервере.';
       }else if(order.state==='REFUNDED'||order.state==='CANCELLED'){
         heading.textContent='Оплаченного доступа нет';
         description.textContent='Статус заказа: '+(stateNames[order.state]||order.state)+'. Проверьте историю или напишите в поддержку.';
@@ -372,7 +382,16 @@
     installed=false;updateSetup();setView('setup',true);return result;
   };
   landing.querySelectorAll('[data-journey-days]').forEach(btn=>btn.addEventListener('click',()=>{
-    setSelection('vpn',Number(btn.dataset.journeyDays));updatePlan();
+    setSelection(state.product,Number(btn.dataset.journeyDays));updatePlan();
+  }));
+  landing.querySelectorAll('[data-journey-product]').forEach(btn=>btn.addEventListener('click',()=>{
+    const product=btn.dataset.journeyProduct;
+    const plans=state.plans.filter(p=>p.product===product);
+    if(!plans.length)return;
+    const term=plans.some(p=>p.durationDays===state.days)?state.days:
+      (plans.find(p=>p.durationDays===30)||plans[0]).durationDays;
+    setSelection(product,term);
+    updatePlan();
   }));
   el('journey-buy').addEventListener('click',beginCheckout);
   el('journey-order-pay').addEventListener('click',()=>{
@@ -430,7 +449,6 @@
   else if(/Mac OS X|Macintosh/i.test(ua))chosenPlatform='macos';
   else if(/Linux/i.test(ua))chosenPlatform='linux';
   setPlatform(chosenPlatform);
-  if(state.product!=='vpn')setSelection('vpn',state.days);
   root.classList.add('journey-active');
   setView(getRoute());
   updatePlan();
