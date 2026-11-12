@@ -317,8 +317,14 @@ footer nav a{padding:0 11px;white-space:nowrap}
   background:radial-gradient(circle,rgba(255,231,175,.25),rgba(255,155,65,.10) 26%,transparent 66%);
   opacity:.6;animation:solar-breath 7s ease-in-out infinite alternate}
 @keyframes solar-breath{from{opacity:.36}to{opacity:.78}}
+/* Do not rotate a full-screen conic gradient or blur five giant layers
+   while playing a hardware-decoded video. Keep atmospheric static colors. */
+.bg::before{animation:none!important;opacity:.3}
+.bg>i{display:none!important}
+.scene.vid #fx,.scene.vid .sun,.scene.vid .hz,
+.scene.vid .gold,.scene.vid .gh,.scene.vid .ss{visibility:hidden}
 .bgv{transition:opacity .35s ease}
-.vid .fg{transition:opacity .35s ease}
+.vid .fg{transition:opacity .35s ease;visibility:hidden}
 @media(prefers-reduced-motion:reduce){.scene::after{animation:none}}
 </style>
 </head>
