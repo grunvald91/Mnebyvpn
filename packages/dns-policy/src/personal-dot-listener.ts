@@ -31,11 +31,12 @@ function validPort(value:number):boolean{
  * and lifetime. No foreign DNS server, shared proxy or public port contacted.
  */
 export function queryLoopbackDnsTcp(
-  server:Upstream,query:Uint8Array,deadlineMs=2000,
+  server:Upstream,query:Uint8Array,deadlineMs=2000,signal?:AbortSignal,
 ):Promise<Uint8Array>{
   if(!validPort(server.port)||!(server.host==='127.0.0.1'||server.host==='::1')||
      query.length<12||query.length>MAX_DNS)
     return Promise.reject(Error('Invalid local DNS upstream'));
+  if(signal?.aborted)return Promise.reject(Error('DNS query aborted'));
   return new Promise<Uint8Array>((resolve,reject)=>{
     let finished=false,received=Buffer.alloc(0);
     const socket=connectTcp({host:server.host,port:server.port});
@@ -43,10 +44,14 @@ export function queryLoopbackDnsTcp(
       if(finished)return;
       finished=true;
       clearTimeout(deadline);
+      signal?.removeEventListener('abort',abort);
       socket.destroy();
       if(err)reject(err);else if(response)resolve(response);else reject(Error('No DNS response'));
     };
     const deadline=setTimeout(()=>finish(Error('DNS upstream timeout')),deadlineMs);
+    const abort=()=>finish(Error('DNS query aborted'));
+    signal?.addEventListener('abort',abort,{once:true});
+    if(signal?.aborted){abort();return;}
     socket.on('error',()=>finish(Error('DNS upstream failed')));
     socket.on('close',()=>{if(!finished)finish(Error('DNS upstream closed'));});
     socket.on('connect',()=>{
