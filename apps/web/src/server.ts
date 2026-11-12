@@ -215,6 +215,48 @@ function sendArt(res: ServerResponse) {
   res.writeHead(200).end(landingArtHtml);
 }
 
+// Byte-range support is required for reliable MP4 playback in Safari/iOS.
+// These two public, static media assets carry no authentication state.
+function sendBackgroundVideo(req: IncomingMessage, res: ServerResponse, data: Buffer, type: 'video/webm'|'video/mp4') {
+  const total=data.byteLength;
+  const raw=req.headers.range;
+  let start=0,end=total-1;
+  let partial=false;
+  res.setHeader('Cache-Control','public, max-age=3600');
+  res.setHeader('Accept-Ranges','bytes');
+  res.setHeader('Content-Type',type);
+  res.setHeader('X-Content-Type-Options','nosniff');
+  res.setHeader('Cross-Origin-Resource-Policy','same-origin');
+  if(raw!==undefined) {
+    const match=/^bytes=(\\d*)-(\\d*)$/.exec(raw);
+    let valid=Boolean(match&&(match[1]||match[2]));
+    if(valid&&match) {
+      if(match[1]) {
+        start=Number(match[1]);
+        end=match[2]?Number(match[2]):total-1;
+      } else {
+        const suffix=Number(match[2]);
+        valid=Number.isSafeInteger(suffix)&&suffix>0;
+        if(valid) start=Math.max(0,total-suffix);
+      }
+      valid=valid&&Number.isSafeInteger(start)&&Number.isSafeInteger(end)&&
+        start>=0&&start<total&&end>=start;
+      if(valid) end=Math.min(end,total-1);
+    }
+    if(!valid) {
+      res.setHeader('Content-Range','bytes */'+total);
+      res.setHeader('Content-Length','0');
+      res.writeHead(416).end();return;
+    }
+    partial=true;
+    res.setHeader('Content-Range','bytes '+start+'-'+end+'/'+total);
+  }
+  res.setHeader('Content-Length',String(end-start+1));
+  res.writeHead(partial?206:200);
+  if(req.method==='HEAD')res.end();
+  else res.end(data.subarray(start,end+1));
+}
+
 function send(res: ServerResponse, status: number, body: string|Buffer, type = 'application/json; charset=utf-8') {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', type);
@@ -557,11 +599,11 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if (req.method === 'GET' && url.pathname === '/landing-art.html') {
     sendArt(res); return;
   }
-  if (req.method === 'GET' && url.pathname === '/bg3.webm') {
-    send(res, 200, bg3Webm, 'video/webm'); return;
+  if ((req.method === 'GET'||req.method === 'HEAD') && url.pathname === '/bg3.webm') {
+    sendBackgroundVideo(req, res, bg3Webm, 'video/webm'); return;
   }
-  if (req.method === 'GET' && url.pathname === '/bg3.mp4') {
-    send(res, 200, bg3Mp4, 'video/mp4'); return;
+  if ((req.method === 'GET'||req.method === 'HEAD') && url.pathname === '/bg3.mp4') {
+    sendBackgroundVideo(req, res, bg3Mp4, 'video/mp4'); return;
   }
   if (req.method === 'GET' && (url.pathname === '/terms' || url.pathname === '/terms.html')) {
     send(res,200,termsHtml,'text/html; charset=utf-8');return;
