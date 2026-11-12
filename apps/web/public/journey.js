@@ -403,7 +403,7 @@
     event.preventDefault();setView('plans',true);
   });
   el('journey-trial').addEventListener('click',async()=>{
-    if(!state.trialOffers.includes('vpn'))return;
+    if(!state.trialOffers.includes(state.product))return;
     if(!state.loggedIn){
       saveSelection();
       try{sessionStorage.setItem('mnebyvpn-pending-trial','1');}catch{}
@@ -412,7 +412,7 @@
       return;
     }
     const result=await claimTrial();
-    setView(['GRANTED','PENDING'].includes(result)?'setup':'account',true);
+    setView(['GRANTED','PENDING'].includes(result)&&state.product==='vpn'?'setup':'account',true);
   });
   el('journey-trial-back')?.addEventListener('click',event=>{
     event.preventDefault();
