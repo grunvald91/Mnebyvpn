@@ -6,8 +6,9 @@
  * from canonical billing DB. Original TLS SNI is required (ECH/absent SNI DENY).
  */
 import {randomUUID} from 'node:crypto';
-import {domainToASCII,isIP} from 'node:url';
-import {parseGlobalDelegated64} from './paid-ipv6-prefix.ts';
+import {domainToASCII} from 'node:url';
+import {isIP} from 'node:net';
+import {isWithinDelegated64,parseGlobalDelegated64} from './paid-ipv6-prefix.ts';
 
 export interface TrustedEntitlement {
   entitlementId:string;
@@ -59,18 +60,15 @@ export function authorizeSniIngress(
   catch{return deny('PREFIX_UNAVAILABLE');}
   const local=canonicalV6(localDestinationIPv6);
   if(!local)return deny('UNKNOWN_DESTINATION');
-  // Address must be part of this exact delegated /64, not any arbitrary
-  // IPv6 address or a connection to the legacy shared IPv4:443.
-  const prefix64=prefix.slice(0,-3).split(':').slice(0,4).join(':');
-  const local64=new URL('http://['+local+']/').hostname.slice(1,-1).split(':').slice(0,4).join(':');
-  if(local64!==prefix64)return deny('UNKNOWN_DESTINATION');
+  // Compare expanded 64-bit prefix, not compressed textual IPv6 forms.
+  if(!isWithinDelegated64(local,prefix))return deny('UNKNOWN_DESTINATION');
   if(!trustedGrant)return deny('NO_TRUSTED_ENTITLEMENT');
   if(trustedGrant.product!=='smart_dns')return deny('WRONG_PRODUCT');
   if(trustedGrant.retiredAt!==null||trustedGrant.state!=='ACTIVE')return deny('INACTIVE');
   if(!Number.isSafeInteger(trustedGrant.revision)||trustedGrant.revision<1)return deny('INVALID_REVISION');
   if(!trustedGrant.expiresAt||!Number.isFinite(trustedGrant.expiresAt.getTime())||
      trustedGrant.expiresAt.getTime()<=now.getTime())return deny('EXPIRED');
-  if(trustedGrant.quotaState!=='AVAILABLE'||trustedGrant.quotaRemainingBytes<=0n)
+  if(trustedGrant.quotaState!=='AVAILABLE'||typeof trustedGrant.quotaRemainingBytes!=='bigint'||trustedGrant.quotaRemainingBytes<=0n)
     return deny('QUOTA_EXHAUSTED');
   if(canonicalV6(trustedGrant.destinationIPv6)!==local)return deny('UNKNOWN_DESTINATION');
   const host=normalizedDomain(originalSni);
