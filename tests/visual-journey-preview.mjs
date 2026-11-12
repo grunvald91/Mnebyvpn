@@ -111,6 +111,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       selected:inner.querySelector('.plan[data-d="15"]').getAttribute('aria-pressed'),
       buyText:inner.querySelector('.cta').textContent,
       trialVisible:getComputedStyle(inner.querySelector('.free')).display!=='none',
+      retryVisible:getComputedStyle(inner.querySelector('#front-retry')).display!=='none',
     };
   });
   const file=process.env.RUNNER_TEMP+'/mnebyvpn-'+width+'x'+height+'.jpg';
@@ -118,7 +119,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   console.log('VISUAL_METRICS_'+width+'='+JSON.stringify({...metrics,browserErrors}));
   if(metrics.horizontalOverflow||metrics.innerHorizontalOverflow||browserErrors.length||
     !metrics.iframeHasHeader||!metrics.iframeHasEarth||!metrics.iframeHasTariffs||
-    !metrics.videoPresent||metrics.cardOpacity<0.99||
+    !metrics.videoPresent||metrics.retryVisible||metrics.cardOpacity<0.99||
     !metrics.headerSingleRow||!metrics.topButtonsUnwrapped||!metrics.headerFits||
     !metrics.legalSingleRow||metrics.frontTop>12||
     (width<=390&&(!metrics.footerVisible||metrics.outerCanScroll))||
@@ -210,7 +211,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       top:Math.round(frame.getBoundingClientRect().top),
       price:frame.contentDocument.querySelector('.plan[data-d="30"] strong').textContent,
       button:frame.contentDocument.querySelector('.cta').textContent,
-      reloadVisible:!frame.contentDocument.querySelector('#front-retry').hidden,
+      reloadVisible:getComputedStyle(frame.contentDocument.querySelector('#front-retry')).display!=='none',
       error:frame.contentDocument.querySelector('#front-error').textContent,
     };
   });
@@ -233,7 +234,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     const doc=document.querySelector('#journey-front-frame').contentDocument;
     return {
       loading:doc.querySelector('.cta').textContent.includes('Загрузка'),
-      retryVisible:!doc.querySelector('#front-retry').hidden,
+      retryVisible:getComputedStyle(doc.querySelector('#front-retry')).display!=='none',
       purchaseDisabled:doc.querySelector('.cta').disabled,
     };
   });
