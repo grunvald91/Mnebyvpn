@@ -15,6 +15,7 @@ import {isAbsolute,join} from 'node:path';
 const run=promisify(execFile);
 const dnsName=/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/;
 const profileId=/^[a-z][a-z0-9.-]{5,150}$/;
+const reservedName=/\.(?:local|localhost|invalid|test|example|internal|onion)$/;
 const xml=(s:string):string=>{
   if(s.length>1024||/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(s))
     throw Error('INVALID_PROFILE_TEXT');
@@ -38,14 +39,14 @@ export function createIosDnsProfile(options:IosDnsProfileOptions):Buffer{
   let targetXml:string;
   if(options.target.protocol==='TLS'){
     const name=options.target.serverName;
-    if(name!==name.toLowerCase()||name.length>253||!dnsName.test(name))
+    if(name!==name.toLowerCase()||name.length>253||(!dnsName.test(name)||reservedName.test(name)))
       throw Error('INVALID_DOT_HOSTNAME');
     targetXml='<key>ServerName</key><string>'+xml(name)+'</string>';
   }else{
     let url:URL;
     try{url=new URL(options.target.serverUrl);}catch{throw Error('INVALID_DOH_URL');}
     if(url.protocol!=='https:'||url.username||url.password||url.port||url.hash||
-       url.search||!dnsName.test(url.hostname)||url.hostname!==url.hostname.toLowerCase()||
+       url.search||(!dnsName.test(url.hostname)||reservedName.test(url.hostname))||
        !url.pathname.startsWith('/dns-query/'))
       throw Error('INVALID_DOH_URL');
     // A token-bearing DoH URI MUST come from a trusted entitlement issuer,
