@@ -74,10 +74,10 @@ BEGIN
   THEN RAISE EXCEPTION 'history was erased'; END IF;
 
   -- Regeneration: old hostname stops immediately, quota never resets.
-  SELECT rotate_personal_dns_credential(e,1,repeat('c',12),
+  SELECT rotate_personal_dns_credential(a,e,1,repeat('c',12),
     encode(sha256(convert_to(repeat('c',12),'UTF8')),'hex')) INTO result;
   IF result<>'ROTATED' THEN RAISE EXCEPTION 'rotation failed: %',result; END IF;
-  SELECT rotate_personal_dns_credential(e,1,repeat('f',12),
+  SELECT rotate_personal_dns_credential(a,e,1,repeat('f',12),
     encode(sha256(convert_to(repeat('f',12),'UTF8')),'hex')) INTO result;
   IF result<>'DENY_STALE' THEN RAISE EXCEPTION 'stale rotation accepted: %',result; END IF;
   SELECT consume_personal_dns_query(label1) INTO result;
