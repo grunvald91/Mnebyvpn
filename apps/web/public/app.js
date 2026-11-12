@@ -7,7 +7,7 @@ const state = {
   inviteToken: null, refreshing: false, renewalTargetId: null,
   telegramLoginEnabled:false,emailLoginEnabled:false,emailLinkMode:false,
   trialStatus:'NONE',guestSubscriptionUrl:null,setupLoading:false,
-  purchaseIntent:null,telegramProxyBonusEnabled:false,
+  purchaseIntent:null,telegramProxyBonusEnabled:false,personalDotCanaryEnabled:false,
 };
 const productNames = { vpn:'VPN', smart_dns:'Smart DNS', bundle:'VPN + Smart DNS' };
 const stateNames = {
@@ -169,6 +169,40 @@ async function loadTelegramProxyBonus(entitlementId, button, item) {
   }finally{button.disabled=false;}
 }
 
+async function rotatePersonalDns(entitlementId,button,item) {
+  if(!state.personalDotCanaryEnabled||!state.loggedIn)return;
+  if(!window.confirm('Заменить персональный DNS-адрес? Старый адрес сразу перестанет работать на всех устройствах.'))return;
+  button.disabled=true;
+  try{
+    const status=await api('/api/personal-dns/status?entitlementId='+encodeURIComponent(entitlementId));
+    const revision=Number(status.credential_revision);
+    if(!Number.isSafeInteger(revision)||revision<1)throw Error('INVALID_DNS_REVISION');
+    const changed=await api('/api/personal-dns/rotate',{
+      method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
+      body:JSON.stringify({entitlementId,expectedRevision:revision}),
+    });
+    if(changed.status!=='ROTATED'||typeof changed.hostname!=='string')
+      throw Error('INVALID_DNS_ROTATION_RESPONSE');
+    const holder=node('div','dns-personal-actions');
+    holder.append(node('p','','Новый адрес Private DNS (сохраните сейчас; повторно он не отображается):'));
+    const hostname=node('code','dns-personal-host',changed.hostname);
+    const copy=node('button','button button-secondary','Скопировать DNS-адрес');
+    copy.type='button';
+    copy.addEventListener('click',async()=>{
+      try{await navigator.clipboard.writeText(changed.hostname);toast('DNS-адрес скопирован.');}
+      catch{toast('Скопируйте адрес вручную из поля выше.');}
+    });
+    holder.append(hostname,copy);
+    item.append(holder);
+    button.disabled=true; // Further rotation requires reload/new revision.
+    toast('Новая DNS-ссылка выпущена. Старая недействительна.');
+  }catch(error){
+    button.disabled=false;
+    toast(error?.message==='DENY_STALE'?'Ссылка уже заменена. Обновите кабинет.':
+      'Не удалось заменить DNS-адрес. Проверьте доступ или обратитесь в поддержку.');
+  }
+}
+
 function renderAccess(accesses) {
   const list=byId('access-list');
   list.replaceChildren();
@@ -212,6 +246,13 @@ function renderAccess(accesses) {
         item.append(node('div','usage-unavailable',
           'Учёт расхода DNS пока не подтверждён. Использовано / осталось: нет достоверных данных.'));
       }
+    }
+    if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
+       a.secondsRemaining!==null&&a.secondsRemaining>0&&state.personalDotCanaryEnabled){
+      const rotate=node('button','button button-secondary setup-button','Перегенерировать DNS-ссылку');
+      rotate.type='button';
+      rotate.addEventListener('click',()=>rotatePersonalDns(a.id,rotate,item));
+      item.append(rotate);
     }
     if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
        a.secondsRemaining!==null&&a.secondsRemaining>0&&state.telegramProxyBonusEnabled){
@@ -304,6 +345,7 @@ function renderPurchaseResult(payload) {
 function renderAccount(payload) {
   state.loggedIn=true;state.csrf=payload.csrf;
   state.telegramProxyBonusEnabled=payload.telegramProxyBonusEnabled===true;
+  state.personalDotCanaryEnabled=payload.personalDotCanaryEnabled===true;
   byId('login-prompt').classList.add('hidden');
   byId('account-content').classList.remove('hidden');
   byId('logout-button').classList.remove('hidden');
@@ -365,6 +407,7 @@ function renderLoggedOut() {
   // a shared browser screen. Keep the public catalog and selected product.
   state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;
   state.telegramProxyBonusEnabled=false;
+  state.personalDotCanaryEnabled=false;
   byId('guest-trial-card').classList.add('hidden');
   byId('purchase-result').classList.add('hidden');
   byId('link-email').classList.add('hidden');
