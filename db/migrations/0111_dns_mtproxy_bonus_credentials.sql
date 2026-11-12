@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS dns_mtproxy_bonus_credentials (
   telemt_username text NOT NULL UNIQUE
     CHECK (telemt_username ~ '^dns_[0-9a-f]{24}$'),
   secret_box text NOT NULL
-    CHECK (length(secret_box) BETWEEN 100 AND 512),
+    CHECK (length(secret_box) BETWEEN 80 AND 512),
   tls_domain text NOT NULL
     CHECK (tls_domain ~ '^[a-z0-9][a-z0-9.-]{2,252}[a-z0-9]$'),
   state text NOT NULL DEFAULT 'PENDING'
