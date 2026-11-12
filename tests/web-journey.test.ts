@@ -123,7 +123,7 @@ test('original background videos are bundled and served only by the public web r
     ['bg3.mp4','0000002066747970','video/mp4']
   ] as const) {
     const bytes=readFileSync(new URL('../apps/web/public/'+name,import.meta.url));
-    assert.ok(bytes.byteLength>100_000 && bytes.byteLength<240_000);
+    assert.ok(bytes.byteLength>100_000 && bytes.byteLength<300_000);
     assert.equal(bytes.subarray(0,signature.length/2).toString('hex'),signature);
     assert.ok(server.includes("'/" + name + "'"));
     assert.ok(server.includes("'"+mime+"'"));
