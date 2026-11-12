@@ -153,6 +153,59 @@ html{overflow-x:clip}
 .plan:disabled:hover{transform:none;box-shadow:none}
 .free[hidden]{display:none!important}
 .front-error{font-size:12px;line-height:1.4;color:#ffc1d1;text-align:center;margin:10px 0 0}
+
+/* Compact checkout: designed to fit on a 360–390px phone without scrolling.
+   Legal links and header controls intentionally stay on one line. */
+.top{height:48px;padding:0 10px;gap:6px}
+.logo{gap:6px;white-space:nowrap;min-width:0}
+.mark{width:30px;height:30px;border-width:1px;flex-shrink:0}
+.brand{font-size:clamp(12px,3.6vw,17px);letter-spacing:-.04em;white-space:nowrap}
+.pill{flex:0 0 auto;white-space:nowrap;padding:8px 10px;font-size:12px;text-align:center}
+.hero{min-height:clamp(165px,23svh,210px);padding-top:13px}
+.eb{font-size:10px;letter-spacing:.1em}
+h1{font-size:clamp(28px,8vw,39px);margin-top:8px}
+.ul{margin:5px auto 8px}
+.sub{font-size:12px;line-height:1.25;max-width:310px}
+.card{margin:-10px 15px 0;padding:11px 12px 10px;border-radius:20px;-webkit-backdrop-filter:blur(10px) saturate(115%);backdrop-filter:blur(10px) saturate(115%);box-shadow:0 0 22px rgba(80,120,255,.28),0 14px 28px rgba(0,0,10,.4)}
+.ch{margin:0 2px 7px}
+.ch h2{font-size:17px}
+.ch h2::before{height:15px;width:5px}
+.ch em{font-size:17px}
+.plans{gap:6px}
+.plan{height:48px;gap:2px;border-radius:12px}
+.plan b{font-size:13px}
+.plan strong{font-size:17px}
+.sum{margin:8px 0 7px;gap:6px;font-size:12px}
+.cta{height:44px;font-size:17px}
+.note{margin:8px 2px 0;font-size:11.5px;line-height:1.26}
+.note2{margin:6px 0 0;font-size:10px;line-height:1.2}
+.free{gap:6px;margin:8px -3px 0;padding:6px 8px;border-radius:13px}
+.free svg{width:18px;height:24px}
+.free b{font-size:14px;line-height:1.05}
+.free .try{font-size:11px;padding:8px 10px}
+footer{margin-top:11px;padding:9px 8px 9px;font-size:11px}
+footer nav{display:flex;flex-wrap:nowrap;gap:0;justify-content:center}
+footer nav a{padding:0 11px;white-space:nowrap}
+.legal-links{display:flex;justify-content:center;align-items:center;gap:16px;margin-top:9px}
+.legal-links a{font-size:11px;line-height:1.3;white-space:nowrap;border:0;padding:0}
+@media(max-width:360px){
+  .top{padding:0 7px;gap:4px}
+  .pill{padding:7px 8px;font-size:11px}
+  .brand{font-size:12px}
+  .logo{gap:4px}
+  .mark{width:28px;height:28px}
+  .card{margin-inline:11px}
+  .free b{font-size:13px}
+  footer nav a{padding:0 9px}
+}
+@media(max-height:715px){
+  .hero{min-height:160px}
+  .note{font-size:10.5px}
+  .note2{font-size:9.5px}
+  .free{padding-block:5px}
+  footer{margin-top:8px}
+}
+
 </style>
 </head>
 <body>
@@ -221,8 +274,8 @@ html{overflow-x:clip}
   </main>
 
   <footer class="rv" style="--d:.7s">
-    <nav><a href="https://t.me/MNEBYVPN_bot" target="_blank" rel="noopener noreferrer">@MNEBYVPN_bot</a><a href="#roadmap">Roadmap</a><a href="#support">Поддержка</a><a href="/terms">Условия покупки</a></nav>
-    <a href="/privacy" style="display:inline-block;border:0;margin-top:14px">Обработка данных</a>
+    <nav><a href="https://t.me/MNEBYVPN_bot" target="_blank" rel="noopener noreferrer">@MNEBYVPN_bot</a><a href="#roadmap">Roadmap</a><a href="#support">Поддержка</a></nav>
+    <div class="legal-links"><a href="/terms">Условия покупки</a><a href="/privacy">Обработка данных</a></div>
   </footer>
 </div>
 
@@ -270,7 +323,7 @@ if(!R)addEventListener('deviceorientation',e=>{if(e.gamma==null)return;const s=d
       source.type=type;
       v.append(source);
     }
-    const rate=.5;
+    const rate=.85;
     v.addEventListener('loadedmetadata',()=>{v.playbackRate=rate;});
     v.preload='auto';
     v.muted=true;
@@ -294,7 +347,7 @@ if(!R)addEventListener('deviceorientation',e=>{if(e.gamma==null)return;const s=d
 })();
 // drifting sparkles
 const cv=$('#st'),x=cv.getContext('2d');let W,H;
-const P=Array.from({length:80},()=>({x:Math.random(),y:Math.random(),r:Math.random()*1.4+.3,s:Math.random()*.00005+.00001,p:Math.random()*6.28}));
+const P=Array.from({length:28},()=>({x:Math.random(),y:Math.random(),r:Math.random()*1.4+.3,s:Math.random()*.00005+.00001,p:Math.random()*6.28}));
 const rs=()=>{W=cv.width=innerWidth;H=cv.height=innerHeight};rs();addEventListener('resize',rs);
 (function f(t){
   x.clearRect(0,0,W,H);x.fillStyle='#c4ecff';
