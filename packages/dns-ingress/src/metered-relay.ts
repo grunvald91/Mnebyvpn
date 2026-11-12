@@ -91,7 +91,10 @@ export function runMeteredTcpRelay(o:MeteredRelayOptions):{
 
   const pump=async(from:Socket,to:Socket,direction:'upload'|'download')=>{
     try {
-      for await(const packet of from){
+      // Node's default stream async iterator DESTROYS the socket on EOF,
+      // even with allowHalfOpen:true. Disable iterator-owned destruction so
+      // a client FIN can still be followed by a delayed upstream response.
+      for await(const packet of from.iterator({destroyOnReturn:false})){
         const buf=Buffer.isBuffer(packet)?packet:Buffer.from(packet);
         for(let start=0;start<buf.length;start+=maxChunkBytes){
           if(stopped)return;
