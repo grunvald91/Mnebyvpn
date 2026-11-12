@@ -64,6 +64,7 @@ RETURNS text LANGUAGE plpgsql AS $$
 DECLARE
   e entitlements%ROWTYPE;
   c personal_dns_credentials%ROWTYPE;
+  v_entitlement_id uuid;
   v_now timestamptz;
   v_index bigint;
   v_used bigint;
@@ -71,11 +72,11 @@ BEGIN
   IF p_label IS NULL OR p_label !~ '^d[a-z2-7]{26}$'
     THEN RETURN 'DENY_INVALID'; END IF;
 
-  SELECT entitlement_id INTO c.entitlement_id
+  SELECT entitlement_id INTO v_entitlement_id
     FROM personal_dns_credentials WHERE label=p_label;
   IF NOT FOUND THEN RETURN 'DENY_UNKNOWN'; END IF;
 
-  SELECT * INTO e FROM entitlements WHERE id=c.entitlement_id FOR UPDATE;
+  SELECT * INTO e FROM entitlements WHERE id=v_entitlement_id FOR UPDATE;
   IF NOT FOUND THEN RETURN 'DENY_UNKNOWN'; END IF;
   v_now := clock_timestamp();
 
@@ -106,8 +107,8 @@ $$;
 
 CREATE FUNCTION revoke_personal_dns_credential(p_entitlement uuid)
 RETURNS boolean LANGUAGE plpgsql AS $$
-DECLARE e entitlements%ROWTYPE;
-DECLARE count_updated integer;
+  e entitlements%ROWTYPE;
+  count_updated integer;
 BEGIN
   SELECT * INTO e FROM entitlements WHERE id=p_entitlement FOR UPDATE;
   IF NOT FOUND THEN RETURN false; END IF;
