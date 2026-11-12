@@ -18,9 +18,9 @@ test('website and central billing store rely on same single DNS switch',()=>{
   assert.match(server,/trialOffers: dnsPaidCheckoutEnabled\?trialOffers:trialOffers\.filter\(p=>p==='vpn'\)/);
   assert.match(server,/plan&&plan\.product!=='vpn'/);
   assert.match(server,/DNS_PAID_NOT_READY/);
-  assert.match(store,/process\.env\.MNEBYVPN_ENV==='production' && p\.product!=='vpn'/);
-  assert.match(store,/process\.env\.MNEBYVPN_ENV==='production' && order\.product!=='vpn'/);
-  assert.match(store,/process\.env\.MNEBYVPN_ENV==='production' && product!=='vpn'/);
+  assert.match(store,/if \(p\.product!=='vpn' &&/);
+  assert.match(store,/if \(order\.product!=='vpn' &&/);
+  assert.match(store,/if\(product!=='vpn' &&/);
   assert.match(store,/isDnsSalesEnabled\(process\.env\)/);
   for(const value of [server,store]){
     assert.doesNotMatch(value,/WEB_DNS_PAID_[A-Z_]+/);
@@ -38,9 +38,7 @@ test('checkout checks DNS operator switch before provider order creation',()=>{
 
 test('replayed DNS request uses one switch before creating new invoice',async()=>{
   const {PgBillingStore}=await import('../packages/billing/src/store.ts');
-  const prior=process.env.MNEBYVPN_ENV;
   const priorSwitch=process.env.MNEBYDNS_PAID_SALES_ENABLED;
-  process.env.MNEBYVPN_ENV='production';
   delete process.env.MNEBYDNS_PAID_SALES_ENABLED;
   const buyer='11111111-1111-4111-8111-111111111112';
   const oid='11111111-1111-4111-8111-111111111111';
@@ -71,8 +69,6 @@ test('replayed DNS request uses one switch before creating new invoice',async()=
     assert.ok(requests.some(x=>x==='ROLLBACK'));
     assert.ok(!requests.some(x=>x.includes('INSERT INTO orders')));
   } finally {
-    if(prior===undefined)delete process.env.MNEBYVPN_ENV;
-    else process.env.MNEBYVPN_ENV=prior;
     if(priorSwitch===undefined)delete process.env.MNEBYDNS_PAID_SALES_ENABLED;
     else process.env.MNEBYDNS_PAID_SALES_ENABLED=priorSwitch;
   }
@@ -97,4 +93,34 @@ test('DNS and bundle browser flow follows server-published products, not a secon
   assert.match(html,/data-journey-product="bundle"/);
   assert.doesNotMatch(html,/DNS · скоро/);
   assert.doesNotMatch(html,/Совместный вариант планируется после проверки совместимости/);
+});
+
+test('Telegram and website catalogues hide unorderable DNS and bundle plans',async()=>{
+  const {PgBillingStore}=await import('../packages/billing/src/store.ts');
+  const previous=process.env.MNEBYDNS_PAID_SALES_ENABLED;
+  const row=(id:string,product:string)=>({
+    id,product,title:id,enabled:true,duration_seconds:2592000,
+    rub_minor:20000,stars:200,device_limit:1,dns_quota_bytes:100000000,
+  });
+  const store=new PgBillingStore({
+    query:async()=>({rows:[
+      row('vpn-month','vpn'),row('dns-month','smart_dns'),
+      row('bundle-month','bundle'),
+    ]}),
+  } as never);
+  try{
+    delete process.env.MNEBYDNS_PAID_SALES_ENABLED;
+    for(const provider of ['telegram_stars','prodamus'] as const){
+      const items=await store.plans(provider);
+      assert.deepEqual(items.map(p=>p.product),['vpn'],provider);
+    }
+    process.env.MNEBYDNS_PAID_SALES_ENABLED='yes';
+    for(const provider of ['telegram_stars','prodamus'] as const){
+      const items=await store.plans(provider);
+      assert.deepEqual(items.map(p=>p.product),['vpn','smart_dns','bundle'],provider);
+    }
+  }finally{
+    if(previous===undefined)delete process.env.MNEBYDNS_PAID_SALES_ENABLED;
+    else process.env.MNEBYDNS_PAID_SALES_ENABLED=previous;
+  }
 });
