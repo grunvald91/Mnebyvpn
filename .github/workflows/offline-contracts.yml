@@ -11,6 +11,7 @@ on:
       - feat/dns-loopback-metered-relay-84
       - fix/dns-ingress-review-84
       - feat/dns-reconciliation-safety-84
+      - feat/dns-socket-ipv6-admission-84
     paths:
       - 'apps/**'
       - 'ops/**'
@@ -122,6 +123,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0111_dns_quota_reservations.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0112_dns_ingress_review_fixes.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0113_dns_recovery_review_queue.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0114_dns_socket_ipv6_admission.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0002_billing_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0003_ipv6_claims_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0005_outbox_contract.sql
@@ -137,6 +139,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/tests/0111_dns_quota_reservations_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0112_dns_ingress_review_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0113_dns_recovery_review_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0114_dns_socket_ipv6_admission_contract.sql
           # E2E test fixture explicitly simulates a separately deployed, verified node worker.
           psql -v ON_ERROR_STOP=1 -c "UPDATE vpn_release_flags SET enabled=true WHERE feature='paid_vpn_clock_on_node'" >/dev/null
       - name: Payment integration with disposable PostgreSQL
