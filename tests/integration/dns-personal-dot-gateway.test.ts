@@ -178,3 +178,159 @@ test('unknown but syntactically valid SNI fails closed without reaching local Co
     cert.dispose();
   }
 });
+
+
+test('gateway rejects a certificate not covering subscriber DoT names before listening',()=>{
+  const cert=tlsFixture();
+  try{
+    // Valid wildcard certificate covers any one-label u-token host.
+    const gateway=createPersonalDotGateway({
+      key:cert.key,cert:cert.cert,db,upstreamHost:'127.0.0.1',
+      upstreamPort:53,
+    });
+    assert.ok(gateway);
+    gateway.close();
+  }finally{cert.dispose();}
+});
+
+test('duplicate DNS transaction IDs and oversized simultaneous query batches are denied',async()=>{
+  const customer=await payForDns(),cert=tlsFixture();
+  let forwarded=0;
+  const core=createTcpServer(s=>s.on('data',()=>{forwarded++;}));
+  const corePort=await listen(core);
+  const gateway=createPersonalDotGateway({
+    key:cert.key,cert:cert.cert,db,upstreamHost:'127.0.0.1',
+    upstreamPort:corePort,
+  });
+  const port=await listen(gateway);
+  let client:TLSSocket|null=null;
+  try{
+    client=await connectPaid(port,customer.link.hostname,cert.cert);
+    const closed=waitClosed(client);
+    client.write(Buffer.concat([
+      framed(dnsWire(0x1234)),framed(dnsWire(0x1234)),
+    ]));
+    await closed;
+    assert.equal(forwarded,0,'do not forward an ambiguous duplicate request');
+    client=await connectPaid(port,customer.link.hostname,cert.cert);
+    const batch=Buffer.concat(
+      Array.from({length:33},(_,i)=>framed(dnsWire(0x7000+i))));
+    const rejected=waitClosed(client);
+    client.write(batch);
+    await rejected;
+    assert.equal(forwarded,0,'do not forward an over-limit batch');
+  }finally{
+    client?.destroy();
+    await new Promise<void>(resolve=>gateway.close(()=>resolve()));
+    await new Promise<void>(resolve=>core.close(()=>resolve()));
+    cert.dispose();
+  }
+});
+
+test('unsolicited or mismatched CoreDNS response IDs never leak onto TLS client',async()=>{
+  const customer=await payForDns(),cert=tlsFixture();
+  let forwarded=0,clientData=0;
+  const core=createTcpServer(s=>s.on('data',(frame:Buffer)=>{
+    forwarded++;
+    const bogus=Buffer.from(frame);
+    bogus.writeUInt16BE(0x9999,2); // different DNS transaction ID
+    bogus[4]=0x81;bogus[5]=0x80;
+    s.write(bogus);
+  }));
+  const corePort=await listen(core);
+  const gateway=createPersonalDotGateway({
+    key:cert.key,cert:cert.cert,db,upstreamHost:'127.0.0.1',
+    upstreamPort:corePort,
+  });
+  const port=await listen(gateway);
+  let client:TLSSocket|null=null;
+  try{
+    client=await connectPaid(port,customer.link.hostname,cert.cert);
+    client.on('data',()=>clientData++);
+    const rejected=waitClosed(client);
+    client.write(framed(dnsWire(0x8888)));
+    await rejected;
+    assert.equal(forwarded,1);
+    assert.equal(clientData,0,'do not forward a response for an unknown query ID');
+  }finally{
+    client?.destroy();
+    await new Promise<void>(resolve=>gateway.close(()=>resolve()));
+    await new Promise<void>(resolve=>core.close(()=>resolve()));
+    cert.dispose();
+  }
+});
+
+test('fragmented DNS-over-TCP responses and pipelined unique queries are preserved',async()=>{
+  const customer=await payForDns(),cert=tlsFixture();
+  let forwarded=0,coreBuffer=Buffer.alloc(0);
+  const core=createTcpServer(s=>s.on('data',(data:Buffer)=>{
+    coreBuffer=Buffer.concat([coreBuffer,data]);
+    const ready:Buffer[]=[];
+    while(coreBuffer.length>=2){
+      const len=coreBuffer.readUInt16BE(0);
+      if(coreBuffer.length<len+2)break;
+      const reply=Buffer.from(coreBuffer.subarray(0,len+2));
+      reply[4]=0x81;reply[5]=0x80;
+      ready.push(reply);
+      coreBuffer=coreBuffer.subarray(len+2);
+      forwarded++;
+    }
+    if(ready.length===2){
+      const combined=Buffer.concat(ready);
+      s.write(combined.subarray(0,3));
+      s.write(combined.subarray(3,combined.length-4));
+      s.write(combined.subarray(combined.length-4));
+    }else if(ready.length===1){
+      // First reply may precede second query's authorization: buffer it until
+      // both queries have arrived. Only this integration fake behaves so.
+      (s as typeof s & {firstResponse?:Buffer}).firstResponse=ready[0];
+    }
+    if(forwarded===2){
+      const first=(s as typeof s & {firstResponse?:Buffer}).firstResponse;
+      const latest=ready.at(-1);
+      if(first&&latest){
+        const combined=Buffer.concat([first,latest]);
+        s.write(combined.subarray(0,3));
+        s.write(combined.subarray(3,combined.length-4));
+        s.write(combined.subarray(combined.length-4));
+      }
+    }
+  }));
+  const corePort=await listen(core);
+  const gateway=createPersonalDotGateway({
+    key:cert.key,cert:cert.cert,db,upstreamHost:'127.0.0.1',
+    upstreamPort:corePort,
+  });
+  const port=await listen(gateway);
+  let client:TLSSocket|null=null;
+  try{
+    client=await connectPaid(port,customer.link.hostname,cert.cert);
+    const expected=[0x1515,0x2525],seen:number[]=[];
+    let buffer=Buffer.alloc(0);
+    const received=new Promise<void>((resolve,reject)=>{
+      const deadline=setTimeout(()=>reject(Error('Fragmented DNS replies timed out')),5000);
+      client!.on('data',(data:Buffer)=>{
+        buffer=Buffer.concat([buffer,data]);
+        while(buffer.length>=2){
+          const size=buffer.readUInt16BE(0);
+          if(buffer.length<size+2)break;
+          seen.push(buffer.readUInt16BE(2));
+          buffer=buffer.subarray(size+2);
+        }
+        if(seen.length===2){clearTimeout(deadline);resolve();}
+      });
+      client!.on('close',()=>{clearTimeout(deadline);reject(Error('DNS gateway unexpectedly closed'));});
+    });
+    const both=Buffer.concat(expected.map(id=>framed(dnsWire(id))));
+    client.write(both.subarray(0,5));
+    client.write(both.subarray(5));
+    await received;
+    assert.deepEqual(seen,expected);
+    assert.equal(forwarded,2);
+  }finally{
+    client?.destroy();
+    await new Promise<void>(resolve=>gateway.close(()=>resolve()));
+    await new Promise<void>(resolve=>core.close(()=>resolve()));
+    cert.dispose();
+  }
+});
