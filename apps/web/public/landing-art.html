@@ -410,13 +410,17 @@ const cta=$('.cta');
 // Kept optional: reduced motion, data saver and slow links use the CSS/SVG scene.
 (()=>{
   const sc=$('.scene'),v=$('#bgv'),connection=navigator.connection;
-  if(!sc||!v||R||(connection&&(connection.saveData||/(^|-)[23]g$/.test(connection.effectiveType||''))))return;
+  // Prefer a still background on very low-core mobile devices.
+  const lowEnd=/Android|iPhone|Mobile/i.test(navigator.userAgent) &&
+    navigator.hardwareConcurrency>0 && navigator.hardwareConcurrency<=2;
+  if(!sc||!v||R||lowEnd||
+    (connection&&(connection.saveData||/(^|-)[23]g$/.test(connection.effectiveType||''))))return;
   const idle=window.requestIdleCallback||(fn=>setTimeout(fn,300));
   let loaded=false,visible=true;
   const start=()=>{
     if(loaded)return;
     loaded=true;
-    for(const [src,type] of [['/bg3.webm?v=6e816d6e','video/webm; codecs="vp9"'],['/bg3.mp4?v=30d2f12d','video/mp4']]){
+    for(const [src,type] of [['/bg3.mp4?v=30d2f12d','video/mp4'],['/bg3.webm?v=6e816d6e','video/webm; codecs="vp9"']]){
       const source=document.createElement('source');
       source.src=src;
       source.type=type;
