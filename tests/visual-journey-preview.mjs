@@ -55,7 +55,7 @@ const { chromium }=await import(process.env.VISUAL_PLAYWRIGHT_PACKAGE||'playwrig
 const browser=await chromium.launch({headless:true,args:['--no-sandbox'],
   ...(process.env.VISUAL_CHROME_PATH?{executablePath:process.env.VISUAL_CHROME_PATH}:{})});
 let failed=false;
-for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
+for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[1440,900]]){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
   const browserErrors=[];
   page.on('pageerror',error=>browserErrors.push(String(error.message).slice(0,250)));
@@ -82,6 +82,19 @@ for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
     const art=inner.querySelector('.app');
     return{
       width:innerWidth,height:innerHeight,
+      outerScrollHeight:document.documentElement.scrollHeight,
+      outerCanScroll:document.documentElement.scrollHeight>innerHeight+2,
+      headerSingleRow:(()=>{
+        const links=[...inner.querySelectorAll('.top>*')].map(x=>x.getBoundingClientRect());
+        return links.every(x=>x.bottom>0)&&Math.max(...links.map(x=>x.top))-Math.min(...links.map(x=>x.top))<=12;
+      })(),
+      topButtonsUnwrapped:[...inner.querySelectorAll('.top .pill')].every(x=>x.getBoundingClientRect().height<43),
+      headerFits:inner.querySelector('.top').getBoundingClientRect().right<=frame.getBoundingClientRect().width+1,
+      legalSingleRow:(()=>{
+        const links=[...inner.querySelectorAll('.legal-links a')];
+        return links.length===2&&Math.abs(links[0].getBoundingClientRect().top-links[1].getBoundingClientRect().top)<=2;
+      })(),
+      footerVisible:inner.querySelector('footer').getBoundingClientRect().bottom<=innerHeight+3,
       horizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
       frameWidth:Math.round(frame.getBoundingClientRect().width),
       frameHeight:Math.round(frame.getBoundingClientRect().height),
@@ -105,6 +118,9 @@ for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
   if(metrics.horizontalOverflow||metrics.innerHorizontalOverflow||browserErrors.length||
     !metrics.iframeHasHeader||!metrics.iframeHasEarth||!metrics.iframeHasTariffs||
     !metrics.videoPresent||metrics.cardOpacity<0.99||
+    !metrics.headerSingleRow||!metrics.topButtonsUnwrapped||!metrics.headerFits||
+    !metrics.legalSingleRow||
+    (width<=390&&(!metrics.footerVisible||metrics.outerCanScroll))||
     !metrics.trialVisible||metrics.selected!=='true'||
     metrics.frameWidth>480||metrics.frameWidth<Math.min(360,width)||
     Math.abs(metrics.frameHeight-metrics.artBottom)>28||
@@ -176,7 +192,7 @@ for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
   await page.goto(base,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>{
     const v=document.querySelector('#journey-front-frame')?.contentDocument?.querySelector('#bgv');
-    return v?.videoWidth===540 && v?.videoHeight===960 &&
+    return v?.videoWidth===432 && v?.videoHeight===720 &&
       v.querySelectorAll('source').length===2;
   },{timeout:15000});
   console.log('VIDEO_ASSET_SMOKE=played_or_loaded_metadata');
