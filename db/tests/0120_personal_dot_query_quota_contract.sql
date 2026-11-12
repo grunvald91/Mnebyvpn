@@ -8,8 +8,8 @@ DECLARE
   e uuid := '12000000-0000-4000-8000-000000000004';
   o2 uuid := '12000000-0000-4000-8000-000000000005';
   e2 uuid := '12000000-0000-4000-8000-000000000006';
-  label1 text := 'd'||repeat('a',26);
-  label2 text := 'd'||repeat('b',26);
+  label1 text := repeat('a',12);
+  label2 text := repeat('b',12);
   result text;
   used bigint;
 BEGIN
@@ -25,13 +25,15 @@ BEGIN
       (e2,b,o2,'smart_dns','ACTIVE',1,
          clock_timestamp()-interval '1 day',clock_timestamp()+interval '50 days',10000000);
 
-  SELECT issue_personal_dns_credential(e,label1,repeat('a',64),3) INTO result;
+  SELECT issue_personal_dns_credential(e,label1,encode(sha256(convert_to(label1,'UTF8')),'hex'),3) INTO result;
   IF result<>'ISSUED' THEN RAISE EXCEPTION 'issue failed: %',result; END IF;
-  SELECT issue_personal_dns_credential(e,label1,repeat('a',64),3) INTO result;
+  SELECT issue_personal_dns_credential(e,label1,encode(sha256(convert_to(label1,'UTF8')),'hex'),3) INTO result;
   IF result<>'ALREADY_ISSUED' THEN RAISE EXCEPTION 'idempotency failed: %',result; END IF;
-  SELECT issue_personal_dns_credential(e2,label1,repeat('b',64),3) INTO result;
+  SELECT issue_personal_dns_credential(e2,label2,repeat('e',64),3) INTO result;
+  IF result<>'DENY_INVALID' THEN RAISE EXCEPTION 'fake token digest accepted: %',result; END IF;
+  SELECT issue_personal_dns_credential(e2,label1,encode(sha256(convert_to(label1,'UTF8')),'hex'),3) INTO result;
   IF result<>'DENY_TOKEN_COLLISION' THEN RAISE EXCEPTION 'collision allowed: %',result; END IF;
-  SELECT issue_personal_dns_credential(e2,label2,repeat('b',64),3) INTO result;
+  SELECT issue_personal_dns_credential(e2,label2,encode(sha256(convert_to(label2,'UTF8')),'hex'),3) INTO result;
   IF result<>'ISSUED' THEN RAISE EXCEPTION 'second credential failed: %',result; END IF;
   FOR used IN 1..3 LOOP
     SELECT consume_personal_dns_query(label1) INTO result;
@@ -69,6 +71,8 @@ BEGIN
   IF result::text<>'true' THEN RAISE EXCEPTION 'revoke failed'; END IF;
   SELECT consume_personal_dns_query(label1) INTO result;
   IF result<>'DENY_INACTIVE' THEN RAISE EXCEPTION 'revoked credential accepted: %',result; END IF;
+  SELECT issue_personal_dns_credential(e,label1,encode(sha256(convert_to(label1,'UTF8')),'hex'),3) INTO result;
+  IF result<>'DENY_REVOKED' THEN RAISE EXCEPTION 'revoked credential was re-issued: %',result; END IF;
 
   -- Other subscriber remains independent, and expiry denies requests.
   SELECT consume_personal_dns_query(label2) INTO result;
@@ -77,7 +81,7 @@ BEGIN
     WHERE id=e2;
   SELECT consume_personal_dns_query(label2) INTO result;
   IF result<>'DENY_INACTIVE' THEN RAISE EXCEPTION 'expired still counted: %',result; END IF;
-  SELECT consume_personal_dns_query('d'||repeat('c',26)) INTO result;
+  SELECT consume_personal_dns_query(repeat('c',12)) INTO result;
   IF result<>'DENY_UNKNOWN' THEN RAISE EXCEPTION 'unknown label accepted: %',result; END IF;
   SELECT consume_personal_dns_query('bad_token') INTO result;
   IF result<>'DENY_INVALID' THEN RAISE EXCEPTION 'invalid label accepted: %',result; END IF;
