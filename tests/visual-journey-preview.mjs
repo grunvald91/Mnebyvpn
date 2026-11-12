@@ -250,8 +250,9 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       emailMounted:mount?.contains(form),
       emailVisible:panel&&!panel.classList.contains('hidden'),
       telegram:button?.getAttribute('aria-disabled'),
-      disabledTelegramHidden:button?.getAttribute('aria-disabled')==='true' &&
-        getComputedStyle(button).display==='none',
+      telegramVisibilityCorrect:button?.getAttribute('aria-disabled')==='true'
+        ?getComputedStyle(button).display==='none'
+        :getComputedStyle(button).display!=='none',
       header:(()=>{
         const inner=document.querySelector('.header-inner').getBoundingClientRect();
         const group=document.querySelector('.header-actions').getBoundingClientRect();
@@ -298,7 +299,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   console.log('TRIAL_AUTH_METRICS_'+width+'='+JSON.stringify({...trial,browserErrors}));
   if(!trial.emailMounted||!trial.emailVisible||!trial.telegramExplained?.includes('email')||
      trial.horizontalOverflow||browserErrors.length||trial.route!=='#try'||
-     !trial.disabledTelegramHidden||!trial.header.adjacent||!trial.header.rightAligned||
+     !trial.telegramVisibilityCorrect||!trial.header.adjacent||!trial.header.rightAligned||
      !trial.header.insideViewport||trial.footer.layout!=='flex'||
      trial.footer.height>130||trial.footer.innerHeight>129||!trial.footer.centered||
      trial.footer.links!==5||trial.footer.overflow||
@@ -322,6 +323,41 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.close();
 }
 
+/* The real owner's screenshot shows Telegram unavailable until it is linked.
+ * Test that state separately from the synthetic all-features-enabled catalog.
+ */
+{
+  const page=await browser.newPage({viewport:{width:390,height:844}});
+  page.on('pageerror',error=>{console.error('TRIAL_DISABLED_PAGE_ERROR',String(error.message));failed=true;});
+  await page.route('**/api/plans',route=>route.fulfill({
+    status:200,contentType:'application/json',
+    body:JSON.stringify({plans,checkoutEnabled:true,loginEnabled:true,
+      telegramLoginEnabled:false,emailLoginEnabled:true,trialOffers:['vpn']}),
+  }));
+  await page.goto(base+'/#try',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>
+    document.body.dataset.journeyView==='trial-auth' &&
+    document.querySelector('#journey-email-mount #email-start-form') &&
+    !document.querySelector('#email-auth-panel').classList.contains('hidden')
+  );
+  const disabled=await page.evaluate(()=>{
+    const button=document.querySelector('#journey-trial-telegram');
+    const note=document.querySelector('.journey-telegram-note');
+    return {
+      aria:button.getAttribute('aria-disabled'),
+      hidden:getComputedStyle(button).display==='none',
+      noteReadable:note&&getComputedStyle(note).display!=='none',
+      footerHeight:Math.round(document.querySelector('.footer').getBoundingClientRect().height),
+      overflow:document.documentElement.scrollWidth>innerWidth+1,
+    };
+  });
+  const image=process.env.RUNNER_TEMP+'/mnebyvpn-trial-disabled-390x844.jpg';
+  await page.screenshot({path:image,type:'jpeg',quality:78,fullPage:true});
+  console.log('TRIAL_UNLINKED_TELEGRAM_METRICS='+JSON.stringify(disabled));
+  if(disabled.aria!=='true'||!disabled.hidden||!disabled.noteReadable||
+     disabled.footerHeight>130||disabled.overflow)failed=true;
+  await page.close();
+}
 /* Real Android regression: iframe may load before journey.js is available.
  * Delaying the parent controller must NOT leave the tariff grid in 'loading'.
  */
