@@ -152,8 +152,12 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
   assert.doesNotMatch(html,/Не входит/);
   assert.doesNotMatch(client,/Перейти к оплате →|Не входит/);
   assert.match(css,/\.hero-art,\.hero-actions,\.hero-notes,\.features\{display:none\}/);
+  // DNS remains blocked unless the separate, independently verified personal
+  // resolver ingress gate is explicitly enabled; VPN-only checkout is default.
   assert.match(client,/const inDevelopment=state\.product!=='vpn'/);
-  assert.match(client,/if\(state\.product!=='vpn'\|\|!plan/);
+  assert.match(client,/state\.product==='smart_dns'&&state\.dnsAccessEnabled/);
+  assert.match(client,/dnsTab\.disabled=!state\.dnsAccessEnabled/);
+  assert.match(client,/!plan\|\|!state\.checkoutEnabled/);
   assert.match(client,/Способ оплаты выбирается на защищённой странице/);
 });
 

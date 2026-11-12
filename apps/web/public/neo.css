@@ -395,3 +395,14 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .about-invite input{width:100%;min-height:43px;margin-top:12px;padding:10px 11px;min-width:0;border:1px solid rgba(91,181,227,.4);border-radius:10px;background:rgba(7,21,45,.8);color:#edfaff;font:inherit;font-size:12px}
 .about-invite-actions{display:flex;gap:8px;margin-top:9px}
 .about-invite-actions>*{flex:1 1 auto;min-height:43px;padding:10px;font-size:12px}
+
+
+/* Personal MNEBYDNS credentials — shown only after server-verified access. */
+.dns-personal-actions{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 0;align-items:center}
+.dns-personal-actions .button{min-height:39px;font-size:12px;padding:8px 12px;max-width:100%}
+.dns-personal-host{flex:1 1 100%;min-width:0;background:rgba(6,17,39,.76);
+  color:#e5faff;border:1px solid rgba(86,195,240,.38);border-radius:12px;
+  min-height:41px;padding:9px 12px;font-size:12px;letter-spacing:.1px}
+.dns-personal-label{display:block;width:100%;color:#c3dff8;font-size:11px}
+.dns-personal-stat{color:#a8c4dc;font-size:11px;line-height:1.6;flex:1 1 100%}
+@media(max-width:490px){.dns-personal-actions .button{flex:1 1 42%;font-size:11px}}
