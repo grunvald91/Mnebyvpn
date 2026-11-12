@@ -34,8 +34,9 @@ function frame(q:Uint8Array):Buffer{
   const f=Buffer.alloc(q.length+2);f.writeUInt16BE(q.length,0);f.set(q,2);return f;
 }
 test('personal DoT server accepts framed TLS requests, meters mapped only and disables rotated identity',async()=>{
-  let known=true,debits=0,direct=0,mapped=0;
+  let known=true,debits=0,direct=0,mapped=0,dbOutage=false;
   const db={query:async(sql:string)=>{
+    if(dbOutage)throw Error('temporary database outage');
     if(sql.includes('recognize_personal_dns_credential'))return{rows:[{known}]};
     if(sql.includes('reserve_personal_dns_query')){return{rows:[{verdict:'RESERVED'}]};}
     if(sql.includes('finish_personal_dns_query')){debits++;return{rows:[{verdict:'SETTLED'}]};}
@@ -68,10 +69,17 @@ test('personal DoT server accepts framed TLS requests, meters mapped only and di
     await send(request('claude.ai'));
     assert.equal(mapped,1);assert.equal(debits,1);
     reads.length=0;
+    dbOutage=true;
+    // Recently verified bearer can only resolve real/direct DNS during
+    // a brief PostgreSQL outage; no mapped answers or extra charges.
+    await send(request('claude.ai'));
+    assert.equal(mapped,1);assert.equal(direct,2);assert.equal(debits,1);
+    reads.length=0;
+    dbOutage=false;
     known=false; // rotation invalidates even preexisting TLS sessions.
     sock.write(frame(request('example.org')));
     await once(sock,'close');
-    assert.equal(direct,1);assert.equal(debits,1);
+    assert.equal(direct,2);assert.equal(debits,1);
   }finally{
     sock.destroy();
     await new Promise<void>(resolve=>server.close(()=>resolve()));
