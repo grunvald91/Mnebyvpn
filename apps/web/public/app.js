@@ -94,7 +94,9 @@ function renderPlan() {
   const plan = state.plans.find(p=>p.product===state.product && p.durationDays===state.days);
   text('selected-plan-name', plan?.title || productNames[state.product] + ' · ' + state.days + ' дней');
   text('selected-duration',state.days+' дней');
-  text('selected-quota',state.product==='vpn'?'1 устройство':plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
+  text('selected-quota',state.product==='vpn'?'1 устройство':
+    state.product==='smart_dns'&&state.dnsAccessEnabled?'По сроку подписки':
+    plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
   text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):'—');
   byId('cancel-renewal-button').classList.toggle('hidden',!state.renewalTargetId);
   text('price-description',plan?(state.renewalTargetId?
@@ -102,7 +104,8 @@ function renderPlan() {
     'Новая покупка создаёт отдельный доступ. Для продления используйте кнопку в кабинете.'):
     'Тариф ещё не опубликован. Стоимость появится после утверждения.');
   const buy=byId('buy-button');
-  const inDevelopment=state.product!=='vpn';
+  const inDevelopment=state.product!=='vpn' &&
+    !(state.product==='smart_dns'&&state.dnsAccessEnabled);
   buy.disabled=inDevelopment||!plan||!state.checkoutEnabled||state.busy;
   buy.textContent=inDevelopment?'В разработке':state.busy?'Создаём заказ…':!plan?'Тариф пока недоступен':
     !state.checkoutEnabled?'Оплата пока недоступна':
@@ -196,10 +199,12 @@ async function refreshDnsStatuses(){
 }
 async function createDnsCredential(id,rotate){
   if(rotate&&!confirm('Старый адрес DNS перестанет работать. Выпустить новый?'))return;
+  const epoch=state.dnsSessionEpoch;
   try{
     const data=await api('/api/me/dns-access',{method:'POST',
       headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
       body:JSON.stringify({entitlementId:id,rotate})});
+    if(epoch!==state.dnsSessionEpoch||!state.loggedIn)return;
     if(!data.privateDnsHostname||!data.appleProfileXml)throw Error('DNS_ACCESS_INVALID_REPLY');
     state.dnsCredentials[id]={
       privateDnsHostname:data.privateDnsHostname,appleProfileXml:data.appleProfileXml,
@@ -352,15 +357,18 @@ function renderPurchaseResult(payload) {
     (a.sourceOrderId===order.id ||
       (intent.renewalTargetId && a.id===intent.renewalTargetId)));
   const verified=order.state==='PAID';
-  const ready=verified&&access?.state==='ACTIVE'&&access.secondsRemaining>0;
+  const ready=verified&&access?.state==='ACTIVE'&&access.secondsRemaining>0&&
+    (access.product!=='smart_dns'||state.dnsAccessEnabled);
   notice.classList.remove('hidden');
   text('purchase-result-title',!verified?
     (order.state==='PENDING'?'⏳ Проверяем оплату':
       'Состояние заказа: '+(stateNames[order.state]||order.state)):
-    ready?'✅ Ваш VPN готов!':'✅ Оплата подтверждена');
+    ready?'✅ Ваш '+(order.product==='smart_dns'?'DNS':'VPN')+' готов!':'✅ Оплата подтверждена');
   text('purchase-result-text',!verified?
     'Пока нет подтверждения оплаты. Если деньги списаны, не оплачивайте повторно — проверьте статус или напишите в поддержку.':
-    ready?'Подключите VPN в несколько нажатий. Выберите приложение для своего устройства.':
+    ready?(order.product==='smart_dns'?
+       'Получите персональный адрес DNS и настройте его на телефоне.':
+       'Подключите VPN в несколько нажатий. Выберите приложение для своего устройства.'):
     'Деньги получены. VPN-сервер готовит подключение. Инструкция появится после подтверждения активации.');
   text('purchase-result-details',
     (order.title||productNames[order.product]||'VPN')+
@@ -368,6 +376,8 @@ function renderPurchaseResult(payload) {
   const connect=byId('purchase-connect');
   connect.classList.toggle('hidden',!ready);
   connect.dataset.entitlementId=ready?access.id:'';
+  connect.dataset.product=ready?access.product:'';
+  connect.textContent=ready&&access.product==='smart_dns'?'Получить персональный DNS':'Подключить VPN';
   byId('purchase-refresh').classList.toggle('hidden',ready);
 }
 function renderAccount(payload) {
@@ -468,6 +478,12 @@ async function loadCatalog() {
     state.plans=Array.isArray(data.plans)?data.plans:[];
     state.checkoutEnabled=data.checkoutEnabled===true;
     state.dnsAccessEnabled=data.dnsAccessEnabled===true;
+    const dnsTab=document.querySelector('[data-product="smart_dns"]');
+    if(dnsTab){
+      dnsTab.disabled=!state.dnsAccessEnabled;
+      dnsTab.setAttribute('aria-disabled',String(!state.dnsAccessEnabled));
+      dnsTab.textContent=state.dnsAccessEnabled?'Smart DNS':'DNS · скоро';
+    }
     state.loginEnabled=data.loginEnabled===true;
     state.telegramLoginEnabled=data.telegramLoginEnabled===true;
     state.emailLoginEnabled=data.emailLoginEnabled===true;
@@ -529,7 +545,8 @@ function applyLinkOptions() {
 async function purchase() {
   const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
   if(state.busy)return;
-  if(state.product!=='vpn'||!plan||!state.checkoutEnabled){
+  if((state.product!=='vpn'&&!(state.product==='smart_dns'&&state.dnsAccessEnabled))||
+     !plan||!state.checkoutEnabled){
     checkoutError('Оплата этого тарифа пока недоступна.');return;
   }
   if(!state.loggedIn){
@@ -807,8 +824,11 @@ byId('buy-button').addEventListener('click',purchase);
 byId('trial-button').addEventListener('click',claimTrial);
 byId('purchase-refresh').addEventListener('click',refresh);
 byId('purchase-connect').addEventListener('click',()=>{
-  const id=byId('purchase-connect').dataset.entitlementId;
-  if(id)loadSubscription(id);
+  const connect=byId('purchase-connect');
+  const id=connect.dataset.entitlementId;
+  if(!id)return;
+  if(connect.dataset.product==='smart_dns')void createDnsCredential(id,false);
+  else void loadSubscription(id);
 });
 byId('guest-copy-subscription').addEventListener('click',copyGuestSubscription);
 byId('cancel-renewal-button').addEventListener('click',()=>{
