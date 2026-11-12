@@ -22,6 +22,12 @@ CREATE TABLE smart_dns_late_traffic (
 );
 REVOKE ALL ON smart_dns_late_traffic FROM PUBLIC;
 
+-- Preserve the original fencing epoch in every new ingress-issued chunk.
+-- Existing legacy reservations can be audited only by the old trusted owner;
+-- they cannot be forged into a revision-backed ingress permit.
+ALTER TABLE smart_dns_quota_reservations
+  ADD COLUMN granted_revision bigint CHECK (granted_revision > 0);
+
 CREATE FUNCTION guard_smart_dns_late_traffic() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -158,6 +164,9 @@ BEGIN
     RETURN QUERY SELECT v_status,NULL::bigint,NULL::timestamptz,NULL::bigint;
     RETURN;
   END IF;
+  UPDATE smart_dns_quota_reservations r SET granted_revision=v_current
+    WHERE r.entitlement_id=p_ent AND r.reservation_id=p_event
+      AND r.state='HELD' AND r.granted_revision IS NULL;
   RETURN QUERY SELECT v_status,r.reserved_bytes,r.allowed_until,v_current
     FROM smart_dns_quota_reservations r
     WHERE r.entitlement_id=p_ent AND r.reservation_id=p_event
@@ -171,8 +180,13 @@ CREATE FUNCTION dns_ingress_settle(
 RETURNS text LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
-  -- A changed entitlement revision does NOT suppress settlement of an
-  -- already issued hold. No NEW network access is granted by this function.
+  -- A changed CURRENT revision does not suppress a legitimate settlement,
+  -- but a caller must prove it is closing its ORIGINAL reservation epoch.
+  IF NOT EXISTS (
+    SELECT 1 FROM smart_dns_quota_reservations r
+      WHERE r.entitlement_id=p_ent AND r.reservation_id=p_event
+        AND r.granted_revision=p_revision
+  ) THEN RETURN 'DENY_REVISION'; END IF;
   RETURN settle_smart_dns_chunk(p_ent,p_event,p_upload,p_download);
 END;
 $$;
