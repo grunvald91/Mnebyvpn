@@ -13,6 +13,17 @@
   const frontFrame=el('journey-front-frame');
   const frontChannel='mnebyvpn-front-v1';
   let frontReady=false;
+  let frontNaturalHeight=540;
+  // Extend the visual frame to the *host* viewport, not the child's height:
+  // this leaves the full background visible on tall Android devices.
+  const sizeFront=()=>{
+    if(!frontFrame)return;
+    const target=Math.max(frontNaturalHeight,Math.ceil(window.innerHeight));
+    const value=target+'px';
+    if(frontFrame.style.height!==value)frontFrame.style.height=value;
+  };
+  window.addEventListener('resize',sizeFront);
+  sizeFront();
   function syncFront(){
     if(!frontReady||!frontFrame?.contentWindow)return;
     frontFrame.contentWindow.postMessage({
@@ -35,7 +46,10 @@
     if(msg.type==='ready'){frontReady=true;syncFront();return;}
     if(msg.type==='height'){
       const h=Number(msg.height);
-      if(Number.isFinite(h)&&h>=540&&h<=1600)frontFrame.style.height=Math.ceil(h)+'px';
+      if(Number.isFinite(h)&&h>=380&&h<=2400){
+        frontNaturalHeight=Math.ceil(h);
+        sizeFront();
+      }
       return;
     }
     if(!frontReady)return;
