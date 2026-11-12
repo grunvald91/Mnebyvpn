@@ -98,14 +98,18 @@ export function countableProxiedQuestion(
 /** Used in the customer's cabinet; never represent DNS queries as page views. */
 export function queryQuotaView(used:number,limit:number,periodEnd:Date){
   if(!Number.isSafeInteger(used)||used<0||!Number.isSafeInteger(limit)||
-     limit<0||used>limit||!Number.isFinite(periodEnd.getTime()))
+     limit<0||!Number.isFinite(periodEnd.getTime()))
     throw new Error('Invalid DNS query usage');
-  const remaining=limit-used;
+  // A refunded credit can shrink the allowance BELOW already used queries.
+  // Preserve the historical total, and clamp remaining to zero.
+  const remaining=Math.max(0,limit-used);
+  const expired=periodEnd.getTime()<=Date.now();
   return {
     metric:'proxied_dns_queries' as const,
     used,limit,remaining,
     exhausted:remaining===0,
+    expired,
     expiresAt:periodEnd.toISOString(),
-    renewalAction:remaining===0?'renew_dns_package' as const:null,
+    renewalAction:(remaining===0||expired)?'renew_dns_package' as const:null,
   };
 }
