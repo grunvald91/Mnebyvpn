@@ -235,11 +235,12 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     return {
       loading:doc.querySelector('.cta').textContent.includes('Загрузка'),
       retryVisible:getComputedStyle(doc.querySelector('#front-retry')).display!=='none',
+      retryTopLevel:doc.querySelector('#front-retry').getAttribute('target')==='_top',
       purchaseDisabled:doc.querySelector('.cta').disabled,
     };
   });
   console.log('CATALOG_FAILURE_FALLBACK='+JSON.stringify(result));
-  if(result.loading||!result.retryVisible||!result.purchaseDisabled)failed=true;
+  if(result.loading||!result.retryVisible||!result.retryTopLevel||!result.purchaseDisabled)failed=true;
   await page.close();
 }
 // Verify the original owner video loads on normal connections and stays
