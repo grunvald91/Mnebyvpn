@@ -42,6 +42,7 @@ export function createPersonalDotGateway(o:PersonalDotGatewayOptions):TlsServer{
   },(client:TLSSocket)=>{
     const label=dnsTokenFromSni(client.servername||'');
     if(!label){client.destroy();return;}
+    const verifiedToken:string=label;
     let received=Buffer.alloc(0),queue:Buffer[]=[];
     let upstream:Socket|null=null;
     let busy=false,done=false;
@@ -95,7 +96,7 @@ export function createPersonalDotGateway(o:PersonalDotGatewayOptions):TlsServer{
           const wire=queue.shift()!;
           // Expiry/refund/manual revoke checked for EACH DNS message, not
           // only at the first TLS connection.
-          const permitted=await authorizePersonalDnsQuery(o.db,label,deadline);
+          const permitted=await authorizePersonalDnsQuery(o.db,verifiedToken,deadline);
           if(!permitted||done){stop();return;}
           const upstream=await upstreamReady();
           if(done)return;
