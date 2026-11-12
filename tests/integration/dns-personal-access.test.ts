@@ -2,6 +2,7 @@ import test, {after} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
+import {PgBillingStore} from '../../packages/billing/src/store.ts';
 import {
   authorizePersonalDnsQuery,dnsTokenFromSni,
   issuePersonalDnsAccess,personalDnsAccessStatuses,revokePersonalDnsAccess,
@@ -107,4 +108,53 @@ test('verified refund permanently kills the shared DNS credential',async()=>{
     'SELECT revoked_at FROM dns_subscription_links WHERE entitlement_id=$1',
     [paid.entitlement]);
   assert.ok(l.rows[0].revoked_at!==null);
+});
+
+
+test('verified renewal preserves personal DNS token while advancing expiry after new ACK',async()=>{
+  const item=await activatedDnsOrder();
+  const issued=await issuePersonalDnsAccess(db,item.account,item.entitlement);
+  assert.ok(issued&&issued!=='ALREADY_ISSUED');
+  const token=dnsTokenFromSni(issued.hostname)!;
+  assert.equal(await authorizePersonalDnsQuery(db,token),true);
+  const before=(await db.query(
+    'SELECT expires_at,revision FROM entitlements WHERE id=$1',[item.entitlement])).rows[0];
+  const planId='dns-renew-link-'+randomUUID().slice(0,8);
+  await db.query(
+    "INSERT INTO billing_plans(id,product,title,duration_seconds,dns_quota_bytes,rub_minor,enabled) "+
+    "VALUES($1,'smart_dns','DNS link renewal test',3600,4096,2000,true)",[planId]);
+  const store=new PgBillingStore(db);
+  const renewal=await store.createWebsiteOrder(
+    item.account,planId,'renew-link-'+randomUUID(),undefined,item.entitlement);
+  const capture='renew-capture-'+randomUUID();
+  const status=await db.query(
+    "SELECT settle_verified_payment($1,'mock',$2,$3,$4,2000,'RUB',3600,4096) AS state",
+    [renewal.id,'renew-event-'+randomUUID(),capture,'e'.repeat(64)]);
+  // Website renewal should require its configured Prodamus provider; reject
+  // mismatched provider even if the plan and amount are otherwise correct.
+  assert.equal(status.rows[0].state,'DENY_MISMATCH');
+  const approved=await db.query(
+    "SELECT settle_verified_payment($1,'prodamus',$2,$3,$4,2000,'RUB',3600,4096) AS state",
+    [renewal.id,'renew-event-'+randomUUID(),capture,'f'.repeat(64)]);
+  assert.equal(approved.rows[0].state,'APPLIED');
+  const next=(await db.query(
+    'SELECT expires_at,revision,state FROM entitlements WHERE id=$1',
+    [item.entitlement])).rows[0];
+  assert.equal((next.expires_at as Date).getTime()-(before.expires_at as Date).getTime(),3600_000);
+  assert.equal(Number(next.revision),Number(before.revision)+1);
+  assert.equal(next.state,'PAID_PENDING_PROVISIONING');
+  // The newer revision is NOT ACKed by the network yet; the old key must not
+  // be served until the actual adapter confirms the renewed hard deadline.
+  assert.equal(await authorizePersonalDnsQuery(db,token),false);
+  await db.query(
+    "UPDATE provisioning_state SET applied_revision=$2,last_observed_at=clock_timestamp() "+
+    "WHERE entitlement_id=$1 AND adapter='smart_dns'",
+    [item.entitlement,next.revision]);
+  await db.query("UPDATE entitlements SET state='ACTIVE' WHERE id=$1",[item.entitlement]);
+  assert.equal(await authorizePersonalDnsQuery(db,token),true);
+  assert.equal(await issuePersonalDnsAccess(db,item.account,item.entitlement),'ALREADY_ISSUED');
+  const tokenRows=await db.query(
+    'SELECT count(*)::int AS n FROM dns_subscription_links WHERE entitlement_id=$1 AND revoked_at IS NULL',
+    [item.entitlement]);
+  assert.equal(tokenRows.rows[0].n,1);
 });
