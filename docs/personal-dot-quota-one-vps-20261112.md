@@ -39,6 +39,8 @@ The route classifier must reuse the **authoritative deployed CoreDNS policy** or
 - Rollback-only SQL contract: `db/tests/0120_personal_dot_query_quota_contract.sql`.
 - Concurrent real PostgreSQL calls: `tests/integration/personal-dot-query-quota.test.ts`.
 - Identity generator: `packages/dns-policy/src/personal-dot-identity.ts`.
+- DoT routing policy core: `packages/dns-policy/src/personal-dot-gateway-core.ts` (pure functions, **no network listener**, validates DNS question/identity, preserves ordinary DNS and directs exhausted premium requests to a trusted direct resolver); tests: `tests/personal-dot-gateway-core.test.ts`.
+- Quota status function `personal_dns_query_status` returns active/expired/exhausted status, remaining messages and next reset. No public user API exists; owner authentication still required.
 - Latest successful test: https://github.com/grunvald91/Mnebyvpn/actions/runs/43291495076
 - Existing CoreDNS is configured on the foreign VPS (separate infrastructure repo); this PR changes **no production service**.
 
