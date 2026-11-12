@@ -109,7 +109,7 @@ test('original background videos are bundled and served only by the public web r
   assert.match(art,/id="bgv"/);
   assert.match(art,/\['\/bg3\.webm\?v=6e816d6e','video\/webm/);
   assert.match(art,/\['\/bg3\.mp4\?v=30d2f12d','video\/mp4/);
-  assert.match(art,/connection\.saveData/);
+  assert.match(art,/connection\?\.saveData/);
   assert.match(art,/if\(!scene\|\|!video\|\|R\|\|connection\?\.saveData/);
   assert.doesNotMatch(art,/\/_blob\//);
   assert.match(server,/media-src 'self'/);
