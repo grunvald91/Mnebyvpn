@@ -66,6 +66,16 @@ for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
     return document.body.classList.contains('journey-active')&&btn&&btn.textContent!=='—'
       && !frame?.contentDocument?.querySelector('.cta')?.disabled;
   },{timeout:15000});
+  // The design fades its title and tariff card in over ~1.5 seconds.
+  // Capture settled pixels, not an initially transparent card.
+  await page.waitForFunction(()=>{
+    const inner=document.querySelector('#journey-front-frame')?.contentDocument;
+    const card=inner?.querySelector('.card');
+    const heading=inner?.querySelector('.hero h1');
+    return card&&heading &&
+      Number(getComputedStyle(card).opacity)>=0.99 &&
+      Number(getComputedStyle(heading).opacity)>=0.99;
+  },null,{timeout:10000});
   const metrics=await page.evaluate(()=>{
     const frame=document.querySelector('#journey-front-frame');
     const inner=frame.contentDocument;
@@ -82,6 +92,7 @@ for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
       videoPresent:Boolean(inner.querySelector('video#bgv')),
       videoSources:inner.querySelectorAll('video#bgv source').length,
       iframeHasTariffs:inner.querySelectorAll('.plan').length===4,
+      cardOpacity:Number(getComputedStyle(inner.querySelector('.card')).opacity),
       price:inner.querySelector('.plan[data-d="30"] strong').textContent,
       selected:inner.querySelector('.plan[data-d="15"]').getAttribute('aria-pressed'),
       buyText:inner.querySelector('.cta').textContent,
@@ -93,7 +104,7 @@ for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
   console.log('VISUAL_METRICS_'+width+'='+JSON.stringify({...metrics,browserErrors}));
   if(metrics.horizontalOverflow||metrics.innerHorizontalOverflow||browserErrors.length||
     !metrics.iframeHasHeader||!metrics.iframeHasEarth||!metrics.iframeHasTariffs||
-    !metrics.videoPresent||
+    !metrics.videoPresent||metrics.cardOpacity<0.99||
     !metrics.trialVisible||metrics.selected!=='true'||
     metrics.frameWidth>480||metrics.frameWidth<Math.min(360,width)||
     Math.abs(metrics.frameHeight-metrics.artBottom)>28||
