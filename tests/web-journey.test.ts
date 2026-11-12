@@ -102,3 +102,25 @@ test('real-world neon halo is visible without replacing the original globe',()=>
   assert.match(css,/journey-world-halo/);
   assert.match(index,/src="\/world-neon\.webp"/);
 });
+
+
+test('original background videos are bundled and served only by the public web route',()=>{
+  const art=file('apps/web/public/landing-art.html');
+  assert.match(art,/id="bgv"/);
+  assert.match(art,/\['\/bg3\.webm','video\/webm/);
+  assert.match(art,/\['\/bg3\.mp4','video\/mp4/);
+  assert.match(art,/connection\.saveData/);
+  assert.match(art,/if\(!sc\|\|!v\|\|R/);
+  assert.doesNotMatch(art,/\/_blob\//);
+  assert.match(server,/media-src 'self'/);
+  for (const [name,signature,mime] of [
+    ['bg3.webm','1a45dfa3','video/webm'],
+    ['bg3.mp4','0000002066747970','video/mp4']
+  ] as const) {
+    const bytes=readFileSync(new URL('../apps/web/public/'+name,import.meta.url));
+    assert.ok(bytes.byteLength>100_000);
+    assert.equal(bytes.subarray(0,signature.length/2).toString('hex'),signature);
+    assert.ok(server.includes("'/" + name + "'"));
+    assert.ok(server.includes("'"+mime+"'"));
+  }
+});
