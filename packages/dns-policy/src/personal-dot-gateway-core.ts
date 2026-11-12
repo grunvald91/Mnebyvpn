@@ -23,9 +23,14 @@ export function parseDnsQuestion(wire:Uint8Array):DnsQuestion{
   const view=Buffer.from(wire.buffer,wire.byteOffset,wire.byteLength);
   const flags=view.readUInt16BE(2);
   const qdcount=view.readUInt16BE(4);
-  // Reject responses, dynamic updates, compressed/ambiguous QNAME and
-  // multi-question requests; never charge before deciding a route.
-  if((flags&0x8000)!==0||(flags&0x7800)!==0||qdcount!==1)
+  const answerCount=view.readUInt16BE(6);
+  const authorityCount=view.readUInt16BE(8);
+  const additionalCount=view.readUInt16BE(10);
+  // Reject responses, dynamic updates, compressed/ambiguous QNAME,
+  // multi-question messages and malformed headers. Permit one DNS EDNS
+  // OPT record (widely used on modern phones) but no unsigned extras.
+  if((flags&0x8000)!==0||(flags&0x7800)!==0||qdcount!==1||
+      answerCount!==0||authorityCount!==0||additionalCount>1)
     throw new Error('Unsupported DNS question');
   const labels:string[]=[];
   let pos=12,total=1;
@@ -37,6 +42,20 @@ export function parseDnsQuestion(wire:Uint8Array):DnsQuestion{
       const type=view.readUInt16BE(pos);
       const dnsClass=view.readUInt16BE(pos+2);
       if(dnsClass!==1)throw new Error('Only IN DNS class allowed');
+      const end=pos+4;
+      if(additionalCount===0){
+        if(end!==view.length)throw new Error('Unexpected trailing DNS data');
+      } else {
+        // EDNS OPT: single root owner, TYPE=41, fixed 11-byte header,
+        // and exact declared RDLENGTH. Prevent a different resolver from
+        // interpreting a hidden/unvalidated second question or record.
+        if(end+11>view.length||view[end]!==0||
+           view.readUInt16BE(end+1)!==41)
+          throw new Error('Unsupported DNS additional record');
+        const rdataLength=view.readUInt16BE(end+9);
+        if(end+11+rdataLength!==view.length)
+          throw new Error('Truncated or surplus EDNS option data');
+      }
       return{name:labels.join('.').toLowerCase(),type,dnsClass};
     }
     if(length>63||pos+length>view.length)throw new Error('Invalid DNS label');
