@@ -187,6 +187,10 @@ test('storefront caches original 130KB Earth image separately and restores mobil
   assert.match(art,/type!=='visual'/);
   assert.doesNotMatch(art,/hardwareConcurrency/);
   assert.doesNotMatch(art,/effectiveType/);
+  assert.match(art,/\.bg::before\{animation:none!important;opacity:\.3\}/);
+  assert.match(art,/\.bg>i\{display:none!important\}/);
+  assert.match(art,/\.scene\.vid #fx/);
+  assert.match(art,/@keyframes solar-breath/);
 });
 test('cabinet uses the same branded styling and pauses hidden landing video',()=>{
   const html=file('apps/web/public/index.html');
