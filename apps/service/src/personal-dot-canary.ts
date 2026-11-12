@@ -71,8 +71,8 @@ async function main():Promise<void>{
       key:readFileSync(required('MNEBYDNS_CANARY_TLS_KEY_FILE')),
       cert:readFileSync(required('MNEBYDNS_CANARY_TLS_CERT_FILE')),
       db,classify,
-      mapped:query=>queryLoopbackDnsTcp({host:'127.0.0.1',port:mappedPort},query),
-      direct:query=>queryLoopbackDnsTcp({host:'127.0.0.1',port:directPort},query),
+      mapped:(query,signal)=>queryLoopbackDnsTcp({host:'127.0.0.1',port:mappedPort},query,2000,signal),
+      direct:(query,signal)=>queryLoopbackDnsTcp({host:'127.0.0.1',port:directPort},query,2000,signal),
     });
     server.on('error',()=>{console.error('Private DNS canary listener failed');process.exitCode=1;});
     process.once('SIGTERM',()=>server.close(()=>{void db.end();}));
