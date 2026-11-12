@@ -9,7 +9,7 @@
 - The counter measures **DNS messages accepted by a personal DoT ingress**, not HTTPS connections, unique apps, watched video streams, devices, traffic bytes, or cached lookups. One DNS query may precede hundreds of HTTPS connections.
 - Initial engineering policy is **1,000,000 accepted DNS messages per fixed 30-day period**. This is a trial configuration, NOT a validated heavy-use fair limit. Real measurements from phone (Wi-Fi and mobile data) are still needed.
 - Window 0 begins at the entitlement's `starts_at`; new 30-day window starts only on elapsed time, **not** on every renewal. Termination at `expires_at` is independent. Customer can see counter and next reset from `personal_dns_query_status(entitlement_id)` once ownership checking is integrated into the cabinet/bot.
-- `issue_personal_dns_credential` is idempotent on a still-known entitlement; no credential reuse across subscribers. The label and its hash are recorded in PostgreSQL.
+- `issue_personal_dns_credential` is idempotent on a still-known entitlement; no credential reuse across subscribers. Only SHA-256 of the bearer label is retained in PostgreSQL; the plaintext label is shown once at issuance and cannot be recovered from the database.
 - `consume_personal_dns_query` locks the entitlement and atomically increments the active 30-day window. It returns `ALLOWED`, `DENY_QUOTA`, `DENY_INACTIVE`, `DENY_UNKNOWN`, `DENY_INVALID`. A real gateway MUST call it once per accepted premium DNS message and must wait for `ALLOWED` **before** returning a SmartDNS-mapped answer. It cannot infer a customer's identity from ordinary DNS request QNAME or their public IPv4 alone.
 - `revoke_personal_dns_credential` permanently marks the credential revoked. Active subscription update and revocation use the same entitlement row lock. A second device with the copied hostname cannot bypass the shared budget.
 
@@ -56,3 +56,9 @@ The DNS-only query-metering model is preferable to /64 for issuing per-hostname 
 - **Still open / P1:** Issuance/consumption functions are only database primitives; no live DoT SNI client accounting, wildcard DNS/TLS or proxy bypass enforcement exists.
 - **Still open / P1:** An early paid renewal extends entitlement expiry but **does not immediately add query budget to the current window**. Add a verified-payment idempotent credit ledger with refund semantics and integration tests before advertising 'pay again and immediately reconnect'.
 - **Still open / P1:** Counter represents DNS questions, not HTTPS connections. No verified estimate of a single heavy-use phone's real DNS demand, nor active DNS gateway rate limiting. Private DNS needs to preserve access to ordinary sites even after paid quota is depleted.
+
+
+## Post-review DNS availability and secret-storage hardening
+
+- If the route classifier or mapped SmartDNS resolver fails, the pure gateway policy falls back to the trusted direct DNS resolver rather than breaking ordinary Android Private DNS. A premium resolver failure after a successful authorization has already debited one request; failure telemetry and credits must be designed before commercial release.
+- The credential table stores **only the SHA-256 digest**. The bearer label is not persisted and is no longer returned by the quota-status function. Account recovery/reissue of a lost label still needs a secure authenticated design; do not promise it in the UI yet.
