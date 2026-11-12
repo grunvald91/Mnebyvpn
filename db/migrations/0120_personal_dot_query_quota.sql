@@ -83,9 +83,14 @@ $$;
 CREATE FUNCTION recognize_personal_dns_credential(p_label text)
 RETURNS boolean LANGUAGE sql STABLE AS $$
   SELECT p_label ~ '^[a-z0-9]{12}$' AND EXISTS(
-    SELECT 1 FROM personal_dns_credentials
-    WHERE token_sha256=encode(sha256(convert_to(p_label,'UTF8')),'hex')
-      AND revoked_at IS NULL
+    SELECT 1 FROM personal_dns_credentials c
+    JOIN entitlements e ON e.id=c.entitlement_id
+    WHERE c.token_sha256=encode(sha256(convert_to(p_label,'UTF8')),'hex')
+      AND c.revoked_at IS NULL
+      AND e.product='smart_dns'
+      AND e.state NOT IN ('CANCELLED','REFUNDED')
+      AND e.starts_at<=now()
+      AND e.expires_at>now()-interval '7 days'
   )
 $$;
 
