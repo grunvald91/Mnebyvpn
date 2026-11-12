@@ -37,7 +37,8 @@ test('personal DoT server accepts framed TLS requests, meters mapped only and di
   let known=true,debits=0,direct=0,mapped=0;
   const db={query:async(sql:string)=>{
     if(sql.includes('recognize_personal_dns_credential'))return{rows:[{known}]};
-    if(sql.includes('consume_personal_dns_query')){debits++;return{rows:[{verdict:'ALLOWED'}]};}
+    if(sql.includes('reserve_personal_dns_query')){return{rows:[{verdict:'RESERVED'}]};}
+    if(sql.includes('finish_personal_dns_query')){debits++;return{rows:[{verdict:'SETTLED'}]};}
     throw Error('unexpected SQL');
   }} as unknown as Pick<Pool,'query'>;
   const server=createPersonalDotListener({key,cert,db,queryTimeoutMs:2000,
