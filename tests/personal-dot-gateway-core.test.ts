@@ -32,6 +32,23 @@ test('parse DNS question without following compressed pointers',()=>{
   const two=Buffer.from(query('example.org'));
   two.writeUInt16BE(2,4);
   assert.throws(()=>parseDnsQuestion(two));
+  const forgedAnswers=Buffer.from(query('example.org'));
+  forgedAnswers.writeUInt16BE(1,6);
+  assert.throws(()=>parseDnsQuestion(forgedAnswers));
+  assert.throws(()=>parseDnsQuestion(Buffer.concat([query('example.org'),Buffer.from([0])])));
+  const opt=Buffer.from([0,0,41,4,208,0,0,0,0,0,0]); // EDNS0, 1232 bytes UDP
+  const edns=Buffer.concat([query('claude.ai',65),opt]);
+  edns.writeUInt16BE(1,10);
+  assert.equal(parseDnsQuestion(edns).type,65);
+  const ednsCookie=Buffer.concat([edns,Buffer.from([0,10,0,2,0xaa,0xbb])]);
+  ednsCookie.writeUInt16BE(6,edns.length-2);
+  assert.equal(parseDnsQuestion(ednsCookie).name,'claude.ai');
+  const malformed=Buffer.from(ednsCookie);
+  malformed.writeUInt16BE(7,edns.length-2);
+  assert.throws(()=>parseDnsQuestion(malformed));
+  const arbitrary=Buffer.from(edns);
+  arbitrary.writeUInt16BE(16,edns.length-10); // not OPT type 41
+  assert.throws(()=>parseDnsQuestion(arbitrary));
 });
 
 test('ordinary websites always use direct resolver and never consume quota',async()=>{
@@ -49,7 +66,7 @@ test('a premium domain consumes one query before the SmartDNS mapped answer',asy
   const calls:string[]=[];
   const out=await resolvePersonalDnsMessage(host,query('claude.ai'),
     ()=> 'premium',
-    async label=>{assert.match(label,/^d[a-z2-7]{26}$/);calls.push('debit');return 'ALLOWED';},
+    async label=>{assert.match(label,/^[a-z0-9]{12}$/);calls.push('debit');return 'ALLOWED';},
     async()=>{calls.push('mapped');return Uint8Array.from([7]);},
     async()=>{calls.push('direct');return Uint8Array.from([4]);});
   assert.deepEqual([...out],[7]);
