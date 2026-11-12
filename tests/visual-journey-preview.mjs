@@ -15,7 +15,8 @@ const plans=[15,30,60,90].map((durationDays,i)=>({
   durationDays,rubMinor:[6000,9900,19900,24900][i],deviceLimit:1,
 }));
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
-  '.css':'text/css; charset=utf-8','.webp':'image/webp'};
+  '.css':'text/css; charset=utf-8','.webp':'image/webp',
+  '.mp4':'video/mp4','.webm':'video/webm'};
 const server=http.createServer((req,res)=>{
   const url=new URL(req.url,'http://127.0.0.1');
   if(url.pathname==='/api/plans'){
@@ -65,6 +66,16 @@ for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
     return document.body.classList.contains('journey-active')&&btn&&btn.textContent!=='—'
       && !frame?.contentDocument?.querySelector('.cta')?.disabled;
   },{timeout:15000});
+  // The design fades its title and tariff card in over ~1.5 seconds.
+  // Capture settled pixels, not an initially transparent card.
+  await page.waitForFunction(()=>{
+    const inner=document.querySelector('#journey-front-frame')?.contentDocument;
+    const card=inner?.querySelector('.card');
+    const heading=inner?.querySelector('.hero h1');
+    return card&&heading &&
+      Number(getComputedStyle(card).opacity)>=0.99 &&
+      Number(getComputedStyle(heading).opacity)>=0.99;
+  },null,{timeout:10000});
   const metrics=await page.evaluate(()=>{
     const frame=document.querySelector('#journey-front-frame');
     const inner=frame.contentDocument;
@@ -78,7 +89,10 @@ for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
       innerHorizontalOverflow:inner.documentElement.scrollWidth>frame.contentWindow.innerWidth+1,
       iframeHasHeader:Boolean(inner.querySelector('.top .brand')),
       iframeHasEarth:Boolean(inner.querySelector('.kb')),
+      videoPresent:Boolean(inner.querySelector('video#bgv')),
+      videoSources:inner.querySelectorAll('video#bgv source').length,
       iframeHasTariffs:inner.querySelectorAll('.plan').length===4,
+      cardOpacity:Number(getComputedStyle(inner.querySelector('.card')).opacity),
       price:inner.querySelector('.plan[data-d="30"] strong').textContent,
       selected:inner.querySelector('.plan[data-d="15"]').getAttribute('aria-pressed'),
       buyText:inner.querySelector('.cta').textContent,
@@ -90,6 +104,7 @@ for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
   console.log('VISUAL_METRICS_'+width+'='+JSON.stringify({...metrics,browserErrors}));
   if(metrics.horizontalOverflow||metrics.innerHorizontalOverflow||browserErrors.length||
     !metrics.iframeHasHeader||!metrics.iframeHasEarth||!metrics.iframeHasTariffs||
+    !metrics.videoPresent||metrics.cardOpacity<0.99||
     !metrics.trialVisible||metrics.selected!=='true'||
     metrics.frameWidth>480||metrics.frameWidth<Math.min(360,width)||
     Math.abs(metrics.frameHeight-metrics.artBottom)>28||
@@ -153,6 +168,30 @@ for(const [width,height] of [[390,700],[390,844],[360,740],[1440,900]]){
     console.error('TRIAL_AUTH_BACK_FAILED',JSON.stringify(returned));failed=true;
   }
   await page.close();
+}
+// Verify the original owner video loads on normal connections and stays
+// optional for visitors who requested reduced motion.
+{
+  const page=await browser.newPage({viewport:{width:390,height:844}});
+  await page.goto(base,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>{
+    const v=document.querySelector('#journey-front-frame')?.contentDocument?.querySelector('#bgv');
+    return v?.videoWidth===540 && v?.videoHeight===960 &&
+      v.querySelectorAll('source').length===2;
+  },{timeout:15000});
+  console.log('VIDEO_ASSET_SMOKE=played_or_loaded_metadata');
+  await page.close();
+  const reduced=await browser.newPage({viewport:{width:390,height:844},reducedMotion:'reduce'});
+  await reduced.goto(base,{waitUntil:'networkidle'});
+  const optOut=await reduced.evaluate(()=>{
+    const inner=document.querySelector('#journey-front-frame')?.contentDocument;
+    const v=inner?.querySelector('#bgv');
+    return {videoSources:v?.querySelectorAll('source').length,
+      fallbackVisible:!inner?.querySelector('.scene')?.classList.contains('vid')};
+  });
+  console.log('VIDEO_REDUCED_MOTION='+JSON.stringify(optOut));
+  if(optOut.videoSources!==0||!optOut.fallbackVisible)failed=true;
+  await reduced.close();
 }
 // Branded checkout visual acceptance: real authenticated route, no card data
 // entry and no provider HTTP call before the explicit confirmation click.
