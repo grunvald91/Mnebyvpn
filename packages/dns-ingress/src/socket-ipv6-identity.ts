@@ -23,7 +23,7 @@ export async function identifyPaidDnsFromAcceptedSocket(
   // Never mistake shared IPv4 transport for a unique per-subscriber IPv6.
   const destination=socket.localAddress;
   if(socket.destroyed || !destination || isIP(destination)!==6 ||
-     destination.toLowerCase().startsWith('::ffff:') ||
+     /(?:^|:)ffff:/i.test(destination) ||
      destination.includes('%'))return null;
 
   let timer:NodeJS.Timeout|undefined;
