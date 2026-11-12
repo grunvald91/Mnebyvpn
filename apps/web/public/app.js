@@ -500,8 +500,9 @@ async function claimTrial(){
       byId('account').scrollIntoView({behavior:'smooth'});
     else if(['GRANTED','PENDING'].includes(response.status)) {
       if(typeof window!=='undefined'&&window.MnebyvpnJourney)
-        window.MnebyvpnJourney.show('setup',true);
-      else byId('guest-trial-card').scrollIntoView({behavior:'smooth',block:'center'});
+        window.MnebyvpnJourney.show(state.product==='vpn'?'setup':'account',true);
+      else (state.product==='vpn'?byId('guest-trial-card'):byId('account'))
+        .scrollIntoView({behavior:'smooth',block:'center'});
     }
     return response.status;
   }catch(error){
