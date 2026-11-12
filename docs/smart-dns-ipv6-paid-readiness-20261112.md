@@ -17,7 +17,7 @@ Date: 2026-11-12
 - Immutable IPv6 SQL claims: destination, entitlement and original timestamp cannot be changed, rows cannot be deleted/truncated, retirement is one-way. No cross-subscription reuse.
 - SNI ingress policy denies unknown destination IPv6, expired/refunded/inactive/retired/exhausted entitlements, missing/ECH SNI or unapproved exact SNI. No wildcard targets.
 - Isolated per-block debit-before-forwarding (16 KiB maximum per debit); backend must use existing PostgreSQL function debit_smart_dns_quota() with entitlement row lock. Unknown/timeout/debit reject closes the stream, never forwards unbilled bytes. This proves an **accounting policy prototype**, not a performant packet relay.
-- Website's public catalogue, trial and external Prodamus checkout require independent explicit paid DNS attestations; by default DNS/bundle remain hidden and server-side payment order creation rejects DNS, even if user posts a planId directly.
+- Sales activation has **one operator configuration key**: `MNEBYDNS_PAID_SALES_ENABLED=yes` (plus the existing ordinary payment/login settings). The previous nine additional paid-DNS attestation flags were removed at the owner's request. Website catalogue/checkout/trials and shared website/Telegram billing store read this same switch. Network readiness cannot be manufactured by setting it.
 - Disposable PostgreSQL tests and Node tests; zero production routes, secrets, DHCP, Nginx, CoreDNS, VPS or firewall modifications.
 
 ## Blocking technical gaps before REAL sales
@@ -33,7 +33,7 @@ Date: 2026-11-12
 
 ### Explicit release decision
 
-Status: **CODED_OFFLINE / PAID_SMART_DNS_BLOCKED**. Paid DNS price labels can be prepared but not advertised as purchasable until the checklist is proven. The paid website/bot must never grant an entitlement whose ingress is unverified. Never infer paid readiness from a green CI alone. All server/network/provider changes require a separate verified rollout with snapshots and rollback.
+Status: **CODED_OFFLINE / PAID_SMART_DNS_BLOCKED**. Paid DNS prices can be prepared but are not saleable until the single operator switch is turned on. **Do not turn it on before the missing transport is implemented**; it is a sales switch, not a mechanism capable of providing a working paid ingress. The paid website/bot must never grant an entitlement whose ingress is unverified. Never infer paid readiness from a green CI alone. All server/network/provider changes require a separate verified rollout with snapshots and rollback.
 
 References:
 - https://www.rfc-editor.org/rfc/rfc7858 (DNS over TLS)
