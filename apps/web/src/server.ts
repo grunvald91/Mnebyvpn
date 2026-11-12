@@ -173,6 +173,7 @@ class MerchantTransport implements PayformLinkTransport {
 }
 
 const html = await readFile(new URL('../public/index.html', import.meta.url));
+const landingArtHtml = await readFile(new URL('../public/landing-art.html', import.meta.url));
 const termsHtml = await readFile(new URL('../public/terms.html',import.meta.url));
 const privacyHtml = await readFile(new URL('../public/privacy.html',import.meta.url));
 const css = await readFile(new URL('../public/site.css', import.meta.url));
@@ -188,8 +189,29 @@ const workerProfileToken=process.env.VPN_WORKER_PROFILE_TOKEN??'';
 const policy = [
   "default-src 'none'", "script-src 'self'", "style-src 'self'",
   "connect-src 'self'", "img-src 'self' data:", "font-src 'self'",
-  "form-action 'self'", "base-uri 'none'", "frame-ancestors 'none'",
+  "form-action 'self'", "base-uri 'none'", "frame-src 'self'", "frame-ancestors 'none'",
 ].join('; ');
+/* Only the static, owner-supplied visual frame can run inline animations.
+ * The main site, session endpoints and payment flows keep the strict CSP.
+ */
+const landingArtPolicy = [
+  "default-src 'none'", "script-src 'unsafe-inline'",
+  "style-src 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src https://fonts.gstatic.com", "img-src 'self' data:",
+  "base-uri 'none'", "form-action 'none'", "object-src 'none'",
+  "frame-ancestors 'self'",
+].join('; ');
+
+function sendArt(res: ServerResponse) {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Content-Security-Policy', landingArtPolicy);
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.writeHead(200).end(landingArtHtml);
+}
 
 function send(res: ServerResponse, status: number, body: string|Buffer, type = 'application/json; charset=utf-8') {
   res.setHeader('Cache-Control', 'no-store');
@@ -529,6 +551,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
       setCookie(res,deviceCookie,randomBytes(32).toString('base64url'),365*24*60*60);
     send(res, 200, html, 'text/html; charset=utf-8'); return;
+  }
+  if (req.method === 'GET' && url.pathname === '/landing-art.html') {
+    sendArt(res); return;
   }
   if (req.method === 'GET' && (url.pathname === '/terms' || url.pathname === '/terms.html')) {
     send(res,200,termsHtml,'text/html; charset=utf-8');return;
