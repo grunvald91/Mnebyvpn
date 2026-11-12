@@ -45,7 +45,6 @@ async function upstream(behavior:'normal'|'wrong-domain'|'hang'):Promise<{server
  return{server,port:(server.address() as AddressInfo).port};
 }
 async function shutdown(server:TlsServer){
- server.closeAllConnections?.();
  await new Promise<void>(resolve=>server.close(()=>resolve()));
 }
 test('verified upstream returns framed DNS only over trusted TLS with matching hostname',async()=>{
