@@ -1,6 +1,6 @@
 import test, {after} from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {PgBillingStore} from '../../packages/billing/src/store.ts';
 import {
@@ -157,4 +157,53 @@ test('verified renewal preserves personal DNS token while advancing expiry after
     'SELECT count(*)::int AS n FROM dns_subscription_links WHERE entitlement_id=$1 AND revoked_at IS NULL',
     [item.entitlement]);
   assert.equal(tokenRows.rows[0].n,1);
+});
+
+
+test('expiry while SQL waits for entitlement lock blocks both issue and DNS query',async()=>{
+  // An expiry may pass while a refund/renewal/payment transaction holds the
+  // entitlement row. The time check MUST happen only after FOR UPDATE returns.
+  const paid=await activatedDnsOrder();
+  const link=await issuePersonalDnsAccess(db,paid.account,paid.entitlement);
+  assert.ok(link&&link!=='ALREADY_ISSUED');
+  const token=dnsTokenFromSni(link.hostname)!;
+  const digest=createHash('sha256').update(token,'utf8').digest('hex');
+
+  const holder=await db.connect();
+  try{
+    await holder.query('BEGIN');
+    await holder.query(
+      "UPDATE entitlements SET expires_at=clock_timestamp()+interval '650 milliseconds' WHERE id=$1",
+      [paid.entitlement]);
+    const attempted=db.query(
+      'SELECT dns_authorize_and_count_query($1::text) AS status',[digest]);
+    await new Promise<void>(resolve=>setTimeout(resolve,1200));
+    await holder.query('COMMIT');
+    const result=await attempted;
+    assert.equal(result.rows[0].status,'DENY',
+      'expired account was authorized using a time captured before the lock');
+  }finally{
+    await holder.query('ROLLBACK').catch(()=>{});
+    holder.release();
+  }
+
+  const another=await activatedDnsOrder();
+  const holder2=await db.connect();
+  try{
+    await holder2.query('BEGIN');
+    await holder2.query(
+      "UPDATE entitlements SET expires_at=clock_timestamp()+interval '650 milliseconds' WHERE id=$1",
+      [another.entitlement]);
+    const mint=db.query(
+      "SELECT dns_issue_link_for_account($1::uuid,$2::uuid,$3::text,false) AS status",
+      [another.account,another.entitlement,'d'.repeat(64)]);
+    await new Promise<void>(resolve=>setTimeout(resolve,1200));
+    await holder2.query('COMMIT');
+    const result=await mint;
+    assert.equal(result.rows[0].status,'DENY_INACTIVE',
+      'expired account was issued a token after waiting on an entitlement lock');
+  }finally{
+    await holder2.query('ROLLBACK').catch(()=>{});
+    holder2.release();
+  }
 });
