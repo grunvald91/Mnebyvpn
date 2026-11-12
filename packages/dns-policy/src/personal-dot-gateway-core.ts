@@ -94,7 +94,14 @@ export async function resolvePersonalDnsMessage(
   const label=parsePersonalDoTHostname(tlsSni);
   if(!label)throw new Error('Unknown DoT identity');
   const question=parseDnsQuestion(dnsWire);
-  const route=await classify(question);
+  let route:DnsRoute;
+  try{
+    route=await classify(question);
+  }catch{
+    // Missing/failed route policy must not break ordinary DNS or grant
+    // unmetered premium answers: resolve the origin through direct DNS.
+    return direct(dnsWire);
+  }
   if(route==='direct')return direct(dnsWire);
   if(route!=='premium')throw new Error('Untrusted DNS route classification');
   let status:string;
@@ -104,7 +111,15 @@ export async function resolvePersonalDnsMessage(
     // A DB failure never opens unbilled SmartDNS routes; normal DNS only.
     return direct(dnsWire);
   }
-  if(status==='ALLOWED')return mapped(dnsWire);
+  if(status==='ALLOWED'){
+    try{
+      return await mapped(dnsWire);
+    }catch{
+      // Premium upstream failure should not take down Android Private DNS.
+      // The accepted query was already charged; telemetry must track this.
+      return direct(dnsWire);
+    }
+  }
   // Quota expired, refunded, unknown: no mapped answer.
   return direct(dnsWire);
 }
