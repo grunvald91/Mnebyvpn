@@ -33,3 +33,14 @@ Date: 2026-11-12. **TEST ONLY; production disabled.** Branch PR #122. No operati
 ## Verify
 
 The GitHub workflow runs TypeScript, pure unit tests, disposable Postgres migrations/rollback SQL, and integration tests. Offline TLS tests generate temporary self-signed wildcard material with OpenSSL (never checked into Git). A successful CI verifies repository code, **not** a customer phone, traffic interception, or live DNS/proxy connectivity.
+
+
+## Code review: DNS response identity and TLS certificate (2026-11-12)
+
+- P1 FIXED (offline canary): before forwarding a DNS response to the client, validate transaction ID, DNS response bit, standard opcode, a single echoed question, canonical QNAME, record type and class. A matching 16-bit DNS ID alone does **not** prove the reply corresponds to the request. The local mapped/direct TCP resolver now rejects mismatched echoes; the premium-policy layer can then use direct DNS when mapped DNS fails. This is **not** a cryptographic DNSSEC validation or a validation of every answer/resource-record section.
+- P1 FIXED (offline canary): require the certificate subjectAltName to contain the actual `DNS:*.dns.mnebyvpn.site` wildcard. Checking just two hardcoded sample names is inadequate: a certificate covering only those two names would appear to work but fail for real customers. The regression test supplies exactly those non-wildcard SANs and requires rejection.
+- P1 OPEN: a premium DNS quota is debited on authorization, **before** the mapped upstream replies. On mapped failure or TLS disconnect, the request can still consume quota. Do not advertise exact successful-resolution accounting; implement response-aware billing, compensation or explicit documented attempt-based policy with metrics before launch.
+- P1 OPEN: without ingress ACL, a client can reach the shared HTTPS proxy directly, bypassing the personal DNS query quota. Neither label rotation nor the token check fixes the 443 proxy bypass.
+- P1 OPEN: TLS SNI is bearer material; the 12-symbol label may be observed or shared. Production ingress needs source rate limiting, secret-free logs, credential theft mitigations and real-device validation.
+- P1 OPEN: actual per-query latency and concurrency remain unmeasured. Every local DNS query currently starts a TCP upstream session; the listener also makes PostgreSQL checks.
+- P1 OPEN: the separate draft PR #110/#112 and #122 use alternative `0120` schema filenames/contracts. Reconcile to one migration sequence before any merge or deploy.
