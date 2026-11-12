@@ -522,7 +522,8 @@ const cta=$('.cta');
     const dnsChosen=Boolean(selectedDns);
     dnsPreview.hidden=!dnsChosen;
     if(!vpnPart){
-      setText(button,dnsChosen?'Оформление Smart DNS скоро':'Выберите тариф VPN');
+      setText(button,dnsChosen?'Оформление Smart DNS скоро':
+        vpnSelected?'Тариф пока недоступен':'Выберите тариф VPN');
       button.disabled=true;
     }else if(dnsChosen){
       setText(button,'Оформить только VPN');
