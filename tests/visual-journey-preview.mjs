@@ -342,7 +342,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   );
   const disabled=await page.evaluate(()=>{
     const button=document.querySelector('#journey-trial-telegram');
-    const note=document.querySelector('.journey-telegram-note');
+    const note=document.querySelector('.journey-telegram-method .journey-telegram-note');
     return {
       aria:button.getAttribute('aria-disabled'),
       hidden:getComputedStyle(button).display==='none',
