@@ -134,8 +134,9 @@ export async function dnsAdminList(pool:Pool|null,pageNo=0,view:DomainView='all'
     buttons.push([back],[home]);
     const text=visible.map((row,i)=>(pageNo*8+i+1)+'. '+
       (row.domain.length>65?row.domain.slice(0,62)+'…':row.domain)+' — '+
-      (row.status==='ACTIVE'&&row.last_error_code==='ACTIVE_ROUTE_CHECK_FAILED'
-        ?'🟠 Требуется проверка маршрута':labels[row.status]??'Неизвестный статус')).join('\n');
+      (row.status==='ACTIVE'&&row.last_error_code
+        ?'🟠 Требуется проверка маршрута ('+row.last_error_code.slice(0,48)+')'
+        :labels[row.status]??'Неизвестный статус')).join('\n');
     return page(viewTitle(view)+' · страница '+(pageNo+1)+'\n\n'+
       (text||'Нет записей по этому фильтру.')+'\n\n'+
       (microsoft?'Microsoft — группа отдельных имён из исследования. Общие microsoft.com и bing.com требуют особой проверки. ': '')+
@@ -303,9 +304,9 @@ export async function dnsAdminDomain(pool:Pool|null,rawId:string):Promise<AdminP
       (row.status==='COVERED'
         ?'Сервер подтвердил работу этого домена через существующее общее правило CoreDNS/Nginx. Отдельный маршрут не создавался, поэтому отключение здесь недоступно, чтобы не затронуть другие сервисы.'
         :row.status==='ACTIVE'
-        ?row.last_error_code==='ACTIVE_ROUTE_CHECK_FAILED'
-          ?'⚠️ Сервер обнаружил ошибку проверки DNS, закреплённого IP или TLS. Действующий маршрут не менялся. Требуется диагностика; не подтверждай его работоспособность без проверки.'
-          :'Маршрут подтверждён. Для отключения нажми кнопку и подтверди действие.'
+        ?row.last_error_code
+          ?'⚠️ Сервер обнаружил ошибку проверки DNS, закреплённого IP, метаданных адреса или TLS. Действующий маршрут не менялся. Требуется диагностика; статус ACTIVE сам по себе не подтверждает работоспособность сайта.'
+          :'Маршрут закреплён сервером. Полная работа сайта и связанных поддоменов не проверялась. Для отключения нажми кнопку и подтверди действие.'
         :row.status==='CANARY'
         ?'Сейчас временный тест. Проверь сайт на телефоне. Если не подтвердить, сервер вернёт прежнюю конфигурацию.'
         :'Статус заявки не означает работающий DNS-маршрут.'),buttons);
