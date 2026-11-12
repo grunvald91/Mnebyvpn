@@ -4,8 +4,8 @@
 
 ## Contract
 
-- A customer receives a random **DoT hostname**, not an HTTPS URL: e.g. `d<26 base32 symbols>.dns.mnebyvpn.site`. Android Private DNS accepts a hostname. The hostname is 128-bit random; no phone/device identifier is embedded.
-- A hostname represents a **transferable bearer capability**: it can be copied to another device and its SNI may be visible to an on-path observer. Do not describe this as hardware-bound authentication. A recipient who copies it shares the **same** quota.
+- A customer receives a random **DoT hostname**, not an HTTPS URL: e.g. `k7m4p9x2c6qa.dns.mnebyvpn.site` (example only). The bearer label has **exactly 12 symbols** from `0-9a-z` (36^12 = 4,738,381,338,321,616,896 combinations, ~62 bits of online guessing space), and is sampled without modulo bias from a 128-bit CSPRNG. No user/device identifier is encoded. The 128-bit **random input** is not the 62-bit **output strength**.
+- A hostname represents a **transferable bearer capability**, not a password bound to a person or phone. It can be copied to another device and its TLS SNI may be visible to an on-path observer. The 12-character format needs actual gateway-side per-source throttling, strict request limits, security monitoring and a tested reissue/revocation workflow *before launch*. Do not claim CSPRNG entropy protects against a leaked SNI. Devices with the same hostname share one budget.
 - The counter measures **DNS messages accepted by a personal DoT ingress**, not HTTPS connections, unique apps, watched video streams, devices, traffic bytes, or cached lookups. One DNS query may precede hundreds of HTTPS connections.
 - Initial engineering policy is **1,000,000 accepted DNS messages per fixed 30-day period**. This is a trial configuration, NOT a validated heavy-use fair limit. Real measurements from phone (Wi-Fi and mobile data) are still needed.
 - Window 0 begins at the entitlement's `starts_at`; new 30-day window starts only on elapsed time, **not** on every renewal. Termination at `expires_at` is independent. Customer can see counter and next reset from `personal_dns_query_status(entitlement_id)` once ownership checking is integrated into the cabinet/bot.
@@ -42,7 +42,17 @@ The route classifier must reuse the **authoritative deployed CoreDNS policy** or
 - Identity generator: `packages/dns-policy/src/personal-dot-identity.ts`.
 - DoT routing policy core: `packages/dns-policy/src/personal-dot-gateway-core.ts` (pure functions, **no network listener**, validates DNS question/identity, preserves ordinary DNS and directs exhausted premium requests to a trusted direct resolver); tests: `tests/personal-dot-gateway-core.test.ts`.
 - Quota status function `personal_dns_query_status` returns active/expired/exhausted status, remaining messages and next reset. No public user API exists; owner authentication still required.
-- Latest successful test: https://github.com/grunvald91/Mnebyvpn/actions/runs/43291495076
+- Latest successful post-review test: https://github.com/grunvald91/Mnebyvpn/actions/runs/43298361949 (209/209 Node unit tests, 66/66 PostgreSQL integration tests, plus migration and rollback SQL checks).
 - Existing CoreDNS is configured on the foreign VPS (separate infrastructure repo); this PR changes **no production service**.
 
 The DNS-only query-metering model is preferable to /64 for issuing per-hostname profiles, **but it does not solve the original full HTTPS traffic authorization requirement**. Never turn on paid sales just because the database counter passes tests.
+
+## Code review 2026-11-12: fixes and outstanding design gaps
+
+- **Fixed:** Excessive 27-character legacy identifier replaced with 12-base36 uniform random label across parser, SQL schema, unit/DB fixtures and gateway tests. Generated output contains ~62 bits, not 128 bits; do not conflate source entropy with label strength.
+- **Fixed:** SQL provisioner now checks the SHA-256 label digest instead of accepting any caller-supplied hash, and refuses a different credential for an existing entitlement or revival of an explicitly revoked credential.
+- **Fixed:** DNS wire parser now rejects ambiguous/trailing/malformed DNS records while accepting a single bounded EDNS0 OPT record. This helps prevent classifier/resolver disagreement. No real network DNS/TLS parser is deployed yet.
+- **Fixed:** Found a damaged and accidentally duplicated SQL migration generated during the identifier refactor. Restored a single transaction containing each function once; the disposable PostgreSQL suite is green.
+- **Still open / P1:** Issuance/consumption functions are only database primitives; no live DoT SNI client accounting, wildcard DNS/TLS or proxy bypass enforcement exists.
+- **Still open / P1:** An early paid renewal extends entitlement expiry but **does not immediately add query budget to the current window**. Add a verified-payment idempotent credit ledger with refund semantics and integration tests before advertising 'pay again and immediately reconnect'.
+- **Still open / P1:** Counter represents DNS questions, not HTTPS connections. No verified estimate of a single heavy-use phone's real DNS demand, nor active DNS gateway rate limiting. Private DNS needs to preserve access to ordinary sites even after paid quota is depleted.
