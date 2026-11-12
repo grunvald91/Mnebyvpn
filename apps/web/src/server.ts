@@ -10,6 +10,7 @@ import { Pool } from 'pg';
 import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
   from '../../../packages/support/src/telegram-relay.ts';
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
+import {paidSmartDnsCheckoutReady} from '../../../packages/billing/src/dns-paid-release.ts';
 import {subscriptionOwner,subscriptionLink,issueSubscriptionLinkForAccount}
   from '../../../packages/provisioning/src/subscription-links.ts';
 import {
@@ -83,6 +84,10 @@ const trialEnabled = loginEnabled && networkVerified &&
 // Anonymous guest claims cannot prove a stable user identity.
 // Deprecated WEB_GUEST_TRIAL_ENABLED is deliberately ignored. No anonymous grant routes.
 const meteringVerified = networkVerified && process.env.WEB_DNS_METERING_VERIFIED === 'yes';
+// DNS checkout requires independent proof of provider-routed IPv6, ingress
+// accounting/revoke, mobile E2E and closed legacy IPv4 bypass. Default DENY.
+const dnsPaidCheckoutEnabled = paidSmartDnsCheckoutReady(
+  process.env,checkoutEnabled,networkVerified,meteringVerified);
 // Brochure/support data remains isolated from the real VPN billing ledger.
 // Public checkout, signed callbacks and paid entitlements MUST use the
 // canonical VPN node database with an independent least-privilege role.
@@ -797,12 +802,14 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   }
   if (req.method === 'GET' && url.pathname === '/api/plans') {
     const plans = await store.plans('prodamus');
+    const publishedPlans=dnsPaidCheckoutEnabled?plans:plans.filter(p=>p.product==='vpn');
     const trialOffers = trialEnabled
       ? (await billingPool.query('SELECT product FROM trial_offers WHERE enabled=true')).rows.map(r=>r.product as string)
       : [];
     json(res,200,{ loginEnabled, telegramLoginEnabled, emailLoginEnabled,
-      checkoutEnabled, trialOffers,
-      plans: plans.map(p => ({
+      checkoutEnabled, dnsPaidCheckoutEnabled,
+      trialOffers: dnsPaidCheckoutEnabled?trialOffers:trialOffers.filter(p=>p==='vpn'),
+      plans: publishedPlans.map(p => ({
       id: p.planId, title: p.title, product: p.product,
       durationDays: p.durationSeconds / 86400, rubMinor: p.rubMinor,
       deviceLimit: p.deviceLimit ?? 1,
@@ -845,6 +852,9 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
         (typeof body.inviteToken !== 'string' ||
          !/^[A-Za-z0-9_-]{16,24}$/.test(body.inviteToken)))) {
       json(res,400,{code:'INVALID_TRIAL'});return;
+    }
+    if(body.product!=='vpn'&&!dnsPaidCheckoutEnabled){
+      json(res,503,{code:'DNS_PAID_NOT_READY'});return;
     }
     const device=cookie(req,deviceCookie);
     if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device)){
@@ -893,6 +903,14 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
           (typeof body.inviteToken !== 'string' ||
            !/^[A-Za-z0-9_-]{16,24}$/.test(body.inviteToken)))) {
       json(res,400,{code:'INVALID_CHECKOUT'});return;
+    }
+    // The client can bypass disabled product buttons and post a planId.
+    // Reject paid DNS/BUNDLE on the server before creating any payment order.
+    if(!dnsPaidCheckoutEnabled){
+      const plan=await store.plan(body.planId);
+      if(plan&&plan.product!=='vpn'){
+        json(res,503,{code:'DNS_PAID_NOT_READY'});return;
+      }
     }
     try {
       const purchase = await prepareWebsiteProdamusCheckout({
