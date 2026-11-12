@@ -120,14 +120,14 @@ $$;
 -- Replace an exposed/lost DNS hostname without resetting quota.
 -- Call only after verified owner authentication + current revision check.
 CREATE FUNCTION rotate_personal_dns_credential(
-  p_entitlement uuid,p_expected_revision bigint,p_new_label text,p_new_token_hash text
+  p_account uuid,p_entitlement uuid,p_expected_revision bigint,p_new_label text,p_new_token_hash text
 ) RETURNS text LANGUAGE plpgsql AS $$
 DECLARE
   e entitlements%ROWTYPE;
   c personal_dns_credentials%ROWTYPE;
   v_now timestamptz;
 BEGIN
-  IF p_entitlement IS NULL OR p_expected_revision IS NULL OR
+  IF p_account IS NULL OR p_entitlement IS NULL OR p_expected_revision IS NULL OR
      p_expected_revision < 1 OR p_new_label IS NULL OR
      p_new_label !~ '^[a-z0-9]{12}$' OR p_new_token_hash IS NULL OR
      p_new_token_hash !~ '^[a-f0-9]{64}$' OR
@@ -135,7 +135,7 @@ BEGIN
   THEN RETURN 'DENY_INVALID'; END IF;
   SELECT * INTO e FROM entitlements WHERE id=p_entitlement FOR UPDATE;
   v_now:=clock_timestamp();
-  IF NOT FOUND OR e.product<>'smart_dns' OR e.state<>'ACTIVE' OR
+  IF NOT FOUND OR e.account_id<>p_account OR e.product<>'smart_dns' OR e.state<>'ACTIVE' OR
      e.starts_at IS NULL OR e.expires_at IS NULL OR
      e.starts_at>v_now OR e.expires_at<=v_now
   THEN RETURN 'DENY_INACTIVE'; END IF;
@@ -211,6 +211,6 @@ $$;
 REVOKE ALL ON FUNCTION issue_personal_dns_credential(uuid,text,text,bigint) FROM PUBLIC;
 REVOKE ALL ON FUNCTION consume_personal_dns_query(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION revoke_personal_dns_credential(uuid) FROM PUBLIC;
-REVOKE ALL ON FUNCTION rotate_personal_dns_credential(uuid,bigint,text,text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION rotate_personal_dns_credential(uuid,uuid,bigint,text,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION personal_dns_query_status(uuid) FROM PUBLIC;
 COMMIT;
