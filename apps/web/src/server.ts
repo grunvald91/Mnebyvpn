@@ -808,7 +808,7 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       ? (await billingPool.query('SELECT product FROM trial_offers WHERE enabled=true')).rows.map(r=>r.product as string)
       : [];
     json(res,200,{ loginEnabled, telegramLoginEnabled, emailLoginEnabled,
-      checkoutEnabled, trialOffers,
+      checkoutEnabled, dnsAccessEnabled, trialOffers,
       plans: plans.map(p => ({
       id: p.planId, title: p.title, product: p.product,
       durationDays: p.durationSeconds / 86400, rubMinor: p.rubMinor,
