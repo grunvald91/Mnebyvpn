@@ -1,0 +1,30 @@
+name: MNEBYDNS Meta v12 public path read-only health
+on:
+  push:
+    branches:
+      - diagnostics/pcapdroid-meta-path-20261109
+    paths:
+      - .github/workflows/meta-v12-public-health.yml
+      - scripts/meta-v12-dns-answers.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Checkout diagnostic code
+        uses: actions/checkout@v4
+      - name: Verify diagnostic script syntax
+        run: python3 -m py_compile scripts/meta-v12-readonly-probe.py scripts/meta-v12-dns-answers.py
+      - name: Collect public DNS-over-TLS and SNI statuses
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo '### MNEBYDNS Meta read-only public health' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Source is a GitHub runner, not a Russian mobile client. No production changes are performed.' >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/meta-v12-readonly-probe.py | tee -a "$GITHUB_STEP_SUMMARY"
+          python3 scripts/meta-v12-dns-answers.py | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
