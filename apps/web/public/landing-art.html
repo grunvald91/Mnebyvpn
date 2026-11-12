@@ -335,7 +335,7 @@ if(!R)addEventListener('deviceorientation',e=>{if(e.gamma==null)return;const s=d
   const start=()=>{
     if(loaded)return;
     loaded=true;
-    for(const [src,type] of [['/bg3.webm','video/webm; codecs="vp9"'],['/bg3.mp4','video/mp4']]){
+    for(const [src,type] of [['/bg3.webm?v=6e816d6e','video/webm; codecs="vp9"'],['/bg3.mp4?v=30d2f12d','video/mp4']]){
       const source=document.createElement('source');
       source.src=src;
       source.type=type;
