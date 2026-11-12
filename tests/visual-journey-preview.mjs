@@ -110,7 +110,9 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       iframeHasEarth:Boolean(inner.querySelector('.kb')),
       videoPresent:Boolean(inner.querySelector('video#bgv')),
       videoSources:inner.querySelectorAll('video#bgv source').length,
-      iframeHasTariffs:inner.querySelectorAll('.plan').length===4,
+      iframeHasTariffs:inner.querySelectorAll('.plans-vpn .plan').length===4 && inner.querySelectorAll('.plans-dns .plan').length===4,
+      dnsPrices:[...inner.querySelectorAll('.plans-dns .plan strong')].map(el=>el.textContent.trim()),
+      vpnFirst:inner.querySelector('.plans-vpn .plan[data-d="15"]').getAttribute('aria-pressed'),
       cardOpacity:Number(getComputedStyle(inner.querySelector('.card')).opacity),
       price:inner.querySelector('.plan[data-d="30"] strong').textContent,
       selected:inner.querySelector('.plan[data-d="15"]').getAttribute('aria-pressed'),
@@ -124,26 +126,55 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   console.log('VISUAL_METRICS_'+width+'='+JSON.stringify({...metrics,browserErrors}));
   if(metrics.horizontalOverflow||metrics.innerHorizontalOverflow||browserErrors.length||
     !metrics.iframeHasHeader||!metrics.iframeHasEarth||!metrics.iframeHasTariffs||
+    JSON.stringify(metrics.dnsPrices)!==JSON.stringify(['120 ₽','199 ₽','379 ₽','549 ₽'])||
     !metrics.videoPresent||metrics.retryVisible||metrics.cardOpacity<0.99||
     !metrics.headerSingleRow||!metrics.topButtonsUnwrapped||!metrics.headerFits||
     !metrics.legalSingleRow||metrics.frontTop>12||
-    (width<=390&&(Math.abs(metrics.footerBottomGap)>12||
-      Math.abs(metrics.iframeBottomGap)>12||!metrics.fullFrameBackground||
+    (width<=390&&(metrics.iframeBottomGap>12||!metrics.fullFrameBackground||
       !metrics.videoUncroppedAspect))||
-    (width<=390&&(!metrics.footerVisible||metrics.outerCanScroll))||
     !metrics.trialVisible||metrics.selected!=='true'||
     metrics.frameWidth>480||metrics.frameWidth<Math.min(360,width)||
     Math.abs(metrics.frameHeight-metrics.artBottom)>28||
+    (width<=390&&metrics.outerScrollHeight>innerHeight+280)||
     !metrics.price.includes('₽'))failed=true;
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('VISUAL_JPEG_'+width+'_BEGIN');
     console.log(readFileSync(file).toString('base64'));
     console.log('VISUAL_JPEG_'+width+'_END');
   }
-  // The uploaded visible CTA must lead to the existing email OTP flow.
-  await page.frameLocator('#journey-front-frame').locator('.plan[data-d="30"]').click();
+  // DNS info is a real keyboard-accessible dialog. It must name target
+  // services accurately without promising all are operational right now.
+  await page.frameLocator('#journey-front-frame').locator('#dns-info-open').click();
+  const info=await page.frameLocator('#journey-front-frame').locator('#dns-info-dialog');
+  if(!await info.isVisible())failed=true;
+  const infoContent=await info.textContent();
+  if(!['YouTube','ChatGPT','Gemini','Claude','Antigravity','Grok','TikTok','X'].every(x=>infoContent.includes(x))||
+    !infoContent.includes('домен')||!infoContent.includes('VPN'))failed=true;
+  await page.frameLocator('#journey-front-frame').locator('#dns-info-close').click();
+  if(await info.isVisible())failed=true;
+  // Selecting DNS previews the proposed price, never purchases an unrelated VPN.
+  await page.frameLocator('#journey-front-frame').locator('.plans-dns .plan[data-d="30"]').click();
+  const dnsState=await page.evaluate(()=>{
+    const inner=document.querySelector('#journey-front-frame').contentDocument;
+    return{
+      summary:inner.querySelector('#sum').textContent,
+      buyDisabled:inner.querySelector('.cta').disabled,
+      label:inner.querySelector('.cta').textContent,
+      selected:inner.querySelector('.plans-dns .plan[data-d="30"]').getAttribute('aria-pressed'),
+    };
+  });
+  console.log('DNS_PREVIEW_'+width+'='+JSON.stringify(dnsState));
+  if(dnsState.selected!=='true'||!dnsState.summary.includes('199 ₽')||
+     !dnsState.buyDisabled||!dnsState.label.includes('скоро'))failed=true;
+  await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="30"]').click();
   await page.waitForFunction(()=>document.querySelector('#journey-summary')?.textContent?.includes('30 дней'));
   await page.frameLocator('#journey-front-frame').locator('.try').click();
+  if(!await page.frameLocator('#journey-front-frame').locator('#trial-options').isVisible())failed=true;
+  await page.frameLocator('#journey-front-frame').locator('#trial-dns').click();
+  const trialDns=await page.frameLocator('#journey-front-frame').locator('#trial-dns-status');
+  if(!await trialDns.isVisible())failed=true;
+  if(await page.evaluate(()=>document.body.dataset.journeyView!=='plans'))failed=true;
+  await page.frameLocator('#journey-front-frame').locator('#trial-vpn').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='trial-auth');
   const trial=await page.evaluate(()=>{
     const form=document.querySelector('#email-start-form');
@@ -294,6 +325,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.goto(base,{waitUntil:'networkidle'});
   await page.waitForFunction(()=>document.body.classList.contains('journey-active')&&
     !document.querySelector('#journey-buy').disabled);
+  await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="15"]').click();
   await page.frameLocator('#journey-front-frame').locator('.cta').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='checkout');
   const order=await page.evaluate(()=>({
@@ -353,6 +385,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.waitForFunction(()=>document.body.classList.contains('journey-active')&&
     !document.querySelector('#journey-trial').disabled);
   await page.frameLocator('#journey-front-frame').locator('.try').click();
+  await page.frameLocator('#journey-front-frame').locator('#trial-vpn').click();
   if(trialCalls!==0)failed=true;
   await page.locator('#email-input').fill('visual-test@example.com');
   await page.locator('#email-send-button').click();
