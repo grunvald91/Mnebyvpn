@@ -6,6 +6,7 @@ BEGIN;
 CREATE TABLE personal_dns_credentials (
   entitlement_id uuid PRIMARY KEY REFERENCES entitlements(id) ON DELETE RESTRICT,
   token_sha256 text NOT NULL UNIQUE CHECK (token_sha256 ~ '^[a-f0-9]{64}$'),
+  credential_revision bigint NOT NULL DEFAULT 1 CHECK (credential_revision >= 1),
   query_limit_per_30d bigint NOT NULL DEFAULT 1000000
     CHECK (query_limit_per_30d BETWEEN 1 AND 100000000),
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -116,6 +117,44 @@ BEGIN
 END;
 $$;
 
+-- Replace an exposed/lost DNS hostname without resetting quota.
+-- Call only after verified owner authentication + current revision check.
+CREATE FUNCTION rotate_personal_dns_credential(
+  p_entitlement uuid,p_expected_revision bigint,p_new_label text,p_new_token_hash text
+) RETURNS text LANGUAGE plpgsql AS $$
+DECLARE
+  e entitlements%ROWTYPE;
+  c personal_dns_credentials%ROWTYPE;
+  v_now timestamptz;
+BEGIN
+  IF p_entitlement IS NULL OR p_expected_revision IS NULL OR
+     p_expected_revision < 1 OR p_new_label IS NULL OR
+     p_new_label !~ '^[a-z0-9]{12}$' OR p_new_token_hash IS NULL OR
+     p_new_token_hash !~ '^[a-f0-9]{64}$' OR
+     p_new_token_hash <> encode(sha256(convert_to(p_new_label,'UTF8')),'hex')
+  THEN RETURN 'DENY_INVALID'; END IF;
+  SELECT * INTO e FROM entitlements WHERE id=p_entitlement FOR UPDATE;
+  v_now:=clock_timestamp();
+  IF NOT FOUND OR e.product<>'smart_dns' OR e.state<>'ACTIVE' OR
+     e.starts_at IS NULL OR e.expires_at IS NULL OR
+     e.starts_at>v_now OR e.expires_at<=v_now
+  THEN RETURN 'DENY_INACTIVE'; END IF;
+  SELECT * INTO c FROM personal_dns_credentials WHERE entitlement_id=p_entitlement;
+  IF NOT FOUND THEN RETURN 'DENY_UNKNOWN'; END IF;
+  IF c.revoked_at IS NOT NULL THEN RETURN 'DENY_REVOKED'; END IF;
+  IF c.credential_revision<>p_expected_revision THEN RETURN 'DENY_STALE'; END IF;
+  IF c.token_sha256=p_new_token_hash THEN RETURN 'DENY_SAME'; END IF;
+  BEGIN
+    UPDATE personal_dns_credentials SET token_sha256=p_new_token_hash,
+      credential_revision=credential_revision+1
+      WHERE entitlement_id=p_entitlement;
+  EXCEPTION WHEN unique_violation THEN
+    RETURN 'DENY_TOKEN_COLLISION';
+  END;
+  RETURN 'ROTATED';
+END;
+$$;
+
 CREATE FUNCTION revoke_personal_dns_credential(p_entitlement uuid)
 RETURNS boolean LANGUAGE plpgsql AS $$
 DECLARE
@@ -137,6 +176,7 @@ $$;
 -- an arbitrary UUID from a public endpoint.
 CREATE FUNCTION personal_dns_query_status(p_entitlement uuid)
 RETURNS TABLE(
+  credential_revision bigint,
   access_status text,
   used_queries bigint,
   remaining_queries bigint,
@@ -144,7 +184,7 @@ RETURNS TABLE(
   next_reset_at timestamptz,
   access_expires_at timestamptz
 ) LANGUAGE sql STABLE AS $$
-  SELECT CASE
+  SELECT c.credential_revision,CASE
       WHEN c.revoked_at IS NOT NULL THEN 'REVOKED'
       WHEN e.state <> 'ACTIVE' OR e.expires_at IS NULL OR
            e.expires_at<=now() OR e.starts_at IS NULL OR e.starts_at>now()
@@ -171,5 +211,6 @@ $$;
 REVOKE ALL ON FUNCTION issue_personal_dns_credential(uuid,text,text,bigint) FROM PUBLIC;
 REVOKE ALL ON FUNCTION consume_personal_dns_query(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION revoke_personal_dns_credential(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION rotate_personal_dns_credential(uuid,bigint,text,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION personal_dns_query_status(uuid) FROM PUBLIC;
 COMMIT;
