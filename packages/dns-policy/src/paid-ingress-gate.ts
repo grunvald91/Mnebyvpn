@@ -97,12 +97,18 @@ export interface ByteSink {
  * even if forwarding fails after successful debit. Must be reviewed, measured
  * and replaced by a tested reservation/settlement contract before selling.
  */
+// Bound each read and the in-flight queue; network input must not allocate
+// unbounded buffers while the database is slow or unavailable.
+export const MAX_METERED_INPUT_BYTES=64*1024;
+export const MAX_METERED_QUEUED_BYTES=256*1024;
+
 export class MeteredChunkGate {
   private readonly entitlementId:string;
   private readonly debitBackend:DebitBackend;
   private readonly sink:ByteSink;
   private tail:Promise<void>=Promise.resolve();
   private stopped=false;
+  private queuedBytes=0;
 
   constructor(admission:IngressAdmission,backend:DebitBackend,sink:ByteSink){
     if(!admission.admitted||admission.reason!=='ADMIT'||!admission.entitlementId)
@@ -113,9 +119,17 @@ export class MeteredChunkGate {
   }
 
   forward(input:Uint8Array):Promise<void>{
-    const payload=Uint8Array.from(input);
     if(this.stopped)return Promise.reject(new Error('Ingress is closed'));
-    if(!payload.length)return this.tail;
+    if(!(input instanceof Uint8Array) ||
+       input.byteLength>MAX_METERED_INPUT_BYTES ||
+       this.queuedBytes+input.byteLength>MAX_METERED_QUEUED_BYTES){
+      this.stop();
+      return Promise.reject(new Error('Ingress buffer limit exceeded; connection closed'));
+    }
+    if(!input.byteLength)return this.tail;
+    // Reserve before copy: cannot grow without bound while waiting for a debit.
+    this.queuedBytes+=input.byteLength;
+    const payload=Uint8Array.from(input);
     const queued=this.tail.then(async()=>{
       if(this.stopped)throw new Error('Ingress is closed');
       try {
@@ -132,9 +146,40 @@ export class MeteredChunkGate {
         throw new Error('Ingress metering or delivery unavailable; connection closed');
       }
     });
-    this.tail=queued.catch(()=>{});
+    // Attach rejection handling to the queue tail; never leave an unhandled
+    // promise and always release queued bytes after a failed DB debit.
+    this.tail=queued.then(
+      ()=>{this.queuedBytes-=payload.byteLength;},
+      ()=>{this.queuedBytes-=payload.byteLength;},
+    );
     return queued;
   }
 
   stop():void{this.stopped=true;}
+}
+
+/** Account BOTH TLS stream directions, using the same atomic debit backend. */
+export class MeteredDuplexGate {
+  private readonly toOrigin:MeteredChunkGate;
+  private readonly toClient:MeteredChunkGate;
+  constructor(
+    admission:IngressAdmission,
+    debitBackend:DebitBackend,
+    originSink:ByteSink,
+    clientSink:ByteSink,
+  ){
+    this.toOrigin=new MeteredChunkGate(admission,debitBackend,originSink);
+    this.toClient=new MeteredChunkGate(admission,debitBackend,clientSink);
+  }
+  forwardToOrigin(input:Uint8Array):Promise<void>{
+    return this.transfer(()=>this.toOrigin.forward(input));
+  }
+  forwardToClient(input:Uint8Array):Promise<void>{
+    return this.transfer(()=>this.toClient.forward(input));
+  }
+  private async transfer(run:()=>Promise<void>):Promise<void>{
+    try{await run();}
+    catch(error){this.stop();throw error;}
+  }
+  stop():void{this.toOrigin.stop();this.toClient.stop();}
 }
