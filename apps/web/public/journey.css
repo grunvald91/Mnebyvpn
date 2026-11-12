@@ -1464,3 +1464,34 @@ body.journey-active #journey-trial-telegram[aria-disabled="true"]{
 @media(prefers-reduced-motion:reduce){
   body.journey-active .journey-world-orbit{transition:none;animation:none}
 }
+
+
+/* Owner-supplied mobile storefront; the account/setup/payment routes retain
+   the existing semantic DOM, API integration and stricter site-wide CSP. */
+body.journey-active[data-journey-view="plans"]{
+  background:#04071a;
+}
+body.journey-active[data-journey-view="plans"] .header,
+body.journey-active[data-journey-view="plans"] .footer,
+body.journey-active[data-journey-view="plans"] .journey-world-backdrop{
+  display:none!important;
+}
+body.journey-active[data-journey-view="plans"] .journey-landing{
+  display:block;
+  width:100%;
+  max-width:480px;
+  margin:0 auto;
+  padding:0;
+}
+body.journey-active[data-journey-view="plans"] .journey-landing .journey-intro,
+body.journey-active[data-journey-view="plans"] .journey-landing .journey-checkout{
+  display:none!important;
+}
+.journey-front-stage{display:block;width:100%;margin:auto;overflow:hidden;background:#04071a}
+.journey-front-stage iframe{display:block;width:100%;height:790px;min-height:620px;border:0;background:#04071a}
+body.journey-active:not([data-journey-view="plans"]) .journey-front-stage{display:none!important}
+@media(max-width:480px){
+  body.journey-active[data-journey-view="plans"] .journey-landing{
+    max-width:none;
+  }
+}
