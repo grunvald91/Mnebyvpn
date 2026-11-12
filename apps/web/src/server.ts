@@ -848,6 +848,9 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     json(res,200,{
       entitlementId,
       timezone:'UTC',
+      // Grouped by PostgreSQL debit acceptance, NOT by each wire packet's
+      // arrival time. Calendar-boundary attribution still requires network E2E.
+      monthlyBoundaryBasis:'POSTGRESQL_SETTLEMENT_UTC',
       bytesDefinition:'TLS_TCP_PAYLOAD_BOTH_DIRECTIONS',
       pendingHeldBytes:String(heldBytes),
       lateRecordedBytes:String(lateBytes),
