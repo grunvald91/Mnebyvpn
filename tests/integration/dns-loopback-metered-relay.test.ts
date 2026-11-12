@@ -45,7 +45,9 @@ async function listen(server:Server):Promise<number>{
   return a.port;
 }
 async function dial(port:number):Promise<Socket>{
-  const socket=connect({host:'127.0.0.1',port,allowHalfOpen:true});
+  // The test client needs default FIN behaviour; relay-side sockets alone
+  // must preserve independent TCP read and write halves.
+  const socket=connect({host:'127.0.0.1',port});
   await once(socket,'connect');
   return socket;
 }
