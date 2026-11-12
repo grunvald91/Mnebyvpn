@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {makePersonalDoTIdentity} from '../packages/dns-policy/src/personal-dot-identity.ts';
 import {
-  parseDnsQuestion,resolvePersonalDnsMessage,
+  parseDnsQuestion,resolvePersonalDnsMessage,dnsResponseMatchesQuestion,
 } from '../packages/dns-policy/src/personal-dot-gateway-core.ts';
 
 function query(domain:string,qtype=1):Uint8Array{
@@ -49,6 +49,34 @@ test('parse DNS question without following compressed pointers',()=>{
   const arbitrary=Buffer.from(edns);
   arbitrary.writeUInt16BE(16,edns.length-10); // not OPT type 41
   assert.throws(()=>parseDnsQuestion(arbitrary));
+});
+
+test('upstream response must echo requested DNS name, class and type',()=>{
+  const a=query('claude.ai');
+  const b=query('gemini.google.com');
+  const good=Buffer.from(a);
+  good.writeUInt16BE(0x8180,2);
+  assert.equal(dnsResponseMatchesQuestion(a,good),true);
+  const wrongName=Buffer.from(b);
+  wrongName.writeUInt16BE(a.readUInt16BE(0),0);
+  wrongName.writeUInt16BE(0x8180,2);
+  assert.equal(dnsResponseMatchesQuestion(a,wrongName),false);
+  const wrongType=Buffer.from(query('claude.ai',28));
+  wrongType.writeUInt16BE(0x8180,2);
+  assert.equal(dnsResponseMatchesQuestion(a,wrongType),false);
+  const wrongId=Buffer.from(good);
+  wrongId.writeUInt16BE(999,0);
+  assert.equal(dnsResponseMatchesQuestion(a,wrongId),false);
+  const noQuestion=Buffer.from(good);
+  noQuestion.writeUInt16BE(0,4);
+  assert.equal(dnsResponseMatchesQuestion(a,noQuestion),false);
+  const compressed=Buffer.from(good);
+  compressed[12]=0xc0;
+  assert.equal(dnsResponseMatchesQuestion(a,compressed),false);
+  const responseQnameUpper=Buffer.from(good);
+  responseQnameUpper[13]='C'.charCodeAt(0);
+  assert.equal(dnsResponseMatchesQuestion(a,responseQnameUpper),true);
+  assert.equal(dnsResponseMatchesQuestion(a,Uint8Array.from([1,2,3])),false);
 });
 
 test('ordinary websites always use direct resolver and never consume quota',async()=>{
