@@ -1488,7 +1488,7 @@ body.journey-active[data-journey-view="plans"] .journey-landing .journey-checkou
   display:none!important;
 }
 .journey-front-stage{display:block;width:100%;margin:auto;overflow:hidden;background:#04071a}
-.journey-front-stage iframe{display:block;width:100%;height:790px;min-height:620px;border:0;background:#04071a}
+.journey-front-stage iframe{display:block;width:100%;height:790px;min-height:540px;border:0;background:#04071a}
 body.journey-active:not([data-journey-view="plans"]) .journey-front-stage{display:none!important}
 @media(max-width:480px){
   body.journey-active[data-journey-view="plans"] .journey-landing{
