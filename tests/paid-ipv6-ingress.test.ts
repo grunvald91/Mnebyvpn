@@ -166,6 +166,22 @@ test('failed delivery closes the connection; no retry of ambiguously charged dat
   assert.equal(billed,1);
 });
 
+test('stop during in-flight debit does not forward even a charged block',async()=>{
+  let completeDebit:((result:string)=>void)|null=null;
+  let forwarded=0;
+  const g=new MeteredChunkGate(admit(),{
+    debit:async()=>await new Promise<string>(resolve=>{completeDebit=resolve;}),
+  },{send:async()=>{forwarded++;}});
+  const pending=g.forward(new Uint8Array(24));
+  // Wait for the task queued on the microtask chain.
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(completeDebit);
+  g.stop();
+  completeDebit!('ACCEPTED');
+  await assert.rejects(pending,/connection closed/);
+  assert.equal(forwarded,0);
+});
+
 test('unadmitted and unknown credentials cannot construct a metered connection',()=>{
   const denied:IngressAdmission={admitted:false,reason:'NO_TRUSTED_ENTITLEMENT'};
   assert.throws(()=>new MeteredChunkGate(denied,{debit:async()=> 'ACCEPTED'},{send:async()=>{}}));
