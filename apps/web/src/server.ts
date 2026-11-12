@@ -10,7 +10,7 @@ import { Pool } from 'pg';
 import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
   from '../../../packages/support/src/telegram-relay.ts';
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
-import {paidSmartDnsCheckoutReady} from '../../../packages/billing/src/dns-paid-release.ts';
+import {isDnsSalesEnabled} from '../../../packages/billing/src/dns-paid-release.ts';
 import {subscriptionOwner,subscriptionLink,issueSubscriptionLinkForAccount}
   from '../../../packages/provisioning/src/subscription-links.ts';
 import {
@@ -84,10 +84,9 @@ const trialEnabled = loginEnabled && networkVerified &&
 // Anonymous guest claims cannot prove a stable user identity.
 // Deprecated WEB_GUEST_TRIAL_ENABLED is deliberately ignored. No anonymous grant routes.
 const meteringVerified = networkVerified && process.env.WEB_DNS_METERING_VERIFIED === 'yes';
-// DNS checkout requires independent proof of provider-routed IPv6, ingress
-// accounting/revoke, mobile E2E and closed legacy IPv4 bypass. Default DENY.
-const dnsPaidCheckoutEnabled = paidSmartDnsCheckoutReady(
-  process.env,checkoutEnabled,networkVerified,meteringVerified);
+// One explicit operator sales switch; normal payment/login rules still apply.
+// Technical access enforcement remains in the actual ingress, not env flags.
+const dnsPaidCheckoutEnabled = checkoutEnabled && isDnsSalesEnabled(process.env);
 // Brochure/support data remains isolated from the real VPN billing ledger.
 // Public checkout, signed callbacks and paid entitlements MUST use the
 // canonical VPN node database with an independent least-privilege role.
