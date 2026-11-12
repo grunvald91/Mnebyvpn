@@ -1644,3 +1644,153 @@ body.journey-active[data-journey-view="account"] .footer{
   body.journey-active[data-journey-view="account"] .about-trigger,
   body.journey-active[data-journey-view="account"] .journey-header-account{font-size:11px;padding:7px 8px}
 }
+
+
+/* 2026-11-13: mobile trial onboarding. Keep the owner's original install gate.
+   Shared header controls are a single compact group on every native route. */
+body.journey-active .header-actions{
+  display:flex;
+  flex:0 0 auto;
+  align-items:center;
+  justify-content:flex-end;
+  gap:7px;
+  margin-left:auto;
+  min-width:0;
+}
+body.journey-active .header-actions .about-trigger,
+body.journey-active .header-actions .journey-header-account{
+  margin:0;
+  flex:0 0 auto;
+  white-space:nowrap;
+}
+body.journey-active[data-journey-view="trial-auth"]{
+  display:flex;
+  flex-direction:column;
+  min-height:100vh;
+  min-height:100dvh;
+}
+body.journey-active[data-journey-view="trial-auth"] main{
+  flex:1 0 auto;
+  min-width:0;
+}
+body.journey-active[data-journey-view="trial-auth"] .header-inner{
+  display:flex;
+  width:min(calc(100% - 28px),650px);
+  min-height:56px;
+  align-items:center;
+  justify-content:space-between;
+  gap:9px;
+}
+body.journey-active[data-journey-view="trial-auth"] .header .brand{
+  flex:0 1 auto;
+  min-width:0;
+  gap:7px;
+}
+body.journey-active[data-journey-view="trial-auth"] .header .brand-text{
+  display:inline;
+  font-size:clamp(12px,3.2vw,15px);
+  white-space:nowrap;
+}
+body.journey-active[data-journey-view="trial-auth"] .header .brand-avatar{
+  width:30px;height:30px;flex:none;
+}
+body.journey-active[data-journey-view="trial-auth"] .journey-trial-auth{
+  width:min(610px,calc(100% - 28px));
+  padding:20px 0 28px;
+  margin:0 auto;
+}
+body.journey-active[data-journey-view="trial-auth"] .journey-trial-method{
+  margin-bottom:12px;
+}
+body.journey-active[data-journey-view="trial-auth"] #journey-trial-telegram[aria-disabled="true"]{
+  display:none!important; /* a disabled action is not a useful CTA */
+}
+body.journey-active[data-journey-view="trial-auth"] .journey-telegram-note{
+  margin-bottom:0;
+}
+body.journey-active[data-journey-view="trial-auth"] .email-auth-panel .email-fields input{
+  max-width:100%;
+}
+/* Original desktop footer grid leaves a 144px empty slab on mobile.
+   Native routes need a content-sized, centered legal/navigation strip. */
+body.journey-active:not([data-journey-view="plans"]) .footer{
+  padding:0;
+  border-top:1px solid rgba(77,168,237,.3);
+  background:linear-gradient(100deg,rgba(5,18,43,.94),rgba(15,17,52,.96));
+  box-shadow:none;
+}
+body.journey-active:not([data-journey-view="plans"]) .footer-inner{
+  display:flex;
+  width:min(calc(100% - 28px),680px);
+  min-height:0;
+  align-items:center;
+  justify-content:center;
+  gap:0;
+  padding:13px 0 16px;
+}
+body.journey-active:not([data-journey-view="plans"]) .footer-brand,
+body.journey-active:not([data-journey-view="plans"]) .footer-inner>p{
+  display:none;
+}
+body.journey-active:not([data-journey-view="plans"]) .footer-links{
+  display:flex;
+  width:100%;
+  margin:0;
+  align-items:center;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:7px 17px;
+}
+body.journey-active:not([data-journey-view="plans"]) .footer-links a,
+body.journey-active:not([data-journey-view="plans"]) .footer-links button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 auto;
+  min-height:28px;
+  padding:3px 0;
+  color:#b7cbed;
+  font:500 11px/1.35 Inter,system-ui,sans-serif;
+  white-space:nowrap;
+}
+@media(max-width:440px){
+  body.journey-active[data-journey-view="trial-auth"] .header .brand-text{display:none}
+  body.journey-active[data-journey-view="trial-auth"] .header-inner{width:calc(100% - 24px);gap:7px}
+  body.journey-active[data-journey-view="trial-auth"] .header-actions{gap:7px}
+  body.journey-active[data-journey-view="trial-auth"] .header-actions .about-trigger,
+  body.journey-active[data-journey-view="trial-auth"] .header-actions .journey-header-account{
+    min-height:36px;
+    padding:8px 12px;
+    font-size:12px;
+  }
+  body.journey-active[data-journey-view="trial-auth"] .journey-trial-auth-card{
+    border-radius:21px;
+    padding:18px 15px;
+  }
+  body.journey-active[data-journey-view="trial-auth"] .journey-trial-method{
+    padding:14px 12px;
+  }
+  body.journey-active[data-journey-view="trial-auth"] .journey-trial-method h2{
+    font-size:15px;
+  }
+  body.journey-active[data-journey-view="trial-auth"] .journey-trial-auth h1{
+    font-size:clamp(25px,7vw,31px);
+  }
+  body.journey-active[data-journey-view="trial-auth"] .journey-trial-explain{
+    font-size:12px;
+    line-height:1.5;
+  }
+  body.journey-active[data-journey-view="trial-auth"] .journey-trial-auth .email-fields{
+    gap:10px;
+  }
+  body.journey-active[data-journey-view="trial-auth"] .email-auth-panel .email-fields button{
+    width:100%;
+    min-height:48px;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .footer-links{
+    gap:5px 13px;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .footer-inner{
+    padding:10px 0 12px;
+  }
+}
