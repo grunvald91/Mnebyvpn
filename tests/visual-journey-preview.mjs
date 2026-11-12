@@ -83,9 +83,9 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     return{
       width:innerWidth,height:innerHeight,
       frontTop:Math.round(frame.getBoundingClientRect().top),
-      footerBottomGap:Math.round(height-inner.querySelector('footer').getBoundingClientRect().bottom),
-      iframeBottomGap:Math.round(height-frame.getBoundingClientRect().bottom),
-      fullFrameBackground:inner.querySelector('.app').getBoundingClientRect().height>=height-2,
+      footerBottomGap:Math.round(innerHeight-inner.querySelector('footer').getBoundingClientRect().bottom),
+      iframeBottomGap:Math.round(innerHeight-frame.getBoundingClientRect().bottom),
+      fullFrameBackground:inner.querySelector('.app').getBoundingClientRect().height>=innerHeight-2,
       videoUncroppedAspect:Math.abs(inner.querySelector('.scene').getBoundingClientRect().width/
         inner.querySelector('.scene').getBoundingClientRect().height-(9/16))<0.005,
       outerScrollHeight:document.documentElement.scrollHeight,
