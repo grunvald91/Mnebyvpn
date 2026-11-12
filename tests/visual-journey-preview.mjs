@@ -135,7 +135,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     !metrics.trialVisible||metrics.selected!=='true'||
     metrics.frameWidth>480||metrics.frameWidth<Math.min(360,width)||
     Math.abs(metrics.frameHeight-metrics.artBottom)>28||
-    (width<=390&&metrics.outerScrollHeight>innerHeight+280)||
+    (width<=390&&metrics.outerScrollHeight>metrics.height+280)||
     !metrics.price.includes('₽'))failed=true;
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('VISUAL_JPEG_'+width+'_BEGIN');
