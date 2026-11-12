@@ -77,3 +77,24 @@ test('replayed DNS request uses one switch before creating new invoice',async()=
     else process.env.MNEBYDNS_PAID_SALES_ENABLED=priorSwitch;
   }
 });
+
+
+test('DNS and bundle browser flow follows server-published products, not a second development flag',()=>{
+  const app=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
+  const wizard=readFileSync(new URL('../apps/web/public/journey.js',import.meta.url),'utf8');
+  const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
+  assert.doesNotMatch(app,/const inDevelopment=state\.product!=='vpn'/);
+  assert.match(app,/buy\.disabled=!plan\|\|!state\.checkoutEnabled\|\|state\.busy/);
+  assert.match(app,/document\.querySelectorAll\('\[data-product\]'\)\.forEach\(button=>/);
+  assert.match(app,/button\.disabled=!offered/);
+  assert.doesNotMatch(app,/state\.product!=='vpn'\|\|!plan/);
+  assert.match(app,/const payload=\{product:state\.product\}/);
+  assert.match(wizard,/const p=state\.plans\.find\(p=>p\.product===state\.product/);
+  assert.match(wizard,/landing\.querySelectorAll\('\[data-journey-product\]'\)/);
+  assert.match(wizard,/setSelection\(product,term\)/);
+  assert.doesNotMatch(wizard,/if\(state\.product!=='vpn'\)setSelection\('vpn'/);
+  assert.match(html,/data-journey-product="smart_dns"/);
+  assert.match(html,/data-journey-product="bundle"/);
+  assert.doesNotMatch(html,/DNS · скоро/);
+  assert.doesNotMatch(html,/Совместный вариант планируется после проверки совместимости/);
+});
