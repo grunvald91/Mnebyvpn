@@ -129,3 +129,27 @@ test('original background videos are bundled and served only by the public web r
     assert.ok(server.includes("'"+mime+"'"));
   }
 });
+
+
+test('Smart DNS is preview-only while VPN checkout and trial remain server-authoritative',()=>{
+  const art=file('apps/web/public/landing-art.html');
+  assert.match(art,/class="plans plans-vpn"/);
+  assert.match(art,/class="plans plans-dns"/);
+  assert.match(art,/id="dns-info-dialog"/);
+  assert.match(art,/id="trial-options"/);
+  assert.match(art,/id="trial-dns"/);
+  for(const [days,price] of [[15,120],[30,199],[60,379],[90,549]]){
+    assert.ok(art.includes('data-d="'+days+'" data-p="'+price+' ₽"'),
+      'Missing proposed DNS tariff '+days+'d');
+  }
+  for(const service of ['YouTube','ChatGPT','Gemini','Claude','Antigravity','Grok','TikTok']){
+    assert.ok(art.includes(service));
+  }
+  assert.match(art,/if\(isDns\)\{/);
+  assert.match(art,/button\.disabled=true;/);
+  assert.match(art,/if\(activeProduct==='vpn'&&!button\.disabled\)send\('buy'\)/);
+  assert.match(art,/trialDnsStatus\.hidden=false/);
+  assert.match(art,/send\('trial'\)/);
+  assert.doesNotMatch(art,/send\('trial-dns'\)/);
+  assert.match(art,/выдача индивидуальной ссылки Smart DNS ещё разрабатывается/i);
+});
