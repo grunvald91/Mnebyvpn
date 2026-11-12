@@ -48,15 +48,15 @@ async function payForDns(){
   assert.ok(link&&link!=='ALREADY_ISSUED');
   return {account,entitlement,link};
 }
-function tlsFixture(){
+function tlsFixture(name='*.dns.mnebyvpn.site'){
   const path=mkdtempSync(join(tmpdir(),'mnebydns-tls-test-'));
   const keyFile=join(path,'test.key'),certFile=join(path,'test.crt');
   // Only ephemeral self-signed CI certificates. NEVER commit a private key
   // or trust a test certificate on production devices.
   execFileSync('openssl',[
     'req','-x509','-newkey','rsa:2048','-nodes','-sha256','-days','1',
-    '-subj','/CN=*.dns.mnebyvpn.site',
-    '-addext','subjectAltName=DNS:*.dns.mnebyvpn.site',
+    '-subj','/CN='+name,
+    '-addext','subjectAltName=DNS:'+name,
     '-keyout',keyFile,'-out',certFile,
   ],{stdio:'ignore',timeout:10000});
   return {key:readFileSync(keyFile),cert:readFileSync(certFile),
@@ -181,15 +181,12 @@ test('unknown but syntactically valid SNI fails closed without reaching local Co
 
 
 test('gateway rejects a certificate not covering subscriber DoT names before listening',()=>{
-  const cert=tlsFixture();
+  const cert=tlsFixture('unrelated.example.test');
   try{
-    // Valid wildcard certificate covers any one-label u-token host.
-    const gateway=createPersonalDotGateway({
+    assert.throws(()=>createPersonalDotGateway({
       key:cert.key,cert:cert.cert,db,upstreamHost:'127.0.0.1',
       upstreamPort:53,
-    });
-    assert.ok(gateway);
-    gateway.close();
+    }),/certificate does not cover customer hostnames/);
   }finally{cert.dispose();}
 });
 
