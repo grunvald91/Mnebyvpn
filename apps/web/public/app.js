@@ -100,21 +100,18 @@ function renderPlan() {
     'Новая покупка создаёт отдельный доступ. Для продления используйте кнопку в кабинете.'):
     'Тариф ещё не опубликован. Стоимость появится после утверждения.');
   const buy=byId('buy-button');
-  const inDevelopment=state.product!=='vpn';
-  buy.disabled=inDevelopment||!plan||!state.checkoutEnabled||state.busy;
-  buy.textContent=inDevelopment?'В разработке':state.busy?'Создаём заказ…':!plan?'Тариф пока недоступен':
+  buy.disabled=!plan||!state.checkoutEnabled||state.busy;
+  buy.textContent=state.busy?'Создаём заказ…':!plan?'Тариф пока недоступен':
     !state.checkoutEnabled?'Оплата пока недоступна':
     !state.loggedIn?'Войти для оплаты':state.renewalTargetId?'К оплате продления':'Перейти к оплате';
   const trial=byId('trial-button');
-  const trialAvailable=state.product==='vpn' &&
-    state.trialOffers.includes(state.product) && state.loginEnabled;
+  const trialAvailable=state.trialOffers.includes(state.product) && state.loginEnabled;
   trial.disabled=!trialAvailable||state.busy;
   trial.textContent=state.busy?'Проверяем заявку…':
     !state.loginEnabled?'Бесплатный доступ временно недоступен':
     trialAvailable?(state.loggedIn?'🎁 Получить 24 часа бесплатно':'Войти и получить 24 часа бесплатно'):
     'Бесплатный доступ временно недоступен';
-  text('checkout-hint',inDevelopment?'Smart DNS и совместный тариф находятся в разработке и пока не продаются.':
-    !plan?'Неопубликованные тарифы не продаются.':
+  text('checkout-hint',!plan?'Этот тариф пока не опубликован.':
     !state.checkoutEnabled?'Онлайн-оплата включится после проверки платёжного подключения.':
     'Способ оплаты выбирается на защищённой странице платёжного провайдера.');
 }
@@ -350,6 +347,19 @@ async function loadCatalog() {
     state.telegramLoginEnabled=data.telegramLoginEnabled===true;
     state.emailLoginEnabled=data.emailLoginEnabled===true;
     state.trialOffers=Array.isArray(data.trialOffers)?data.trialOffers:[];
+    // DNS and bundle tab availability follows the published server catalogue;
+    // no second hardcoded "under development" switch in the browser.
+    document.querySelectorAll('[data-product]').forEach(button=>{
+      const offered=state.plans.some(p=>p.product===button.dataset.product);
+      button.disabled=!offered;
+      button.setAttribute('aria-disabled',String(!offered));
+      button.classList.toggle('tab-soon',!offered);
+    });
+    if(!state.plans.some(p=>p.product===state.product && p.durationDays===state.days)){
+      const preferred=state.plans.find(p=>p.product===state.product)||
+        state.plans.find(p=>p.product==='vpn')||state.plans[0];
+      if(preferred)setSelection(preferred.product,preferred.durationDays);
+    }
     if(!state.loggedIn)syncLoginLinks();
   } catch {
     toast('Не удалось загрузить тарифы. Попробуйте позже.');
@@ -407,7 +417,7 @@ function applyLinkOptions() {
 async function purchase() {
   const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
   if(state.busy)return;
-  if(state.product!=='vpn'||!plan||!state.checkoutEnabled){
+  if(!plan||!state.checkoutEnabled){
     checkoutError('Оплата этого тарифа пока недоступна.');return;
   }
   if(!state.loggedIn){
@@ -450,6 +460,7 @@ async function purchase() {
       FORBIDDEN:'Сессия изменилась. Обновите страницу и войдите повторно.',
       UNSAFE_PAYMENT_LINK:'Не удалось проверить безопасный адрес оплаты.',
       VERIFIED_EMAIL_REQUIRED:'Перед оплатой подтвердите email в личном кабинете.',
+      DNS_PAID_NOT_READY:'Оплата DNS пока не включена.',
     };
     const message=messages[error?.message] || 'Не удалось создать заказ или открыть оплату. Повторите попытку.';
     checkoutError(message);toast(message);
@@ -457,7 +468,7 @@ async function purchase() {
 }
 async function claimTrial(){
   if(state.busy)return;
-  if(state.product!=='vpn'||!state.trialOffers.includes('vpn')){
+  if(!state.trialOffers.includes(state.product)){
     toast('Бесплатный доступ сейчас недоступен.');return;
   }
   if(!state.loggedIn){
@@ -469,7 +480,7 @@ async function claimTrial(){
     return;
   }
   state.busy=true;renderPlan();
-  const payload={product:'vpn'};
+  const payload={product:state.product};
   if(state.inviteToken)payload.inviteToken=state.inviteToken;
   try{
     const response=await api('/api/trial',{method:'POST',headers:{
