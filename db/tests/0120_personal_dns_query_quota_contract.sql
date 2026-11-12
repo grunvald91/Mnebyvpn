@@ -80,7 +80,8 @@ BEGIN
   IF outcome<>'DIRECT_INACTIVE' THEN RAISE EXCEPTION 'revoked link active: %',outcome; END IF;
 
   UPDATE entitlements SET state='ACTIVE',revision=revision+1,
-    expires_at=clock_timestamp()-interval '1 second' WHERE id=eid;
+    starts_at=clock_timestamp()-interval '2 days',
+    expires_at=clock_timestamp()-interval '1 day' WHERE id=eid;
   SELECT use_personal_dns_proxy_query(digest) INTO outcome;
   IF outcome<>'DIRECT_INACTIVE' THEN RAISE EXCEPTION 'expired link active: %',outcome; END IF;
 
