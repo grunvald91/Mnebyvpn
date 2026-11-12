@@ -156,6 +156,22 @@ html{overflow-x:clip}
 .front-retry[hidden]{display:none!important}
 .front-error{font-size:12px;line-height:1.4;color:#ffc1d1;text-align:center;margin:10px 0 0}
 
+/* The old 76% fade hid the restored lower quarter of the original video.
+   Keep the portrait composition through 90%, then soften the very edge. */
+.scene{-webkit-mask-image:linear-gradient(#000 0%,#000 90%,transparent 100%);
+  mask-image:linear-gradient(#000 0%,#000 90%,transparent 100%)}
+
+/* Full-height standalone viewport: don't crop the 9:16 scene.  On tall
+   phones move the footer down instead of exposing an empty parent canvas. */
+html,body{height:100%;min-height:100%}
+.app{min-height:100%;display:flex;flex-direction:column}
+.app>.top,.app>.hero,.app>.card,.app>footer{flex-shrink:0}
+.app>.card{margin-bottom:11px}
+.app>footer{margin-top:auto}
+/* Extend the surrounding cosmic gradient without stretching the Earth/video.
+   The source scene keeps its original 941:1672 aspect ratio. */
+.app{background:radial-gradient(ellipse 95% 54% at 50% 56%,rgba(20,42,109,.34),transparent 80%),linear-gradient(#04071a,#07112e 84%,#04071a)}
+
 /* Compact checkout: designed to fit on a 360–390px phone without scrolling.
    Legal links and header controls intentionally stay on one line. */
 .top{height:48px;padding:0 10px;gap:6px}
@@ -370,7 +386,22 @@ const rs=()=>{W=cv.width=innerWidth;H=cv.height=innerHeight};rs();addEventListen
   const retry=document.getElementById('front-retry');
   const selections=[...document.querySelectorAll('.plan[data-d]')];
   let currentDays=15,ready=false;
-  const resize=()=>send('height',{height:Math.ceil(document.querySelector('.app').getBoundingClientRect().bottom+8)});
+  // Report *intrinsic* content height, not .app.scrollHeight/100dvh.
+  // The outer page extends the iframe to its viewport, which otherwise would
+  // trigger a ResizeObserver -> +8px -> resize feedback loop forever.
+  const resize=()=>{
+    const app=document.querySelector('.app');
+    const header=app.querySelector('.top');
+    const hero=app.querySelector('.hero');
+    const card=app.querySelector('.card');
+    const footer=app.querySelector('footer');
+    const style=getComputedStyle(card);
+    const mt=parseFloat(style.marginTop)||0;
+    const mb=parseFloat(style.marginBottom)||0;
+    const natural=header.offsetHeight+hero.offsetHeight+card.offsetHeight+
+      footer.offsetHeight+mt+mb;
+    send('height',{height:Math.ceil(natural+2)});
+  };
   const showSummary=()=>{
     const selected=selections.find(b=>Number(b.dataset.d)===currentDays);
     if(selected&&!selected.disabled&&selected.dataset.p!=='—')
@@ -411,7 +442,12 @@ const rs=()=>{W=cv.width=innerWidth;H=cv.height=innerHeight};rs();addEventListen
   document.querySelector('a[href="#account"]')?.addEventListener('click',e=>{e.preventDefault();send('account')});
   document.querySelector('a[href="#roadmap"]')?.addEventListener('click',e=>{e.preventDefault();send('roadmap')});
   document.querySelector('a[href="#support"]')?.addEventListener('click',e=>{e.preventDefault();send('support')});
-  if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>resize()).observe(document.querySelector('.app'));
+  if(typeof ResizeObserver!=='undefined'){
+    const observer=new ResizeObserver(()=>resize());
+    for(const selector of ['.top','.hero','.card','footer'])
+      observer.observe(document.querySelector(selector));
+  }
+  window.addEventListener('resize',resize);
   // A fast iframe can post ready before the deferred parent listener exists.
   // Retransmit until the first authoritative sync or a bounded timeout.
   let readyAttempts=0;
