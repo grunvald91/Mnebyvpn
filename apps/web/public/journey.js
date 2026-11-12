@@ -62,6 +62,22 @@
     if(msg.type==='trial'&&!el('journey-trial').disabled)
       el('journey-trial').click();
   });
+  // The iframe can finish loading BEFORE deferred journey.js installs the
+  // postMessage listener (notably on fast/cached Android connections).
+  // Recover from that race by checking its already-loaded document and by
+  // resyncing on every subsequent iframe load. The child also retries ready.
+  if(frontFrame){
+    frontFrame.addEventListener('load',()=>{
+      frontReady=true;
+      syncFront();
+    });
+    try {
+      if(frontFrame.contentDocument?.readyState==='complete'){
+        frontReady=true;
+        syncFront();
+      }
+    } catch { /* Child retries ready once its origin is available. */ }
+  }
   const autoSetupOrders=new Set();
   const lastSetupAttempt=new Map();
   const request=new URL(location.href);

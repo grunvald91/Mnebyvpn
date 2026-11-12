@@ -1495,3 +1495,16 @@ body.journey-active:not([data-journey-view="plans"]) .journey-front-stage{displa
     max-width:none;
   }
 }
+
+
+/* Regression: the legacy bottom-aligned flex layout pushes the iframe down by
+   half the available viewport on tall Android browsers. A standalone compact
+   storefront must start immediately at the top, not float at the bottom. */
+body.journey-active[data-journey-view="plans"] main {
+  flex:0 0 auto;
+  align-items:flex-start;
+  justify-content:center;
+}
+body.journey-active[data-journey-view="plans"] .journey-landing {
+  align-self:flex-start;
+}
