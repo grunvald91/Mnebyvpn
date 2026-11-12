@@ -90,7 +90,7 @@ $$;
 CREATE FUNCTION use_personal_dns_proxy_query(p_token_digest text)
 RETURNS text LANGUAGE plpgsql AS $$
 DECLARE
-  id uuid;
+  v_id uuid;
   e entitlements%ROWTYPE;
   paid_credits bigint;
   current_usage bigint;
@@ -99,17 +99,17 @@ BEGIN
   IF p_token_digest IS NULL OR p_token_digest !~ '^[0-9a-f]{64}$' THEN
     RETURN 'DENY_UNKNOWN_LINK';
   END IF;
-  SELECT entitlement_id INTO id FROM personal_dns_links
+  SELECT entitlement_id INTO v_id FROM personal_dns_links
     WHERE token_digest=p_token_digest AND disabled_at IS NULL;
   IF NOT FOUND THEN RETURN 'DENY_UNKNOWN_LINK'; END IF;
 
   -- Share the canonical entitlement row lock with payment/refund/renewal
   -- operations and serialize simultaneous DNS requests for this buyer.
-  SELECT * INTO e FROM entitlements WHERE entitlements.id=id FOR UPDATE;
+  SELECT * INTO e FROM entitlements WHERE entitlements.id=v_id FOR UPDATE;
   IF NOT FOUND THEN RETURN 'DENY_UNKNOWN_LINK'; END IF;
 
   -- Recheck token while holding entitlement lock to close rotation races.
-  IF NOT EXISTS(SELECT 1 FROM personal_dns_links WHERE entitlement_id=id
+  IF NOT EXISTS(SELECT 1 FROM personal_dns_links WHERE entitlement_id=v_id
       AND token_digest=p_token_digest AND disabled_at IS NULL) THEN
     RETURN 'DENY_UNKNOWN_LINK';
   END IF;
@@ -119,7 +119,7 @@ BEGIN
   END IF;
   SELECT count(*) INTO paid_credits
   FROM entitlement_credits c JOIN orders o ON o.id=c.order_id
-  WHERE c.entitlement_id=id AND o.state='PAID' AND
+  WHERE c.entitlement_id=v_id AND o.state='PAID' AND
         c.refunded_at IS NULL AND c.quota_bytes IS NOT NULL;
   -- Don't count provider or app retries as another paid month. A credit is
   -- an immutable verified purchase/renewal, keyed by order_id in the ledger.
@@ -127,13 +127,13 @@ BEGIN
   IF max_queries<=0 THEN RETURN 'DIRECT_NO_PAID_CREDIT'; END IF;
 
   INSERT INTO personal_dns_query_usage(entitlement_id)
-    VALUES(id) ON CONFLICT DO NOTHING;
+    VALUES(v_id) ON CONFLICT DO NOTHING;
   SELECT used_queries INTO current_usage
-    FROM personal_dns_query_usage WHERE entitlement_id=id FOR UPDATE;
+    FROM personal_dns_query_usage WHERE entitlement_id=v_id FOR UPDATE;
   IF current_usage>=max_queries THEN RETURN 'DIRECT_QUOTA_EXHAUSTED'; END IF;
   UPDATE personal_dns_query_usage
     SET used_queries=used_queries+1,updated_at=clock_timestamp()
-    WHERE entitlement_id=id;
+    WHERE entitlement_id=v_id;
   RETURN 'PROXY_ALLOWED';
 END;
 $$;
