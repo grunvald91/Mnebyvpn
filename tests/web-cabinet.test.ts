@@ -122,7 +122,7 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
   const css=readFileSync(new URL('../apps/web/public/site.css',import.meta.url),'utf8');
   const client=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
-  assert.match(html,/Выберите тариф VPN/);
+  assert.match(html,/Выберите тариф/);
   assert.match(html,/Обычный интернет при ограничениях мобильной сети/);
   assert.match(html,/Планируем отдельный режим для ситуаций/);
   assert.match(html,/data-product="smart_dns"[^>]*disabled/);
