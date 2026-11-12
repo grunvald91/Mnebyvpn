@@ -110,13 +110,13 @@ test('original background videos are bundled and served only by the public web r
   assert.match(art,/\['\/bg3\.webm\?v=6e816d6e','video\/webm/);
   assert.match(art,/\['\/bg3\.mp4\?v=30d2f12d','video\/mp4/);
   assert.match(art,/connection\.saveData/);
-  assert.match(art,/if\(!sc\|\|!v\|\|R\|\|lowEnd/);
+  assert.match(art,/if\(!scene\|\|!video\|\|R\|\|connection\?\.saveData/);
   assert.doesNotMatch(art,/\/_blob\//);
   assert.match(server,/media-src 'self'/);
   assert.match(art,/class="legal-links"/);
   assert.match(art,/\.pill\{flex:0 0 auto;white-space:nowrap/);
   assert.match(art,/\.hero\{min-height:clamp\(165px,23svh,210px\)/);
-  assert.match(art,/const rate=\.85;/);
+  assert.match(art,/video\.playbackRate=\.85;/);
 
   for (const [name,signature,mime] of [
     ['bg3.webm','1a45dfa3','video/webm'],
@@ -168,4 +168,35 @@ test('foreground taps avoid continuous expensive canvas, gyroscope and SVG DOM l
   assert.match(art,/touch-action:manipulation/);
   assert.match(art,/Сервисы с настроенной маршрутизацией Smart DNS:/);
   assert.doesNotMatch(art,/Сервисы, для которых планируется и проверяется поддержка/);
+});
+
+test('storefront caches original 130KB Earth image separately and restores mobile video autoplay',()=>{
+  const art=file('apps/web/public/landing-art.html');
+  const image=readFileSync(new URL('../apps/web/public/landing-earth.webp',import.meta.url));
+  assert.ok(art.length<60_000,'HTML must stay small: no base64 background in CSS');
+  assert.ok(image.byteLength>100_000 && image.byteLength<180_000);
+  assert.equal(image.subarray(0,4).toString('ascii'),'RIFF');
+  assert.equal(image.subarray(8,12).toString('ascii'),'WEBP');
+  assert.doesNotMatch(art,/data:image\/webp;base64,/);
+  assert.match(art,/\/landing-earth\.webp/);
+  assert.match(server,/landingEarth/);
+  assert.match(server,/url\.pathname === '\/landing-earth\.webp'/);
+  assert.match(art,/id="bgv"[^>]*autoplay muted loop playsinline/);
+  assert.match(art,/video\.addEventListener\('playing'/);
+  assert.match(art,/document\.addEventListener\('DOMContentLoaded',ensureSource/);
+  assert.match(art,/type!=='visual'/);
+  assert.doesNotMatch(art,/hardwareConcurrency/);
+  assert.doesNotMatch(art,/effectiveType/);
+});
+test('cabinet uses the same branded styling and pauses hidden landing video',()=>{
+  const html=file('apps/web/public/index.html');
+  const css=file('apps/web/public/journey.css');
+  const journey=file('apps/web/public/journey.js');
+  assert.match(html,/class="account-back-to-plans" href="#plans"/);
+  assert.match(css,/Account is the same MNEBYVPN product/);
+  assert.match(css,/data-journey-view="account"/);
+  assert.match(css,/\/landing-earth\.webp/);
+  assert.match(journey,/function syncVisual\(\)/);
+  assert.match(journey,/type:'visual',active:view==='plans'/);
+  assert.match(journey,/syncVisual\(\);/);
 });
