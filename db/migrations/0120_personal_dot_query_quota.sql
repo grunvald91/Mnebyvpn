@@ -121,7 +121,46 @@ BEGIN
 END;
 $$;
 
+-- For a trusted subscriber cabinet/bot worker only; the API MUST also
+-- authenticate that the requester owns this entitlement. Never expose by
+-- an arbitrary UUID from a public endpoint.
+CREATE FUNCTION personal_dns_query_status(p_entitlement uuid)
+RETURNS TABLE(
+  dns_label text,
+  access_status text,
+  used_queries bigint,
+  remaining_queries bigint,
+  allowed_queries bigint,
+  next_reset_at timestamptz,
+  access_expires_at timestamptz
+) LANGUAGE sql STABLE AS $$
+  SELECT c.label,
+    CASE
+      WHEN c.revoked_at IS NOT NULL THEN 'REVOKED'
+      WHEN e.state <> 'ACTIVE' OR e.expires_at IS NULL OR
+           e.expires_at<=now() OR e.starts_at IS NULL OR e.starts_at>now()
+        THEN 'INACTIVE'
+      WHEN COALESCE(w.used_queries,0)>=c.query_limit_per_30d THEN 'QUOTA_EXHAUSTED'
+      ELSE 'ACTIVE'
+    END,
+    COALESCE(w.used_queries,0),
+    GREATEST(0::bigint,c.query_limit_per_30d-COALESCE(w.used_queries,0)),
+    c.query_limit_per_30d,
+    e.starts_at +
+      make_interval(secs => ((GREATEST(0::bigint,floor(
+        extract(epoch FROM(now()-e.starts_at))/2592000)::bigint)+1)*2592000)::double precision),
+    e.expires_at
+  FROM personal_dns_credentials c
+  JOIN entitlements e ON e.id=c.entitlement_id
+  LEFT JOIN personal_dns_query_windows w
+    ON w.entitlement_id=e.id
+   AND w.period_index=GREATEST(0::bigint,floor(
+        extract(epoch FROM(now()-e.starts_at))/2592000)::bigint)
+  WHERE e.id=p_entitlement
+$$;
+
 REVOKE ALL ON FUNCTION issue_personal_dns_credential(uuid,text,text,bigint) FROM PUBLIC;
 REVOKE ALL ON FUNCTION consume_personal_dns_query(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION revoke_personal_dns_credential(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION personal_dns_query_status(uuid) FROM PUBLIC;
 COMMIT;
