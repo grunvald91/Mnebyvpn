@@ -172,6 +172,7 @@ html{overflow-x:clip}
         <path class="pl" pathLength="100" d="M432 563C470 520 510 500 543 497" style="--t:2.4s;animation-delay:0s"/><path class="pl" pathLength="100" d="M543 497Q630 395 717 491" style="--t:3s;animation-delay:0.4s"/><path class="pl" pathLength="100" d="M717 491C740 420 850 380 920 540" style="--t:3.6s;animation-delay:1s"/><path class="pl" pathLength="100" d="M712 550Q800 480 920 540" style="--t:3.2s;animation-delay:0.8s"/><path class="pl" pathLength="100" d="M432 563Q380 530 300 545" style="--t:2.6s;animation-delay:1.4s"/><path class="pl" pathLength="100" d="M861 611Q880 560 920 540" style="--t:2.2s;animation-delay:0.2s"/>
       </svg>
       
+      <video id="bgv" class="bgv" muted loop playsinline preload="none" disablepictureinpicture aria-hidden="true" tabindex="-1"></video>
       <svg class="lock" viewBox="0 0 68 88">
         <defs><linearGradient id="st1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d9dbe3"/><stop offset="1" stop-color="#6a6d7a"/></linearGradient></defs>
         <path d="M16 40V26a18 18 0 0 1 36 0v14" fill="none" stroke="url(#st1)" stroke-width="9"/>
@@ -253,7 +254,44 @@ if(!R)addEventListener('pointermove',e=>{
   s.setProperty('--px',(e.clientX/innerWidth-.5).toFixed(3));s.setProperty('--py',(e.clientY/innerHeight-.5).toFixed(3));
 });
 if(!R)addEventListener('deviceorientation',e=>{if(e.gamma==null)return;const s=document.documentElement.style,c=v=>Math.max(-.5,Math.min(.5,v));s.setProperty('--px',c(e.gamma/50).toFixed(3));s.setProperty('--py',c((e.beta-45)/60).toFixed(3))});
-// Optional background video removed: source references unpublished /_blob URLs.
+// Background video supplied by the owner (bg3.webm / bg3.mp4).
+// Kept optional: reduced motion, data saver and slow links use the CSS/SVG scene.
+(()=>{
+  const sc=$('.scene'),v=$('#bgv'),connection=navigator.connection;
+  if(!sc||!v||R||(connection&&(connection.saveData||/(^|-)[23]g$/.test(connection.effectiveType||''))))return;
+  const idle=window.requestIdleCallback||(fn=>setTimeout(fn,300));
+  let loaded=false,visible=true;
+  const start=()=>{
+    if(loaded)return;
+    loaded=true;
+    for(const [src,type] of [['/bg3.webm','video/webm; codecs="vp9"'],['/bg3.mp4','video/mp4']]){
+      const source=document.createElement('source');
+      source.src=src;
+      source.type=type;
+      v.append(source);
+    }
+    const rate=.5;
+    v.addEventListener('loadedmetadata',()=>{v.playbackRate=rate;});
+    v.preload='auto';
+    v.muted=true;
+    v.defaultPlaybackRate=v.playbackRate=rate;
+    v.load();
+    v.play().catch(()=>{});
+  };
+  v.addEventListener('playing',()=>sc.classList.add('vid'),{once:true});
+  if('IntersectionObserver' in window)
+    new IntersectionObserver(([entry])=>{
+      visible=entry.isIntersecting;
+      if(loaded){if(visible&&!document.hidden)v.play().catch(()=>{});else v.pause();}
+    }).observe(sc);
+  document.addEventListener('visibilitychange',()=>{
+    if(loaded){if(visible&&!document.hidden)v.play().catch(()=>{});else v.pause();}
+  });
+  (document.readyState==='complete'
+    ?Promise.resolve()
+    :new Promise(resolve=>addEventListener('load',resolve,{once:true}))
+  ).then(()=>idle(start));
+})();
 // drifting sparkles
 const cv=$('#st'),x=cv.getContext('2d');let W,H;
 const P=Array.from({length:80},()=>({x:Math.random(),y:Math.random(),r:Math.random()*1.4+.3,s:Math.random()*.00005+.00001,p:Math.random()*6.28}));
