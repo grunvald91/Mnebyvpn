@@ -21,16 +21,9 @@ export class PostgresChunkQuota implements ChunkQuota {
   private readonly db:Pick<Pool,'query'>;
   constructor(db:Pick<Pool,'query'>){this.db=db;}
 
-  // Driver-level query deadlines; a separate relay watchdog covers a
-  // complete connection stall or a mocked never-resolving backend.
-  private readonly queryTimeoutMs=1000;
-
   async active(i:TrustedEntitlement):Promise<boolean>{
-    const q=await this.db.query({
-      text:'SELECT dns_ingress_active($1::uuid,$2::bigint) AS ok',
-      values:[i.entitlementId,i.revision],
-      query_timeout:this.queryTimeoutMs,
-    });
+    const q=await this.db.query('SELECT dns_ingress_active($1::uuid,$2::bigint) AS ok',
+      [i.entitlementId,i.revision]);
     return q.rows[0]?.ok===true;
   }
 
@@ -38,11 +31,9 @@ export class PostgresChunkQuota implements ChunkQuota {
     if(!Number.isSafeInteger(bytes)||bytes<=0)return null;
     // One atomic SQL call checks exact revision, allocates quota, returns the
     // trusted deadline. Never trust a separate SELECT after the reservation.
-    const q=await this.db.query({
-      text:'SELECT * FROM dns_ingress_reserve($1::uuid,$2::bigint,$3::text,$4::bigint)',
-      values:[i.entitlementId,i.revision,eventId,bytes],
-      query_timeout:this.queryTimeoutMs,
-    });
+    const q=await this.db.query(
+      'SELECT * FROM dns_ingress_reserve($1::uuid,$2::bigint,$3::text,$4::bigint)',
+      [i.entitlementId,i.revision,eventId,bytes]);
     const row=q.rows[0];
     if(!row||row.status!=='RESERVED'||String(row.reserved_bytes)!==String(bytes)
        ||String(row.entitlement_revision)!==i.revision)return null;
@@ -54,11 +45,9 @@ export class PostgresChunkQuota implements ChunkQuota {
   async settle(i:TrustedEntitlement,eventId:string,upload:number,download:number):Promise<boolean>{
     if(!Number.isSafeInteger(upload)||!Number.isSafeInteger(download)||
       upload<0||download<0)return false;
-    const q=await this.db.query({
-      text:'SELECT dns_ingress_settle($1::uuid,$2::bigint,$3::text,$4::bigint,$5::bigint) AS state',
-      values:[i.entitlementId,i.revision,eventId,upload,download],
-      query_timeout:this.queryTimeoutMs,
-    });
+    const q=await this.db.query(
+      'SELECT dns_ingress_settle($1::uuid,$2::bigint,$3::text,$4::bigint,$5::bigint) AS state',
+      [i.entitlementId,i.revision,eventId,upload,download]);
     return ['SETTLED','DUPLICATE','LATE_RECORDED'].includes(q.rows[0]?.state);
   }
 }
