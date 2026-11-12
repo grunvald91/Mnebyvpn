@@ -106,7 +106,8 @@ END;
 $$;
 
 CREATE FUNCTION revoke_personal_dns_credential(p_entitlement uuid)
-RETURNS boolean LANGUAGE plpgsql AS $$
+RETURNS boolean LANGUAGE plpgsql AS $
+DECLARE
   e entitlements%ROWTYPE;
   count_updated integer;
 BEGIN
