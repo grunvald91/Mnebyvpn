@@ -7,7 +7,7 @@ const state = {
   inviteToken: null, refreshing: false, renewalTargetId: null,
   telegramLoginEnabled:false,emailLoginEnabled:false,emailLinkMode:false,
   trialStatus:'NONE',guestSubscriptionUrl:null,setupLoading:false,
-  purchaseIntent:null,
+  purchaseIntent:null,telegramProxyBonusEnabled:false,
 };
 const productNames = { vpn:'VPN', smart_dns:'Smart DNS', bundle:'VPN + Smart DNS' };
 const stateNames = {
@@ -128,6 +128,47 @@ function statusLabel(access) {
   if(access.state==='ACTIVE' && access.secondsRemaining===0) return 'Истёк';
   return stateNames[access.state] || access.state;
 }
+async function loadTelegramProxyBonus(entitlementId, button, item) {
+  if(!state.loggedIn||button.disabled)return;
+  button.disabled=true;
+  try {
+    const data=await api('/api/telegram-proxy-bonus?entitlementId='+encodeURIComponent(entitlementId));
+    if(!state.loggedIn || !item.isConnected)return;
+    if(!Array.isArray(data.links)||data.links.length!==2)throw Error('PROXY_BONUS_NOT_READY');
+    // Replace old credential-bearing elements if the user reloads the links.
+    const previous=item.querySelector('.dns-proxy-bonus-links');
+    if(previous)previous.remove();
+    const container=node('section','dns-proxy-bonus-links');
+    container.append(node('h4','','Ваш Telegram-прокси · бесплатно с DNS'));
+    container.append(node('p','',
+      'Два маршрута. В Telegram можно сохранить оба и переключаться между ними.'));
+    for(const link of data.links){
+      if(!['direct','ru'].includes(link.route))continue;
+      const address=node('div','',link.host+':'+link.port);
+      const header=node('strong','',link.route==='direct'?'Напрямую через зарубежный сервер':'Через российский сервер');
+      const anchor=node('a','button button-secondary','Подключить в Telegram');
+      // A Telegram proxy link necessarily contains a bearer secret.
+      // The server returns it only to the authorized paid entitlement owner.
+      const target=new URL(link.url);
+      if(target.protocol!=='https:'||target.hostname!=='t.me'||target.pathname!=='/proxy')continue;
+      anchor.href=target.href;
+      anchor.target='_blank';
+      anchor.rel='noopener noreferrer';
+      anchor.referrerPolicy='no-referrer';
+      const row=node('div','dns-proxy-bonus-route');
+      row.append(header,address,anchor);
+      container.append(row);
+    }
+    container.append(node('p','',
+      'Ссылки персональные. Не пересылайте их другим людям. После окончания подписки DNS доступ должен отключаться сервером.'));
+    item.append(container);
+  }catch(error){
+    toast(error.message==='PROXY_BONUS_NOT_ASSIGNED'?
+      'Прокси ещё не выдан. Обратитесь в поддержку, если DNS уже активен.':
+      'Не удалось получить Telegram-прокси. Попробуйте позже.');
+  }finally{button.disabled=false;}
+}
+
 function renderAccess(accesses) {
   const list=byId('access-list');
   list.replaceChildren();
@@ -171,6 +212,13 @@ function renderAccess(accesses) {
         item.append(node('div','usage-unavailable',
           'Учёт расхода DNS пока не подтверждён. Использовано / осталось: нет достоверных данных.'));
       }
+    }
+    if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
+       a.secondsRemaining!==null&&a.secondsRemaining>0&&state.telegramProxyBonusEnabled){
+      const open=node('button','button button-secondary setup-button','Telegram-прокси · бесплатно');
+      open.type='button';
+      open.addEventListener('click',()=>loadTelegramProxyBonus(a.id,open,item));
+      item.append(open);
     }
     if(a.product==='vpn' &&
        a.state==='ACTIVE' && a.secondsRemaining!==null && a.secondsRemaining>0){
@@ -255,6 +303,7 @@ function renderPurchaseResult(payload) {
 }
 function renderAccount(payload) {
   state.loggedIn=true;state.csrf=payload.csrf;
+  state.telegramProxyBonusEnabled=payload.telegramProxyBonusEnabled===true;
   byId('login-prompt').classList.add('hidden');
   byId('account-content').classList.remove('hidden');
   byId('logout-button').classList.remove('hidden');
@@ -315,6 +364,7 @@ function renderLoggedOut() {
   // A session that expires or is revoked must not leave stale private data on
   // a shared browser screen. Keep the public catalog and selected product.
   state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;
+  state.telegramProxyBonusEnabled=false;
   byId('guest-trial-card').classList.add('hidden');
   byId('purchase-result').classList.add('hidden');
   byId('link-email').classList.add('hidden');
