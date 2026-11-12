@@ -152,7 +152,7 @@ html{overflow-x:clip}
 .plan:disabled{cursor:not-allowed;opacity:.48}
 .plan:disabled:hover{transform:none;box-shadow:none}
 .free[hidden]{display:none!important}
-.front-error{font-size:12px;line-height:1.4;color:#ffc1d1;text-align:center;margin:10px 0 0}
+.front-retry{display:block;margin:8px auto;color:#b8faff;font-size:12px;text-decoration:underline;text-align:center}\n.front-retry[hidden]{display:none!important}\n.front-error{font-size:12px;line-height:1.4;color:#ffc1d1;text-align:center;margin:10px 0 0}
 
 /* Compact checkout: designed to fit on a 360–390px phone without scrolling.
    Legal links and header controls intentionally stay on one line. */
@@ -263,7 +263,7 @@ footer nav a{padding:0 11px;white-space:nowrap}
       <button class="plan" data-d="90" data-p="—" aria-pressed="false"><b>90 дней</b><strong>—</strong></button>
     </div>
     <div class="sum" aria-live="polite"><span id="sum" class="pop">Загрузка тарифов…</span></div>
-    <button class="cta" type="button" disabled>Загрузка тарифов…</button><p class="front-error" id="front-error" role="alert" aria-live="assertive" hidden></p>
+    <button class="cta" type="button" disabled>Загрузка тарифов…</button><p class="front-error" id="front-error" role="alert" aria-live="assertive" hidden></p><a class="front-retry" id="front-retry" href="/" hidden>Не удалось получить тарифы. Обновить страницу</a>
     <p class="note">Без автосписаний. Защищённая оплата.<br>Заранее напомним, когда срок будет заканчиваться.</p>
     <p class="note2">Напоминания в Telegram доступны после привязки бота.</p>
     <div class="free">
@@ -365,6 +365,7 @@ const rs=()=>{W=cv.width=innerWidth;H=cv.height=innerHeight};rs();addEventListen
   const trial=document.querySelector('.try');
   const summary=document.getElementById('sum');
   const error=document.getElementById('front-error');
+  const retry=document.getElementById('front-retry');
   const selections=[...document.querySelectorAll('.plan[data-d]')];
   let currentDays=15,ready=false;
   const resize=()=>send('height',{height:Math.ceil(document.querySelector('.app').getBoundingClientRect().bottom+8)});
@@ -377,6 +378,9 @@ const rs=()=>{W=cv.width=innerWidth;H=cv.height=innerHeight};rs();addEventListen
   window.addEventListener('message',ev=>{
     if(ev.source!==window.parent||ev.origin!==location.origin||ev.data?.channel!==channel||ev.data?.type!=='sync')return;
     const data=ev.data;
+    ready=true;
+    const hasOffers=Array.isArray(data.offers)&&data.offers.some(offer=>offer.available);
+    retry.hidden=hasOffers;
     if([15,30,60,90].includes(data.days))currentDays=data.days;
     for(const element of selections){
       const days=Number(element.dataset.d);
@@ -395,7 +399,7 @@ const rs=()=>{W=cv.width=innerWidth;H=cv.height=innerHeight};rs();addEventListen
     trial.disabled=Boolean(data.trialDisabled);
     error.textContent=typeof data.error==='string'?data.error:'';
     error.hidden=!error.textContent;
-    ready=true;resize();
+    resize();
   });
   selections.forEach(el=>el.addEventListener('click',()=>send('select',{days:Number(el.dataset.d)})));
   button.addEventListener('click',()=>{if(!button.disabled)send('buy')});
@@ -406,8 +410,26 @@ const rs=()=>{W=cv.width=innerWidth;H=cv.height=innerHeight};rs();addEventListen
   document.querySelector('a[href="#roadmap"]')?.addEventListener('click',e=>{e.preventDefault();send('roadmap')});
   document.querySelector('a[href="#support"]')?.addEventListener('click',e=>{e.preventDefault();send('support')});
   if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>resize()).observe(document.querySelector('.app'));
-  window.addEventListener('load',()=>{send('ready');resize();document.fonts?.ready.then(resize).catch(()=>{})},{once:true});
-  if(document.readyState==='complete'){send('ready');resize();}
+  // A fast iframe can post ready before the deferred parent listener exists.
+  // Retransmit until the first authoritative sync or a bounded timeout.
+  let readyAttempts=0;
+  const announceReady=()=>{if(!ready)send('ready')};
+  const readyRetry=setInterval(()=>{
+    if(ready||++readyAttempts>25){
+      clearInterval(readyRetry);
+      if(!ready){
+        retry.hidden=false;
+        summary.textContent='Не удалось загрузить тарифы';
+        button.textContent='Тарифы недоступны';
+      }
+      return;
+    }
+    announceReady();
+  },400);
+  window.addEventListener('load',()=>{
+    announceReady();resize();document.fonts?.ready.then(resize).catch(()=>{});
+  },{once:true});
+  if(document.readyState==='complete'){announceReady();resize();}
 })();
 </script>
 </body>
