@@ -291,6 +291,13 @@ footer nav a{padding:0 11px;white-space:nowrap}
 .bg i,.sun,.hz,.gold,.gh,.ss,.fg .rk,.fx .c,.fx .rg,.fx .n{animation:none!important}
 .info-circle,.trial-choice,.cta,.try{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 @media(prefers-reduced-motion:reduce){.plan,.card,.cta{transition:none!important}}
+
+/* Both selections may be active. No shimmer, scale, or full-page redraw
+   when pressing a tariff; only a small border/background color changes. */
+.plans-vpn .plan[aria-pressed=true],.plans-dns .plan[aria-pressed=true]{
+  background:linear-gradient(105deg,#13b6dc,#5658d9)!important;
+  border-color:rgba(186,247,255,.9)!important}
+.plans-dns .plan[aria-pressed=true] strong{color:#fff}
 </style>
 </head>
 <body>
@@ -459,58 +466,76 @@ const cta=$('.cta');
   const trialDnsStatus=document.getElementById('trial-dns-status');
   const trialVpn=document.getElementById('trial-vpn');
   const trialDns=document.getElementById('trial-dns');
-  let currentDays=15,activeProduct='vpn',ready=false,serverData=null,vpnDays=15;
-  // Intrinsic height is reported to the parent even when a trial choice opens.
+  // Independent choices: DNS no longer deselects VPN or vice versa.
+  // Only the VPN plan is currently purchasable in the server checkout.
+  let vpnDays=15,vpnSelected=true,dnsDays=null,ready=false,serverData=null;
+  let resizeQueued=false,lastHeight=0;
+  const setText=(el,value)=>{if(el&&el.textContent!==value)el.textContent=value;};
+  const setPressed=(el,pressed)=>{
+    const value=String(pressed);
+    if(el.getAttribute('aria-pressed')!==value)el.setAttribute('aria-pressed',value);
+  };
   const resize=()=>{
-    const app=document.querySelector('.app');
-    const header=app.querySelector('.top');
-    const hero=app.querySelector('.hero');
-    const card=app.querySelector('.card');
-    const footer=app.querySelector('footer');
-    const style=getComputedStyle(card);
-    const mt=parseFloat(style.marginTop)||0;
-    const mb=parseFloat(style.marginBottom)||0;
-    const natural=header.offsetHeight+hero.offsetHeight+card.offsetHeight+
-      footer.offsetHeight+mt+mb;
-    send('height',{height:Math.ceil(natural+2)});
+    if(resizeQueued)return;
+    resizeQueued=true;
+    requestAnimationFrame(()=>{
+      resizeQueued=false;
+      const app=document.querySelector('.app');
+      const header=app.querySelector('.top');
+      const hero=app.querySelector('.hero');
+      const card=app.querySelector('.card');
+      const footer=app.querySelector('footer');
+      const style=getComputedStyle(card);
+      const mt=parseFloat(style.marginTop)||0;
+      const mb=parseFloat(style.marginBottom)||0;
+      const height=Math.ceil(header.offsetHeight+hero.offsetHeight+
+        card.offsetHeight+footer.offsetHeight+mt+mb+2);
+      if(Math.abs(height-lastHeight)>2){
+        lastHeight=height;
+        send('height',{height});
+      }
+    });
   };
   const updateView=()=>{
+    let selectedVpn=null;
     selections.forEach(el=>{
       const days=Number(el.dataset.d);
       const offer=(serverData?.offers||[]).find(o=>o.days===days);
-      el.disabled=!offer?.available;
-      const price=offer?.available&&typeof offer.price==='string'?offer.price:'—';
-      el.dataset.p=price;
-      el.querySelector('strong').textContent=price;
-      el.setAttribute('aria-pressed',String(activeProduct==='vpn'&&days===currentDays));
+      const available=Boolean(offer?.available);
+      if(el.disabled===available)el.disabled=!available;
+      const price=available&&typeof offer.price==='string'?offer.price:'—';
+      if(el.dataset.p!==price)el.dataset.p=price;
+      setText(el.querySelector('strong'),price);
+      setPressed(el,vpnSelected&&days===vpnDays);
+      if(vpnSelected&&days===vpnDays&&available)selectedVpn=el;
     });
-    dnsSelections.forEach(el=>el.setAttribute('aria-pressed',
-      String(activeProduct==='smart_dns'&&Number(el.dataset.d)===currentDays)));
-    const isDns=activeProduct==='smart_dns';
-    if(isDns){
-      const chosen=dnsSelections.find(el=>Number(el.dataset.d)===currentDays);
-      summary.textContent='Smart DNS · '+currentDays+' дней · '+(chosen?.dataset.p||'—');
-      button.textContent='Оформление Smart DNS скоро';
+    dnsSelections.forEach(el=>setPressed(el,Number(el.dataset.d)===dnsDays));
+    const selectedDns=dnsSelections.find(el=>Number(el.dataset.d)===dnsDays);
+    const vpnPart=selectedVpn?'VPN · '+vpnDays+' д · '+selectedVpn.dataset.p:null;
+    const dnsPart=selectedDns?'Smart DNS · '+dnsDays+' д · '+selectedDns.dataset.p:null;
+    setText(summary,vpnPart&&dnsPart?vpnPart+' + '+dnsPart:
+      vpnPart||dnsPart||(vpnSelected?'Выбранный VPN пока недоступен':'Выберите тариф'));
+    const dnsChosen=Boolean(selectedDns);
+    dnsPreview.hidden=!dnsChosen;
+    if(!vpnPart){
+      setText(button,dnsChosen?'Оформление Smart DNS скоро':'Выберите тариф VPN');
       button.disabled=true;
+    }else if(dnsChosen){
+      setText(button,'Оформить только VPN');
+      button.disabled=Boolean(serverData?.buyDisabled);
     }else{
-      const chosen=selections.find(el=>Number(el.dataset.d)===currentDays);
-      summary.textContent=chosen&&!chosen.disabled&&chosen.dataset.p!=='—'
-        ?'VPN · '+currentDays+' дней · '+chosen.dataset.p
-        :'Выбранный тариф пока недоступен';
-      button.textContent=serverData?.buyText||'Загрузка тарифов…';
-      button.disabled=serverData?Boolean(serverData.buyDisabled):true;
+      setText(button,serverData?.buyText||'Загрузка тарифов…');
+      button.disabled=!serverData||Boolean(serverData.buyDisabled);
     }
-    dnsPreview.hidden=!isDns;
     const hasOffers=Array.isArray(serverData?.offers)&&
       serverData.offers.some(offer=>offer.available);
-    retry.hidden=hasOffers||isDns||!serverData;
-    error.textContent=typeof serverData?.error==='string'?serverData.error:'';
-    error.hidden=!error.textContent||isDns;
-    const vpnTrialAvailable=Boolean(serverData?.trialAvailable);
-    trial.disabled=false; // The chooser always explains either product.
-    trialVpn.disabled=!vpnTrialAvailable||Boolean(serverData?.trialDisabled);
-    trialVpn.querySelector('small').textContent=trialVpn.disabled
-      ?'Пока недоступно':'Получить 24 часа';
+    retry.hidden=hasOffers||dnsChosen||!serverData;
+    setText(error,typeof serverData?.error==='string'?serverData.error:'');
+    error.hidden=!error.textContent||(!vpnSelected&&dnsChosen);
+    trial.disabled=false;
+    trialVpn.disabled=!serverData?.trialAvailable||Boolean(serverData?.trialDisabled);
+    setText(trialVpn.querySelector('small'),trialVpn.disabled?
+      'Пока недоступно':'Получить 24 часа');
     resize();
   };
   window.addEventListener('message',ev=>{
@@ -518,24 +543,29 @@ const cta=$('.cta');
        ev.data?.channel!==channel||ev.data?.type!=='sync')return;
     serverData=ev.data;
     ready=true;
-    if([15,30,60,90].includes(serverData.days)){
-      vpnDays=serverData.days;
-      if(activeProduct==='vpn')currentDays=vpnDays;
-    }
+    if([15,30,60,90].includes(serverData.days))vpnDays=serverData.days;
     updateView();
   });
   selections.forEach(el=>el.addEventListener('click',()=>{
     if(el.disabled)return;
-    activeProduct='vpn';currentDays=Number(el.dataset.d);
+    const day=Number(el.dataset.d);
+    if(vpnSelected&&vpnDays===day){
+      vpnSelected=false; // Tap selected day again to exclude VPN.
+    }else{
+      vpnSelected=true;
+      vpnDays=day;
+      send('select',{days:day});
+    }
     updateView();
-    send('select',{days:currentDays});
   }));
   dnsSelections.forEach(el=>el.addEventListener('click',()=>{
-    activeProduct='smart_dns';currentDays=Number(el.dataset.d);
+    const day=Number(el.dataset.d);
+    dnsDays=dnsDays===day?null:day; // Independent on/off selection.
     updateView();
   }));
   button.addEventListener('click',()=>{
-    if(activeProduct==='vpn'&&!button.disabled)send('buy');
+    // Never include DNS in a purchase unless the backend supports its own plan.
+    if(vpnSelected&&!button.disabled)send('buy');
   });
   trial.addEventListener('click',()=>{
     trialOptions.hidden=!trialOptions.hidden;
@@ -549,7 +579,7 @@ const cta=$('.cta');
     send('trial');
   });
   trialDns.addEventListener('click',()=>{
-    trialDnsStatus.hidden=false; // No server-issued DNS URL until implemented.
+    trialDnsStatus.hidden=false; // Individual DNS trial URL is not ready.
     resize();
   });
   infoButton.addEventListener('click',()=>{
@@ -583,7 +613,7 @@ const cta=$('.cta');
     if(ready||++readyAttempts>25){
       clearInterval(readyRetry);
       if(!ready){
-        retry.hidden=activeProduct==='smart_dns';
+        retry.hidden=dnsDays!==null;
         summary.textContent='Не удалось загрузить тарифы';
         button.textContent='Тарифы недоступны';
       }
