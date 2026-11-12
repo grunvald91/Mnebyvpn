@@ -231,7 +231,7 @@ const $=s=>document.querySelector(s),R=matchMedia('(prefers-reduced-motion:reduc
 const plans=[...document.querySelectorAll('.plan')],sum=$('#sum');
 plans.forEach(p=>p.addEventListener('click',()=>{
   plans.forEach(x=>x.setAttribute('aria-pressed',x===p));
-  sum.textContent=`VPN · ${p.dataset.d} дней · ${p.dataset.p} ₽`;
+  sum.textContent=`VPN · ${p.dataset.d} дней · ${p.dataset.p}`;
   sum.classList.remove('pop');void sum.offsetWidth;sum.classList.add('pop');
 }));
 document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e=>e.preventDefault()));
