@@ -128,6 +128,37 @@ test('checkout is a separate MNEBYVPN review, no provider request before confirm
   assert.equal(b.actions.purchase,1);
 });
 
+test('confirmed VPN access exposes one-tap import immediately with optional download and manual fallback',()=>{
+  const b=browser('https://mnebyvpn.site/#connect',true);
+  const token='x'.repeat(43);
+  const sub='https://mnebyvpn.site/sub/'+token;
+  const install='https://mnebyvpn.site/install/'+token+'?client=incy';
+  b.state.guestSubscriptionUrl=sub;
+  b.map.get('guest-auto-incy').getAttribute=(key:string)=>key==='href'?install:null;
+  b.window.renderVpnSetup({subscriptionUrl:sub});
+  assert.equal(b.map.get('journey-setup-controls').hidden,false);
+  assert.equal(b.map.get('journey-import-step').hidden,false);
+  assert.equal(b.map.get('journey-auto').href,install);
+  assert.equal(b.map.get('journey-url').value,sub);
+  assert.match(b.map.get('journey-download').href,/play\.google\.com/);
+  // Switching device cannot force another "app installed" confirmation.
+  const ios=b.map.get('journey-setup').querySelectorAll('[data-journey-platform]')
+    .find((button:any)=>button.dataset.journeyPlatform==='ios');
+  const iosInstall='https://mnebyvpn.site/install/'+token+'?client=karing';
+  b.map.get('guest-auto-karing').getAttribute=(key:string)=>key==='href'?iosInstall:null;
+  ios.handlers.get('click')?.();
+  assert.equal(b.map.get('journey-import-step').hidden,false);
+  assert.equal(b.map.get('journey-auto').href,iosInstall);
+  assert.match(b.map.get('journey-download').href,/apps\.apple\.com/);
+});
+
+test('unverified VPN activation never reveals an import link',()=>{
+  const b=browser('https://mnebyvpn.site/#connect',true);
+  b.window.renderVpnSetup({});
+  assert.equal(b.map.get('journey-setup-controls').hidden,true);
+  assert.equal(b.map.get('journey-import-step').hidden,true);
+});
+
 test('anonymous checkout never calls the payment provider',async()=>{
   const b=browser('https://mnebyvpn.site/#plans',false);
   b.state.checkoutEnabled=true;
