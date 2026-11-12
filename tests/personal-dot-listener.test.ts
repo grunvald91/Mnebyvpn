@@ -96,7 +96,6 @@ test('local TCP DNS resolver rejects same-ID reply for wrong domain',async()=>{
       /Unmatched or invalid DNS answer/,
     );
   }finally{
-    mock.closeAllConnections();
     await new Promise<void>(resolve=>mock.close(()=>resolve()));
   }
 });
