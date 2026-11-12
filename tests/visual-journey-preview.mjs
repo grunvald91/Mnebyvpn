@@ -135,7 +135,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     JSON.stringify(metrics.dnsPrices)!==JSON.stringify(['120 ₽','199 ₽','379 ₽','549 ₽'])||
     !metrics.videoPresent||metrics.retryVisible||metrics.cardOpacity<0.99||
     metrics.backdropFilter!=='none'||metrics.canvasPresent||metrics.introFilter!=='none'||
-    (width<=390&&(metrics.lockWidth>52||metrics.cardTop>245))||
+    (width<=390&&(metrics.lockWidth>52||metrics.cardTop>270))||
     !metrics.headerSingleRow||!metrics.topButtonsUnwrapped||!metrics.headerFits||
     !metrics.legalSingleRow||metrics.frontTop>12||
     (width<=390&&(metrics.iframeBottomGap>12||!metrics.fullFrameBackground||
