@@ -309,3 +309,30 @@ test('repeat addition opens existing card instead of sending owner to 500-item l
   assert.match(response.text,/уже в списке/);
   assert.equal(response.reply_markup.inline_keyboard[0][0].callback_data,'dnsadmin:domain:18');
 });
+
+
+test('ACTIVE Microsoft invalid origin metadata is visible as a warning, never a healthy route',async()=>{
+  const row={id:'77',domain:'xbox.com',product:'Microsoft',
+    status:'ACTIVE',last_error_code:'ACTIVE_ROUTE_METADATA_INVALID'};
+  const pg={query:async()=>({rows:[row]})} as any;
+  const list=await dnsAdminList(pg,0,'microsoft');
+  assert.match(list.text,/xbox\.com/);
+  assert.match(list.text,/Требуется проверка маршрута/);
+  assert.match(list.text,/ACTIVE_ROUTE_METADATA_INVALID/);
+  const card=await dnsAdminAction(999,999,pg,'dnsadmin:domain:77');
+  assert.match(card.text,/Сервер обнаружил ошибку проверки/);
+  assert.match(card.text,/ACTIVE_ROUTE_METADATA_INVALID/);
+  assert.doesNotMatch(card.text,/Маршрут закреплён сервером/);
+  assert.ok(card.reply_markup.inline_keyboard.flat().some(
+    b=>b.callback_data==='dnsadmin:domain:77'));
+});
+
+test('ACTIVE without error describes route as configured but not entire app as verified',async()=>{
+  const row={id:'78',domain:'copilot.microsoft.com',product:'Microsoft',
+    status:'ACTIVE',last_error_code:null};
+  const pg={query:async()=>({rows:[row]})} as any;
+  const card=await dnsAdminAction(999,999,pg,'dnsadmin:domain:78');
+  assert.match(card.text,/Маршрут закреплён сервером/);
+  assert.match(card.text,/Полная работа сайта и связанных поддоменов не проверялась/);
+  assert.doesNotMatch(card.text,/Сервер обнаружил ошибку проверки/);
+});
