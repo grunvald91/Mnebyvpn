@@ -28,8 +28,7 @@ test('only the trusted account is sent to the atomic owner-scoped SQL procedure'
 });
 test('rejects invalid input; never reveals secret on stale/failed rotation',async()=>{
   let calls=0;
-  const db={query:async()=>{calls++;return{rows:[{status:'DENY_STALE'}]};}}
-    as unknown as Pick<Pool,'query'>;
+  const db={query:async()=>{calls++;return{rows:[{status:'DENY_STALE'}]};}} as unknown as Pick<Pool,'query'>;
   assert.deepEqual(await rotatePersonalDotHostname(db,'invalid',entitlement,1),{status:'DENY_INVALID'});
   assert.deepEqual(await rotatePersonalDotHostname(db,owner,entitlement,0),{status:'DENY_INVALID'});
   const out=await rotatePersonalDotHostname(db,owner,entitlement,1);
