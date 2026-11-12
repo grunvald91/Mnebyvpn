@@ -6,7 +6,6 @@ BEGIN;
 CREATE TABLE personal_dns_credentials (
   entitlement_id uuid PRIMARY KEY REFERENCES entitlements(id) ON DELETE RESTRICT,
   token_sha256 text NOT NULL UNIQUE CHECK (token_sha256 ~ '^[a-f0-9]{64}$'),
-  label text NOT NULL UNIQUE CHECK (label ~ '^[a-z0-9]{12}$'),
   query_limit_per_30d bigint NOT NULL DEFAULT 1000000
     CHECK (query_limit_per_30d BETWEEN 1 AND 100000000),
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -25,7 +24,7 @@ CREATE TABLE personal_dns_query_windows (
 REVOKE ALL ON personal_dns_query_windows FROM PUBLIC;
 
 -- Only trusted provisioning worker may call this function. Label is a
--- bearer capability delivered to the subscriber; store just its digest.
+-- bearer capability delivered once to the subscriber; store only its digest.
 CREATE FUNCTION issue_personal_dns_credential(
   p_entitlement uuid,p_label text,p_token_hash text,p_limit bigint DEFAULT 1000000
 ) RETURNS text LANGUAGE plpgsql AS $$
@@ -50,15 +49,15 @@ BEGIN
     WHERE entitlement_id=p_entitlement;
   IF FOUND THEN
     IF existing.revoked_at IS NOT NULL THEN RETURN 'DENY_REVOKED'; END IF;
-    IF existing.label=p_label AND existing.token_sha256=p_token_hash
+    IF existing.token_sha256=p_token_hash
        AND existing.query_limit_per_30d=p_limit
     THEN RETURN 'ALREADY_ISSUED'; END IF;
     RETURN 'DENY_ALREADY_ASSIGNED';
   END IF;
 
   INSERT INTO personal_dns_credentials(
-    entitlement_id,label,token_sha256,query_limit_per_30d
-  ) VALUES(p_entitlement,p_label,p_token_hash,p_limit)
+    entitlement_id,token_sha256,query_limit_per_30d
+  ) VALUES(p_entitlement,p_token_hash,p_limit)
     ON CONFLICT DO NOTHING;
   IF NOT FOUND THEN RETURN 'DENY_TOKEN_COLLISION'; END IF;
   RETURN 'ISSUED';
@@ -83,7 +82,8 @@ BEGIN
     THEN RETURN 'DENY_INVALID'; END IF;
 
   SELECT entitlement_id INTO v_entitlement_id
-    FROM personal_dns_credentials WHERE label=p_label;
+    FROM personal_dns_credentials
+    WHERE token_sha256=encode(sha256(convert_to(p_label,'UTF8')),'hex');
   IF NOT FOUND THEN RETURN 'DENY_UNKNOWN'; END IF;
 
   SELECT * INTO e FROM entitlements WHERE id=v_entitlement_id FOR UPDATE;
@@ -92,7 +92,8 @@ BEGIN
 
   -- Read after entitlement lock to observe committed revoke/credential changes.
   SELECT * INTO c FROM personal_dns_credentials WHERE entitlement_id=e.id;
-  IF NOT FOUND OR c.label <> p_label OR c.revoked_at IS NOT NULL
+  IF NOT FOUND OR c.token_sha256 <>
+      encode(sha256(convert_to(p_label,'UTF8')),'hex') OR c.revoked_at IS NOT NULL
      OR e.product <> 'smart_dns' OR e.state <> 'ACTIVE'
      OR e.starts_at IS NULL OR e.expires_at IS NULL
      OR e.starts_at > v_now OR e.expires_at <= v_now
@@ -136,7 +137,6 @@ $$;
 -- an arbitrary UUID from a public endpoint.
 CREATE FUNCTION personal_dns_query_status(p_entitlement uuid)
 RETURNS TABLE(
-  dns_label text,
   access_status text,
   used_queries bigint,
   remaining_queries bigint,
@@ -144,8 +144,7 @@ RETURNS TABLE(
   next_reset_at timestamptz,
   access_expires_at timestamptz
 ) LANGUAGE sql STABLE AS $$
-  SELECT c.label,
-    CASE
+  SELECT CASE
       WHEN c.revoked_at IS NOT NULL THEN 'REVOKED'
       WHEN e.state <> 'ACTIVE' OR e.expires_at IS NULL OR
            e.expires_at<=now() OR e.starts_at IS NULL OR e.starts_at>now()
