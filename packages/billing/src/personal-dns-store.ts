@@ -23,9 +23,13 @@ export function personalDnsSigningKey(
 }
 
 export class PgPersonalDnsLinks {
-  constructor(private readonly pool:Pool,private readonly signingKey:Uint8Array){
+  private readonly pool:Pool;
+  private readonly signingKey:Uint8Array;
+  constructor(pool:Pool,signingKey:Uint8Array){
     if(!(signingKey instanceof Uint8Array)||signingKey.length<32)
       throw new Error('Missing DNS link signing key');
+    this.pool=pool;
+    this.signingKey=Uint8Array.from(signingKey);
   }
   async issueForAccount(accountId:string,entitlementId:string):Promise<PersonalDnsOwnerView>{
     if(!UUID.test(accountId)||!UUID.test(entitlementId))
