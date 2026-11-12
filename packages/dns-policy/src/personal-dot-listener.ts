@@ -84,8 +84,12 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
   if(!Number.isSafeInteger(timeout)||timeout<100||timeout>10000)
     throw Error('Invalid query deadline');
   const cert=new X509Certificate(o.cert);
-  if(!cert.checkHost(TEST_HOST_A)||!cert.checkHost(TEST_HOST_B))
-    throw Error('TLS certificate must cover personal DNS wildcard');
+  // Checking two hard-coded sample SNI names is insufficient: a certificate
+  // listing only those exact SANs would pass but fail for real subscriber keys.
+  const hasWildcard=cert.subjectAltName?.split(', ').some(
+    san=>san.trim()==='DNS:*.dns.mnebyvpn.site');
+  if(!hasWildcard||!cert.checkHost(TEST_HOST_A)||!cert.checkHost(TEST_HOST_B))
+    throw Error('TLS certificate must contain the personal DNS wildcard SAN');
   const server=createTlsServer({
     key:o.key,cert:o.cert,minVersion:'TLSv1.2',handshakeTimeout:8000,
     requestCert:false,
