@@ -4,7 +4,7 @@
  * Run from GitHub Actions only; screenshots are an audit, not a design mock.
  */
 import http from 'node:http';
-import { readFileSync } from 'node:fs';
+import { readFileSync, copyFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -142,6 +142,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   });
   const file=process.env.RUNNER_TEMP+'/mnebyvpn-'+width+'x'+height+'.jpg';
   await page.screenshot({path:file,type:'jpeg',quality:72,fullPage:true,timeout:20000});
+  if(width===390&&height===844)
+    copyFileSync(file,process.env.RUNNER_TEMP+'/mnebyvpn-audit-01-plans-390x844.jpg');
   console.log('VISUAL_METRICS_'+width+'='+JSON.stringify({...metrics,browserErrors}));
   if(metrics.horizontalOverflow||metrics.innerHorizontalOverflow||browserErrors.length||
     !metrics.iframeHasHeader||!metrics.iframeHasEarth||!metrics.iframeHasTariffs||
@@ -165,14 +167,51 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     console.log(readFileSync(file).toString('base64'));
     console.log('VISUAL_JPEG_'+width+'_END');
   }
-  // DNS info is a real keyboard-accessible dialog. It must name target
-  // services accurately without promising all are operational right now.
+  // Smart DNS information must behave as a small in-card popover:
+  // no modal overlay, no page growth, and all service caveats remain visible.
+  const beforeDns=await page.evaluate(()=>{
+    const doc=document.querySelector('#journey-front-frame').contentDocument;
+    return {h:doc.documentElement.scrollHeight,footer:doc.querySelector('footer').getBoundingClientRect().top};
+  });
   await page.frameLocator('#journey-front-frame').locator('#dns-info-open').click();
-  const info=await page.frameLocator('#journey-front-frame').locator('#dns-info-dialog');
+  const info=page.frameLocator('#journey-front-frame').locator('#dns-info-dialog');
   if(!await info.isVisible())failed=true;
   const infoContent=await info.textContent();
   if(!['YouTube','ChatGPT','Gemini','Claude','Antigravity','Grok','TikTok','X'].every(x=>infoContent.includes(x))||
     !infoContent.includes('домен')||!infoContent.includes('VPN'))failed=true;
+  const dnsMetrics=await page.evaluate(()=>{
+    const doc=document.querySelector('#journey-front-frame').contentDocument;
+    const pop=doc.querySelector('#dns-info-dialog');
+    const rect=pop.getBoundingClientRect();
+    const card=doc.querySelector('.card').getBoundingClientRect();
+    return {
+      width:Math.round(rect.width),height:Math.round(rect.height),
+      top:Math.round(rect.top),bottom:Math.round(rect.bottom),
+      ariaModal:pop.getAttribute('aria-modal'),
+      buttonExpanded:doc.querySelector('#dns-info-open').getAttribute('aria-expanded'),
+      modalCount:doc.querySelectorAll('dialog[open]').length,
+      backdrop:getComputedStyle(pop).position,
+      scrollHeight:doc.documentElement.scrollHeight,
+      footerTop:doc.querySelector('footer').getBoundingClientRect().top,
+      cardVisible:card.height>0,
+      hasScrollableContent:pop.scrollHeight>pop.clientHeight,
+    };
+  });
+  console.log('SMART_DNS_TIP_'+width+'='+JSON.stringify(dnsMetrics));
+  if(dnsMetrics.width>301||dnsMetrics.height>253||dnsMetrics.top<0||
+    dnsMetrics.ariaModal!=='false'||dnsMetrics.buttonExpanded!=='true'||
+    dnsMetrics.modalCount!==0||dnsMetrics.backdrop!=='absolute'||
+    !dnsMetrics.cardVisible||beforeDns.h!==dnsMetrics.scrollHeight||
+    Math.abs(beforeDns.footer-dnsMetrics.footerTop)>1)failed=true;
+  if(width===390&&height===844){
+    const file=process.env.RUNNER_TEMP+'/mnebyvpn-audit-02-smartdns-popover-390x844.jpg';
+    await page.screenshot({path:file,type:'jpeg',quality:82,fullPage:true});
+    if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
+      console.log('AUDIT_SMARTDNS_JPEG_BEGIN');
+      console.log(readFileSync(file).toString('base64'));
+      console.log('AUDIT_SMARTDNS_JPEG_END');
+    }
+  }
   await page.frameLocator('#journey-front-frame').locator('#dns-info-close').click();
   if(await info.isVisible())failed=true;
   // The informational card must float above price tiles and never open a modal
@@ -204,6 +243,12 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     popupMetrics.backgroundBackdrop!==0||!popupMetrics.contentVisible||
     popupMetrics.scrollHeight!==beforeInfo.h||
     Math.abs(popupMetrics.footerTop-beforeInfo.footer)>1)failed=true;
+  if(width===390&&height===844){
+    await page.screenshot({
+      path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-03-payment-popover-390x844.jpg',
+      type:'jpeg',quality:82,fullPage:true
+    });
+  }
   await page.frameLocator('#journey-front-frame').locator('#payment-info-close').click();
   if(await paymentInfo.isVisible())failed=true;
   // One VPN and one DNS may be selected at the same time. No iframe
@@ -316,6 +361,12 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
      Math.abs(chooserAfter.footerTop-chooserBefore.footerTop)>1||
      Math.abs(chooserAfter.scrollHeight-chooserBefore.scrollHeight)>2||
      Math.abs(chooserAfter.frameHeight-chooserBefore.frameHeight)>2)failed=true;
+  if(width===390&&height===844){
+    await page.screenshot({
+      path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-04-free-trial-chooser-390x844.jpg',
+      type:'jpeg',quality:82,fullPage:true
+    });
+  }
   await page.frameLocator('#journey-front-frame').locator('#trial-dns').click();
   const trialDns=await page.frameLocator('#journey-front-frame').locator('#trial-dns-status');
   if(!await trialDns.isVisible())failed=true;
@@ -385,6 +436,18 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
           parseFloat(getComputedStyle(document.querySelector('.header')).borderBottomWidth)===0;
       })(),
       trialTitle:document.querySelector('#journey-trial-title')?.textContent,
+      backArrow:(()=>{
+        const anchor=document.querySelector('#journey-trial-back')?.getBoundingClientRect();
+        const circle=document.querySelector('#journey-trial-back .journey-back-icon')?.getBoundingClientRect();
+        const svg=document.querySelector('#journey-trial-back svg')?.getBoundingClientRect();
+        if(!anchor||!circle||!svg)return null;
+        return {
+          controlCenterDelta:Math.round((anchor.left+anchor.width/2)-(innerWidth/2)),
+          arrowCenterDelta:Math.round((svg.left+svg.width/2)-(circle.left+circle.width/2)),
+          arrowVerticalDelta:Math.round((svg.top+svg.height/2)-(circle.top+circle.height/2)),
+          circleSize:Math.round(circle.width),
+        };
+      })(),
       emailButton:(()=>{
         const input=document.querySelector('#email-input')?.getBoundingClientRect();
         const button=document.querySelector('#email-send-button');
@@ -400,6 +463,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   });
   const authImage=process.env.RUNNER_TEMP+'/mnebyvpn-trial-auth-'+width+'x'+height+'.jpg';
   await page.screenshot({path:authImage,type:'jpeg',quality:72,fullPage:true,timeout:20000});
+  if(width===390&&height===844)
+    copyFileSync(authImage,process.env.RUNNER_TEMP+'/mnebyvpn-audit-05-trial-email-390x844.jpg');
   console.log('TRIAL_AUTH_METRICS_'+width+'='+JSON.stringify({...trial,browserErrors}));
   if(!trial.emailMounted||!trial.emailVisible||!trial.telegramExplained?.includes('email')||
      trial.horizontalOverflow||browserErrors.length||trial.route!=='#try'||
@@ -408,6 +473,9 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
      trial.footer.height>130||trial.footer.innerHeight>129||!trial.footer.centered||
      trial.footer.links!==6||trial.footer.overflow||
      !trial.headerVisualMatch||!trial.footerInsideViewport||
+     !trial.backArrow||Math.abs(trial.backArrow.controlCenterDelta)>2||
+     Math.abs(trial.backArrow.arrowCenterDelta)>1||
+     Math.abs(trial.backArrow.arrowVerticalDelta)>1||
      !trial.footerSellerVisible||!trial.footerLinkRows||
      trial.footerSellerText!==metrics.sellerText||
      (width<=390&&!trial.noVerticalScroll)||
@@ -599,14 +667,24 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       try{Object.defineProperty(navigator.connection,'effectiveType',{configurable:true,get:()=>'3g'});}catch{}
   });
   await page.goto(base,{waitUntil:'domcontentloaded'});
-  try{
-    await page.waitForFunction(()=>{
-      const inner=document.querySelector('#journey-front-frame')?.contentDocument;
-      const video=inner?.querySelector('#bgv');
-      return video?.currentTime>0.1 && !video.paused &&
-        inner.querySelector('.scene')?.classList.contains('vid');
-    },null,{timeout:12000});
-  }catch{failed=true;}
+  const playing=()=>page.waitForFunction(()=>{
+    const inner=document.querySelector('#journey-front-frame')?.contentDocument;
+    const video=inner?.querySelector('#bgv');
+    return video?.currentTime>0.1 && !video.paused &&
+      inner.querySelector('.scene')?.classList.contains('vid');
+  },null,{timeout:12000});
+  let autoplayBlocked=false;
+  try{await playing();}
+  catch{
+    autoplayBlocked=true;
+    // Real Android may deny muted autoplay despite loaded metadata.
+    // The opt-in control is the supported fallback and must be functional.
+    const retry=page.frameLocator('#journey-front-frame').locator('#video-retry');
+    if(await retry.isVisible()){
+      await retry.click();
+      await playing().catch(()=>{failed=true;});
+    }else failed=true;
+  }
   const before=await page.evaluate(()=>{
     const inner=document.querySelector('#journey-front-frame')?.contentDocument;
     const video=inner?.querySelector('#bgv');
@@ -619,7 +697,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       error:video?.error?.code||null,
     };
   });
-  console.log('ANDROID_VIDEO_2CORE_3G='+JSON.stringify(before));
+  console.log('ANDROID_VIDEO_2CORE_3G='+JSON.stringify({...before,autoplayBlocked}));
   if(!before.scenePlaying||before.paused||before.time<=0.1||
     !before.artworkExternal||!before.navGrouped||before.error)failed=true;
 
@@ -651,6 +729,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   console.log('ACCOUNT_BRANDED_METRICS='+JSON.stringify(account));
   const accountImage=process.env.RUNNER_TEMP+'/mnebyvpn-branded-account-390x844.jpg';
   await page.screenshot({path:accountImage,type:'jpeg',quality:75,fullPage:true});
+  copyFileSync(accountImage,process.env.RUNNER_TEMP+'/mnebyvpn-audit-07-account-390x844.jpg');
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('ACCOUNT_JPEG_390_BEGIN');
     console.log(readFileSync(accountImage).toString('base64'));
@@ -707,6 +786,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   }));
   const image=process.env.RUNNER_TEMP+'/mnebyvpn-branded-order-390x844.jpg';
   await page.screenshot({path:image,type:'jpeg',quality:75,fullPage:true});
+  copyFileSync(image,process.env.RUNNER_TEMP+'/mnebyvpn-audit-08-checkout-390x844.jpg');
   console.log('BRANDED_CHECKOUT_METRICS='+JSON.stringify({...order,checkoutCalls}));
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('BRANDED_ORDER_JPEG_BEGIN');
@@ -724,7 +804,10 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
  // external email or paid orders). Verifies that clicking Try does not issue
  // an anonymous trial and the server-backed grant occurs after OTP only.
 {
-  const page=await browser.newPage({viewport:{width:390,height:844}});
+  const page=await browser.newPage({
+    viewport:{width:390,height:844},hasTouch:true,isMobile:true,
+    userAgent:'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36'
+  });
   let verified=false,trialCalls=0;
   page.on('pageerror',error=>{
     console.error('TRIAL_OTP_PAGE_ERROR',String(error.message));failed=true;
@@ -756,6 +839,10 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   if(trialCalls!==0)failed=true;
   await page.locator('#email-input').fill('visual-test@example.com');
   await page.locator('#email-send-button').click();
+  await page.screenshot({
+    path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-06-trial-code-390x844.jpg',
+    type:'jpeg',quality:82,fullPage:true
+  });
   await page.locator('#email-code-input').fill('123456');
   await page.locator('#email-verify-button').click();
   try{await page.waitForFunction(()=>document.body.dataset.journeyView==='setup',{timeout:7000});}
@@ -767,8 +854,127 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   }));
   console.log('TRIAL_EMAIL_OTP_SMOKE='+JSON.stringify({...actual,trialCalls}));
   if(actual.view!=='setup'||trialCalls!==1||actual.emailFormDuplicates!==1)failed=true;
+  await page.screenshot({
+    path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-09-setup-pending-390x844.jpg',
+    type:'jpeg',quality:82,fullPage:true
+  });
+  // Visualize a *synthetic* active subscription. This does NOT call provisioning:
+  // the mock token never exists on the real backend.
+  const syntheticUrl='https://mnebyvpn.site/sub/'+'x'.repeat(43);
+  await page.evaluate(url=>window.renderVpnSetup({subscriptionUrl:url}),syntheticUrl);
+  await page.waitForFunction(()=>!document.querySelector('#journey-setup-controls').hidden);
+  const setupBefore=await page.evaluate(()=>({
+    installedButton:document.querySelector('#journey-installed')?.textContent,
+    importHidden:document.querySelector('#journey-import-step')?.hidden,
+    downloadVisible:document.querySelector('#journey-download')?.getBoundingClientRect().height>0
+  }));
+  await page.screenshot({
+    path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-10-setup-install-390x844.jpg',
+    type:'jpeg',quality:82,fullPage:true
+  });
+  await page.locator('#journey-installed').click();
+  const setupAfter=await page.evaluate(()=>({
+    importVisible:!document.querySelector('#journey-import-step')?.hidden,
+    autoVisible:document.querySelector('#journey-auto')?.getBoundingClientRect().height>0
+  }));
+  const setupImportImage=process.env.RUNNER_TEMP+'/mnebyvpn-audit-11-setup-import-390x844.jpg';
+  await page.screenshot({path:setupImportImage,type:'jpeg',quality:82,fullPage:true});
+  if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
+    console.log('AUDIT_SETUP_IMPORT_JPEG_BEGIN');
+    console.log(readFileSync(setupImportImage).toString('base64'));
+    console.log('AUDIT_SETUP_IMPORT_JPEG_END');
+  }
+  console.log('AUDIT_INSTALL_GATE='+JSON.stringify({setupBefore,setupAfter,synthetic:true}));
+  if(!setupBefore.installedButton?.includes('Я установил')||
+    !setupBefore.importHidden||!setupBefore.downloadVisible||
+    !setupAfter.importVisible||!setupAfter.autoVisible)failed=true;
   await page.close();
 }
+// Cross-screen visual review. Each image is created from the actual site
+// markup with synthetic API data; no customer accounts or live payments.
+for(const scenario of [
+  {name:'12-support',url:'/#contact-support',expected:'support'},
+  {name:'13-payment-verification',url:'/?payment=returned',expected:'payment'},
+  {name:'14-cabinet-logged-out',url:'/#account',expected:'account'}
+]){
+  const page=await browser.newPage({viewport:{width:390,height:844}});
+  const pageErrors=[];
+  page.on('pageerror',e=>pageErrors.push(String(e.message).slice(0,220)));
+  await page.goto(base+scenario.url.slice(1),{waitUntil:'networkidle'});
+  await page.waitForFunction(()=>document.body.classList.contains('journey-active'),null,{timeout:10000});
+  const result=await page.evaluate(()=>({
+    route:location.hash,view:document.body.dataset.journeyView,
+    bodyHeight:document.documentElement.scrollHeight,viewportHeight:innerHeight,
+    overflowX:document.documentElement.scrollWidth>innerWidth+2,
+    footer:(()=>{
+      const links=[...document.querySelectorAll('.footer-links a,.footer-links button')];
+      const rects=links.map(el=>el.getBoundingClientRect());
+      const seller=document.querySelector('.footer-seller')?.getBoundingClientRect();
+      return {
+        linkCount:links.length,
+        allVisible:rects.length===6&&rects.every(r=>r.width>0&&r.left>=0&&r.right<=innerWidth+1),
+        rows:rects.length===6&&rects.slice(0,3).every(r=>Math.abs(r.top-rects[0].top)<2)&&
+          rects.slice(3).every(r=>Math.abs(r.top-rects[3].top)<2),
+        sellerCentered:!!seller&&Math.abs((seller.left+seller.right)/2-innerWidth/2)<5,
+      };
+    })(),
+    visibleHeading:[...document.querySelectorAll('h1,h2')].filter(h=>{
+      const s=getComputedStyle(h),r=h.getBoundingClientRect();
+      return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0;
+    }).map(h=>h.textContent.trim()).slice(0,4)
+  }));
+  const dest=process.env.RUNNER_TEMP+'/mnebyvpn-audit-'+scenario.name+'-390x844.jpg';
+  await page.screenshot({path:dest,type:'jpeg',quality:82,fullPage:true});
+  if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
+    console.log('AUDIT_SCREEN_JPEG_'+scenario.name+'_BEGIN');
+    console.log(readFileSync(dest).toString('base64'));
+    console.log('AUDIT_SCREEN_JPEG_'+scenario.name+'_END');
+  }
+  console.log('AUDIT_SCREEN_'+scenario.name+'='+JSON.stringify({...result,pageErrors}));
+  if(result.overflowX||pageErrors.length||result.view!==scenario.expected||
+    !result.footer.allVisible||!result.footer.rows||!result.footer.sellerCentered)failed=true;
+  await page.close();
+}
+// Parent "About" dialog is a separate interactive screen.
+{
+  const page=await browser.newPage({viewport:{width:390,height:844}});
+  await page.goto(base,{waitUntil:'networkidle'});
+  await page.frameLocator('#journey-front-frame').locator('.top-links a[href="#about"]').click();
+  await page.waitForFunction(()=>document.querySelector('#about-dialog')?.open===true,null,{timeout:5000});
+  const file=process.env.RUNNER_TEMP+'/mnebyvpn-audit-15-about-390x844.jpg';
+  await page.screenshot({path:file,type:'jpeg',quality:82,fullPage:true});
+  console.log('AUDIT_ABOUT_DIALOG=open');
+  await page.close();
+}
+// Build one self-contained HTML gallery in the downloadable workflow artifact.
+const auditFiles=readdirSync(process.env.RUNNER_TEMP)
+  .filter(name=>/^mnebyvpn-audit-.*\.jpg$/.test(name)).sort();
+const auditLabels={
+  '01':'Главная / тарифы','02':'Smart DNS / подсказка','03':'Оплата / подсказка',
+  '04':'Выбор бесплатного доступа','05':'Email / 24 часа','06':'Ввод кода из письма',
+  '07':'Личный кабинет','08':'Подтверждение заказа',
+  '09':'Подключение / ожидание','10':'Подключение / установка клиента',
+  '11':'Подключение / автоимпорт','12':'Поддержка','13':'Проверка оплаты',
+  '14':'Кабинет без авторизации','15':'О проекте'
+};
+const figures=auditFiles.map(name=>{
+  const code=name.match(/^mnebyvpn-audit-(\d+)/)?.[1]||'';
+  const title=auditLabels[code]||name;
+  return '<figure><img loading="lazy" src="'+name+'" alt="'+title+'"><figcaption>'+code+' · '+title+'</figcaption></figure>';
+}).join('\n');
+const gallery='<!doctype html><html lang="ru"><meta charset="utf-8">'+
+  '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+  '<title>MNEBYVPN · визуальная проверка экранов</title>'+
+  '<style>body{background:#080e27;color:#eef8ff;font:15px system-ui;margin:0;padding:20px}'+
+  'h1{font-size:22px}p{color:#bfcfe4}section{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}'+
+  'figure{margin:0;background:#131e40;border:1px solid #3274a6;border-radius:13px;padding:8px}'+
+  'img{width:100%;height:auto;max-height:620px;object-fit:contain;display:block;border-radius:8px}'+
+  'figcaption{padding:7px 2px;font-weight:650}'+
+  '</style><h1>MNEBYVPN · обзор мобильных экранов</h1>'+
+  '<p>Реальные HTML/CSS/JS страницы в тестовом браузере, размер 390×844. Тарифы, email и ключи синтетические; никаких реальных оплат и подписок.</p>'+
+  '<section>'+figures+'</section></html>';
+writeFileSync(process.env.RUNNER_TEMP+'/mnebyvpn-audit-gallery.html',gallery);
+console.log('AUDIT_SCREENSHOT_SET='+JSON.stringify(auditFiles));
 await browser.close();
 server.close();
 if(failed){

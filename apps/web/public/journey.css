@@ -2082,3 +2082,72 @@ body.journey-active[data-journey-view="trial-auth"] .footer-seller{
   body.journey-active[data-journey-view="trial-auth"] .footer-links button,
   body.journey-active[data-journey-view="trial-auth"] .footer-seller{font-size:9px}
 }
+
+/* On the free-24h sign-in screen center both the navigation control and
+   the arrow inside its circle. SVG avoids font glyph baseline offsets. */
+body.journey-active[data-journey-view="trial-auth"] a.journey-back--neon{
+  display:flex;
+  width:max-content;max-width:100%;
+  margin:6px auto 0;
+  justify-content:center;align-items:center;
+}
+body.journey-active[data-journey-view="trial-auth"] .journey-back-icon{
+  display:grid;place-items:center;
+  width:20px;height:20px;flex:0 0 20px;
+  padding:0;
+}
+body.journey-active[data-journey-view="trial-auth"] .journey-back-icon svg{
+  display:block;width:14px;height:14px;margin:0;
+}
+
+/* 2026-11-13 visual audit: native screens (account, support, checkout,
+   setup, payment) inherited a legacy narrow footer grid, pushing links
+   outside the left edge. Reuse the same compact two-row footer as #try. */
+body.journey-active:not([data-journey-view="plans"]) .footer{
+  width:100%;max-width:none;
+  border-top:0!important;background:transparent!important;
+  box-shadow:none!important;margin-top:auto!important;
+}
+body.journey-active:not([data-journey-view="plans"]) .footer-inner{
+  display:flex!important;flex-direction:column!important;
+  align-items:center!important;justify-content:center!important;
+  width:min(480px,calc(100% - 24px))!important;
+  min-height:0!important;margin:0 auto!important;
+  padding:7px 0 9px!important;gap:0!important;
+}
+body.journey-active:not([data-journey-view="plans"]) .footer-links{
+  display:grid!important;
+  grid-template-columns:repeat(3,max-content)!important;
+  grid-template-rows:repeat(2,auto)!important;
+  align-items:center!important;justify-items:center!important;
+  justify-content:center!important;align-content:center!important;
+  flex:none!important;position:static!important;
+  width:max-content!important;max-width:100%!important;
+  min-height:0!important;
+  gap:3px 12px!important;
+  padding:0!important;margin:0!important;
+  transform:none!important;
+}
+body.journey-active:not([data-journey-view="plans"]) .footer-links a,
+body.journey-active:not([data-journey-view="plans"]) .footer-links button{
+  position:static!important;display:inline-flex!important;
+  align-items:center!important;justify-content:center!important;
+  width:auto!important;min-width:0!important;max-width:100%!important;
+  min-height:0!important;margin:0!important;padding:0!important;
+  white-space:nowrap!important;
+  color:#cfd6f7!important;
+  font:italic 500 10px/1.2 Inter,system-ui,Roboto,Arial,sans-serif!important;
+}
+body.journey-active:not([data-journey-view="plans"]) .footer-seller{
+  display:block!important;flex:none!important;
+  margin:5px auto 0!important;padding:0!important;
+  text-align:center!important;white-space:normal!important;
+  color:#b2c8e3!important;
+  font:500 10px/1.25 Inter,system-ui,Roboto,Arial,sans-serif!important;
+}
+@media(max-width:350px){
+  body.journey-active:not([data-journey-view="plans"]) .footer-links{gap:3px 9px!important}
+  body.journey-active:not([data-journey-view="plans"]) .footer-links a,
+  body.journey-active:not([data-journey-view="plans"]) .footer-links button,
+  body.journey-active:not([data-journey-view="plans"]) .footer-seller{font-size:9px!important}
+}

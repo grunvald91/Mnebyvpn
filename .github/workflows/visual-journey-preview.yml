@@ -60,6 +60,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: compact-storefront-visual-qa
-          path: ${{ runner.temp }}/mnebyvpn-*.jpg
+          path: |
+            ${{ runner.temp }}/mnebyvpn-*.jpg
+            ${{ runner.temp }}/mnebyvpn-audit-gallery.html
           if-no-files-found: warn
           retention-days: 7
