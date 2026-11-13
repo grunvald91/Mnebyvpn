@@ -89,8 +89,12 @@ export function dnsResponseMatchesQuestion(
     const sent=parseDnsQuestion(query);
     const packet=Buffer.from(reply.buffer,reply.byteOffset,reply.byteLength);
     const request=Buffer.from(query.buffer,query.byteOffset,query.byteLength);
+    const responseFlags=packet.readUInt16BE(2);
+    // TC=1 is not a complete DNS answer. Never settle a paid quota
+    // reservation for truncated upstream data, even if ID/QNAME match.
     if(packet.readUInt16BE(0)!==request.readUInt16BE(0)||
-       (packet.readUInt16BE(2)&0xF800)!==0x8000||
+       (responseFlags&0xF800)!==0x8000||
+       (responseFlags&0x0200)!==0||
        packet.readUInt16BE(4)!==1)return false;
     let pos=12,terminated=false;
     for(let i=0;i<127;i++){
