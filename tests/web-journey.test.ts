@@ -300,8 +300,8 @@ test('storefront caches original 130KB Earth image separately and restores mobil
   assert.match(server,/url\.pathname === '\/landing-earth\.webp'/);
   assert.match(art,/id="bgv"[^>]*autoplay muted loop playsinline/);
   assert.match(art,/video\.addEventListener\('playing'/);
-  assert.match(art,/document\.addEventListener\('DOMContentLoaded',init/);
-  assert.match(art,/retry\.addEventListener\('click'/);
+  assert.match(art,/document\.addEventListener\('DOMContentLoaded',play/);
+  assert.doesNotMatch(art,/retry\.addEventListener|id="video-retry"|Включить фон/);
   assert.match(art,/type!=='visual'/);
   assert.doesNotMatch(art,/hardwareConcurrency/);
   assert.doesNotMatch(art,/effectiveType/);
