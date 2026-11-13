@@ -60,10 +60,19 @@ test('illustrated storefront keeps lock clear and payment fine print in a dialog
   const art=file('apps/web/public/landing-art.html');
   assert.match(art,/id="payment-info-open"/);
   assert.match(art,/id="payment-info-dialog"/);
-  assert.match(art,/\.hero\{min-height:clamp\(167px,calc\(63vw - 35px\),270px\)!important\}/);
+  assert.match(art,/\.hero\{min-height:clamp\(177px,calc\(63vw - 25px\),280px\)!important\}/);
   assert.match(art,/\.app>footer\{margin-top:auto!important/);
   assert.doesNotMatch(art,/<p class="note"/);
   assert.doesNotMatch(art,/<p class="note2"/);
+});
+test('payment helper is non-modal and video retry is user-initiated',()=>{
+  const art=file('apps/web/public/landing-art.html');
+  assert.match(art,/id="payment-info-dialog" class="payment-popover" role="dialog" aria-modal="false"/);
+  assert.match(art,/\.payment-popover\[hidden\],\.video-retry\[hidden\]/);
+  assert.match(art,/id="video-retry" hidden/);
+  assert.match(art,/dataSaver=Boolean\(navigator\.connection\?\.saveData\)/);
+  assert.match(art,/retry\.addEventListener\('click'/);
+  assert.doesNotMatch(art,/paymentInfoDialog\.showModal/);
 });
 test('trial footer includes all landing links and seller details',()=>{
   const art=file('apps/web/public/landing-art.html');
@@ -156,7 +165,8 @@ test('original background videos are bundled and served only by the public web r
   assert.match(art,/\['\/bg3\.webm\?v=6e816d6e','video\/webm/);
   assert.match(art,/\['\/bg3\.mp4\?v=30d2f12d','video\/mp4/);
   assert.match(art,/connection\?\.saveData/);
-  assert.match(art,/if\(!scene\|\|!video\|\|R\|\|connection\?\.saveData/);
+  assert.match(art,/autoplayAllowed=!R&&!dataSaver/);
+  assert.match(art,/if\(!scene\|\|!video\|\|!retry\)return/);
   assert.doesNotMatch(art,/\/_blob\//);
   assert.match(server,/media-src 'self'/);
   assert.match(art,/class="legal-links"/);
@@ -229,7 +239,8 @@ test('storefront caches original 130KB Earth image separately and restores mobil
   assert.match(server,/url\.pathname === '\/landing-earth\.webp'/);
   assert.match(art,/id="bgv"[^>]*autoplay muted loop playsinline/);
   assert.match(art,/video\.addEventListener\('playing'/);
-  assert.match(art,/document\.addEventListener\('DOMContentLoaded',ensureSource/);
+  assert.match(art,/document\.addEventListener\('DOMContentLoaded',init/);
+  assert.match(art,/retry\.addEventListener\('click'/);
   assert.match(art,/type!=='visual'/);
   assert.doesNotMatch(art,/hardwareConcurrency/);
   assert.doesNotMatch(art,/effectiveType/);

@@ -148,7 +148,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     JSON.stringify(metrics.dnsPrices)!==JSON.stringify(['120 ₽','199 ₽','379 ₽','549 ₽'])||
     !metrics.videoPresent||metrics.retryVisible||metrics.cardOpacity<0.99||
     metrics.backdropFilter!=='none'||metrics.canvasPresent||metrics.introFilter!=='none'||
-    (width<=390&&(metrics.lockWidth>52||metrics.clearLockGap<9||metrics.cardTop>300))||
+    (width<=390&&(metrics.lockWidth>52||metrics.clearLockGap<20||metrics.cardTop>314))||
     !metrics.paymentNotesRemoved||!metrics.paymentInfoVisible||!metrics.sellerVisible||
     (width<=390&&metrics.height>=700&&metrics.outerScrollHeight>metrics.height+2)||
     !metrics.headerSingleRow||!metrics.headerNavGrouped||!metrics.topButtonsUnwrapped||!metrics.headerFits||
@@ -175,11 +175,35 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     !infoContent.includes('домен')||!infoContent.includes('VPN'))failed=true;
   await page.frameLocator('#journey-front-frame').locator('#dns-info-close').click();
   if(await info.isVisible())failed=true;
-  // Payment fine print moved into an optional, accessible dialog.
+  // The informational card must float above price tiles and never open a modal
+  // backdrop, resize the storefront, or hide the rest of the tariff controls.
+  const beforeInfo=await page.evaluate(()=>{
+    const doc=document.querySelector('#journey-front-frame').contentDocument;
+    return {h:doc.documentElement.scrollHeight,footer:doc.querySelector('footer').getBoundingClientRect().top};
+  });
   await page.frameLocator('#journey-front-frame').locator('#payment-info-open').click();
   const paymentInfo=page.frameLocator('#journey-front-frame').locator('#payment-info-dialog');
   if(!await paymentInfo.isVisible()||
      !(await paymentInfo.textContent()).includes('Без автосписаний'))failed=true;
+  const popupMetrics=await page.evaluate(()=>{
+    const doc=document.querySelector('#journey-front-frame').contentDocument;
+    const pop=doc.querySelector('#payment-info-dialog');
+    const r=pop.getBoundingClientRect();
+    return {
+      width:Math.round(r.width),height:Math.round(r.height),top:Math.round(r.top),
+      ariaModal:pop.getAttribute('aria-modal'),hasModalState:Boolean(pop.open),
+      scrollHeight:doc.documentElement.scrollHeight,
+      footerTop:doc.querySelector('footer').getBoundingClientRect().top,
+      backgroundBackdrop:doc.querySelectorAll('dialog[open]').length,
+      contentVisible:doc.querySelector('.cta').getBoundingClientRect().height>0,
+    };
+  });
+  console.log('PAYMENT_POPOVER_'+width+'='+JSON.stringify(popupMetrics));
+  if(popupMetrics.width>285||popupMetrics.height>181||popupMetrics.top<0||
+    popupMetrics.ariaModal!=='false'||popupMetrics.hasModalState||
+    popupMetrics.backgroundBackdrop!==0||!popupMetrics.contentVisible||
+    popupMetrics.scrollHeight!==beforeInfo.h||
+    Math.abs(popupMetrics.footerTop-beforeInfo.footer)>1)failed=true;
   await page.frameLocator('#journey-front-frame').locator('#payment-info-close').click();
   if(await paymentInfo.isVisible())failed=true;
   // One VPN and one DNS may be selected at the same time. No iframe
@@ -521,6 +545,46 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   console.log('VIDEO_REDUCED_MOTION='+JSON.stringify(optOut));
   if(optOut.videoSources!==0||!optOut.fallbackVisible)failed=true;
   await reduced.close();
+}
+// Browsers with data saver/reduced-motion must not silently show a frozen
+// video: preserve the static globe and provide an explicit opt-in control.
+{
+  const dataSave=await browser.newPage({viewport:{width:390,height:844}});
+  await dataSave.addInitScript(()=>{
+    Object.defineProperty(navigator,'connection',{
+      configurable:true,get:()=>({saveData:true,effectiveType:'4g'})
+    });
+  });
+  await dataSave.goto(base,{waitUntil:'domcontentloaded'});
+  await dataSave.waitForFunction(()=>{
+    const inner=document.querySelector('#journey-front-frame')?.contentDocument;
+    return Boolean(inner?.querySelector('#video-retry')) && 
+      inner.querySelector('#video-retry').hidden===false;
+  });
+  const before=await dataSave.evaluate(()=>{
+    const inner=document.querySelector('#journey-front-frame').contentDocument;
+    const video=inner.querySelector('#bgv');
+    return {buttonVisible:!inner.querySelector('#video-retry').hidden,
+      sourceCount:video.querySelectorAll('source').length,
+      fallbackVisible:!inner.querySelector('.scene').classList.contains('vid')};
+  });
+  await dataSave.frameLocator('#journey-front-frame').locator('#video-retry').click();
+  await dataSave.waitForFunction(()=>{
+    const inner=document.querySelector('#journey-front-frame')?.contentDocument;
+    const v=inner?.querySelector('#bgv');
+    return v?.currentTime>.07 && !v.paused && inner.querySelector('.scene').classList.contains('vid');
+  },null,{timeout:12000}).catch(()=>{failed=true;});
+  const after=await dataSave.evaluate(()=>{
+    const inner=document.querySelector('#journey-front-frame').contentDocument;
+    const v=inner.querySelector('#bgv');
+    return {sourceCount:v.querySelectorAll('source').length,
+      time:v.currentTime,retryHidden:inner.querySelector('#video-retry').hidden,
+      hasVideo:inner.querySelector('.scene').classList.contains('vid')};
+  });
+  console.log('DATA_SAVER_VIDEO_RECOVERY='+JSON.stringify({before,after}));
+  if(!before.buttonVisible||before.sourceCount!==0||!before.fallbackVisible||
+    after.sourceCount!==2||!after.retryHidden||!after.hasVideo||after.time<=.07)failed=true;
+  await dataSave.close();
 }
 // Mobile regression: the video used to be disabled on 2-core devices and
 // networks classified 3g. The restored MP4 must autoplay muted when allowed;
