@@ -920,6 +920,12 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   if(url.pathname.startsWith('/api/guest/')){
     json(res,403,{code:'AUTH_REQUIRED_FOR_TRIAL'});return;
   }
+  // Everything below is a protected API endpoint. Unknown public paths are
+  // genuine 404s, not login-required responses (important for search crawlers).
+  if(!url.pathname.startsWith('/api/')){
+    res.setHeader('X-Robots-Tag','noindex, follow');
+    json(res,404,{code:'NOT_FOUND'});return;
+  }
   const auth = await authorized(req);
   if (!auth) { json(res, 401, { code: 'LOGIN_REQUIRED' }); return; }
   if (req.method === 'GET' && url.pathname === '/api/me') {
