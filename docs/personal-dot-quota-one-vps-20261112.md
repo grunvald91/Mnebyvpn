@@ -2,6 +2,10 @@
 
 **Status 2026-11-12: offline database and token tests PASS; no production DoT ingress / paid access enabled.**
 
+## Confirmed minimal launch choice
+
+No per-customer IPv6 addresses are planned for the initial release. Every customer receives an independent random 12-character DoT hostname (`xxxxxxxxxxxx.dns.mnebyvpn.site`) on a shared, already-managed IPv4 ingress. The hostname is the subscriber credential, not a dedicated IPv4/IPv6 allocation. Quota counts successfully settled premium DNS questions; it does not count HTTPS bytes.
+
 ## Contract
 
 - A customer receives a random **DoT hostname**, not an HTTPS URL: e.g. `k7m4p9x2c6qa.dns.mnebyvpn.site` (example only). The bearer label has **exactly 12 symbols** from `0-9a-z` (36^12 = 4,738,381,338,321,616,896 combinations, ~62 bits of online guessing space), and is sampled without modulo bias from a 128-bit CSPRNG. No user/device identifier is encoded. The 128-bit **random input** is not the 62-bit **output strength**.
