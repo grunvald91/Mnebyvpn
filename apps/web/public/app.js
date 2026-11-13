@@ -92,7 +92,10 @@ function renderPlan() {
   const plan = state.plans.find(p=>p.product===state.product && p.durationDays===state.days);
   text('selected-plan-name', plan?.title || productNames[state.product] + ' · ' + state.days + ' дней');
   text('selected-duration',state.days+' дней');
-  text('selected-quota',state.product==='vpn'?'1 устройство':plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
+  text('selected-quota',state.product==='vpn'?'1 устройство':
+    state.product==='smart_dns'&&state.personalDotCanaryEnabled?
+      'Учёт по DNS-запросам (не по трафику)':
+      plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
   text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):'—');
   byId('cancel-renewal-button').classList.toggle('hidden',!state.renewalTargetId);
   text('price-description',plan?(state.renewalTargetId?
@@ -227,24 +230,51 @@ function renderAccess(accesses) {
           : 'Срок начнётся после подтверждённой активации.';
     item.append(top,node('p','',accessDetail));
     if (a.product==='smart_dns') {
-      item.append(node('p','',a.quotaLimitBytes?
-        'Пакет DNS: '+fmtBytes(a.quotaLimitBytes):'DNS-квота пока не установлена'));
-      if (a.meteringVerified && a.quotaUsedBytes!==null && a.quotaRemainingBytes!==null) {
-        const used=safeBigInt(a.quotaUsedBytes),limit=safeBigInt(a.quotaLimitBytes);
-        const pct=(used!==null && limit!==null && limit>0n)?
-          Math.max(0,Math.min(100,Number(used*100n/limit))):0;
-        const box=node('div','usage');
-        const track=node('div','usage-track');
-        const fill=node('div','usage-fill');
-        fill.style.width=pct+'%';
-        track.append(fill);
-        const totals=node('div','usage-info');
-        totals.append(node('span','','Израсходовано: '+fmtBytes(a.quotaUsedBytes)),
-          node('span','','Осталось: '+fmtBytes(a.quotaRemainingBytes)));
-        box.append(track,totals);item.append(box);
-      } else {
-        item.append(node('div','usage-unavailable',
-          'Учёт расхода DNS пока не подтверждён. Использовано / осталось: нет достоверных данных.'));
+      if(state.personalDotCanaryEnabled){
+        // Personal DoT quotas count settled DNS queries, never traffic bytes.
+        // The endpoint verifies ownership and does not reveal the hostname.
+        const meter=node('div','usage-unavailable','Проверяем счётчик DNS-запросов…');
+        item.append(meter);
+        void api('/api/personal-dns/status?entitlementId='+encodeURIComponent(a.id))
+          .then(info=>{
+            if(!state.loggedIn||!item.isConnected)return;
+            const used=safeBigInt(info.used_queries);
+            const left=safeBigInt(info.remaining_queries);
+            const limit=safeBigInt(info.allowed_queries);
+            if(used===null||left===null||limit===null||
+               used<0n||left<0n||limit<=0n){
+              meter.textContent='Счётчик DNS-запросов пока недоступен.';
+              return;
+            }
+            const fmt=value=>value.toLocaleString('ru-RU');
+            meter.textContent='DNS-запросы за расчётный период: '+fmt(used)+
+              ' использовано · '+fmt(left)+' осталось из '+fmt(limit)+'.';
+          })
+          .catch(()=>{
+            if(state.loggedIn&&item.isConnected)
+              meter.textContent='Счётчик DNS-запросов пока недоступен.';
+          });
+      }else{
+        // Older DNS byte ledger remains separate from personalized DoT pilot.
+        item.append(node('p','',a.quotaLimitBytes?
+          'Пакет DNS: '+fmtBytes(a.quotaLimitBytes):'DNS-квота пока не установлена'));
+        if (a.meteringVerified && a.quotaUsedBytes!==null && a.quotaRemainingBytes!==null) {
+          const used=safeBigInt(a.quotaUsedBytes),limit=safeBigInt(a.quotaLimitBytes);
+          const pct=(used!==null && limit!==null && limit>0n)?
+            Math.max(0,Math.min(100,Number(used*100n/limit))):0;
+          const box=node('div','usage');
+          const track=node('div','usage-track');
+          const fill=node('div','usage-fill');
+          fill.style.width=pct+'%';
+          track.append(fill);
+          const totals=node('div','usage-info');
+          totals.append(node('span','','Израсходовано: '+fmtBytes(a.quotaUsedBytes)),
+            node('span','','Осталось: '+fmtBytes(a.quotaRemainingBytes)));
+          box.append(track,totals);item.append(box);
+        } else {
+          item.append(node('div','usage-unavailable',
+            'Учёт расхода DNS пока не подтверждён. Использовано / осталось: нет достоверных данных.'));
+        }
       }
     }
     if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
