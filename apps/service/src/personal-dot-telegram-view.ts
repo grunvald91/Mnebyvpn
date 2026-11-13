@@ -1,6 +1,6 @@
 /** Restricted Telegram Bot API views for paid per-subscriber DoT.
- * The caller authenticates the Telegram webhook and checks TWO explicit
- * rollout switches before invoking these. No invoices are sent here.
+ * The caller authenticates the Telegram webhook and uses the real
+ * independently verified public DoT activation flag. No invoices are sent here.
  */
 import type {Pool} from 'pg';
 import {issueTelegramPersonalDns,rotateTelegramPersonalDns,
@@ -23,10 +23,13 @@ const message=(text:string,actions:Button[][]):PersonalDnsBotMessage=>({
 const fmt=(value:string):string=>BigInt(value).toLocaleString('ru-RU');
 
 export async function personalDnsTelegramMenu(
-  db:Pool,telegramUserId:number,
+  db:Pool,telegramUserId:number,activeStarsPlanId:string|null=null,
 ):Promise<PersonalDnsBotMessage>{
   const status=await telegramPersonalDnsSummary(db,telegramUserId);
-  if(!status)return message('🧭 Мой DNS\n\nПерсональной подписки пока нет. Тариф — 200 ⭐ на 30 дней. Продажа откроется после проверки публичного DoT.',[]);
+  const buy:Button[][]=activeStarsPlanId?
+    [[{text:'⭐ Купить DNS · 30 дней · 200 Stars',
+      callback_data:'buy:stars:'+activeStarsPlanId}]]:[];
+  if(!status)return message('🧭 Персональный Smart DNS\n\n200 ⭐ за 30 дней. Отдельный адрес для каждого клиента. Без установки VPN-приложения.\n\nОплата через Telegram Stars.',buy);
   const active=status.state==='ACTIVE'&&status.expiresAt!==null&&
     status.expiresAt.getTime()>Date.now();
   const date=status.expiresAt
@@ -41,6 +44,7 @@ export async function personalDnsTelegramMenu(
   if(active&&status.credentialIssued&&status.credentialRevision!==null)
     buttons.push([{text:'🔄 Перегенерировать адрес',
       callback_data:'dns:rotate:confirm:'+status.credentialRevision}]);
+  if(!active&&activeStarsPlanId)buttons.push(...buy);
   buttons.push([{text:'🔁 Обновить',callback_data:'nav:dns'}]);
   return message('🧭 Мой DNS\n\n'+
     (active?'Подписка активна.':'Платные маршруты неактивны. Ранее выданный неотозванный адрес может работать только как обычный DNS.')+
