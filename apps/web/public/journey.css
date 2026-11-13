@@ -2034,3 +2034,51 @@ body.journey-active[data-journey-view="plans"] .footer-seller{display:none}
 /* Only the public landing and legal pages need the seller line.
    Keep the free-day sign-in as a compact single-screen flow. */
 body.journey-active[data-journey-view="trial-auth"] .footer-seller{display:none!important}
+
+/* One branded footer shared by trial sign-in and the illustrated storefront.
+   Six links occupy two intentional rows, followed by the same seller line. */
+body.journey-active[data-journey-view="trial-auth"] .footer{
+  border-top:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  margin-top:auto;
+}
+body.journey-active[data-journey-view="trial-auth"] .footer::before{
+  content:"";
+  position:absolute;
+  top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,#3a7cff 30%,#a64dff 70%,transparent);
+  opacity:.38;
+}
+body.journey-active[data-journey-view="trial-auth"] .footer-inner{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  width:min(480px,calc(100% - 24px));
+  padding:7px 0 9px;
+}
+body.journey-active[data-journey-view="trial-auth"] .footer-links{
+  display:grid;
+  grid-template-columns:repeat(3,max-content);
+  grid-template-rows:repeat(2,auto);
+  justify-content:center;justify-items:center;align-items:center;
+  gap:3px 12px;width:auto;max-width:100%;
+  margin:0;
+}
+body.journey-active[data-journey-view="trial-auth"] .footer-links a,
+body.journey-active[data-journey-view="trial-auth"] .footer-links button{
+  display:inline-flex;justify-content:center;align-items:center;
+  padding:0;min-height:0;margin:0;white-space:nowrap;
+  color:#cfd6f7;
+  font:italic 500 10px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;
+}
+body.journey-active[data-journey-view="trial-auth"] .footer-seller{
+  display:block!important;flex:none!important;
+  margin:5px 0 0!important;padding:0;
+  font:500 10px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;
+  color:#b2c8e3;white-space:normal;text-align:center;
+}
+@media(max-width:350px){
+  body.journey-active[data-journey-view="trial-auth"] .footer-links{gap:3px 9px}
+  body.journey-active[data-journey-view="trial-auth"] .footer-links a,
+  body.journey-active[data-journey-view="trial-auth"] .footer-links button,
+  body.journey-active[data-journey-view="trial-auth"] .footer-seller{font-size:9px}
+}
