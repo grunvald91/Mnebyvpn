@@ -165,7 +165,8 @@ test('original background videos are bundled and served only by the public web r
   assert.match(art,/\['\/bg3\.webm\?v=6e816d6e','video\/webm/);
   assert.match(art,/\['\/bg3\.mp4\?v=30d2f12d','video\/mp4/);
   assert.match(art,/connection\?\.saveData/);
-  assert.match(art,/if\(!scene\|\|!video\|\|R\|\|connection\?\.saveData/);
+  assert.match(art,/autoplayAllowed=!R&&!dataSaver/);
+  assert.match(art,/if\(!scene\|\|!video\|\|!retry\)return/);
   assert.doesNotMatch(art,/\/_blob\//);
   assert.match(server,/media-src 'self'/);
   assert.match(art,/class="legal-links"/);
@@ -238,7 +239,8 @@ test('storefront caches original 130KB Earth image separately and restores mobil
   assert.match(server,/url\.pathname === '\/landing-earth\.webp'/);
   assert.match(art,/id="bgv"[^>]*autoplay muted loop playsinline/);
   assert.match(art,/video\.addEventListener\('playing'/);
-  assert.match(art,/document\.addEventListener\('DOMContentLoaded',ensureSource/);
+  assert.match(art,/document\.addEventListener\('DOMContentLoaded',init/);
+  assert.match(art,/retry\.addEventListener\('click'/);
   assert.match(art,/type!=='visual'/);
   assert.doesNotMatch(art,/hardwareConcurrency/);
   assert.doesNotMatch(art,/effectiveType/);
