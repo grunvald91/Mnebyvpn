@@ -115,8 +115,15 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       })(),
       iframeHasEarth:Boolean(inner.querySelector('.kb')),
       lockTop:Math.round(inner.querySelector('.lock').getBoundingClientRect().top),
+      lockBottom:Math.round(inner.querySelector('.lock').getBoundingClientRect().bottom),
       lockWidth:Math.round(inner.querySelector('.lock').getBoundingClientRect().width),
       cardTop:Math.round(inner.querySelector('.card').getBoundingClientRect().top),
+      clearLockGap:Math.round(inner.querySelector('.card').getBoundingClientRect().top-
+        inner.querySelector('.lock').getBoundingClientRect().bottom),
+      sellerVisible:getComputedStyle(inner.querySelector('.seller-details')).display!=='none',
+      sellerText:inner.querySelector('.seller-details').textContent.trim(),
+      paymentNotesRemoved:!inner.querySelector('.note,.note2'),
+      paymentInfoVisible:inner.querySelector('#payment-info-open').getBoundingClientRect().width>=22,
       backdropFilter:getComputedStyle(inner.querySelector('.card')).backdropFilter,
       canvasPresent:Boolean(inner.querySelector('canvas')),
       introFilter:getComputedStyle(inner.querySelector('.card')).filter,
@@ -141,7 +148,9 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     JSON.stringify(metrics.dnsPrices)!==JSON.stringify(['120 ₽','199 ₽','379 ₽','549 ₽'])||
     !metrics.videoPresent||metrics.retryVisible||metrics.cardOpacity<0.99||
     metrics.backdropFilter!=='none'||metrics.canvasPresent||metrics.introFilter!=='none'||
-    (width<=390&&(metrics.lockWidth>52||metrics.cardTop>270))||
+    (width<=390&&(metrics.lockWidth>52||metrics.clearLockGap<9||metrics.cardTop>300))||
+    !metrics.paymentNotesRemoved||!metrics.paymentInfoVisible||!metrics.sellerVisible||
+    (width<=390&&metrics.height>=700&&metrics.outerScrollHeight>metrics.height+2)||
     !metrics.headerSingleRow||!metrics.headerNavGrouped||!metrics.topButtonsUnwrapped||!metrics.headerFits||
     !metrics.legalSingleRow||metrics.frontTop>12||
     (width<=390&&(metrics.iframeBottomGap>12||!metrics.fullFrameBackground||
@@ -166,6 +175,13 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     !infoContent.includes('домен')||!infoContent.includes('VPN'))failed=true;
   await page.frameLocator('#journey-front-frame').locator('#dns-info-close').click();
   if(await info.isVisible())failed=true;
+  // Payment fine print moved into an optional, accessible dialog.
+  await page.frameLocator('#journey-front-frame').locator('#payment-info-open').click();
+  const paymentInfo=page.frameLocator('#journey-front-frame').locator('#payment-info-dialog');
+  if(!await paymentInfo.isVisible()||
+     !(await paymentInfo.textContent()).includes('Без автосписаний'))failed=true;
+  await page.frameLocator('#journey-front-frame').locator('#payment-info-close').click();
+  if(await paymentInfo.isVisible())failed=true;
   // One VPN and one DNS may be selected at the same time. No iframe
   // reloads, fade-ins or route changes are allowed during tariff taps.
   await page.evaluate(()=>{
@@ -326,6 +342,13 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       documentHeight:document.documentElement.scrollHeight,
       noVerticalScroll:document.documentElement.scrollHeight<=innerHeight+2,
       footerInsideViewport:document.querySelector('.footer').getBoundingClientRect().bottom<=innerHeight+2,
+      footerSellerVisible:getComputedStyle(document.querySelector('.footer-seller')).display!=='none',
+      footerSellerText:document.querySelector('.footer-seller').textContent.trim(),
+      footerLinkRows:(()=>{
+        const a=[...document.querySelectorAll('.footer-links a,.footer-links button')];
+        return a.length===6 && a.slice(0,3).every(x=>Math.abs(x.getBoundingClientRect().top-a[0].getBoundingClientRect().top)<2) &&
+          a.slice(3).every(x=>Math.abs(x.getBoundingClientRect().top-a[3].getBoundingClientRect().top)<2);
+      })(),
       headerVisualMatch:(()=>{
         const front=document.querySelector('#journey-front-frame')?.contentDocument;
         const original=front?.querySelector('.top-links .pill');
@@ -361,6 +384,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
      trial.footer.height>130||trial.footer.innerHeight>129||!trial.footer.centered||
      trial.footer.links!==6||trial.footer.overflow||
      !trial.headerVisualMatch||!trial.footerInsideViewport||
+     !trial.footerSellerVisible||!trial.footerLinkRows||
+     trial.footerSellerText!==metrics.sellerText||
      (width<=390&&!trial.noVerticalScroll)||
      !trial.emailButton||Math.abs(trial.emailButton.centerDelta)>5||
      trial.emailButton.width<200||trial.emailButton.height>54||
