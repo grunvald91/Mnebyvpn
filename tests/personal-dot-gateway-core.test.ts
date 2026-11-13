@@ -57,6 +57,10 @@ test('upstream response must echo requested DNS name, class and type',()=>{
   const good=Buffer.from(a);
   good.writeUInt16BE(0x8180,2);
   assert.equal(dnsResponseMatchesQuestion(a,good),true);
+  const truncated=Buffer.from(good);
+  truncated.writeUInt16BE(0x8380,2); // QR + RD + RA + TC, otherwise valid.
+  assert.equal(dnsResponseMatchesQuestion(a,truncated),false,
+    'A truncated DNS response cannot be charged as a successful premium answer');
   const wrongName=Buffer.from(b);
   wrongName.writeUInt16BE(Buffer.from(a).readUInt16BE(0),0);
   wrongName.writeUInt16BE(0x8180,2);
