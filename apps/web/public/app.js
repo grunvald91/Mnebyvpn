@@ -538,7 +538,7 @@ async function claimTrial(){
     // Successful requests already have a persistent setup status. Avoid
     // covering "Я установил приложение" and the import action with a toast.
     if(!(['GRANTED','PENDING'].includes(response.status) &&
-      document.body.classList.contains('journey-active')))
+      document.body?.classList?.contains('journey-active')))
       toast(messages[response.status]||'Статус обновлён.');
     if(['GRANTED','PENDING','ALREADY_USED'].includes(response.status))consumeReferral();
     await refresh();
@@ -580,7 +580,7 @@ function renderVpnSetup(data){
   byId('guest-subscription-url').value=url;
   // The compact journey wizard owns scroll position. Scrolling to the
   // hidden legacy card here pushed the import CTA away on mobile.
-  if(!document.body.classList.contains('journey-active'))
+  if(!document.body?.classList?.contains('journey-active'))
     card.scrollIntoView({behavior:'smooth',block:'center'});
 }
 async function loadSubscription(entitlementId){
