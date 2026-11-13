@@ -119,8 +119,9 @@ async function main():Promise<void>{
  const entitlement=env('MNEBYDNS_SMOKE_ENTITLEMENT_ID');
  const oldLabel='abcdefghijkl',newLabel='bcdefghijklm';
  const mappedIp=env('MNEBYDNS_CANARY_EXPECTED_MAPPED_IPV4');
- if(!/^(?:\\d{1,3}\\.){3}\\d{1,3}$/.test(mappedIp) ||
-    mappedIp.split('.').some(part=>Number(part)>255))
+ const parts=mappedIp.split('.');
+ if(parts.length!==4||parts.some(part=>
+    !/^[0-9]{1,3}$/.test(part)||Number(part)>255))
    throw Error('Invalid expected canary mapped IPv4');
  const results:number[]=[];
  try{
