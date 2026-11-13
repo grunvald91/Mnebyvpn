@@ -28,8 +28,8 @@ import {makePersonalStarsLinkPayload,parsePersonalStarsLinkPayload} from '../../
 import {dnsAdminOwner,dnsAdminIntro,dnsAdminPrompt,dnsAdminSearchPrompt,dnsAdminSearch,dnsAdminAction,dnsAdminAdd,DNS_ADMIN_PROMPT,DNS_ADMIN_SEARCH_PROMPT}
   from './dns-admin.ts';
 import {effectiveAccessState,formatRemainingTime,formatRemainingQuota} from '../../../packages/telegram-ui/src/access-format.ts';
-import {issueTelegramPersonalDns,rotateTelegramPersonalDns,telegramPersonalDnsSummary}
-  from '../../../packages/dns-policy/src/personal-dot-telegram.ts';
+import {personalDnsTelegramMenu,personalDnsTelegramAction}
+  from './personal-dot-telegram-view.ts';
 
 const digest=process.env.TELEGRAM_WEBHOOK_SECRET_SHA256??'';
 if(!/^[a-f0-9]{64}$/.test(digest))
@@ -495,6 +495,8 @@ async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
   if(data==='nav:vpn'||data==='info:vpn'||data==='nav:plans:vpn'||
     data==='nav:catalog'||data==='nav:plans')return vpnPlans();
   if(data==='nav:status'||data==='nav:renew'||data==='nav:manage')return packages(id);
+  if((data==='nav:dns'||data==='info:dns')&&personalDnsReady&&pool)
+    return personalDnsTelegramMenu(pool,id);
   if(data==='nav:trial'||data==='trial:vpn')return trial(id);
   if(data==='nav:connect')return pool?await activationView(pool,id)??dbUnavailable():dbUnavailable();
   if(data==='nav:manual')return pool?manualView(pool,id):dbUnavailable();
@@ -774,6 +776,14 @@ async function processUpdate(update:any){
     if(['nav:vpn','info:vpn','nav:plans:vpn','nav:catalog','nav:plans'].includes(action))
       return await vpnBubble(actor.id);
     if(action==='nav:vpn:list')return oneAction(actor,await vpnPlans());
+    if(action==='dns:issue'||/^dns:rotate:(confirm|execute):[1-9][0-9]{0,12}$/.test(action)){
+      // Never issue without both an audited public DoT ingress and an
+      // independently enabled bot feature flag. Existing billing is untouched.
+      if(!personalDnsReady||!pool)return oneAction(actor,info('nav:dns',actor.id));
+      const view=await personalDnsTelegramAction(pool,actor.id,action);
+      // First-issued hostname must not be lost by editing an old widget.
+      return {method:'sendMessage',chat_id:actor.id,...view};
+    }
     if(/^buy:stars:[a-z0-9][a-z0-9_-]{0,52}$/.test(action))
       return issueStars(actor.id,action.slice('buy:stars:'.length),update.update_id);
     return oneAction(actor,await render(actor.id,action));
