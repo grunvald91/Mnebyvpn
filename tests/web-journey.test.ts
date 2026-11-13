@@ -38,6 +38,24 @@ test('trial screen groups header controls, compacts footer, and keeps VPN instal
   assert.match(index,/id="journey-installed"/);
   assert.match(journey,/el\('journey-installed'\)\.addEventListener/);
 });
+test('free trial chooser replaces the existing strip without changing page height',()=>{
+  const art=file('apps/web/public/landing-art.html');
+  assert.match(art,/class="trial-slot" id="trial-slot"/);
+  assert.match(art,/class="trial-options" id="trial-options"/);
+  assert.match(art,/class="trial-close" id="trial-close"/);
+  assert.match(art,/\.trial-slot \.trial-options\{/);
+  assert.match(art,/position:absolute;inset:0;z-index:3/);
+  assert.match(art,/setTrialChooser\(trialOptions\.hidden\)/);
+  assert.doesNotMatch(art,/trialOptions\.hidden=!trialOptions\.hidden/);
+});
+test('trial authorization matches main header and does not reserve room for disabled Telegram',()=>{
+  assert.match(css,/data-journey-view="trial-auth"\] \.header\{/);
+  assert.match(css,/border:0!important/);
+  assert.match(css,/data-journey-view="trial-auth"\] \.header-inner\{/);
+  assert.match(css,/data-journey-view="trial-auth"\] \.journey-trial-auth\{/);
+  assert.match(journey,/method\.hidden=!enabled/);
+  assert.match(journey,/pointer:coarse/);
+});
 test('setup has all platform choices, installation gate and manual copy',()=>{
   for(const os of ['android','ios','windows','macos','linux'])
     assert.match(index,new RegExp('data-journey-platform="'+os+'"'));

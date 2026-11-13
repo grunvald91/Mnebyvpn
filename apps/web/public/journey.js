@@ -172,6 +172,10 @@
       else telegram.removeAttribute('href');
       telegram.setAttribute('aria-disabled',String(!enabled));
       telegram.classList.toggle('journey-option-disabled',!enabled);
+      // An unavailable secondary login must not consume an entire mobile
+      // screen. Only show the Telegram method when its login is enabled.
+      const method=telegram.closest?.('.journey-telegram-method');
+      if(method)method.hidden=!enabled;
     }
   }
   function mountTrialEmail(){
@@ -483,7 +487,10 @@
       saveSelection();
       try{sessionStorage.setItem('mnebyvpn-pending-trial','1');}catch{}
       setView('trial-auth',true);
-      if(state.emailLoginEnabled)el('email-input')?.focus();
+      // Do not summon the mobile keyboard before the visitor requests it:
+      // the reduced visual viewport would immediately force scrolling.
+      if(state.emailLoginEnabled&&!window.matchMedia?.('(pointer:coarse)').matches)
+        el('email-input')?.focus();
       return;
     }
     const result=await claimTrial();

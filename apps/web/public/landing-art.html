@@ -323,6 +323,46 @@ footer nav a{padding:0 11px;white-space:nowrap}
 .bgv{transition:opacity .35s ease}
 .vid .fg{transition:opacity .35s ease;visibility:hidden}
 @media(prefers-reduced-motion:reduce){.scene::after{animation:none}}
+
+/* In-place 24h choice: pressing Try never adds another row below the card.
+   The existing trial strip owns the height in both states. */
+.trial-slot{position:relative;isolation:isolate;margin-top:9px;min-width:0}
+.trial-slot .free{margin:0;min-height:42px;display:flex;align-items:center}
+.trial-slot.is-choosing .free{visibility:hidden}
+.trial-slot .trial-options[hidden]{display:none!important}
+.trial-slot .trial-options{
+  position:absolute;inset:0;z-index:3;
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 27px;
+  align-items:stretch;gap:5px;margin:0;padding:0;
+  min-height:0;background:transparent;
+}
+.trial-slot .trial-choice{
+  min-height:0;height:100%;padding:3px;
+  border-radius:12px;font-size:12px;line-height:1.05;
+  background:linear-gradient(110deg,rgba(10,53,96,.97),rgba(39,25,99,.97));
+}
+.trial-slot .trial-choice small{font-size:9px;line-height:1.1}
+.trial-slot .trial-close{
+  display:grid;place-items:center;min-height:0;border-radius:11px;
+  border:1px solid rgba(111,175,251,.4);
+  background:rgba(12,24,60,.95);font-size:22px;color:#cfe9ff;
+}
+.trial-slot .trial-dns-status{
+  position:absolute;left:0;right:0;bottom:calc(100% + 5px);z-index:2;
+  display:flex;align-items:center;justify-content:center;
+  padding:7px 9px;margin:0;border-radius:12px;
+  background:#0c1b46;border:1px solid rgba(72,197,253,.68);
+  box-shadow:0 5px 20px rgba(0,0,18,.4);
+  font:500 10px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;
+  text-align:center;color:#d6ecff;pointer-events:none;
+}
+.trial-slot .trial-close{z-index:4}
+.trial-slot .trial-dns-status[hidden]{display:none!important}
+@media(max-width:360px){
+  .trial-slot .trial-options{gap:4px;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 24px}
+  .trial-slot .trial-choice{font-size:11px}
+  .trial-slot .trial-dns-status{font-size:9px}
+}
 </style>
 </head>
 <body>
@@ -396,15 +436,18 @@ footer nav a{padding:0 11px;white-space:nowrap}
     <button class="cta" type="button" disabled>Загрузка тарифов…</button><p class="front-error" id="front-error" role="alert" aria-live="assertive" hidden></p><a class="front-retry" id="front-retry" href="/" target="_top" hidden>Не удалось получить тарифы. Обновить страницу</a>
     <p class="note">Без автосписаний. Защищённая оплата.<br>Заранее напомним, когда срок будет заканчиваться.</p>
     <p class="note2">Напоминания в Telegram доступны после привязки бота.</p>
-    <div class="free">
-      <svg viewBox="0 0 26 34"><path d="M16 0 2 19h9l-3 15L24 13h-9z" fill="#19e6ff"/></svg>
-      <b>Бесплатные 24 часа</b>
-      <button class="try" type="button" disabled>Попробовать</button>
-    </div>
-    <div class="trial-options" id="trial-options" role="group" aria-label="Выберите пробный продукт" hidden>
-      <button type="button" class="trial-choice" id="trial-vpn">VPN <small>Получить 24 часа</small></button>
-      <button type="button" class="trial-choice" id="trial-dns">Smart DNS <small>Индивидуальная ссылка — скоро</small></button>
-      <p class="trial-dns-status" id="trial-dns-status" hidden>Выдача индивидуальной ссылки Smart DNS ещё разрабатывается. Пробный VPN доступен отдельно.</p>
+    <div class="trial-slot" id="trial-slot">
+      <div class="free">
+        <svg viewBox="0 0 26 34" aria-hidden="true"><path d="M16 0 2 19h9l-3 15L24 13h-9z" fill="#19e6ff"/></svg>
+        <b>Бесплатные 24 часа</b>
+        <button class="try" type="button" disabled aria-expanded="false" aria-controls="trial-options">Попробовать</button>
+      </div>
+      <div class="trial-options" id="trial-options" role="group" aria-label="Выберите пробный продукт" hidden>
+        <button type="button" class="trial-choice" id="trial-vpn">VPN <small>24 часа</small></button>
+        <button type="button" class="trial-choice" id="trial-dns">Smart DNS <small>Скоро</small></button>
+        <button type="button" class="trial-close" id="trial-close" aria-label="Закрыть выбор пробного доступа">×</button>
+        <p class="trial-dns-status" id="trial-dns-status" role="status" hidden>Выдача индивидуальной ссылки Smart DNS ещё разрабатывается. Пробный VPN доступен отдельно.</p>
+      </div>
     </div>
   </main>
 
@@ -505,6 +548,16 @@ const cta=$('.cta');
   const infoButton=document.getElementById('dns-info-open');
   const infoDialog=document.getElementById('dns-info-dialog');
   const trialOptions=document.getElementById('trial-options');
+  const trialSlot=document.getElementById('trial-slot');
+  const trialClose=document.getElementById('trial-close');
+  const setTrialChooser=(open)=>{
+    trialOptions.hidden=!open;
+    trialSlot.classList.toggle('is-choosing',open);
+    trial.setAttribute('aria-expanded',String(open));
+    trialDnsStatus.hidden=true;
+    if(open)trialVpn.focus();
+    else if(trialSlot.contains(document.activeElement))trial.focus();
+  };
   const trialDnsStatus=document.getElementById('trial-dns-status');
   const trialVpn=document.getElementById('trial-vpn');
   const trialDns=document.getElementById('trial-dns');
@@ -610,20 +663,21 @@ const cta=$('.cta');
     // Never include DNS in a purchase unless the backend supports its own plan.
     if(vpnSelected&&!button.disabled)send('buy');
   });
-  trial.addEventListener('click',()=>{
-    trialOptions.hidden=!trialOptions.hidden;
-    trialDnsStatus.hidden=true;
-    resize();
+  trial.addEventListener('click',()=>setTrialChooser(trialOptions.hidden));
+  trialClose.addEventListener('click',()=>setTrialChooser(false));
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&!trialOptions.hidden){
+      event.preventDefault();
+      setTrialChooser(false);
+    }
   });
   trialVpn.addEventListener('click',()=>{
     if(trialVpn.disabled)return;
-    trialOptions.hidden=true;
-    resize();
+    setTrialChooser(false);
     send('trial');
   });
   trialDns.addEventListener('click',()=>{
     trialDnsStatus.hidden=false; // Individual DNS trial URL is not ready.
-    resize();
   });
   infoButton.addEventListener('click',()=>{
     if(typeof infoDialog.showModal==='function')infoDialog.showModal();
