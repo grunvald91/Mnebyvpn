@@ -82,6 +82,14 @@ test('trial footer includes all landing links and seller details',()=>{
   }
   assert.match(css,/data-journey-view="trial-auth"\] \.footer-seller\{/);
 });
+test('trial back arrow is an SVG centered within a centered control',()=>{
+  const html=file('apps/web/public/index.html');
+  const css=file('apps/web/public/journey.css');
+  assert.match(html,/<span class="journey-back-icon"[^>]*><svg viewBox="0 0 20 20"/);
+  assert.match(css,/journey-back-icon svg\{/);
+  assert.match(css,/width:max-content;max-width:100%/);
+  assert.match(css,/margin:6px auto 0/);
+});
 test('setup has all platform choices, installation gate and manual copy',()=>{
   for(const os of ['android','ios','windows','macos','linux'])
     assert.match(index,new RegExp('data-journey-platform="'+os+'"'));
@@ -222,7 +230,10 @@ test('foreground taps avoid continuous expensive canvas, gyroscope and SVG DOM l
   assert.doesNotMatch(art,/setInterval\(\(\)=>\{\s*const a=N/);
   assert.match(art,/backdrop-filter:none!important/);
   assert.match(art,/touch-action:manipulation/);
-  assert.match(art,/Сервисы с настроенной маршрутизацией Smart DNS:/);
+  assert.match(art,/class="dns-popover-tags"/);
+  assert.match(art,/role="dialog" aria-modal="false" aria-labelledby="dns-modal-title" hidden/);
+  assert.match(art,/id="dns-info-open"[^>]*aria-expanded="false"/);
+  assert.doesNotMatch(art,/<dialog class="dns-dialog" id="dns-info-dialog"/);
   assert.doesNotMatch(art,/Сервисы, для которых планируется и проверяется поддержка/);
 });
 
