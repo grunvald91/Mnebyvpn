@@ -109,6 +109,27 @@ BEGIN
     WHERE id=e2;
   SELECT consume_personal_dns_query(label2) INTO result;
   IF result<>'DENY_INACTIVE' THEN RAISE EXCEPTION 'expired still counted: %',result; END IF;
+  -- Even months after expiry, a still-issued Private DNS hostname must
+  -- resolve ordinary sites; premium usage stays denied.
+  UPDATE entitlements SET
+    starts_at=clock_timestamp()-interval '160 days',
+    expires_at=clock_timestamp()-interval '100 days'
+    WHERE id=e2;
+  IF NOT recognize_personal_dns_credential(label2) THEN
+    RAISE EXCEPTION 'expired personal hostname lost direct-only DNS'; END IF;
+  SELECT reserve_personal_dns_query(label2,gen_random_uuid()) INTO result;
+  IF result<>'DENY_INACTIVE' THEN
+    RAISE EXCEPTION 'expired user obtained premium mapping: %',result; END IF;
+  UPDATE entitlements SET state='CANCELLED' WHERE id=e2;
+  IF recognize_personal_dns_credential(label2) THEN
+    RAISE EXCEPTION 'cancelled DNS credential still works'; END IF;
+  UPDATE entitlements SET state='REFUNDED' WHERE id=e2;
+  IF recognize_personal_dns_credential(label2) THEN
+    RAISE EXCEPTION 'refunded DNS credential still works'; END IF;
+  UPDATE entitlements SET state='EXPIRED' WHERE id=e2;
+  PERFORM revoke_personal_dns_credential(e2);
+  IF recognize_personal_dns_credential(label2) THEN
+    RAISE EXCEPTION 'revoked expired DNS credential still works'; END IF;
   SELECT consume_personal_dns_query(repeat('d',12)) INTO result;
   IF result<>'DENY_UNKNOWN' THEN RAISE EXCEPTION 'unknown label accepted: %',result; END IF;
   SELECT consume_personal_dns_query('bad_token') INTO result;
