@@ -2030,3 +2030,7 @@ body.journey-active .footer-seller{
   white-space:nowrap;margin-top:4px;
 }
 body.journey-active[data-journey-view="plans"] .footer-seller{display:none}
+
+/* Only the public landing and legal pages need the seller line.
+   Keep the free-day sign-in as a compact single-screen flow. */
+body.journey-active[data-journey-view="trial-auth"] .footer-seller{display:none!important}
