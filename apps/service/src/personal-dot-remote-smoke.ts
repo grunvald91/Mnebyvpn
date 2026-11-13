@@ -118,7 +118,11 @@ async function main():Promise<void>{
  const owner=env('MNEBYDNS_SMOKE_ACCOUNT_ID');
  const entitlement=env('MNEBYDNS_SMOKE_ENTITLEMENT_ID');
  const oldLabel='abcdefghijkl',newLabel='bcdefghijklm';
- const mappedIp=env('MNEBYDNS_CANARY_EXPECTED_MAPPED_IPV4');
+ // In the disposable RU→DE smoke the existing foreign DoT endpoint is
+ // also the explicitly verified mapped A target. Keep the optional stricter
+ // override for deployments whose premium A differs from the upstream IP.
+ const mappedIp=process.env.MNEBYDNS_CANARY_EXPECTED_MAPPED_IPV4
+   ||env('MNEBYDNS_CANARY_MAPPED_DOT_IP');
  const parts=mappedIp.split('.');
  if(parts.length!==4||parts.some(part=>
     !/^[0-9]{1,3}$/.test(part)||Number(part)>255))
