@@ -2361,3 +2361,124 @@ body.journey-active .journey-setup #journey-installed[aria-pressed="true"]{
   background:linear-gradient(120deg,rgba(16,89,129,.76),rgba(44,37,115,.84));
   color:#e9fcff;
 }
+
+/* Unified geometry for every native screen (2026-11-13).
+   The illustrated storefront in #plans retains its lock/hero layout.
+   Short native screens center in the space between header and legal footer;
+   tall forms grow naturally and put the footer after their content. */
+body.journey-active:not([data-journey-view="plans"]){
+  display:flex!important;
+  flex-direction:column!important;
+  min-height:100vh!important;
+  min-height:100dvh!important;
+  height:auto!important;
+}
+body.journey-active:not([data-journey-view="plans"]) > .header{
+  flex:0 0 auto!important;
+  width:100%;
+}
+body.journey-active:not([data-journey-view="plans"]) > main{
+  display:flex!important;
+  flex:1 0 auto!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  justify-content:safe center!important;
+  width:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  padding:clamp(6px,1.5dvh,18px) 0!important;
+  margin:0!important;
+}
+body.journey-active:not([data-journey-view="plans"]) > .footer{
+  flex:0 0 auto!important;
+  width:100%;
+  margin-top:auto!important;
+}
+body.journey-active:not([data-journey-view="plans"]) > main > .journey-setup,
+body.journey-active:not([data-journey-view="plans"]) > main > .journey-order,
+body.journey-active:not([data-journey-view="plans"]) > main > .journey-payment-intro,
+body.journey-active:not([data-journey-view="plans"]) > main > .journey-trial-auth,
+body.journey-active:not([data-journey-view="plans"]) > main > .account-section{
+  flex:0 0 auto;
+  align-self:center;
+  margin:0 auto!important;
+}
+body.journey-active[data-journey-view="checkout"] > main > .journey-order{
+  padding:clamp(7px,1.5dvh,14px) 0!important;
+  width:min(540px,calc(100% - 24px));
+}
+body.journey-active[data-journey-view="setup"] > main > .journey-setup{
+  padding:clamp(6px,1.3dvh,13px) 0!important;
+}
+body.journey-active[data-journey-view="payment"] > main > .journey-payment-intro{
+  padding:clamp(6px,1.3dvh,14px) 0!important;
+}
+body.journey-active[data-journey-view="trial-auth"] > main > .journey-trial-auth{
+  padding:clamp(5px,1.3dvh,12px) 0!important;
+}
+body.journey-active[data-journey-view="account"] > main > .account-section{
+  width:min(480px,calc(100% - 24px))!important;
+  padding:clamp(7px,1.5dvh,17px) 0!important;
+}
+body.journey-active[data-journey-view="account"] .account-panel{
+  width:100%;
+  margin-inline:auto;
+}
+/* Support: balanced equal columns on larger screens, one centered
+   full-width column when narrow; never squeeze fields to one side. */
+body.journey-active[data-journey-view="support"] > main > .contact-support{
+  display:grid!important;
+  flex:0 0 auto;
+  align-self:center;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:center;
+  gap:clamp(12px,3vw,28px);
+  width:min(780px,calc(100% - 28px))!important;
+  max-width:780px!important;
+  margin:0 auto!important;
+  padding:clamp(15px,2.5vw,24px)!important;
+}
+body.journey-active[data-journey-view="support"] .contact-support > div,
+body.journey-active[data-journey-view="support"] .contact-support-form{
+  min-width:0;
+  width:100%;
+}
+body.journey-active[data-journey-view="support"] .contact-support-form input,
+body.journey-active[data-journey-view="support"] .contact-support-form textarea,
+body.journey-active[data-journey-view="support"] .contact-support-form button{
+  width:100%;
+  max-width:100%;
+}
+body.journey-active[data-journey-view="account"] .metric-cards{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  width:100%;
+}
+body.journey-active[data-journey-view="account"] .metric-card{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+@media(max-width:680px){
+  body.journey-active[data-journey-view="support"] > main > .contact-support{
+    grid-template-columns:minmax(0,1fr)!important;
+    width:min(440px,calc(100% - 24px))!important;
+    padding:clamp(11px,3.5vw,16px)!important;
+    gap:9px!important;
+  }
+  body.journey-active[data-journey-view="support"] .contact-support h2{
+    font-size:clamp(19px,5.4vw,23px);
+    margin-bottom:6px;
+  }
+  body.journey-active[data-journey-view="support"] .contact-support p{
+    margin-bottom:7px;
+  }
+  body.journey-active[data-journey-view="support"] .contact-support-form{
+    margin-top:2px;
+    gap:6px;
+  }
+}
+@media(max-width:350px){
+  body.journey-active[data-journey-view="account"] .metric-cards{gap:7px}
+  body.journey-active[data-journey-view="account"] .metric-card{padding:8px}
+}

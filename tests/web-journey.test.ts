@@ -118,6 +118,24 @@ test('mobile native header stays branded and toast stays clear of install contro
   assert.match(css,/body\.journey-active:not\(\[data-journey-view="plans"\]\) #toast:not\(\.hidden\)/);
   assert.match(file('apps/web/public/app.js'),/if\(!document\.body\?\.classList\?\.contains\('journey-active'\)\)/);
 });
+test('native routes share bottom-anchored footer and centered content without forced clipping',()=>{
+  const html=file('apps/web/public/index.html');
+  const css=file('apps/web/public/journey.css');
+  assert.match(html,/href="\/#plans" class="brand" aria-label="MNEBYVPN — на главную к тарифам"/);
+  assert.match(css,/\/\* Unified geometry for every native screen/);
+  assert.match(css,/min-height:100dvh!important/);
+  assert.match(css,/justify-content:safe center!important/);
+  assert.match(css,/body\.journey-active:not\(\[data-journey-view="plans"\]\) > \.footer\{/);
+  assert.match(css,/margin-top:auto!important/);
+  for(const cls of ['journey-setup','journey-order','journey-payment-intro','journey-trial-auth','account-section'])
+    assert.match(css,new RegExp('> main > \\.'+cls));
+  assert.match(css,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(css,/grid-template-columns:minmax\(0,1fr\)!important/);
+  const visual=file('tests/visual-journey-preview.mjs');
+  assert.match(visual,/async function auditNativeGeometry\(/);
+  assert.match(visual,/NATIVE_LAYOUT_/);
+  assert.match(visual,/\[\[320,700\],\[390,1000\],\[1280,800\]\]/);
+});
 test('setup has all platform choices, installation gate and manual copy',()=>{
   for(const os of ['android','ios','windows','macos','linux'])
     assert.match(index,new RegExp('data-journey-platform="'+os+'"'));

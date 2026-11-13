@@ -55,6 +55,53 @@ const { chromium }=await import(process.env.VISUAL_PLAYWRIGHT_PACKAGE||'playwrig
 const browser=await chromium.launch({headless:true,args:['--no-sandbox'],
   ...(process.env.VISUAL_CHROME_PATH?{executablePath:process.env.VISUAL_CHROME_PATH}:{})});
 let failed=false;
+/* Verify the actual vertical geometry instead of inferring it from a JPG:
+   - footer at document bottom, or viewport bottom for short screens;
+   - single blocks centered in the available main area;
+   - no sideways clipping, logo always links to /#plans;
+   - content-heavy screens may scroll, without clipping the legal footer. */
+async function auditNativeGeometry(page,selector,label){
+  const geometry=await page.evaluate(selector=>{
+    const main=document.querySelector('body>main');
+    const header=document.querySelector('body>header');
+    const footer=document.querySelector('body>footer');
+    const block=document.querySelector(selector);
+    const logo=document.querySelector('header .brand');
+    if(!main||!header||!footer||!block)return {error:'missing layout element',selector};
+    const m=main.getBoundingClientRect(),b=block.getBoundingClientRect(),
+      h=header.getBoundingClientRect(),f=footer.getBoundingClientRect();
+    const docHeight=document.documentElement.scrollHeight;
+    const fits=docHeight<=innerHeight+2;
+    const centerDelta=Math.round((b.top+b.bottom-m.top-m.bottom)/2);
+    const horizontallyCentered=Math.round((b.left+b.right)/2-innerWidth/2);
+    const supportCols=selector==='.contact-support'
+      ?getComputedStyle(block).gridTemplateColumns.split(' ').filter(Boolean).length:null;
+    return {
+      view:document.body.dataset.journeyView,
+      viewportWidth:innerWidth,viewportHeight:innerHeight,
+      docHeight,fits,headerHeight:Math.round(h.height),
+      footerDocGap:Math.round(docHeight-f.bottom),
+      footerViewportGap:Math.round(innerHeight-f.bottom),
+      mainHeight:Math.round(m.height),blockHeight:Math.round(b.height),
+      centerDelta,horizontallyCentered,
+      hasHorizontalOverflow:document.documentElement.scrollWidth>innerWidth+2,
+      logoHref:logo?.getAttribute('href'),supportCols,
+      headerBeforeMain:h.bottom<=m.top+2,
+      footerAfterMain:f.top>=m.bottom-2,
+    };
+  },selector);
+  console.log('NATIVE_LAYOUT_'+label+'='+JSON.stringify(geometry));
+  const tooLarge=geometry.blockHeight>geometry.mainHeight+2;
+  if(geometry.error||geometry.hasHorizontalOverflow||
+    geometry.logoHref!=='/#plans'||!geometry.headerBeforeMain||
+    !geometry.footerAfterMain||Math.abs(geometry.horizontallyCentered)>3||
+    Math.abs(geometry.footerDocGap)>3||
+    (geometry.fits&&Math.abs(geometry.footerViewportGap)>3)||
+    (!tooLarge&&Math.abs(geometry.centerDelta)>12)||
+    (selector==='.contact-support'&&geometry.supportCols!==(geometry.viewportWidth<=680?1:2)))
+    failed=true;
+  return geometry;
+}
 for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[390,1000],[1440,900]]){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
   const browserErrors=[];
@@ -462,6 +509,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     };
   });
   const authImage=process.env.RUNNER_TEMP+'/mnebyvpn-trial-auth-'+width+'x'+height+'.jpg';
+  await auditNativeGeometry(page,'.journey-trial-auth','trial_'+width+'x'+height);
   await page.screenshot({path:authImage,type:'jpeg',quality:72,fullPage:true,timeout:20000});
   if(width===390&&height===844)
     copyFileSync(authImage,process.env.RUNNER_TEMP+'/mnebyvpn-audit-05-trial-email-390x844.jpg');
@@ -784,6 +832,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     screenHasProviderBrand:document.querySelector('.journey-order')?.textContent?.includes('Prodamus'),
     hasHorizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
   }));
+  await auditNativeGeometry(page,'.journey-order','checkout_390x844');
   const image=process.env.RUNNER_TEMP+'/mnebyvpn-branded-order-390x844.jpg';
   await page.screenshot({path:image,type:'jpeg',quality:75,fullPage:true});
   copyFileSync(image,process.env.RUNNER_TEMP+'/mnebyvpn-audit-08-checkout-390x844.jpg');
@@ -889,6 +938,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   }));
   await page.locator('#journey-platform-change').click();
   await page.locator('[data-journey-platform="android"]').click();
+  await auditNativeGeometry(page,'.journey-setup','setup_install_390x844');
   await page.screenshot({
     path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-10-setup-install-390x844.jpg',
     type:'jpeg',quality:82,fullPage:true
@@ -903,6 +953,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     viewportHeight:innerHeight,
     toastHidden:document.querySelector('#toast')?.classList.contains('hidden')
   }));
+  await auditNativeGeometry(page,'.journey-setup','setup_import_390x844');
   const setupImportImage=process.env.RUNNER_TEMP+'/mnebyvpn-audit-11-setup-import-390x844.jpg';
   await page.screenshot({path:setupImportImage,type:'jpeg',quality:82,fullPage:true});
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
@@ -935,6 +986,8 @@ for(const scenario of [
   page.on('pageerror',e=>pageErrors.push(String(e.message).slice(0,220)));
   await page.goto(base+scenario.url.slice(1),{waitUntil:'networkidle'});
   await page.waitForFunction(()=>document.body.classList.contains('journey-active'),null,{timeout:10000});
+  const selectors={support:'.contact-support',payment:'.journey-payment-intro',account:'.account-section'};
+  await auditNativeGeometry(page,selectors[scenario.expected],scenario.expected+'_390x844');
   const result=await page.evaluate(()=>({
     route:location.hash,view:document.body.dataset.journeyView,
     bodyHeight:document.documentElement.scrollHeight,viewportHeight:innerHeight,
@@ -1012,6 +1065,28 @@ for(const scenario of [
   }
   await page.close();
 }
+// Small, tall and desktop sizes must have the same structural invariants.
+// In particular: no footer hovering midway up a tall phone and no form stuck
+// to the top of the otherwise empty viewport.
+for(const [width,height] of [[320,700],[390,1000],[1280,800]]){
+  for(const [route,view,selector] of [
+    ['/#contact-support','support','.contact-support'],
+    ['/?payment=returned','payment','.journey-payment-intro'],
+    ['/#account','account','.account-section']
+  ]){
+    const page=await browser.newPage({viewport:{width,height}});
+    await page.goto(base+route.slice(1),{waitUntil:'domcontentloaded'});
+    await page.waitForFunction(expected=>document.body.dataset.journeyView===expected,view);
+    const metrics=await auditNativeGeometry(page,selector,view+'_'+width+'x'+height);
+    if(width===390&&height===1000){
+      const filename=process.env.RUNNER_TEMP+'/mnebyvpn-audit-'+
+        ({support:'16',payment:'17',account:'18'}[view])+'-'+view+'-390x1000.jpg';
+      await page.screenshot({path:filename,type:'jpeg',quality:80,fullPage:true});
+    }
+    if(metrics.view!==view)failed=true;
+    await page.close();
+  }
+}
 // Parent "About" dialog is a separate interactive screen.
 {
   const page=await browser.newPage({viewport:{width:390,height:844}});
@@ -1032,7 +1107,9 @@ const auditLabels={
   '07':'Личный кабинет','08':'Подтверждение заказа',
   '09':'Подключение / ожидание','10':'Подключение / установка клиента',
   '11':'Подключение / автоимпорт','12':'Поддержка','13':'Проверка оплаты',
-  '14':'Кабинет без авторизации','15':'О проекте'
+  '14':'Кабинет без авторизации','15':'О проекте',
+  '16':'Поддержка · высокий экран','17':'Проверка оплаты · высокий экран',
+  '18':'Кабинет · высокий экран'
 };
 const figures=auditFiles.map(name=>{
   const code=name.match(/^mnebyvpn-audit-(\d+)/)?.[1]||'';
