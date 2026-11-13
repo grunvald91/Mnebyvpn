@@ -21,8 +21,9 @@ export function requiresNoindex(path: string): boolean {
 
 export function renderRobots(origin: string): string {
   const site = new URL(origin);
-  if(site.origin !== origin || site.protocol !== 'https:')
-    throw new Error('SEO requires a canonical HTTPS origin');
+  if(site.origin !== origin || (site.protocol !== 'https:' &&
+    !(site.protocol === 'http:' && ['localhost','127.0.0.1'].includes(site.hostname))))
+    throw new Error('SEO requires HTTPS except for local offline tests');
   return [
     'User-agent: *',
     'Disallow: /api/',
@@ -38,8 +39,9 @@ export function renderRobots(origin: string): string {
 
 export function renderSitemap(origin: string): string {
   const site = new URL(origin);
-  if(site.origin !== origin || site.protocol !== 'https:')
-    throw new Error('SEO requires a canonical HTTPS origin');
+  if(site.origin !== origin || (site.protocol !== 'https:' &&
+    !(site.protocol === 'http:' && ['localhost','127.0.0.1'].includes(site.hostname))))
+    throw new Error('SEO requires HTTPS except for local offline tests');
   const urls = PUBLIC_SEO_PATHS.map(path=>
     '  <url><loc>' + origin + path + '</loc></url>'
   ).join('\n');
