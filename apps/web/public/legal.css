@@ -1,0 +1,22 @@
+/* Lightweight brand treatment for static legal pages; no heavyweight video or filter layer. */
+html{color-scheme:dark}
+body{min-height:100vh;background:radial-gradient(ellipse 95% 50% at 50% -12%,#17245b 0%,#080d2c 56%,#040719 100%);color:#ecf8ff}
+.legal-shell{width:min(100% - 24px,790px);margin:0 auto;padding:24px 0 30px}
+.legal-panel{padding:clamp(19px,4vw,34px);border-radius:23px;border:1px solid rgba(65,202,253,.63);
+background:linear-gradient(134deg,rgba(9,29,73,.95),rgba(15,18,59,.96) 55%,rgba(38,19,69,.95));
+box-shadow:0 0 22px rgba(51,181,236,.1);max-width:none}
+.legal-panel h1{font:italic 850 clamp(25px,5vw,35px)/1.14 Inter,system-ui,sans-serif;letter-spacing:-.035em;color:#fff;margin:5px 0 16px}
+.legal-panel h2{font:italic 780 clamp(16px,3vw,20px)/1.3 Inter,system-ui,sans-serif;color:#b5efff;margin:22px 0 7px}
+.legal-panel p{font:400 14px/1.62 Inter,system-ui,sans-serif;color:#c9d9f0;margin:9px 0 13px}
+.legal-panel strong{color:#e3fbff}
+.legal-panel a{color:#80e9ff;text-decoration:underline;text-underline-offset:3px}
+.legal-kicker{font-style:italic!important;font-weight:800!important;font-size:11px!important;letter-spacing:.1em;color:#67deff!important}
+.legal-back{font-style:italic!important;border-radius:99px!important;font-weight:760!important;font-size:12px!important}
+.legal-panel .legal-updated{font-size:11px;color:#8ea7cb;margin-top:24px}
+.legal-doc-nav,.legal-footer nav{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:9px 17px}
+.legal-doc-nav{border-top:1px solid rgba(110,181,239,.23);padding-top:14px;margin-top:18px}
+.legal-doc-nav a{font:italic 720 12px/1.3 Inter,system-ui,sans-serif}
+.legal-footer{width:min(calc(100% - 24px),790px);margin:0 auto;padding:15px 0;text-align:center}
+.legal-footer nav a{font:italic 700 12px/1.3 Inter,system-ui,sans-serif;color:#c8e7ff}
+.legal-footer p{font:500 11px/1.35 Inter,system-ui,sans-serif;color:#b7cae5;margin:10px 0 0}
+@media(max-width:420px){.legal-shell{padding:11px 0 17px}.legal-panel p{font-size:13px}.legal-panel h2{margin-top:17px}.legal-footer nav{gap:7px 10px}.legal-footer nav a{font-size:11px}}

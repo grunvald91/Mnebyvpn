@@ -181,6 +181,8 @@ const bg3Webm = await readFile(new URL('../public/bg3.webm', import.meta.url));
 const bg3Mp4 = await readFile(new URL('../public/bg3.mp4', import.meta.url));
 const termsHtml = await readFile(new URL('../public/terms.html',import.meta.url));
 const privacyHtml = await readFile(new URL('../public/privacy.html',import.meta.url));
+const agreementHtml = await readFile(new URL('../public/agreement.html',import.meta.url));
+const legalCss = await readFile(new URL('../public/legal.css',import.meta.url));
 const css = await readFile(new URL('../public/site.css', import.meta.url));
 const neoCss = await readFile(new URL('../public/neo.css', import.meta.url));
 const brandAvatar = await readFile(new URL('../public/brand-avatar.webp', import.meta.url));
@@ -614,6 +616,12 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === 'GET' && (url.pathname === '/privacy' || url.pathname === '/privacy.html')) {
     send(res,200,privacyHtml,'text/html; charset=utf-8');return;
+  }
+  if (req.method === 'GET' && (url.pathname === '/agreement' || url.pathname === '/agreement.html')) {
+    send(res,200,agreementHtml,'text/html; charset=utf-8');return;
+  }
+  if (req.method === 'GET' && url.pathname === '/legal.css') {
+    send(res,200,legalCss,'text/css; charset=utf-8');return;
   }
   if (req.method === 'GET' && url.pathname === '/site.css') {
     send(res, 200, css, 'text/css; charset=utf-8'); return;

@@ -27,8 +27,8 @@ test('each accessible tab controls exactly one labeled panel',()=>{
 test('privacy copy does not make unverified no-logs or universal-access guarantees',()=>{
   assert.match(index,/не заявляем о подтверждённой политике/);
   assert.match(index,/не обещаем абсолютную анонимность/i);
-  assert.match(privacy,/состав собираемых сетевых метаданных/);
-  assert.match(privacy,/не заявляет проверенную политику/);
+  assert.match(privacy,/сведения об обработке|технически обрабатываются/i);
+  assert.doesNotMatch(privacy,/без журналов|no-logs|аудит|проверенную политику/i);
   assert.match(index,/пока дни или деньги за приглашение не начисляются/);
 });
 test('about script is actually served by website under same-origin CSP',()=>{
