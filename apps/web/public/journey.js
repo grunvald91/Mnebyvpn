@@ -317,6 +317,11 @@
     }catch{return false;}
   }
   function updateSetup(){
+    // Keep explicit user confirmation: device detection alone never enables
+    // automatic import, even after returning from the app store.
+    const installButton=el('journey-installed');
+    installButton.setAttribute('aria-pressed',String(installed));
+    installButton.textContent=installed?'✓ Приложение установлено':'Я установил приложение';
     const value=state.loggedIn?state.guestSubscriptionUrl:null;
     const valid=typeof value==='string'&&safeSubscriptionUrl(value);
     el('journey-setup-controls').hidden=!valid;
