@@ -55,9 +55,9 @@ const pool=process.env.DATABASE_URL ? new Pool({
   max:3,connectionTimeoutMillis:3000,idleTimeoutMillis:12000,
 }) : null;
 const store=pool?new PgBillingStore(pool):null;
-// Production stays fail-closed until a real public DoT ingress is verified.
-const personalDnsReady=process.env.MNEBYDNS_PERSONAL_DOT_PUBLIC_VERIFIED==='yes' &&
-  process.env.MNEBYDNS_PERSONAL_DOT_BOT_ENABLED==='yes';
+// One release switch: enable only after external strict DoT/853 verification.
+// Authorization and paid entitlement validation remain mandatory separately.
+const personalDnsReady=process.env.MNEBYDNS_PERSONAL_DOT_ENABLED==='yes';
 const support=supportConfig();
 const dnsAdminId=dnsAdminOwner();
 const bridgeSecret=process.env.SUPPORT_BRIDGE_SECRET??'';
@@ -79,7 +79,7 @@ const msg=(text:string,keyboard:Button[][])=>{
   return {text,reply_markup:{inline_keyboard:keyboard}};
 };
 const main=(id:number)=>msg(
-  '🌐 MNEBYVPN\n\nМы только начинаем. Наша цель — простое подключение, понятное управление и оперативная помощь без технической путаницы. Со временем хотим объединить больше возможностей в одном сервисе.\n\nСейчас развиваем VPN. Smart DNS — в разработке.\n\n🎁 Пробные 24 часа зависят от готовности выдачи VPN; отсчёт начинается после активации.\n\n💙 Поддержите проект: расскажите о нём друзьям. Выберите действие ниже.',
+  '🌐 MNEBYVPN\n\nМы только начинаем. Наша цель — простое подключение, понятное управление и оперативная помощь без технической путаницы. Со временем хотим объединить больше возможностей в одном сервисе.\n\nVPN и персональный Smart DNS. Выберите подключение ниже.\n\n🎁 Пробные 24 часа зависят от готовности выдачи VPN; отсчёт начинается после активации.\n\n💙 Поддержите проект: расскажите о нём друзьям. Выберите действие ниже.',
   [
     [{text:'🌐 VPN и тарифы',callback_data:'nav:vpn'}],
     [{text:'🎁 Бесплатные 24 часа',callback_data:'nav:trial'}],
@@ -87,7 +87,7 @@ const main=(id:number)=>msg(
      {text:'🔌 Подключить',callback_data:'nav:connect'}],
     [{text:'🔁 Продление',callback_data:'nav:renew'},
      {text:'💙 Поддержать проект',callback_data:'nav:share'}],
-    [{text:'🧭 Smart DNS — в разработке',callback_data:'nav:dns'}],
+    [{text:'🧭 Smart DNS · 200 ⭐',callback_data:'nav:dns'}],
     [{text:'❔ Помощь',callback_data:'nav:help'}],
     ...(id===dnsAdminId ? [[{text:'🛠 Управление Smart DNS',callback_data:'dnsadmin:menu'}]] : []),
     [{text:support?.operatorId===id?'📥 Входящие заявки':'✉️ Поддержка',
@@ -340,7 +340,10 @@ async function widgetStarsInvoice(id:number,key:string,queryId:string):Promise<s
 async function issueStars(id:number,planId:string,updateId:number){
   if(!store)throw new Error('DB unavailable');
   const plan=await store.plan(planId);
-  if(!plan||plan.product!=='vpn'||plan.stars===null)
+  if(!plan||plan.stars===null||
+     (plan.product!=='vpn'&&
+       !(plan.product==='smart_dns'&&personalDnsReady&&
+         plan.durationSeconds===30*86400&&plan.stars===200)))
     throw new Error('PLAN_NOT_OFFERED');
   const order=await store.createTelegramOrder(id,planId,'cabinet-stars:'+updateId);
   const invoice=buildStarsInvoice(starsOrderFromDB(order),
@@ -427,8 +430,12 @@ async function receiveStars(update:any){
     });
     if(status==='APPLIED')
       return {method:'sendMessage',chat_id:m.from.id,
-        text:'✅ Оплата Stars подтверждена. Заказ записан, проверяем выдачу VPN. Статус — в «Мои подключения».',
-        reply_markup:{inline_keyboard:[[{text:'🔐 Мои подключения',callback_data:'nav:status'}]]}};
+        text:record?.product==='smart_dns'
+          ?'✅ Оплата 200 ⭐ подтверждена. Создаём персональный DNS-адрес. Откройте «Мой DNS», когда статус станет активным.'
+          :'✅ Оплата Stars подтверждена. Заказ записан, проверяем выдачу VPN. Статус — в «Мои подключения».',
+        reply_markup:{inline_keyboard:[[{text:'🔐 Мои подключения',callback_data:'nav:status'}],
+          ...(record?.product==='smart_dns'?
+            [[{text:'🧭 Мой DNS',callback_data:'nav:dns'}]]:[]) ]}};
     if(status==='DUPLICATE_EVENT'||status==='DUPLICATE_CAPTURE')return null;
     throw new Error('Stars settlement rejected: '+status);
   }
@@ -495,8 +502,12 @@ async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
   if(data==='nav:vpn'||data==='info:vpn'||data==='nav:plans:vpn'||
     data==='nav:catalog'||data==='nav:plans')return vpnPlans();
   if(data==='nav:status'||data==='nav:renew'||data==='nav:manage')return packages(id);
-  if((data==='nav:dns'||data==='info:dns')&&personalDnsReady&&pool)
-    return personalDnsTelegramMenu(pool,id);
+  if((data==='nav:dns'||data==='info:dns')&&personalDnsReady&&pool){
+    const plans=store?await store.plans('telegram_stars'):[];
+    const offer=plans.find(p=>p.product==='smart_dns'&&
+      p.durationSeconds===30*86400&&p.stars===200);
+    return personalDnsTelegramMenu(pool,id,offer?.planId??null);
+  }
   if(data==='nav:trial'||data==='trial:vpn')return trial(id);
   if(data==='nav:connect')return pool?await activationView(pool,id)??dbUnavailable():dbUnavailable();
   if(data==='nav:manual')return pool?manualView(pool,id):dbUnavailable();
@@ -777,8 +788,8 @@ async function processUpdate(update:any){
       return await vpnBubble(actor.id);
     if(action==='nav:vpn:list')return oneAction(actor,await vpnPlans());
     if(action==='dns:issue'||/^dns:rotate:(confirm|execute):[1-9][0-9]{0,12}$/.test(action)){
-      // Never issue without both an audited public DoT ingress and an
-      // independently enabled bot feature flag. Existing billing is untouched.
+      // Do not issue without an actually enabled public DoT listener.
+      // SQL owner verification and entitlement status are independent checks.
       if(!personalDnsReady||!pool)return oneAction(actor,info('nav:dns',actor.id));
       const view=await personalDnsTelegramAction(pool,actor.id,action);
       // First-issued hostname must not be lost by editing an old widget.
