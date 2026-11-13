@@ -28,6 +28,8 @@ import {makePersonalStarsLinkPayload,parsePersonalStarsLinkPayload} from '../../
 import {dnsAdminOwner,dnsAdminIntro,dnsAdminPrompt,dnsAdminSearchPrompt,dnsAdminSearch,dnsAdminAction,dnsAdminAdd,DNS_ADMIN_PROMPT,DNS_ADMIN_SEARCH_PROMPT}
   from './dns-admin.ts';
 import {effectiveAccessState,formatRemainingTime,formatRemainingQuota} from '../../../packages/telegram-ui/src/access-format.ts';
+import {issueTelegramPersonalDns,rotateTelegramPersonalDns,telegramPersonalDnsSummary}
+  from '../../../packages/dns-policy/src/personal-dot-telegram.ts';
 
 const digest=process.env.TELEGRAM_WEBHOOK_SECRET_SHA256??'';
 if(!/^[a-f0-9]{64}$/.test(digest))
@@ -53,6 +55,9 @@ const pool=process.env.DATABASE_URL ? new Pool({
   max:3,connectionTimeoutMillis:3000,idleTimeoutMillis:12000,
 }) : null;
 const store=pool?new PgBillingStore(pool):null;
+// Production stays fail-closed until a real public DoT ingress is verified.
+const personalDnsReady=process.env.MNEBYDNS_PERSONAL_DOT_PUBLIC_VERIFIED==='yes' &&
+  process.env.MNEBYDNS_PERSONAL_DOT_BOT_ENABLED==='yes';
 const support=supportConfig();
 const dnsAdminId=dnsAdminOwner();
 const bridgeSecret=process.env.SUPPORT_BRIDGE_SECRET??'';
@@ -159,7 +164,8 @@ async function packages(id:number){
     const expiry=expiresAt?' · '+(effective==='EXPIRED'?'Истёк ':'До ')+
       expiresAt.toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'';
     const remaining=effective==='EXPIRED'?null:formatRemainingTime(expiresAt);
-    const quota=formatRemainingQuota(row.quotaLimitBytes,row.quotaUsedBytes);
+    const quota=personalDnsReady&&row.product==='smart_dns'?null:
+      formatRemainingQuota(row.quotaLimitBytes,row.quotaUsedBytes);
     return (index+1)+'. '+label(row.product)+' — '+state+expiry+
       (remaining?' · '+remaining:'')+(quota?'\n'+quota:'');
   });
@@ -470,7 +476,7 @@ async function trial(id:number){
 }
 function info(data:string,id:number){
   if(data==='nav:dns'||data==='info:dns')
-    return msg('🧭 Smart DNS\n\nВ разработке. Планируется отдельная квота трафика, которую можно использовать на нескольких устройствах.\n\nПока доступен раздел VPN.',
+    return msg('🧭 Smart DNS\n\nТариф подготовлен: 200 ⭐ за 30 дней. Для каждого клиента — свой DNS-адрес. Учитываются DNS-запросы, а не гигабайты трафика. До проверки публичного DNS оплата закрыта.\n\nПока доступен раздел VPN.',
       [[{text:'🌐 VPN',callback_data:'nav:vpn'}],[homeButton]]);
   if(data==='nav:share')
     return msg('💙 Поддержать проект\n\nМы только в начале пути. Если вам нравится идея простого VPN, поделитесь ссылкой на бота. Это помогает развитию проекта и не требует оплаты.',
