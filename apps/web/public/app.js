@@ -454,7 +454,7 @@ function applyLinkOptions() {
   // The dedicated payment screen already shows this message; do not
   // cover its primary action with a duplicate fixed toast.
   if(url.searchParams.get('payment')==='returned' &&
-      !document.body.classList.contains('journey-active'))
+      !document.getElementById('journey-payment-intro'))
     toast('Проверяем подтверждение оплаты. Возврат на сайт ещё не означает, что платёж получен.');
 }
 async function purchase() {
