@@ -369,6 +369,17 @@ footer .legal-links{display:flex;flex-wrap:nowrap;justify-content:center;align-i
 footer .legal-links a{padding:0;border:0;font:italic 700 clamp(9px,2.7vw,11px)/1.15 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
 footer .seller-details{margin:6px 0 0;color:#b2c8e3;font:500 clamp(9px,2.6vw,10.5px)/1.2 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
 @media(max-width:350px){footer .legal-links{gap:7px}footer .seller-details{font-size:9px}}
+
+/* Short mobile viewports: seller details and three legal links remain visible
+   without forcing a scroll below the main tariff actions. */
+@media(max-width:420px) and (max-height:740px){
+  .hero{min-height:clamp(140px,20svh,160px)!important}
+  .card{margin-top:-8px!important;margin-bottom:6px!important}
+  .top{height:52px}
+  footer{padding:5px 7px!important;margin-top:5px!important}
+  footer .legal-links{margin-top:5px!important;gap:8px}
+  footer .seller-details{margin-top:4px!important}
+}
 </style>
 </head>
 <body>
