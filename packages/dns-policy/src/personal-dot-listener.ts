@@ -5,6 +5,7 @@
 import {X509Certificate,createHash} from 'node:crypto';
 import {connect as connectTcp} from 'node:net';
 import {createServer as createTlsServer,type Server as TlsServer} from 'node:tls';
+import type {Writable} from 'node:stream';
 import type {Pool} from 'pg';
 import {
   resolvePersonalDnsWithSettlement,dnsResponseMatchesQuestion,
@@ -21,6 +22,46 @@ const MAX_AUTH_CACHE=4096;
 const AUTH_OUTAGE_GRACE_MS=90000;
 const LABEL_RATE_PER_SEC=30;
 const LABEL_BURST=60;
+const MAX_TLS_BUFFERED=MAX_BUFFER;
+const TLS_DRAIN_TIMEOUT_MS=3000;
+
+/** A false write() return means backpressure, not a failed write.
+ * The frame has already been queued by Node. Resume once 'drain' fires.
+ * Keep time and buffered-byte bounds so stalled clients cannot consume
+ * unbounded memory. The caller owns closing the socket on failure.
+ */
+export function writeDnsFrameWithBackpressure(
+  writable:Pick<Writable,'write'|'writableLength'|'writable'|'destroyed'|'once'|'off'>,
+  frame:Buffer,
+  timeoutMs=TLS_DRAIN_TIMEOUT_MS,
+):Promise<boolean>{
+  if(!writable.writable||writable.destroyed||
+     frame.length<2||frame.length>MAX_DNS+2||
+     writable.writableLength+frame.length>MAX_TLS_BUFFERED)
+    return Promise.resolve(false);
+  let written:boolean;
+  try{written=writable.write(frame);}catch{return Promise.resolve(false);}
+  if(written)return Promise.resolve(true);
+  return new Promise(resolve=>{
+    let finished=false;
+    const finish=(ok:boolean)=>{
+      if(finished)return;
+      finished=true;
+      clearTimeout(timer);
+      writable.off('drain',onDrain);
+      writable.off('close',onClosed);
+      writable.off('error',onClosed);
+      resolve(ok&&!writable.destroyed&&writable.writable);
+    };
+    const onDrain=()=>finish(true);
+    const onClosed=()=>finish(false);
+    const timer=setTimeout(()=>finish(false),timeoutMs);
+    writable.once('drain',onDrain);
+    writable.once('close',onClosed);
+    writable.once('error',onClosed);
+    if(writable.destroyed||!writable.writable)finish(false);
+  });
+}
 
 type Upstream={host:'127.0.0.1'|'::1';port:number};
 function validPort(value:number):boolean{
@@ -216,9 +257,10 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
           const framed=Buffer.alloc(output.length+2);
           framed.writeUInt16BE(output.length,0);
           output.copy(framed,2);
-          // Bound the session: kill a slow client rather than buffering
-          // unbounded queued replies in Node's TLS writable stream.
-          if(!socket.write(framed)){stop();return;}
+          // A false write() result is backpressure, not delivery failure.
+          // Bound buffer size and wait for drain; a genuinely stalled client
+          // is still disconnected after a short deadline.
+          if(!await writeDnsFrameWithBackpressure(socket,framed)){stop();return;}
         }
       }catch{stop();}
       finally{busy=false;}
