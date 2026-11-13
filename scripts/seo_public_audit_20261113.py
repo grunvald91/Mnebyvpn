@@ -52,6 +52,7 @@ for path in ROUTES:
         r=exc
     except Exception as exc:
         print("PATH="+path+" transport="+type(exc).__name__,flush=True)
+        failures.append(path+": network error")
         continue
     with r:
         body=r.read(700000).decode("utf-8",errors="replace")
