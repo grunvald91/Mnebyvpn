@@ -2352,3 +2352,12 @@ body.journey-active:not([data-journey-view="plans"]) #toast:not(.hidden){
   text-align:center;font-size:10px;line-height:1.35;
   pointer-events:none;
 }
+
+/* Native setup already exposes a server-backed status above its actions;
+   the legacy guest card duplicates that status and pushes import below fold. */
+body.journey-active .journey-setup #guest-trial-card{display:none!important}
+body.journey-active .journey-setup #journey-installed[aria-pressed="true"]{
+  border-color:rgba(95,225,255,.75);
+  background:linear-gradient(120deg,rgba(16,89,129,.76),rgba(44,37,115,.84));
+  color:#e9fcff;
+}
