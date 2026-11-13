@@ -865,9 +865,30 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.waitForFunction(()=>!document.querySelector('#journey-setup-controls').hidden);
   const setupBefore=await page.evaluate(()=>({
     installedButton:document.querySelector('#journey-installed')?.textContent,
+    installPressed:document.querySelector('#journey-installed')?.getAttribute('aria-pressed'),
     importHidden:document.querySelector('#journey-import-step')?.hidden,
-    downloadVisible:document.querySelector('#journey-download')?.getBoundingClientRect().height>0
+    downloadVisible:document.querySelector('#journey-download')?.getBoundingClientRect().height>0,
+    selectedPlatform:document.querySelector('#journey-platform-name')?.textContent,
+    alternateHidden:document.querySelector('#journey-platform-grid')?.hidden,
+    toastHidden:document.querySelector('#toast')?.classList.contains('hidden'),
+    viewportHeight:innerHeight,
+    documentHeight:document.documentElement.scrollHeight
   }));
+  await page.locator('#journey-platform-change').click();
+  const alternateOpen=await page.evaluate(()=>({
+    open:document.querySelector('#journey-platform-grid')?.hidden===false,
+    expanded:document.querySelector('#journey-platform-change')?.getAttribute('aria-expanded')
+  }));
+  await page.locator('[data-journey-platform="ios"]').click();
+  const changedPlatform=await page.evaluate(()=>({
+    platform:document.querySelector('#journey-platform-name')?.textContent,
+    download:document.querySelector('#journey-download')?.textContent,
+    alternateHidden:document.querySelector('#journey-platform-grid')?.hidden,
+    importHidden:document.querySelector('#journey-import-step')?.hidden,
+    pressed:document.querySelector('#journey-installed')?.getAttribute('aria-pressed')
+  }));
+  await page.locator('#journey-platform-change').click();
+  await page.locator('[data-journey-platform="android"]').click();
   await page.screenshot({
     path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-10-setup-install-390x844.jpg',
     type:'jpeg',quality:82,fullPage:true
@@ -875,7 +896,12 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.locator('#journey-installed').click();
   const setupAfter=await page.evaluate(()=>({
     importVisible:!document.querySelector('#journey-import-step')?.hidden,
-    autoVisible:document.querySelector('#journey-auto')?.getBoundingClientRect().height>0
+    autoVisible:document.querySelector('#journey-auto')?.getBoundingClientRect().height>0,
+    installConfirmed:document.querySelector('#journey-installed')?.getAttribute('aria-pressed'),
+    installText:document.querySelector('#journey-installed')?.textContent,
+    documentHeight:document.documentElement.scrollHeight,
+    viewportHeight:innerHeight,
+    toastHidden:document.querySelector('#toast')?.classList.contains('hidden')
   }));
   const setupImportImage=process.env.RUNNER_TEMP+'/mnebyvpn-audit-11-setup-import-390x844.jpg';
   await page.screenshot({path:setupImportImage,type:'jpeg',quality:82,fullPage:true});
@@ -884,10 +910,17 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     console.log(readFileSync(setupImportImage).toString('base64'));
     console.log('AUDIT_SETUP_IMPORT_JPEG_END');
   }
-  console.log('AUDIT_INSTALL_GATE='+JSON.stringify({setupBefore,setupAfter,synthetic:true}));
+  console.log('AUDIT_INSTALL_GATE='+JSON.stringify({setupBefore,alternateOpen,changedPlatform,setupAfter,synthetic:true}));
   if(!setupBefore.installedButton?.includes('Я установил')||
-    !setupBefore.importHidden||!setupBefore.downloadVisible||
-    !setupAfter.importVisible||!setupAfter.autoVisible)failed=true;
+    setupBefore.installPressed!=='false'||!setupBefore.importHidden||
+    !setupBefore.downloadVisible||setupBefore.selectedPlatform!=='Android'||
+    !setupBefore.alternateHidden||!setupBefore.toastHidden||
+    !alternateOpen.open||alternateOpen.expanded!=='true'||
+    changedPlatform.platform!=='iPhone'||!changedPlatform.download.includes('Karing')||
+    !changedPlatform.alternateHidden||!changedPlatform.importHidden||changedPlatform.pressed!=='false'||
+    !setupAfter.importVisible||!setupAfter.autoVisible||
+    setupAfter.installConfirmed!=='true'||!setupAfter.installText.includes('установлено')||
+    !setupAfter.toastHidden)failed=true;
   await page.close();
 }
 // Cross-screen visual review. Each image is created from the actual site
@@ -906,6 +939,34 @@ for(const scenario of [
     route:location.hash,view:document.body.dataset.journeyView,
     bodyHeight:document.documentElement.scrollHeight,viewportHeight:innerHeight,
     overflowX:document.documentElement.scrollWidth>innerWidth+2,
+    header:(()=>{
+      const brand=document.querySelector('.header .brand-text');
+      const avatar=document.querySelector('.header .brand-avatar');
+      const action=document.querySelector('.header-actions .about-trigger');
+      const next=document.querySelector('.header-actions .journey-header-account');
+      const br=brand?.getBoundingClientRect(),ar=action?.getBoundingClientRect(),
+        nr=next?.getBoundingClientRect();
+      return {
+        nameVisible:!!brand&&getComputedStyle(brand).display!=='none'&&br.width>0,
+        logoVisible:!!avatar&&avatar.getBoundingClientRect().width>=27,
+        sameRow:!!ar&&!!nr&&Math.abs(ar.top-nr.top)<2,
+        compact:document.querySelector('.header')?.getBoundingClientRect().height<=50,
+        allInside:br?.left>=0&&nr?.right<=innerWidth+1,
+      };
+    })(),
+    payment:(()=>{
+      if(document.body.dataset.journeyView!=='payment')return null;
+      const account=document.querySelector('.account-section');
+      const button=document.querySelector('#journey-payment-to-account');
+      return {
+        accountHidden:getComputedStyle(account).display==='none',
+        loginNotDuplicated:!account.getBoundingClientRect().height,
+        buttonText:button.textContent.trim(),
+        buttonVisible:button.getBoundingClientRect().height>=35,
+        statusVisible:document.querySelector('#journey-payment-info').getBoundingClientRect().height>0,
+        noExtraScroll:document.documentElement.scrollHeight<=innerHeight+2,
+      };
+    })(),
     footer:(()=>{
       const links=[...document.querySelectorAll('.footer-links a,.footer-links button')];
       const rects=links.map(el=>el.getBoundingClientRect());
@@ -932,7 +993,23 @@ for(const scenario of [
   }
   console.log('AUDIT_SCREEN_'+scenario.name+'='+JSON.stringify({...result,pageErrors}));
   if(result.overflowX||pageErrors.length||result.view!==scenario.expected||
-    !result.footer.allVisible||!result.footer.rows||!result.footer.sellerCentered)failed=true;
+    !result.header.nameVisible||!result.header.logoVisible||
+    !result.header.sameRow||!result.header.compact||!result.header.allInside||
+    !result.footer.allVisible||!result.footer.rows||!result.footer.sellerCentered||
+    (scenario.expected==='payment'&&(!result.payment?.accountHidden||
+      !result.payment.loginNotDuplicated||!result.payment.buttonVisible||
+      !result.payment.buttonText.includes('Войти')||
+      !result.payment.statusVisible||!result.payment.noExtraScroll)))failed=true;
+  if(scenario.expected==='payment'){
+    await page.locator('#journey-payment-to-account').click();
+    const afterClick=await page.evaluate(()=>({
+      view:document.body.dataset.journeyView,
+      accountVisible:getComputedStyle(document.querySelector('.account-section')).display!=='none',
+      emailVisible:document.querySelector('#email-auth-panel')?.getBoundingClientRect().height>0,
+    }));
+    console.log('PAYMENT_AUTH_EXPLICIT_CLICK='+JSON.stringify(afterClick));
+    if(afterClick.view!=='account'||!afterClick.accountVisible||!afterClick.emailVisible)failed=true;
+  }
   await page.close();
 }
 // Parent "About" dialog is a separate interactive screen.
