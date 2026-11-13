@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {privateBindIp,runPersonalDotProduction}
+import {privateBindIp,runPersonalDotProduction,personalDotPort}
   from '../apps/service/src/personal-dot-production.ts';
 
 test('production personal DNS can only bind loopback or RFC1918 private IPv4',()=>{
@@ -25,4 +25,13 @@ test('no opt-in switch means no gateway sockets, no DB and no accidental product
     if(oldFlag===undefined)delete process.env.MNEBYDNS_PERSONAL_DOT_ENABLED;
     else process.env.MNEBYDNS_PERSONAL_DOT_ENABLED=oldFlag;
   }
+});
+
+test('public gateway binds unprivileged port while standard DoT upstream permits 853',()=>{
+  assert.equal(personalDotPort(8853),8853);
+  assert.throws(()=>personalDotPort(853),/Unsafe personal DoT port/);
+  assert.equal(personalDotPort(853,1),853);
+  assert.equal(personalDotPort(443,1),443);
+  assert.throws(()=>personalDotPort(0,1),/Unsafe personal DoT port/);
+  assert.throws(()=>personalDotPort(65536,1),/Unsafe personal DoT port/);
 });

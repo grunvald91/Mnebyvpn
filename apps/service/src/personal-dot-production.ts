@@ -30,16 +30,24 @@ export function privateBindIp(host:string):boolean{
     (p[0]===172&&p[1]>=16&&p[1]<=31)||
     (p[0]===192&&p[1]===168);
 }
-function port(name:string,fallback:number):number{
-  const value=process.env[name]===undefined?fallback:Number(process.env[name]);
-  if(!Number.isSafeInteger(value)||value<1024||value>65535)
-    throw Error('Unsafe personal DoT port '+name);
+/** Listener sockets must stay unprivileged, but verified upstream DoT uses
+ * the IANA-standard port 853. Confusing them prevents the gateway boot.
+ */
+export function personalDotPort(value:number,minPort=1024):number{
+  if(!Number.isSafeInteger(value)||value<minPort||value>65535)
+    throw Error('Unsafe personal DoT port');
   return value;
+}
+function port(name:string,fallback:number,minPort=1024):number{
+  const value=process.env[name]===undefined?fallback:Number(process.env[name]);
+  try{return personalDotPort(value,minPort);}catch{
+    throw Error('Unsafe personal DoT port '+name);
+  }
 }
 function tlsUpstream(prefix:'MAPPED'|'DIRECT'):VerifiedDotUpstream{
   const address=required('MNEBYDNS_PERSONAL_'+prefix+'_DOT_IP');
   const servername=required('MNEBYDNS_PERSONAL_'+prefix+'_DOT_NAME');
-  const portNumber=port('MNEBYDNS_PERSONAL_'+prefix+'_DOT_PORT',853);
+  const portNumber=port('MNEBYDNS_PERSONAL_'+prefix+'_DOT_PORT',853,1);
   if(isIP(address)!==4 || !/^[a-z0-9.-]{3,253}$/.test(servername))
     throw Error('Invalid verified personal upstream');
   return {address,servername,port:portNumber};
