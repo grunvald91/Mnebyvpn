@@ -81,7 +81,9 @@ test('expiry is direct-only; refund revokes even ordinary DNS',async()=>{
   assert.equal(fresh.kind,'rotated');
   if(fresh.kind!=='rotated')return;
   const label=fresh.hostname.split('.')[0];
-  await db.query(`UPDATE entitlements SET state='EXPIRED',expires_at=clock_timestamp()-interval '100 days'
+  await db.query(`UPDATE entitlements SET state='EXPIRED',
+    starts_at=clock_timestamp()-interval '160 days',
+    expires_at=clock_timestamp()-interval '100 days'
     WHERE id=$1`,[entitlement]);
   assert.equal((await db.query('SELECT recognize_personal_dns_credential($1) AS ok',
     [label])).rows[0].ok,true);
