@@ -60,10 +60,19 @@ test('illustrated storefront keeps lock clear and payment fine print in a dialog
   const art=file('apps/web/public/landing-art.html');
   assert.match(art,/id="payment-info-open"/);
   assert.match(art,/id="payment-info-dialog"/);
-  assert.match(art,/\.hero\{min-height:clamp\(167px,calc\(63vw - 35px\),270px\)!important\}/);
+  assert.match(art,/\.hero\{min-height:clamp\(177px,calc\(63vw - 25px\),280px\)!important\}/);
   assert.match(art,/\.app>footer\{margin-top:auto!important/);
   assert.doesNotMatch(art,/<p class="note"/);
   assert.doesNotMatch(art,/<p class="note2"/);
+});
+test('payment helper is non-modal and video retry is user-initiated',()=>{
+  const art=file('apps/web/public/landing-art.html');
+  assert.match(art,/id="payment-info-dialog" class="payment-popover" role="dialog" aria-modal="false"/);
+  assert.match(art,/\.payment-popover\[hidden\],\.video-retry\[hidden\]/);
+  assert.match(art,/id="video-retry" hidden/);
+  assert.match(art,/dataSaver=Boolean\(navigator\.connection\?\.saveData\)/);
+  assert.match(art,/retry\.addEventListener\('click'/);
+  assert.doesNotMatch(art,/paymentInfoDialog\.showModal/);
 });
 test('trial footer includes all landing links and seller details',()=>{
   const art=file('apps/web/public/landing-art.html');
