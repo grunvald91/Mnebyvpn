@@ -451,7 +451,10 @@ function applyLinkOptions() {
   if(url.searchParams.get('login')==='failed')
     toast('Вход не завершён. Попробуйте вход по email или повторите Telegram.');
   state.purchaseIntent=readPurchaseIntent();
-  if(url.searchParams.get('payment')==='returned')
+  // The dedicated payment screen already shows this message; do not
+  // cover its primary action with a duplicate fixed toast.
+  if(url.searchParams.get('payment')==='returned' &&
+      !document.getElementById('journey-payment-intro'))
     toast('Проверяем подтверждение оплаты. Возврат на сайт ещё не означает, что платёж получен.');
 }
 async function purchase() {
@@ -532,7 +535,11 @@ async function claimTrial(){
       DEVICE_ALREADY_USED:'В этом браузере уже оформляли пробные сутки.',
       UNAVAILABLE:'Пробный доступ сейчас недоступен.',
     };
-    toast(messages[response.status]||'Статус обновлён.');
+    // Successful requests already have a persistent setup status. Avoid
+    // covering "Я установил приложение" and the import action with a toast.
+    if(!(['GRANTED','PENDING'].includes(response.status) &&
+      document.body?.classList?.contains('journey-active')))
+      toast(messages[response.status]||'Статус обновлён.');
     if(['GRANTED','PENDING','ALREADY_USED'].includes(response.status))consumeReferral();
     await refresh();
     if(response.status==='ALREADY_USED')
@@ -571,7 +578,10 @@ function renderVpnSetup(data){
   byId('guest-auto-incy').href=root+'/install/'+token+'?client=incy';
   byId('guest-auto-karing').href=root+'/install/'+token+'?client=karing';
   byId('guest-subscription-url').value=url;
-  card.scrollIntoView({behavior:'smooth',block:'center'});
+  // The compact journey wizard owns scroll position. Scrolling to the
+  // hidden legacy card here pushed the import CTA away on mobile.
+  if(!document.body?.classList?.contains('journey-active'))
+    card.scrollIntoView({behavior:'smooth',block:'center'});
 }
 async function loadSubscription(entitlementId){
   if(state.setupLoading||!state.loggedIn)return;

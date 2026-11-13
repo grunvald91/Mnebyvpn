@@ -90,6 +90,34 @@ test('trial back arrow is an SVG centered within a centered control',()=>{
   assert.match(css,/width:max-content;max-width:100%/);
   assert.match(css,/margin:6px auto 0/);
 });
+test('payment return is a compact status, never an automatic settlement or duplicate login',()=>{
+  assert.match(index,/class="journey-payment-card"/);
+  assert.match(index,/id="journey-payment-to-account"/);
+  assert.match(css,/data-journey-view="payment"\] \.account-section\{/);
+  assert.match(css,/display:none!important/);
+  assert.match(journey,/function updatePaymentAction\(\)/);
+  assert.match(journey,/Войти и проверить заказ/);
+  assert.match(journey,/if\(next==='payment'\)updatePaymentAction\(\)/);
+  assert.match(journey,/\/api\/me owns the actual order/);
+});
+test('device detection only preselects app and never bypasses install confirmation',()=>{
+  assert.match(index,/id="journey-selected-platform"/);
+  assert.match(index,/id="journey-platform-change"/);
+  assert.match(index,/id="journey-platform-grid"[^>]*hidden/);
+  assert.match(journey,/const platformNames=\{/);
+  assert.match(journey,/grid\.hidden=!grid\.hidden/);
+  assert.match(journey,/installed=false/);
+  assert.match(journey,/installButton\.setAttribute\('aria-pressed',String\(installed\)\)/);
+  assert.match(journey,/el\('journey-import-step'\)\.hidden=!installed/);
+  assert.match(css,/#journey-platform-grid\[hidden\]/);
+  assert.match(css,/#guest-trial-card\{display:none!important\}/);
+});
+test('mobile native header stays branded and toast stays clear of install controls',()=>{
+  assert.match(css,/body\.journey-active:not\(\[data-journey-view="plans"\]\) \.header .brand-text\{/);
+  assert.match(css,/display:inline!important/);
+  assert.match(css,/body\.journey-active:not\(\[data-journey-view="plans"\]\) #toast:not\(\.hidden\)/);
+  assert.match(file('apps/web/public/app.js'),/if\(!document\.body\?\.classList\?\.contains\('journey-active'\)\)/);
+});
 test('setup has all platform choices, installation gate and manual copy',()=>{
   for(const os of ['android','ios','windows','macos','linux'])
     assert.match(index,new RegExp('data-journey-platform="'+os+'"'));

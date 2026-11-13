@@ -106,8 +106,12 @@
       <p id="journey-setup-status" role="status" aria-live="polite">Подготавливаем ваш доступ…</p>
       <div id="journey-setup-slot"></div>
       <div id="journey-setup-controls" hidden>
-        <h2>1. На каком устройстве?</h2>
-        <div class="journey-platform-grid" role="group" aria-label="Устройство">
+        <h2>1. Установите VPN-приложение</h2>
+        <div class="journey-selected-platform" id="journey-selected-platform">
+          <span>Ваше устройство: <strong id="journey-platform-name">Определяем…</strong></span>
+          <button type="button" id="journey-platform-change" aria-expanded="false" aria-controls="journey-platform-grid">Другое устройство</button>
+        </div>
+        <div class="journey-platform-grid" id="journey-platform-grid" role="group" aria-label="Выберите другое устройство" hidden>
           <button type="button" data-journey-platform="android">Android</button>
           <button type="button" data-journey-platform="ios">iPhone</button>
           <button type="button" data-journey-platform="windows">Windows</button>
@@ -301,10 +305,13 @@
       </div>
     </section>
     <section class="journey-payment-intro shell" id="journey-payment-intro" aria-labelledby="journey-payment-heading" hidden>
-      <p class="journey-kicker">MNEBYVPN · ВАШ ЗАКАЗ</p>
-      <h1 id="journey-payment-heading">Проверяем оплату</h1>
-      <p id="journey-payment-info" role="status" aria-live="polite">Возврат на сайт ещё не подтверждает получение денег. Проверяем статус заказа на сервере.</p>
-      <a class="journey-payment-cabinet" href="#account" id="journey-payment-to-account">Перейти в личный кабинет</a>
+      <div class="journey-payment-card">
+        <p class="journey-kicker">MNEBYVPN · ВАШ ЗАКАЗ</p>
+        <h1 id="journey-payment-heading">Проверяем оплату</h1>
+        <p id="journey-payment-info" role="status" aria-live="polite">Возврат на сайт ещё не подтверждает получение денег. Проверяем статус заказа на сервере.</p>
+        <a class="journey-payment-cabinet" href="#account" id="journey-payment-to-account">Войти и проверить заказ</a>
+        <p class="journey-payment-note">Не оплачивайте повторно, пока не проверен статус предыдущего заказа.</p>
+      </div>
     </section>
     <section class="account-section shell" id="account">
       <div class="section-head">
