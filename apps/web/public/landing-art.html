@@ -387,6 +387,64 @@ footer .seller-details{margin:6px 0 0;color:#b2c8e3;font:500 clamp(9px,2.6vw,10.
   footer{padding-bottom:3px!important}
   footer .seller-details{margin-top:2px!important}
 }
+
+/* 2026-11-13 viewport composition: keep the lock and light-arc artwork clear.
+   Lock ends at ~63vw in the unscaled portrait scene; the tariff card starts
+   13-18px below that edge rather than covering the upper animation. */
+@media(max-width:520px){
+  .top{height:48px!important}
+  .hero{min-height:clamp(167px,calc(63vw - 35px),270px)!important}
+  .card{margin-top:0!important;margin-bottom:0!important;padding:10px 12px 9px!important}
+  .ch{margin-bottom:6px}
+  .plans{gap:5px}
+  .plan{height:36px}
+  .dns-heading{margin:8px 3px 6px}
+  .sum{margin:7px 0 7px}
+  .cta{height:43px}
+  .trial-slot{margin-top:8px}
+  .app>footer{margin-top:auto!important;padding:7px 6px 9px!important}
+}
+@media(max-width:420px) and (max-height:760px){
+  .card{padding:8px 10px 7px!important}
+  .plan{height:34px}
+  .dns-heading{margin:6px 3px 5px}
+  .sum{margin:5px 0 5px}
+  .cta{height:41px}
+  .trial-slot{margin-top:6px}
+  .app>footer{padding:5px 6px 7px!important}
+}
+@media(max-width:350px) and (max-height:760px){
+  .plan{height:32px}
+  .plans{gap:4px}
+  .ch{margin-bottom:4px}
+  .dns-heading{margin:5px 2px 4px}
+  .app>footer{padding:4px 5px 6px!important}
+}
+.sum{position:relative;padding-right:28px;min-height:25px}
+.sum .payment-info{
+  position:absolute;right:1px;top:50%;transform:translateY(-50%);
+  width:24px;height:24px;display:grid;place-items:center;
+  border:1.4px solid #51e6ff;border-radius:50%;
+  color:#b9faff;background:rgba(17,48,91,.77);
+  box-shadow:0 0 9px rgba(34,202,244,.19);
+  font:italic 800 14px Inter,system-ui,Roboto,Arial,sans-serif;
+}
+.payment-info:focus-visible{outline:2px solid #d5faff;outline-offset:3px}
+.payment-dialog{width:min(370px,calc(100% - 26px));max-height:min(70dvh,520px)}
+/* Matching native 24h sign-in footer: same two rows of links and seller.
+   Margin auto anchors legal links to the viewport bottom, never mid-screen. */
+.app>footer{margin-top:auto!important;text-align:center;font:italic 500 10px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
+.app>footer nav{display:flex;gap:12px;flex-wrap:nowrap;justify-content:center}
+.app>footer nav a{padding:0;border:0;white-space:nowrap}
+.app>footer .legal-links{gap:12px;margin-top:3px}
+.app>footer .legal-links a{font:italic 500 10px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
+.app>footer .seller-details{font:500 10px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;margin-top:5px;white-space:normal}
+.app>footer::before{opacity:.38;box-shadow:none}
+@media(max-width:350px){
+  .app>footer nav{gap:9px}
+  .app>footer .legal-links{gap:9px}
+  .app>footer .legal-links a,.app>footer .seller-details{font-size:9px}
+}
 </style>
 </head>
 <body>
@@ -455,11 +513,10 @@ footer .seller-details{margin:6px 0 0;color:#b2c8e3;font:500 clamp(9px,2.6vw,10.
       <button class="plan dns-plan" type="button" data-d="60" data-p="379 ₽" aria-pressed="false"><b>60 дней</b><strong>379 ₽</strong></button>
       <button class="plan dns-plan" type="button" data-d="90" data-p="549 ₽" aria-pressed="false"><b>90 дней</b><strong>549 ₽</strong></button>
     </div>
-    <div class="sum" aria-live="polite"><span id="sum" class="pop">Загрузка тарифов…</span></div>
+    <div class="sum" aria-live="polite"><span id="sum" class="pop">Загрузка тарифов…</span><button class="payment-info" type="button" id="payment-info-open" aria-label="Условия оплаты и напоминания" aria-haspopup="dialog" aria-controls="payment-info-dialog">i</button></div>
     <p class="dns-preview-note" id="dns-preview-note" hidden>Предпросмотр тарифов · оформление Smart DNS пока не подключено</p>
     <button class="cta" type="button" disabled>Загрузка тарифов…</button><p class="front-error" id="front-error" role="alert" aria-live="assertive" hidden></p><a class="front-retry" id="front-retry" href="/" target="_top" hidden>Не удалось получить тарифы. Обновить страницу</a>
-    <p class="note">Без автосписаний. Защищённая оплата.<br>Заранее напомним, когда срок будет заканчиваться.</p>
-    <p class="note2">Напоминания в Telegram доступны после привязки бота.</p>
+    
     <div class="trial-slot" id="trial-slot">
       <div class="free">
         <svg viewBox="0 0 26 34" aria-hidden="true"><path d="M16 0 2 19h9l-3 15L24 13h-9z" fill="#19e6ff"/></svg>
@@ -483,6 +540,13 @@ footer .seller-details{margin:6px 0 0;color:#b2c8e3;font:500 clamp(9px,2.6vw,10.
     <p class="dns-dialog-small">Преимущества: не нужно постоянно переключать VPN, обычный трафик идёт напрямую, меньше лишней маршрутизации. Smart DNS <b>не шифрует весь трафик и не заменяет VPN</b>. Доступность сервисов может различаться у разных провайдеров и сетей.</p>
     <p>Нужен ещё один домен? Подайте заявку на его добавление. Если сайт пока не поддерживается, можно временно включить VPN. Вариант <b>Smart DNS + VPN</b> предусмотрен для будущего комплекта.</p>
     <button type="button" class="dns-request" id="dns-request-domain">Запросить добавление домена</button>
+  </dialog>
+
+  <dialog class="dns-dialog payment-dialog" id="payment-info-dialog" aria-labelledby="payment-info-title">
+    <div class="dns-dialog-head"><h2 id="payment-info-title">Об оплате и напоминаниях</h2><button class="dns-dialog-close" type="button" id="payment-info-close" aria-label="Закрыть">×</button></div>
+    <p>Без автосписаний. Защищённая оплата.</p>
+    <p>Заранее напомним, когда срок доступа будет заканчиваться.</p>
+    <p>Напоминания в Telegram доступны после привязки бота.</p>
   </dialog>
 
   <footer class="rv" style="--d:.7s">
@@ -703,6 +767,18 @@ const cta=$('.cta');
   });
   trialDns.addEventListener('click',()=>{
     trialDnsStatus.hidden=false; // Individual DNS trial URL is not ready.
+  });
+  const paymentInfoDialog=document.getElementById('payment-info-dialog');
+  document.getElementById('payment-info-open').addEventListener('click',()=>{
+    if(typeof paymentInfoDialog.showModal==='function')paymentInfoDialog.showModal();
+    else paymentInfoDialog.setAttribute('open','');
+  });
+  document.getElementById('payment-info-close').addEventListener('click',()=>{
+    if(typeof paymentInfoDialog.close==='function')paymentInfoDialog.close();
+    else paymentInfoDialog.removeAttribute('open');
+  });
+  paymentInfoDialog.addEventListener('click',event=>{
+    if(event.target===paymentInfoDialog)paymentInfoDialog.close();
   });
   infoButton.addEventListener('click',()=>{
     if(typeof infoDialog.showModal==='function')infoDialog.showModal();

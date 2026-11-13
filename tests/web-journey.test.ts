@@ -56,6 +56,23 @@ test('trial authorization matches main header and does not reserve room for disa
   assert.match(journey,/method\.hidden=!enabled/);
   assert.match(journey,/pointer:coarse/);
 });
+test('illustrated storefront keeps lock clear and payment fine print in a dialog',()=>{
+  const art=file('apps/web/public/landing-art.html');
+  assert.match(art,/id="payment-info-open"/);
+  assert.match(art,/id="payment-info-dialog"/);
+  assert.match(art,/\.hero\{min-height:clamp\(167px,calc\(63vw - 35px\),270px\)!important\}/);
+  assert.match(art,/\.app>footer\{margin-top:auto!important/);
+  assert.doesNotMatch(art,/<p class="note"/);
+  assert.doesNotMatch(art,/<p class="note2"/);
+});
+test('trial footer includes all landing links and seller details',()=>{
+  const art=file('apps/web/public/landing-art.html');
+  for(const phrase of ['Оферта','Соглашение','Обработка данных','Кунавина Анна Александровна']){
+    assert.match(index,new RegExp(phrase));
+    assert.match(art,new RegExp(phrase));
+  }
+  assert.match(css,/data-journey-view="trial-auth"\] \.footer-seller\{/);
+});
 test('setup has all platform choices, installation gate and manual copy',()=>{
   for(const os of ['android','ios','windows','macos','linux'])
     assert.match(index,new RegExp('data-journey-platform="'+os+'"'));
