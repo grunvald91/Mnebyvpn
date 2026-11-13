@@ -359,6 +359,12 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
      Math.abs(chooserAfter.footerTop-chooserBefore.footerTop)>1||
      Math.abs(chooserAfter.scrollHeight-chooserBefore.scrollHeight)>2||
      Math.abs(chooserAfter.frameHeight-chooserBefore.frameHeight)>2)failed=true;
+  if(width===390&&height===844){
+    await page.screenshot({
+      path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-04-free-trial-chooser-390x844.jpg',
+      type:'jpeg',quality:82,fullPage:true
+    });
+  }
   await page.frameLocator('#journey-front-frame').locator('#trial-dns').click();
   const trialDns=await page.frameLocator('#journey-front-frame').locator('#trial-dns-status');
   if(!await trialDns.isVisible())failed=true;
@@ -428,6 +434,18 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
           parseFloat(getComputedStyle(document.querySelector('.header')).borderBottomWidth)===0;
       })(),
       trialTitle:document.querySelector('#journey-trial-title')?.textContent,
+      backArrow:(()=>{
+        const anchor=document.querySelector('#journey-trial-back')?.getBoundingClientRect();
+        const circle=document.querySelector('#journey-trial-back .journey-back-icon')?.getBoundingClientRect();
+        const svg=document.querySelector('#journey-trial-back svg')?.getBoundingClientRect();
+        if(!anchor||!circle||!svg)return null;
+        return {
+          controlCenterDelta:Math.round((anchor.left+anchor.width/2)-(innerWidth/2)),
+          arrowCenterDelta:Math.round((svg.left+svg.width/2)-(circle.left+circle.width/2)),
+          arrowVerticalDelta:Math.round((svg.top+svg.height/2)-(circle.top+circle.height/2)),
+          circleSize:Math.round(circle.width),
+        };
+      })(),
       emailButton:(()=>{
         const input=document.querySelector('#email-input')?.getBoundingClientRect();
         const button=document.querySelector('#email-send-button');
@@ -451,6 +469,9 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
      trial.footer.height>130||trial.footer.innerHeight>129||!trial.footer.centered||
      trial.footer.links!==6||trial.footer.overflow||
      !trial.headerVisualMatch||!trial.footerInsideViewport||
+     !trial.backArrow||Math.abs(trial.backArrow.controlCenterDelta)>2||
+     Math.abs(trial.backArrow.arrowCenterDelta)>1||
+     Math.abs(trial.backArrow.arrowVerticalDelta)>1||
      !trial.footerSellerVisible||!trial.footerLinkRows||
      trial.footerSellerText!==metrics.sellerText||
      (width<=390&&!trial.noVerticalScroll)||
