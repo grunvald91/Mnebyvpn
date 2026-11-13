@@ -667,14 +667,24 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       try{Object.defineProperty(navigator.connection,'effectiveType',{configurable:true,get:()=>'3g'});}catch{}
   });
   await page.goto(base,{waitUntil:'domcontentloaded'});
-  try{
-    await page.waitForFunction(()=>{
-      const inner=document.querySelector('#journey-front-frame')?.contentDocument;
-      const video=inner?.querySelector('#bgv');
-      return video?.currentTime>0.1 && !video.paused &&
-        inner.querySelector('.scene')?.classList.contains('vid');
-    },null,{timeout:12000});
-  }catch{failed=true;}
+  const playing=()=>page.waitForFunction(()=>{
+    const inner=document.querySelector('#journey-front-frame')?.contentDocument;
+    const video=inner?.querySelector('#bgv');
+    return video?.currentTime>0.1 && !video.paused &&
+      inner.querySelector('.scene')?.classList.contains('vid');
+  },null,{timeout:12000});
+  let autoplayBlocked=false;
+  try{await playing();}
+  catch{
+    autoplayBlocked=true;
+    // Real Android may deny muted autoplay despite loaded metadata.
+    // The opt-in control is the supported fallback and must be functional.
+    const retry=page.frameLocator('#journey-front-frame').locator('#video-retry');
+    if(await retry.isVisible()){
+      await retry.click();
+      await playing().catch(()=>{failed=true;});
+    }else failed=true;
+  }
   const before=await page.evaluate(()=>{
     const inner=document.querySelector('#journey-front-frame')?.contentDocument;
     const video=inner?.querySelector('#bgv');
@@ -687,7 +697,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       error:video?.error?.code||null,
     };
   });
-  console.log('ANDROID_VIDEO_2CORE_3G='+JSON.stringify(before));
+  console.log('ANDROID_VIDEO_2CORE_3G='+JSON.stringify({...before,autoplayBlocked}));
   if(!before.scenePlaying||before.paused||before.time<=0.1||
     !before.artworkExternal||!before.navGrouped||before.error)failed=true;
 
