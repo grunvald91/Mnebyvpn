@@ -174,3 +174,48 @@ test('signed cookie not in server ledger cannot access account; logout revokes i
   assert.equal(logout.status,200);
   assert.equal((await fetch(base+'/api/me',{headers})).status,401);
 });
+
+
+test('SEO endpoints: canonical public pages, robot map and protected API indexing boundaries',async()=>{
+  const origin='http://127.0.0.1:'+port;
+  const get=(p:string)=>fetch(origin+p,{redirect:'manual'});
+  const robots=await get('/robots.txt');
+  assert.equal(robots.status,200);
+  assert.match(robots.headers.get('content-type')??'',/text\/plain/);
+  assert.match(await robots.text(),new RegExp('Sitemap: '+origin.replaceAll('.','\\.')+'/sitemap\\.xml'));
+
+  const sitemap=await get('/sitemap.xml');
+  assert.equal(sitemap.status,200);
+  assert.match(sitemap.headers.get('content-type')??'',/application\/xml/);
+  const xml=await sitemap.text();
+  for(const path of ['/','/terms','/agreement','/privacy'])
+    assert.ok(xml.includes('<loc>'+origin+path+'</loc>'));
+  assert.ok(!xml.includes('/payment/')&&!xml.includes('/api/'));
+
+  for(const [alias,target] of [
+    ['/index.html','/'],['/terms.html','/terms'],
+    ['/agreement.html','/agreement'],['/privacy.html','/privacy'],
+  ]){
+    const r=await get(alias);
+    assert.equal(r.status,301);
+    assert.equal(r.headers.get('location'),target);
+  }
+  for(const path of ['/','/terms','/agreement','/privacy']){
+    const r=await get(path);
+    assert.equal(r.status,200);
+    const html=await r.text();
+    assert.ok(html.includes('rel="canonical" href="https://mnebyvpn.site'+path+'"'));
+    assert.ok(html.includes('name="description"'));
+  }
+  for(const path of ['/landing-art.html','/payment/success','/payment/return']){
+    const r=await get(path);
+    assert.equal(r.status,200);
+    assert.match(r.headers.get('x-robots-tag')??'',/noindex/);
+  }
+  const missing=await get('/seo-nonexistent-20261113');
+  assert.equal(missing.status,404);
+  assert.match(missing.headers.get('x-robots-tag')??'',/noindex/);
+  const privateMe=await get('/api/me');
+  assert.equal(privateMe.status,401);
+  assert.match(privateMe.headers.get('x-robots-tag')??'',/noindex/);
+});
