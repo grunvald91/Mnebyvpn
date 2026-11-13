@@ -2151,3 +2151,204 @@ body.journey-active:not([data-journey-view="plans"]) .footer-seller{
   body.journey-active:not([data-journey-view="plans"]) .footer-links button,
   body.journey-active:not([data-journey-view="plans"]) .footer-seller{font-size:9px!important}
 }
+
+/* Compact payment return: never show a second large cabinet login form.
+   The user explicitly chooses sign-in to verify the order. The server
+   remains the source of payment/provisioning status. */
+body.journey-active[data-journey-view="payment"]{
+  display:flex;flex-direction:column;
+  min-height:100vh;min-height:100dvh;
+}
+body.journey-active[data-journey-view="payment"] main{
+  flex:1 1 auto;display:flex;justify-content:center;
+  align-items:center;min-width:0;
+}
+body.journey-active[data-journey-view="payment"] .account-section{
+  display:none!important;
+}
+body.journey-active[data-journey-view="payment"] .journey-payment-intro{
+  display:block;width:min(430px,calc(100% - 24px));max-width:430px;
+  margin:auto;padding:12px 0;
+}
+body.journey-active[data-journey-view="payment"] .journey-payment-card{
+  border:1px solid transparent;border-radius:22px;padding:18px 16px;
+  background:linear-gradient(140deg,rgba(12,31,74,.96),rgba(26,20,67,.97)) padding-box,
+    linear-gradient(120deg,#2ce1f9,rgba(82,134,249,.5),#a34feb) border-box;
+  box-shadow:0 9px 30px rgba(1,5,18,.33),0 0 18px rgba(63,188,247,.1);
+}
+body.journey-active[data-journey-view="payment"] .journey-payment-intro h1{
+  margin:7px 0 10px;color:#f6fbff;
+  font:italic 850 clamp(22px,6vw,27px)/1.12 Inter,system-ui,Roboto,Arial,sans-serif;
+}
+body.journey-active[data-journey-view="payment"] .journey-payment-intro #journey-payment-info{
+  margin:0 auto 14px;max-width:340px;color:#d2e1f4;
+  font:500 12px/1.45 Inter,system-ui,Roboto,Arial,sans-serif;
+}
+body.journey-active[data-journey-view="payment"] .journey-payment-cabinet{
+  display:flex;align-items:center;justify-content:center;
+  min-height:43px;width:100%;padding:9px 12px;
+  border:1px solid rgba(178,248,255,.9);border-radius:99px;
+  background:linear-gradient(105deg,#12d6e8,#438ff7 55%,#9a4bef);
+  color:#fff;text-decoration:none;
+  font:italic 800 13px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;
+}
+body.journey-active[data-journey-view="payment"] .journey-payment-note{
+  margin:10px auto 0!important;max-width:350px;
+  color:#aebed8!important;font:500 10px/1.35 Inter,system-ui,Roboto,Arial,sans-serif!important;
+}
+/* One-screen setup: show the detected platform, not five large selectors.
+   Never reveal the automatic import until the install-confirmation click. */
+body.journey-active .journey-setup #journey-platform-grid[hidden],
+body.journey-active .journey-setup #journey-import-step[hidden]{
+  display:none!important;
+}
+body.journey-active .journey-setup{
+  width:min(430px,calc(100% - 24px));max-width:430px;
+  padding:15px 0 12px;
+  margin:0 auto;
+}
+body.journey-active .journey-setup .journey-kicker{margin:0 0 6px;font-size:10px}
+body.journey-active .journey-setup h1{
+  margin:0 0 8px;
+  font:italic 850 clamp(23px,6vw,28px)/1.12 Inter,system-ui,Roboto,Arial,sans-serif;
+}
+body.journey-active .journey-setup>p:not(.journey-kicker){
+  margin:0 0 10px;font:500 12px/1.4 Inter,system-ui,Roboto,Arial,sans-serif;
+}
+body.journey-active .journey-setup .guest-trial-card{
+  margin:8px 0;padding:10px 12px;
+  border-radius:14px;
+}
+body.journey-active .journey-setup .guest-trial-card h3{
+  font-size:14px;line-height:1.25;margin:0 0 5px;
+}
+body.journey-active .journey-setup .guest-trial-card p{
+  margin:0;font-size:11px;line-height:1.4;
+}
+body.journey-active .journey-setup #journey-setup-controls>h2{
+  margin:10px 0 8px;font-size:15px;line-height:1.25;
+}
+body.journey-active .journey-selected-platform{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:8px;margin:0 0 8px;padding:8px 10px;
+  border:1px solid rgba(102,174,234,.42);border-radius:12px;
+  background:rgba(8,30,70,.58);
+}
+body.journey-active .journey-selected-platform span{
+  font:500 11px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;color:#c9ddf4;
+}
+body.journey-active .journey-selected-platform strong{color:#fff;font-weight:800}
+body.journey-active .journey-selected-platform button{
+  flex:0 0 auto;min-height:30px;padding:6px 9px;border-radius:99px;
+  border:1px solid rgba(67,214,243,.7);background:rgba(16,43,86,.75);
+  color:#b5f8ff;font:750 10px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;
+}
+body.journey-active .journey-setup .journey-platform-grid{
+  display:flex;gap:5px;margin:5px 0 9px;
+}
+body.journey-active .journey-setup .journey-platform-grid button{
+  min-height:34px;padding:5px 7px;flex:1 0 88px;font-size:11px;
+}
+body.journey-active .journey-setup #journey-download,
+body.journey-active .journey-setup #journey-installed,
+body.journey-active .journey-setup #journey-auto{
+  display:flex;align-items:center;justify-content:center;
+  min-height:41px;padding:8px 12px;margin:7px 0;
+  width:100%;font-size:12px;line-height:1.2;
+}
+body.journey-active .journey-setup #journey-import-step{
+  margin-top:12px;padding-top:10px;
+}
+body.journey-active .journey-setup #journey-import-step h2{margin:0 0 5px;font-size:14px}
+body.journey-active .journey-setup #journey-import-step p{
+  margin:0 0 7px;font-size:11px;line-height:1.35;
+}
+body.journey-active .journey-setup .journey-back{
+  display:inline-flex;align-items:center;justify-content:center;
+  margin:10px 0 0;min-height:31px;padding:6px 13px;
+  border-radius:99px;border:1px solid rgba(83,205,250,.6);
+  text-decoration:none;color:#d9f7ff;font-size:11px;
+}
+/* Shared native mobile header; the illustrated /#plans storefront keeps
+   its own equivalent 48px header inside the iframe. */
+@media(max-width:520px){
+  body.journey-active:not([data-journey-view="plans"]) .header{
+    position:relative!important;flex:0 0 48px;
+    height:48px!important;min-height:48px!important;
+    border:0!important;box-shadow:none!important;
+    background:transparent!important;
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .header-inner{
+    display:flex!important;align-items:center!important;
+    justify-content:space-between!important;
+    width:min(100%,480px)!important;
+    height:48px!important;min-height:48px!important;
+    margin:0 auto!important;padding:0 10px!important;gap:6px!important;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .header .brand{
+    display:flex!important;align-items:center!important;
+    min-width:0!important;flex:0 1 auto!important;gap:6px!important;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .header .brand-avatar{
+    width:30px!important;height:30px!important;flex:none!important;border-radius:50%!important;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .header .brand-text{
+    display:inline!important;min-width:0!important;white-space:nowrap!important;
+    font:italic 800 clamp(12px,3.6vw,17px)/1 Inter,system-ui,Roboto,Arial,sans-serif!important;
+    letter-spacing:-.05em!important;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .header-actions{
+    display:flex!important;align-items:center!important;flex:0 0 auto!important;
+    margin-left:auto!important;gap:6px!important;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .header-actions .about-trigger,
+  body.journey-active:not([data-journey-view="plans"]) .header-actions .journey-header-account{
+    display:inline-flex!important;align-items:center!important;justify-content:center!important;
+    margin:0!important;min-height:34px!important;padding:8px 12px!important;
+    border-radius:99px!important;white-space:nowrap!important;
+    color:#f5fbff!important;
+    font:italic 700 12px/1 Inter,system-ui,Roboto,Arial,sans-serif!important;
+    box-shadow:none!important;transform:none!important;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .header-actions .about-trigger{
+    border:1px solid rgba(140,150,255,.5)!important;
+    background:rgba(15,20,62,.6)!important;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .header-actions .journey-header-account{
+    border:1px solid rgba(60,230,255,.9)!important;
+    background:linear-gradient(100deg,rgba(25,230,255,.22),rgba(166,77,255,.3))!important;
+    box-shadow:0 0 9px rgba(60,200,255,.23)!important;
+  }
+}
+@media(max-width:365px){
+  body.journey-active:not([data-journey-view="plans"]) .header-inner{
+    padding:0 7px!important;gap:4px!important;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .header .brand{
+    gap:3px!important;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .header .brand-avatar{
+    width:28px!important;height:28px!important;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .header .brand-text{
+    font-size:12px!important;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .header-actions{
+    gap:4px!important;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .header-actions .about-trigger,
+  body.journey-active:not([data-journey-view="plans"]) .header-actions .journey-header-account{
+    padding:8px 7px!important;font-size:11px!important;
+  }
+}
+/* Native site notifications must never cover import/installation buttons.
+   Keep noninteractive status at top, outside the main action zone. */
+body.journey-active:not([data-journey-view="plans"]) #toast:not(.hidden){
+  position:fixed;top:54px!important;bottom:auto!important;left:50%;
+  transform:translateX(-50%);
+  width:max-content;max-width:calc(100vw - 30px);
+  padding:7px 11px;border-radius:11px;
+  text-align:center;font-size:10px;line-height:1.35;
+  pointer-events:none;
+}
