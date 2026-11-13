@@ -5,6 +5,7 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import {canonicalAlias,requiresNoindex,renderRobots,renderSitemap} from './seo-core.ts';
 import { createHash,createHmac,randomBytes,randomUUID,timingSafeEqual } from 'node:crypto';
 import { Pool } from 'pg';
 import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
@@ -211,6 +212,7 @@ const landingArtPolicy = [
 ].join('; ');
 
 function sendArt(res: ServerResponse) {
+  res.setHeader('X-Robots-Tag','noindex, follow');
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -596,7 +598,21 @@ function installHtml(subUrl:string,client:'incy'|'karing'):string {
 
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', publicOrigin);
-  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/payment/success' || url.pathname === '/payment/return')) {
+  if (requiresNoindex(url.pathname))
+    res.setHeader('X-Robots-Tag','noindex, follow');
+  if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/robots.txt') {
+    send(res,200,renderRobots(publicOrigin),'text/plain; charset=utf-8');return;
+  }
+  if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/sitemap.xml') {
+    send(res,200,renderSitemap(publicOrigin),'application/xml; charset=utf-8');return;
+  }
+  const alias=(req.method === 'GET' || req.method === 'HEAD')?canonicalAlias(url.pathname):null;
+  if(alias){
+    res.setHeader('Location',alias+url.search);
+    res.setHeader('Cache-Control','public, max-age=3600');
+    res.writeHead(301).end();return;
+  }
+  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/payment/success' || url.pathname === '/payment/return')) {
     const device=cookie(req,deviceCookie);
     if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
       setCookie(res,deviceCookie,randomBytes(32).toString('base64url'),365*24*60*60);
@@ -1042,6 +1058,7 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     }
     return;
   }
+  res.setHeader('X-Robots-Tag','noindex, follow');
   json(res,404,{code:'NOT_FOUND'});
 }
 const port = Number(process.env.WEB_PORT ?? '8791');
