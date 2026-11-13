@@ -116,7 +116,7 @@ test('mobile native header stays branded and toast stays clear of install contro
   assert.match(css,/body\.journey-active:not\(\[data-journey-view="plans"\]\) \.header .brand-text\{/);
   assert.match(css,/display:inline!important/);
   assert.match(css,/body\.journey-active:not\(\[data-journey-view="plans"\]\) #toast:not\(\.hidden\)/);
-  assert.match(file('apps/web/public/app.js'),/if\(!document\.body\.classList\.contains\('journey-active'\)\)/);
+  assert.match(file('apps/web/public/app.js'),/if\(!document\.body\?\.classList\?\.contains\('journey-active'\)\)/);
 });
 test('setup has all platform choices, installation gate and manual copy',()=>{
   for(const os of ['android','ios','windows','macos','linux'])
