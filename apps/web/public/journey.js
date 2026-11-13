@@ -174,7 +174,7 @@
       telegram.classList.toggle('journey-option-disabled',!enabled);
       // An unavailable secondary login must not consume an entire mobile
       // screen. Only show the Telegram method when its login is enabled.
-      const method=telegram.closest('.journey-telegram-method');
+      const method=telegram.closest?.('.journey-telegram-method');
       if(method)method.hidden=!enabled;
     }
   }
