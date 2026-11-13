@@ -794,7 +794,10 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
  // external email or paid orders). Verifies that clicking Try does not issue
  // an anonymous trial and the server-backed grant occurs after OTP only.
 {
-  const page=await browser.newPage({viewport:{width:390,height:844}});
+  const page=await browser.newPage({
+    viewport:{width:390,height:844},hasTouch:true,isMobile:true,
+    userAgent:'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36'
+  });
   let verified=false,trialCalls=0;
   page.on('pageerror',error=>{
     console.error('TRIAL_OTP_PAGE_ERROR',String(error.message));failed=true;
@@ -893,6 +896,18 @@ for(const scenario of [
     route:location.hash,view:document.body.dataset.journeyView,
     bodyHeight:document.documentElement.scrollHeight,viewportHeight:innerHeight,
     overflowX:document.documentElement.scrollWidth>innerWidth+2,
+    footer:(()=>{
+      const links=[...document.querySelectorAll('.footer-links a,.footer-links button')];
+      const rects=links.map(el=>el.getBoundingClientRect());
+      const seller=document.querySelector('.footer-seller')?.getBoundingClientRect();
+      return {
+        linkCount:links.length,
+        allVisible:rects.length===6&&rects.every(r=>r.width>0&&r.left>=0&&r.right<=innerWidth+1),
+        rows:rects.length===6&&rects.slice(0,3).every(r=>Math.abs(r.top-rects[0].top)<2)&&
+          rects.slice(3).every(r=>Math.abs(r.top-rects[3].top)<2),
+        sellerCentered:!!seller&&Math.abs((seller.left+seller.right)/2-innerWidth/2)<5,
+      };
+    })(),
     visibleHeading:[...document.querySelectorAll('h1,h2')].filter(h=>{
       const s=getComputedStyle(h),r=h.getBoundingClientRect();
       return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0;
@@ -906,7 +921,8 @@ for(const scenario of [
     console.log('AUDIT_SCREEN_JPEG_'+scenario.name+'_END');
   }
   console.log('AUDIT_SCREEN_'+scenario.name+'='+JSON.stringify({...result,pageErrors}));
-  if(result.overflowX||pageErrors.length||result.view!==scenario.expected)failed=true;
+  if(result.overflowX||pageErrors.length||result.view!==scenario.expected||
+    !result.footer.allVisible||!result.footer.rows||!result.footer.sellerCentered)failed=true;
   await page.close();
 }
 // Parent "About" dialog is a separate interactive screen.
