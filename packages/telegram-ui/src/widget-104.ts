@@ -12,6 +12,7 @@ export interface StatusPackage {
 export interface StarsPlan {
   title:string;planId:string;stars:number|null;
   product?:string;durationSeconds?:number;dnsQuotaBytes?:bigint|null;
+  dnsQuotaQueriesPer30d?:bigint|null;
 }
 type Card={n:string;d:string;p:number;buy:boolean;key?:string};
 type State={v:1;k:'status'|'plans';c:Card[];more:number;updated:string};
@@ -21,9 +22,14 @@ export function planWidgetKey(plan:StarsPlan):string {
  if(!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(plan.planId) ||
     plan.stars===null || !Number.isSafeInteger(plan.stars) || plan.stars<=0)
    throw new Error('Invalid plan');
- const terms=JSON.stringify([plan.planId,plan.title,plan.stars,
+ const values:(string|number|null)[]=[plan.planId,plan.title,plan.stars,
    plan.product??null,plan.durationSeconds??null,
-   plan.dnsQuotaBytes===undefined||plan.dnsQuotaBytes===null?null:String(plan.dnsQuotaBytes)]);
+   plan.dnsQuotaBytes===undefined||plan.dnsQuotaBytes===null?null:String(plan.dnsQuotaBytes)];
+ // Preserve existing VPN and legacy plan keys even after deploying a
+ // query-based Smart DNS offer; old already-issued Telegram links remain valid.
+ if(plan.dnsQuotaQueriesPer30d!=null)
+   values.push('queries:'+String(plan.dnsQuotaQueriesPer30d));
+ const terms=JSON.stringify(values);
  return createHash('sha256').update('mnebyvpn:plan:v2:'+terms).digest('base64url').slice(0,16);
 }
 const gb=(n:bigint):string=>{
