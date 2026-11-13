@@ -393,7 +393,7 @@ footer .seller-details{margin:6px 0 0;color:#b2c8e3;font:500 clamp(9px,2.6vw,10.
    13-18px below that edge rather than covering the upper animation. */
 @media(max-width:520px){
   .top{height:48px!important}
-  .hero{min-height:clamp(167px,calc(63vw - 35px),270px)!important}
+  .hero{min-height:clamp(177px,calc(63vw - 25px),280px)!important}
   .card{margin-top:0!important;margin-bottom:0!important;padding:10px 12px 9px!important}
   .ch{margin-bottom:6px}
   .plans{gap:5px}
@@ -430,7 +430,36 @@ footer .seller-details{margin:6px 0 0;color:#b2c8e3;font:500 clamp(9px,2.6vw,10.
   font:italic 800 14px Inter,system-ui,Roboto,Arial,sans-serif;
 }
 .payment-info:focus-visible{outline:2px solid #d5faff;outline-offset:3px}
-.payment-dialog{width:min(370px,calc(100% - 26px));max-height:min(70dvh,520px)}
+.payment-popover[hidden],.video-retry[hidden]{display:none!important}
+.payment-popover{
+  position:absolute;z-index:16;right:0;bottom:calc(100% + 7px);
+  box-sizing:border-box;width:min(280px,calc(100vw - 46px));
+  max-height:min(180px,38dvh);overflow:auto;
+  padding:10px 11px;border:1px solid rgba(74,226,255,.82);
+  border-radius:13px;
+  background:linear-gradient(145deg,rgba(10,30,73,.98),rgba(17,12,58,.98));
+  box-shadow:0 8px 25px rgba(0,0,20,.55),0 0 15px rgba(57,181,255,.22);
+  color:#edfaff;font:500 11px/1.32 Inter,system-ui,Roboto,Arial,sans-serif;
+  text-align:left;
+}
+.payment-popover-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.payment-popover-head strong{font:italic 800 12px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
+.payment-popover-head button{
+  flex:0 0 auto;width:23px;height:23px;border-radius:50%;
+  background:rgba(77,110,175,.3);font-size:18px;line-height:1;
+}
+.payment-popover p{margin:5px 0 0;color:#cbdcf4}
+.payment-popover p:last-child{margin-bottom:0}
+.video-retry{
+  position:absolute;z-index:7;right:11px;bottom:7px;
+  padding:5px 8px;border:1px solid rgba(99,219,253,.75);
+  border-radius:99px;background:rgba(5,19,52,.9);
+  box-shadow:0 0 8px rgba(49,175,255,.25);
+  color:#d8f6ff;font:700 10px/1.15 Inter,system-ui,sans-serif;
+}
+.video-retry:focus-visible,.payment-popover-head button:focus-visible{
+  outline:2px solid #c4f9ff;outline-offset:2px;
+}
 /* Matching native 24h sign-in footer: same two rows of links and seller.
    Margin auto anchors legal links to the viewport bottom, never mid-screen. */
 .app>footer{margin-top:auto!important;text-align:center;font:italic 500 10px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
@@ -493,6 +522,7 @@ footer .seller-details{margin:6px 0 0;color:#b2c8e3;font:500 clamp(9px,2.6vw,10.
       <div class="ul rv" style="--d:.35s"></div>
       <p class="sub rv" style="--d:.45s">Выберите срок доступа. Подключение покажем сразу после оплаты.</p>
     </div>
+    <button class="video-retry" type="button" id="video-retry" hidden aria-label="Включить анимацию фона">▶ Включить фон</button>
   </section>
 
   <main class="card rv" style="--d:.55s">
@@ -513,7 +543,14 @@ footer .seller-details{margin:6px 0 0;color:#b2c8e3;font:500 clamp(9px,2.6vw,10.
       <button class="plan dns-plan" type="button" data-d="60" data-p="379 ₽" aria-pressed="false"><b>60 дней</b><strong>379 ₽</strong></button>
       <button class="plan dns-plan" type="button" data-d="90" data-p="549 ₽" aria-pressed="false"><b>90 дней</b><strong>549 ₽</strong></button>
     </div>
-    <div class="sum" aria-live="polite"><span id="sum" class="pop">Загрузка тарифов…</span><button class="payment-info" type="button" id="payment-info-open" aria-label="Условия оплаты и напоминания" aria-haspopup="dialog" aria-controls="payment-info-dialog">i</button></div>
+    <div class="sum" aria-live="polite"><span id="sum" class="pop">Загрузка тарифов…</span><button class="payment-info" type="button" id="payment-info-open" aria-label="Условия оплаты и напоминания" aria-haspopup="dialog" aria-controls="payment-info-dialog" aria-expanded="false">i</button>
+      <div id="payment-info-dialog" class="payment-popover" role="dialog" aria-modal="false" aria-labelledby="payment-info-title" hidden>
+        <div class="payment-popover-head"><strong id="payment-info-title">Оплата и напоминания</strong><button id="payment-info-close" type="button" aria-label="Закрыть информацию">×</button></div>
+        <p>Без автосписаний. Защищённая оплата.</p>
+        <p>Окончание срока доступа напомним заранее.</p>
+        <p>Telegram-напоминания — после привязки бота.</p>
+      </div>
+    </div>
     <p class="dns-preview-note" id="dns-preview-note" hidden>Предпросмотр тарифов · оформление Smart DNS пока не подключено</p>
     <button class="cta" type="button" disabled>Загрузка тарифов…</button><p class="front-error" id="front-error" role="alert" aria-live="assertive" hidden></p><a class="front-retry" id="front-retry" href="/" target="_top" hidden>Не удалось получить тарифы. Обновить страницу</a>
     
@@ -542,13 +579,6 @@ footer .seller-details{margin:6px 0 0;color:#b2c8e3;font:500 clamp(9px,2.6vw,10.
     <button type="button" class="dns-request" id="dns-request-domain">Запросить добавление домена</button>
   </dialog>
 
-  <dialog class="dns-dialog payment-dialog" id="payment-info-dialog" aria-labelledby="payment-info-title">
-    <div class="dns-dialog-head"><h2 id="payment-info-title">Об оплате и напоминаниях</h2><button class="dns-dialog-close" type="button" id="payment-info-close" aria-label="Закрыть">×</button></div>
-    <p>Без автосписаний. Защищённая оплата.</p>
-    <p>Заранее напомним, когда срок доступа будет заканчиваться.</p>
-    <p>Напоминания в Telegram доступны после привязки бота.</p>
-  </dialog>
-
   <footer class="rv" style="--d:.7s">
     <nav><a href="https://t.me/MNEBYVPN_bot" target="_blank" rel="noopener noreferrer">@MNEBYVPN_bot</a><a href="#roadmap">Roadmap</a><a href="#support">Поддержка</a></nav>
     <div class="legal-links"><a href="/terms" target="_top">Оферта</a><a href="/agreement" target="_top">Соглашение</a><a href="/privacy" target="_top">Обработка данных</a></div>
@@ -569,18 +599,19 @@ const cta=$('.cta');
 // moving background. Autoplay is muted and inline; no WebGL or canvas loops.
 // Reduced-motion / user-requested data saving preserve the static artwork.
 (()=>{
-  const scene=$('.scene'),video=$('#bgv'),connection=navigator.connection;
-  if(!scene||!video||R||connection?.saveData)return;
-  let hostActive=true,inView=true,started=false;
+  const scene=$('.scene'),video=$('#bgv'),retry=$('#video-retry');
+  if(!scene||!video||!retry)return;
+  const dataSaver=Boolean(navigator.connection?.saveData);
+  const autoplayAllowed=!R&&!dataSaver;
+  let hostActive=true,inView=true,started=false,optedIn=false;
   video.defaultMuted=true;
   video.muted=true;
   video.autoplay=true;
   video.playsInline=true;
   const playable=()=>hostActive&&inView&&!document.hidden;
-  const play=()=>{
-    if(!playable())return;
-    const result=video.play();
-    result?.catch?.(()=>{/* Static Earth remains visible when autoplay is blocked. */});
+  const revealFallback=()=>{
+    scene.classList.remove('vid');
+    if(hostActive)retry.hidden=false;
   };
   const ensureSource=()=>{
     if(started)return;
@@ -594,29 +625,57 @@ const cta=$('.cta');
     }
     video.playbackRate=.85;
     video.load();
-    play();
   };
-  video.addEventListener('playing',()=>scene.classList.add('vid'));
+  const play=()=>{
+    if(!playable()||(!autoplayAllowed&&!optedIn))return;
+    ensureSource();
+    const attempt=video.play();
+    attempt?.catch?.(()=>revealFallback());
+  };
+  const init=()=>{
+    if(autoplayAllowed)play();
+    else retry.hidden=false; // user-controlled playback respects data saving/reduced motion
+  };
+  retry.addEventListener('click',()=>{
+    optedIn=true;
+    video.muted=true; // explicitly keep inline playback silent
+    play();
+  });
+  video.addEventListener('playing',()=>{
+    scene.classList.add('vid');
+    retry.hidden=true;
+  });
   video.addEventListener('canplay',play);
-  video.addEventListener('error',()=>scene.classList.remove('vid'));
+  video.addEventListener('pause',()=>scene.classList.remove('vid'));
+  video.addEventListener('waiting',()=>scene.classList.remove('vid'));
+  video.addEventListener('error',revealFallback);
   if('IntersectionObserver' in window){
     new IntersectionObserver(([entry])=>{
       inView=Boolean(entry?.isIntersecting);
-      if(inView)play();else video.pause();
+      if(inView)play();
+      else video.pause();
     },{threshold:0}).observe(scene);
   }
   document.addEventListener('visibilitychange',()=>playable()?play():video.pause());
   window.addEventListener('pageshow',play);
   window.addEventListener('message',event=>{
     if(event.source!==window.parent||event.origin!==location.origin||
-       event.data?.channel!=='mnebyvpn-front-v1'||event.data?.type!=='visual')return;
+      event.data?.channel!=='mnebyvpn-front-v1'||event.data?.type!=='visual')return;
     hostActive=event.data.active===true;
-    if(hostActive){ensureSource();play();}else video.pause();
+    if(hostActive)init();
+    else {video.pause();retry.hidden=true;}
   });
-  window.addEventListener('pointerdown',play,{passive:true});
+  window.addEventListener('pointerdown',()=>{
+    if(autoplayAllowed&&started&&video.paused)play();
+  },{passive:true});
   if(document.readyState==='loading')
-    document.addEventListener('DOMContentLoaded',ensureSource,{once:true});
-  else ensureSource();
+    document.addEventListener('DOMContentLoaded',init,{once:true});
+  else init();
+  // Some mobile browsers refuse autoplay until a gesture; never silently
+  // leave a frozen frame that hides the static connection artwork.
+  window.setTimeout(()=>{
+    if(hostActive&&inView&&!scene.classList.contains('vid'))retry.hidden=false;
+  },3500);
 })();
 // Continuous canvas rendering is intentionally disabled to keep taps responsive.
 
@@ -769,16 +828,23 @@ const cta=$('.cta');
     trialDnsStatus.hidden=false; // Individual DNS trial URL is not ready.
   });
   const paymentInfoDialog=document.getElementById('payment-info-dialog');
-  document.getElementById('payment-info-open').addEventListener('click',()=>{
-    if(typeof paymentInfoDialog.showModal==='function')paymentInfoDialog.showModal();
-    else paymentInfoDialog.setAttribute('open','');
+  const paymentInfoOpen=document.getElementById('payment-info-open');
+  const setPaymentInfo=(visible,restoreFocus=false)=>{
+    paymentInfoDialog.hidden=!visible;
+    paymentInfoOpen.setAttribute('aria-expanded',String(visible));
+    if(visible)document.getElementById('payment-info-close').focus();
+    else if(restoreFocus)paymentInfoOpen.focus();
+  };
+  paymentInfoOpen.addEventListener('click',()=>setPaymentInfo(paymentInfoDialog.hidden));
+  document.getElementById('payment-info-close').addEventListener('click',()=>setPaymentInfo(false,true));
+  document.addEventListener('pointerdown',event=>{
+    if(!paymentInfoDialog.hidden&&!paymentInfoDialog.contains(event.target)&&
+      event.target!==paymentInfoOpen)setPaymentInfo(false);
   });
-  document.getElementById('payment-info-close').addEventListener('click',()=>{
-    if(typeof paymentInfoDialog.close==='function')paymentInfoDialog.close();
-    else paymentInfoDialog.removeAttribute('open');
-  });
-  paymentInfoDialog.addEventListener('click',event=>{
-    if(event.target===paymentInfoDialog)paymentInfoDialog.close();
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&!paymentInfoDialog.hidden){
+      event.preventDefault();setPaymentInfo(false,true);
+    }
   });
   infoButton.addEventListener('click',()=>{
     if(typeof infoDialog.showModal==='function')infoDialog.showModal();
