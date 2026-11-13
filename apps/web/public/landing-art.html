@@ -348,19 +348,20 @@ footer nav a{padding:0 11px;white-space:nowrap}
   background:rgba(12,24,60,.95);font-size:22px;color:#cfe9ff;
 }
 .trial-slot .trial-dns-status{
-  position:absolute;inset:0;z-index:2;
+  position:absolute;left:0;right:0;bottom:calc(100% + 5px);z-index:2;
   display:flex;align-items:center;justify-content:center;
-  padding:3px 31px 3px 7px;margin:0;border-radius:12px;
+  padding:7px 9px;margin:0;border-radius:12px;
   background:#0c1b46;border:1px solid rgba(72,197,253,.68);
-  font:500 10px/1.18 Inter,system-ui,Roboto,Arial,sans-serif;
-  text-align:center;color:#d6ecff;
+  box-shadow:0 5px 20px rgba(0,0,18,.4);
+  font:500 10px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;
+  text-align:center;color:#d6ecff;pointer-events:none;
 }
 .trial-slot .trial-close{z-index:4}
 .trial-slot .trial-dns-status[hidden]{display:none!important}
 @media(max-width:360px){
   .trial-slot .trial-options{gap:4px;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 24px}
   .trial-slot .trial-choice{font-size:11px}
-  .trial-slot .trial-dns-status{font-size:9px;padding-right:27px}
+  .trial-slot .trial-dns-status{font-size:9px}
 }
 </style>
 </head>
