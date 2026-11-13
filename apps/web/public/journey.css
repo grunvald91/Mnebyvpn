@@ -2082,3 +2082,20 @@ body.journey-active[data-journey-view="trial-auth"] .footer-seller{
   body.journey-active[data-journey-view="trial-auth"] .footer-links button,
   body.journey-active[data-journey-view="trial-auth"] .footer-seller{font-size:9px}
 }
+
+/* On the free-24h sign-in screen center both the navigation control and
+   the arrow inside its circle. SVG avoids font glyph baseline offsets. */
+body.journey-active[data-journey-view="trial-auth"] a.journey-back--neon{
+  display:flex;
+  width:max-content;max-width:100%;
+  margin:6px auto 0;
+  justify-content:center;align-items:center;
+}
+body.journey-active[data-journey-view="trial-auth"] .journey-back-icon{
+  display:grid;place-items:center;
+  width:20px;height:20px;flex:0 0 20px;
+  padding:0;
+}
+body.journey-active[data-journey-view="trial-auth"] .journey-back-icon svg{
+  display:block;width:14px;height:14px;margin:0;
+}
