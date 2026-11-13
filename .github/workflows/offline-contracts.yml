@@ -129,6 +129,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/tests/0109_dns_admin_route_approval_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0120_personal_dot_query_quota_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0121_personal_dns_stars_200_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0122_native_stars_dns_settlement_contract.sql
           # E2E test fixture explicitly simulates a separately deployed, verified node worker.
           psql -v ON_ERROR_STOP=1 -c "UPDATE vpn_release_flags SET enabled=true WHERE feature='paid_vpn_clock_on_node'" >/dev/null
       - name: Payment integration with disposable PostgreSQL
