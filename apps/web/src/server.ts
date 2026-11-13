@@ -6,6 +6,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import {canonicalAlias,requiresNoindex,renderRobots,renderSitemap} from './seo-core.ts';
+import {renderSeoPage} from './seo-pages.ts';
 import { createHash,createHmac,randomBytes,randomUUID,timingSafeEqual } from 'node:crypto';
 import { Pool } from 'pg';
 import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
@@ -186,6 +187,7 @@ const agreementHtml = await readFile(new URL('../public/agreement.html',import.m
 const legalCss = await readFile(new URL('../public/legal.css',import.meta.url));
 const css = await readFile(new URL('../public/site.css', import.meta.url));
 const neoCss = await readFile(new URL('../public/neo.css', import.meta.url));
+const seoCss = await readFile(new URL('../public/seo.css', import.meta.url));
 const brandAvatar = await readFile(new URL('../public/brand-avatar.webp', import.meta.url));
 const worldNeon = await readFile(new URL('../public/world-neon.webp', import.meta.url));
 const landingEarth = await readFile(new URL('../public/landing-earth.webp', import.meta.url));
@@ -265,13 +267,13 @@ function sendBackgroundVideo(req: IncomingMessage, res: ServerResponse, data: Bu
   else res.end(data.subarray(start,end+1));
 }
 
-function send(res: ServerResponse, status: number, body: string|Buffer, type = 'application/json; charset=utf-8') {
-  res.setHeader('Cache-Control', 'no-store');
+function send(res: ServerResponse, status: number, body: string|Buffer, type = 'application/json; charset=utf-8', csp = policy, cacheControl = 'no-store') {
+  res.setHeader('Cache-Control', cacheControl);
   res.setHeader('Content-Type', type);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Content-Security-Policy', policy);
+  res.setHeader('Content-Security-Policy', csp);
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.writeHead(status).end(body);
 }
@@ -605,6 +607,21 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/sitemap.xml') {
     send(res,200,renderSitemap(publicOrigin),'application/xml; charset=utf-8');return;
+  }
+  if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/seo.css') {
+    send(res,200,seoCss,'text/css; charset=utf-8',policy,'public, max-age=3600');return;
+  }
+  // Generate only allowlisted public guide pages; never include account data in HTML.
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    const guide=renderSeoPage(url.pathname,publicOrigin);
+    if(guide!==null) {
+      const jsonLd=/<script type="application\\/ld\\+json">([^<]*)<\\/script>/.exec(guide)?.[1];
+      if(!jsonLd) {json(res,503,{code:'SEO_MARKUP_INVALID'});return;}
+      const scriptHash=createHash('sha256').update(jsonLd).digest('base64');
+      const guidePolicy=policy.replace("script-src 'self'",
+        "script-src 'self' 'sha256-"+scriptHash+"'");
+      send(res,200,guide,'text/html; charset=utf-8',guidePolicy,'public, max-age=1800');return;
+    }
   }
   const alias=(req.method === 'GET' || req.method === 'HEAD')?canonicalAlias(url.pathname):null;
   if(alias){
