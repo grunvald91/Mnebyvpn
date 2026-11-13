@@ -113,6 +113,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0108_dns_admin_domains.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0109_dns_admin_route_approval.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0111_dns_mtproxy_bonus_credentials.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0120_personal_dot_query_quota.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0121_personal_dns_stars_200_draft.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0002_billing_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0003_ipv6_claims_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0005_outbox_contract.sql
@@ -124,6 +126,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/tests/0019_email_device_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0108_dns_admin_domains_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0109_dns_admin_route_approval_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0120_personal_dot_query_quota_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0121_personal_dns_stars_200_contract.sql
           # E2E test fixture explicitly simulates a separately deployed, verified node worker.
           psql -v ON_ERROR_STOP=1 -c "UPDATE vpn_release_flags SET enabled=true WHERE feature='paid_vpn_clock_on_node'" >/dev/null
       - name: Payment integration with disposable PostgreSQL
