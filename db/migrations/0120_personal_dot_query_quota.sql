@@ -80,6 +80,10 @@ $$;
 -- including ordinary/direct lookups. Unknown/rotated labels cannot use it as
 -- an open free recursive resolver. Known expired credentials can still receive
 -- ordinary DNS answers under the separate direct-only policy.
+-- An expired but still-owned hostname remains direct-only: Android strict
+-- Private DNS must not lose ordinary connectivity when a paid term ends.
+-- Cancellation, refund, explicit revocation and rotation invalidate it.
+-- The public DoT gateway MUST keep per-credential rate/concurrency limits.
 CREATE FUNCTION recognize_personal_dns_credential(p_label text)
 RETURNS boolean LANGUAGE sql STABLE AS $$
   SELECT p_label ~ '^[a-z0-9]{12}$' AND EXISTS(
@@ -90,7 +94,7 @@ RETURNS boolean LANGUAGE sql STABLE AS $$
       AND e.product='smart_dns'
       AND e.state NOT IN ('CANCELLED','REFUNDED')
       AND e.starts_at<=now()
-      AND e.expires_at>now()-interval '7 days'
+      AND e.expires_at IS NOT NULL
   )
 $$;
 
