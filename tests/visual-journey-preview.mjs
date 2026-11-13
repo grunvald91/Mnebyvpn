@@ -98,7 +98,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       headerFits:inner.querySelector('.top').getBoundingClientRect().right<=frame.getBoundingClientRect().width+1,
       legalSingleRow:(()=>{
         const links=[...inner.querySelectorAll('.legal-links a')];
-        return links.length===2&&Math.abs(links[0].getBoundingClientRect().top-links[1].getBoundingClientRect().top)<=2;
+        return links.length===3&&links.every(link=>Math.abs(link.getBoundingClientRect().top-links[0].getBoundingClientRect().top)<=2);
       })(),
       footerVisible:inner.querySelector('footer').getBoundingClientRect().bottom<=innerHeight+3,
       horizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
