@@ -103,7 +103,8 @@ export async function runPersonalDotProduction():Promise<void>{
   };
   process.once('SIGTERM',shutdown);
   process.once('SIGINT',shutdown);
-  tlsServer.on('error',()=>{listening=false;process.exitCode=1;});
+  tlsServer.on('error',()=>{listening=false;process.exitCode=1;shutdown();});
+  try{
   await new Promise<void>((resolve,reject)=>{
     tlsServer.once('error',reject);
     tlsServer.listen(listenPort,host,()=>{
@@ -119,6 +120,13 @@ export async function runPersonalDotProduction():Promise<void>{
       resolve();
     });
   });
+  }catch(err){
+    listening=false;
+    try{tlsServer.close();}catch{/* not listening yet */}
+    try{health.close();}catch{/* not listening yet */}
+    await db.end();
+    throw err;
+  }
   console.info('Personal DoT private SNI listener ready');
 }
 if(import.meta.url===new URL('file://'+process.argv[1]).href){
