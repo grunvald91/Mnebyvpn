@@ -487,7 +487,10 @@
       saveSelection();
       try{sessionStorage.setItem('mnebyvpn-pending-trial','1');}catch{}
       setView('trial-auth',true);
-      if(state.emailLoginEnabled)el('email-input')?.focus();
+      // Do not summon the mobile keyboard before the visitor requests it:
+      // the reduced visual viewport would immediately force scrolling.
+      if(state.emailLoginEnabled&&!window.matchMedia?.('(pointer:coarse)').matches)
+        el('email-input')?.focus();
       return;
     }
     const result=await claimTrial();
