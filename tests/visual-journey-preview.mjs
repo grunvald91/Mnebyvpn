@@ -232,12 +232,18 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   if(dnsOnly.selected!=='true'||!dnsOnly.disabled||
     !dnsOnly.text.includes('скоро')||dnsOnly.frameLoads!==0)failed=true;
   await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="30"]').click();
+  // Let the iframe finish any deferred parent-height sync from tariff taps.
+  await page.waitForTimeout(220);
   const chooserBefore=await page.evaluate(()=>{
     const frame=document.querySelector('#journey-front-frame');
     const doc=frame.contentDocument;
     const slot=doc.querySelector('#trial-slot').getBoundingClientRect();
     const footer=doc.querySelector('footer').getBoundingClientRect();
     return {slotHeight:slot.height,slotTop:slot.top,footerTop:footer.top,
+      headerHeight:doc.querySelector('.top').offsetHeight,
+      heroHeight:doc.querySelector('.hero').offsetHeight,
+      cardHeight:doc.querySelector('.card').offsetHeight,
+      footerHeight:doc.querySelector('footer').offsetHeight,
       scrollHeight:doc.documentElement.scrollHeight,
       frameHeight:frame.getBoundingClientRect().height};
   });
@@ -252,6 +258,10 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     const free=doc.querySelector('.trial-slot .free').getBoundingClientRect();
     const options=doc.querySelector('#trial-options').getBoundingClientRect();
     return {slotHeight:slot.height,slotTop:slot.top,footerTop:footer.top,
+      headerHeight:doc.querySelector('.top').offsetHeight,
+      heroHeight:doc.querySelector('.hero').offsetHeight,
+      cardHeight:doc.querySelector('.card').offsetHeight,
+      footerHeight:doc.querySelector('footer').offsetHeight,
       scrollHeight:doc.documentElement.scrollHeight,
       frameHeight:frame.getBoundingClientRect().height,
       optionsOnStrip:Math.abs(free.top-options.top)<=1 &&
@@ -323,7 +333,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
         if(!original||!native)return false;
         const a=getComputedStyle(original),b=getComputedStyle(native);
         return a.fontSize===b.fontSize && a.paddingLeft===b.paddingLeft &&
-          Math.abs(parseFloat(b.height)-parseFloat(a.height))<2 &&
+          a.paddingTop===b.paddingTop &&
+          a.borderTopWidth===b.borderTopWidth &&
           parseFloat(getComputedStyle(document.querySelector('.header')).borderBottomWidth)===0;
       })(),
       trialTitle:document.querySelector('#journey-trial-title')?.textContent,
