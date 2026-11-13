@@ -34,6 +34,8 @@ export interface PricedPlan {
   /** Licensed device slots, independent of VPN wire-level connection limits. */
   deviceLimit?: number;
   dnsQuotaBytes: bigint | null;
+  /** Native per-30-day paid premium DNS question quota, never HTTP bytes. */
+  dnsQuotaQueriesPer30d?: bigint | null;
 }
 export function validatePricedPlan(plan: PricedPlan): void {
   if (!plan.planId || !plan.title || !Number.isSafeInteger(plan.durationSeconds) || plan.durationSeconds <= 0) {
@@ -42,8 +44,15 @@ export function validatePricedPlan(plan: PricedPlan): void {
   for (const amount of [plan.rubMinor, plan.stars]) {
     if (amount !== null && (!Number.isSafeInteger(amount) || amount <= 0)) throw new Error('Invalid plan price');
   }
-  if (plan.product !== 'vpn' && (plan.dnsQuotaBytes === null || plan.dnsQuotaBytes <= 0n)) {
-    throw new Error('Smart DNS needs an explicitly configured positive quota');
-  }
-  if (plan.product === 'vpn' && plan.dnsQuotaBytes !== null) throw new Error('Unexpected DNS quota');
+  const q=plan.dnsQuotaQueriesPer30d??null;
+  if (q!==null && (q<1n || q>100000000n))throw Error('Invalid premium DNS question quota');
+  if (plan.product==='vpn' && (plan.dnsQuotaBytes!==null||q!==null))
+    throw Error('VPN has no DNS meter');
+  if (plan.product==='bundle' && (plan.dnsQuotaBytes===null||
+      plan.dnsQuotaBytes<=0n||q!==null))
+    throw Error('Bundle keeps legacy DNS byte meter');
+  if(plan.product==='smart_dns' &&
+    ((plan.dnsQuotaBytes===null)===(q===null) ||
+      (plan.dnsQuotaBytes!==null&&plan.dnsQuotaBytes<=0n)))
+    throw Error('Choose precisely one DNS quota meter: bytes OR queries');
 }

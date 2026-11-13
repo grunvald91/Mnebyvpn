@@ -4,11 +4,14 @@ DECLARE n int;
 BEGIN
  SELECT count(*) INTO n FROM pricing_drafts;
  IF n<>8 THEN RAISE EXCEPTION 'Expected eight configurable term slots, got %',n; END IF;
- -- The owner approved VPN prices on 2026-11-06; Smart DNS and Stars
- -- prices are still unapproved and must remain NULL.
+ -- 2026-11-13: One Smart DNS offer is owner-approved at 200 Stars
+ -- for 30 days, but ONLY in pricing_drafts. No live checkout is enabled.
+ -- All other DNS/bundle price slots remain unset.
  IF EXISTS(SELECT 1 FROM pricing_drafts
-    WHERE (product<>'vpn' AND (stars IS NOT NULL OR rub_minor IS NOT NULL))) THEN
-  RAISE EXCEPTION 'Unapproved Smart DNS prices must remain NULL';
+    WHERE product<>'vpn' AND (stars IS NOT NULL OR rub_minor IS NOT NULL)
+      AND NOT (product='smart_dns' AND duration_seconds=30*86400
+        AND stars=200 AND rub_minor=20000 AND dns_quota_bytes IS NULL)) THEN
+  RAISE EXCEPTION 'Unapproved Smart DNS price in another draft term';
  END IF;
  IF EXISTS(SELECT 1 FROM pricing_drafts WHERE product='vpn' AND
    (duration_seconds,rub_minor) NOT IN (

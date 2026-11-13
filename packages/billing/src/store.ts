@@ -17,6 +17,7 @@ export interface OrderRecord {
   planTitle: string;
   durationSeconds: number;
   dnsQuotaBytes: bigint | null;
+  dnsQuotaQueriesPer30d?: bigint | null;
   state: 'PENDING' | 'PAID' | 'REFUNDED' | 'CANCELLED';
   expiresAt: Date;
   telegramUserId: number | null;
@@ -49,14 +50,15 @@ function mapOrder(row: Row): OrderRecord {
     id: row.id, accountId: row.account_id, provider: row.provider, currency: row.currency,
     amount, product: row.product, planId: row.plan_id, planTitle: row.plan_title,
     durationSeconds: safeInt(row.duration_seconds),
-    dnsQuotaBytes: row.dns_quota_bytes === null ? null : BigInt(row.dns_quota_bytes),
+    dnsQuotaBytes: row.dns_quota_bytes == null ? null : BigInt(row.dns_quota_bytes),
+    dnsQuotaQueriesPer30d:row.dns_quota_queries_per_30d==null?null:BigInt(row.dns_quota_queries_per_30d),
     state: row.state, expiresAt: row.expires_at, telegramUserId,
   };
 }
 const orderSQL = `
  SELECT o.id, o.account_id, o.provider, o.currency, o.amount_minor,
         o.product, o.state, t.plan_id, t.plan_title, t.duration_seconds,
-        t.dns_quota_bytes, t.expires_at, a.telegram_user_id
+        t.dns_quota_bytes,t.dns_quota_queries_per_30d, t.expires_at, a.telegram_user_id
  FROM orders o JOIN order_terms t ON t.order_id=o.id
  JOIN accounts a ON a.id=o.account_id
  WHERE o.id=$1`;
@@ -67,7 +69,8 @@ function mapPlan(row: Row): PricedPlan {
     deviceLimit: row.device_limit === null || row.device_limit === undefined ? 1 : safeInt(row.device_limit),
     rubMinor: row.rub_minor === null ? null : safeInt(row.rub_minor),
     stars: row.stars === null ? null : safeInt(row.stars),
-    dnsQuotaBytes: row.dns_quota_bytes === null ? null : BigInt(row.dns_quota_bytes),
+    dnsQuotaBytes: row.dns_quota_bytes == null ? null : BigInt(row.dns_quota_bytes),
+    dnsQuotaQueriesPer30d:row.dns_quota_queries_per_30d==null?null:BigInt(row.dns_quota_queries_per_30d),
   };
 }
 /** Database must have migrations 0001-0004; no paid data plane is touched. */
@@ -211,9 +214,10 @@ export class PgBillingStore {
         [id, accountId, p.product, provider, price, currency]
       );
       await c.query(
-        `INSERT INTO order_terms(order_id,plan_id,plan_title,duration_seconds,dns_quota_bytes,expires_at)
-         VALUES($1,$2,$3,$4,$5,clock_timestamp()+interval '1 hour')`,
-        [id, p.id, p.title, p.duration_seconds, p.dns_quota_bytes]
+        `INSERT INTO order_terms(order_id,plan_id,plan_title,duration_seconds,
+          dns_quota_bytes,dns_quota_queries_per_30d,expires_at)
+         VALUES($1,$2,$3,$4,$5,$6,clock_timestamp()+interval '1 hour')`,
+        [id, p.id, p.title, p.duration_seconds, p.dns_quota_bytes,p.dns_quota_queries_per_30d]
       );
       await c.query(
         'INSERT INTO checkout_requests(channel,request_id,order_id) VALUES($1,$2,$3)',
@@ -590,7 +594,8 @@ export function pricedPlanForOrder(record:OrderRecord):PricedPlan {
  return {planId:record.planId,title:record.planTitle,product:record.product,
    stars:record.provider==='telegram_stars'?record.amount:null,
    rubMinor:record.provider==='prodamus'?record.amount:null,
-   durationSeconds:record.durationSeconds,dnsQuotaBytes:record.dnsQuotaBytes};
+   durationSeconds:record.durationSeconds,dnsQuotaBytes:record.dnsQuotaBytes,
+   dnsQuotaQueriesPer30d:record.dnsQuotaQueriesPer30d??null};
 }
 export function starsOrderFromDB(record: OrderRecord): StarsOrder {
   if (record.provider !== 'telegram_stars' || record.currency !== 'XTR' || !record.telegramUserId)
