@@ -134,7 +134,10 @@ test('native routes share bottom-anchored footer and centered content without fo
   const visual=file('tests/visual-journey-preview.mjs');
   assert.match(visual,/async function auditNativeGeometry\(/);
   assert.match(visual,/NATIVE_LAYOUT_/);
-  assert.match(visual,/\[\[320,700\],\[390,1000\],\[1280,800\]\]/);
+  assert.match(visual,/\[\[320,700\],\[390,700\],\[390,1000\],\[1280,800\]\]/);
+  assert.match(visual,/shouldFitViewport/);
+  assert.match(css,/@media\(max-height:820px\)/);
+  assert.match(css,/@media\(max-width:680px\) and \(max-height:760px\)/);
 });
 test('setup has all platform choices, installation gate and manual copy',()=>{
   for(const os of ['android','ios','windows','macos','linux'])

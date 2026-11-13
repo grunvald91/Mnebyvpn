@@ -92,6 +92,11 @@ async function auditNativeGeometry(page,selector,label){
   },selector);
   console.log('NATIVE_LAYOUT_'+label+'='+JSON.stringify(geometry));
   const tooLarge=geometry.blockHeight>geometry.mainHeight+2;
+  // These screens previously rendered a legal footer below the viewport,
+  // while the old test incorrectly treated "document bottom" as a pass.
+  const shouldFitViewport=/^(support|account)_(320x700|390x700)$/.test(label)||
+    label==='account_1280x800';
+  if(shouldFitViewport&&!geometry.fits)failed=true;
   if(geometry.error||geometry.hasHorizontalOverflow||
     geometry.logoHref!=='/#plans'||!geometry.headerBeforeMain||
     !geometry.footerAfterMain||Math.abs(geometry.horizontallyCentered)>3||
@@ -1068,7 +1073,7 @@ for(const scenario of [
 // Small, tall and desktop sizes must have the same structural invariants.
 // In particular: no footer hovering midway up a tall phone and no form stuck
 // to the top of the otherwise empty viewport.
-for(const [width,height] of [[320,700],[390,1000],[1280,800]]){
+for(const [width,height] of [[320,700],[390,700],[390,1000],[1280,800]]){
   for(const [route,view,selector] of [
     ['/#contact-support','support','.contact-support'],
     ['/?payment=returned','payment','.journey-payment-intro'],
