@@ -4,7 +4,7 @@
  * Run from GitHub Actions only; screenshots are an audit, not a design mock.
  */
 import http from 'node:http';
-import { readFileSync } from 'node:fs';
+import { readFileSync, copyFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -142,6 +142,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   });
   const file=process.env.RUNNER_TEMP+'/mnebyvpn-'+width+'x'+height+'.jpg';
   await page.screenshot({path:file,type:'jpeg',quality:72,fullPage:true,timeout:20000});
+  if(width===390&&height===844)
+    copyFileSync(file,process.env.RUNNER_TEMP+'/mnebyvpn-audit-01-plans-390x844.jpg');
   console.log('VISUAL_METRICS_'+width+'='+JSON.stringify({...metrics,browserErrors}));
   if(metrics.horizontalOverflow||metrics.innerHorizontalOverflow||browserErrors.length||
     !metrics.iframeHasHeader||!metrics.iframeHasEarth||!metrics.iframeHasTariffs||
@@ -461,6 +463,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   });
   const authImage=process.env.RUNNER_TEMP+'/mnebyvpn-trial-auth-'+width+'x'+height+'.jpg';
   await page.screenshot({path:authImage,type:'jpeg',quality:72,fullPage:true,timeout:20000});
+  if(width===390&&height===844)
+    copyFileSync(authImage,process.env.RUNNER_TEMP+'/mnebyvpn-audit-05-trial-email-390x844.jpg');
   console.log('TRIAL_AUTH_METRICS_'+width+'='+JSON.stringify({...trial,browserErrors}));
   if(!trial.emailMounted||!trial.emailVisible||!trial.telegramExplained?.includes('email')||
      trial.horizontalOverflow||browserErrors.length||trial.route!=='#try'||
@@ -715,6 +719,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   console.log('ACCOUNT_BRANDED_METRICS='+JSON.stringify(account));
   const accountImage=process.env.RUNNER_TEMP+'/mnebyvpn-branded-account-390x844.jpg';
   await page.screenshot({path:accountImage,type:'jpeg',quality:75,fullPage:true});
+  copyFileSync(accountImage,process.env.RUNNER_TEMP+'/mnebyvpn-audit-07-account-390x844.jpg');
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('ACCOUNT_JPEG_390_BEGIN');
     console.log(readFileSync(accountImage).toString('base64'));
@@ -771,6 +776,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   }));
   const image=process.env.RUNNER_TEMP+'/mnebyvpn-branded-order-390x844.jpg';
   await page.screenshot({path:image,type:'jpeg',quality:75,fullPage:true});
+  copyFileSync(image,process.env.RUNNER_TEMP+'/mnebyvpn-audit-08-checkout-390x844.jpg');
   console.log('BRANDED_CHECKOUT_METRICS='+JSON.stringify({...order,checkoutCalls}));
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('BRANDED_ORDER_JPEG_BEGIN');
@@ -820,6 +826,10 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   if(trialCalls!==0)failed=true;
   await page.locator('#email-input').fill('visual-test@example.com');
   await page.locator('#email-send-button').click();
+  await page.screenshot({
+    path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-06-trial-code-390x844.jpg',
+    type:'jpeg',quality:82,fullPage:true
+  });
   await page.locator('#email-code-input').fill('123456');
   await page.locator('#email-verify-button').click();
   try{await page.waitForFunction(()=>document.body.dataset.journeyView==='setup',{timeout:7000});}
@@ -831,6 +841,75 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   }));
   console.log('TRIAL_EMAIL_OTP_SMOKE='+JSON.stringify({...actual,trialCalls}));
   if(actual.view!=='setup'||trialCalls!==1||actual.emailFormDuplicates!==1)failed=true;
+  await page.screenshot({
+    path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-09-setup-pending-390x844.jpg',
+    type:'jpeg',quality:82,fullPage:true
+  });
+  // Visualize a *synthetic* active subscription. This does NOT call provisioning:
+  // the mock token never exists on the real backend.
+  const syntheticUrl='https://mnebyvpn.site/sub/'+'x'.repeat(43);
+  await page.evaluate(url=>window.renderVpnSetup({subscriptionUrl:url}),syntheticUrl);
+  await page.waitForFunction(()=>!document.querySelector('#journey-setup-controls').hidden);
+  const setupBefore=await page.evaluate(()=>({
+    installedButton:document.querySelector('#journey-installed')?.textContent,
+    importHidden:document.querySelector('#journey-import-step')?.hidden,
+    downloadVisible:document.querySelector('#journey-download')?.getBoundingClientRect().height>0
+  }));
+  await page.screenshot({
+    path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-10-setup-install-390x844.jpg',
+    type:'jpeg',quality:82,fullPage:true
+  });
+  await page.locator('#journey-installed').click();
+  const setupAfter=await page.evaluate(()=>({
+    importVisible:!document.querySelector('#journey-import-step')?.hidden,
+    autoVisible:document.querySelector('#journey-auto')?.getBoundingClientRect().height>0
+  }));
+  await page.screenshot({
+    path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-11-setup-import-390x844.jpg',
+    type:'jpeg',quality:82,fullPage:true
+  });
+  console.log('AUDIT_INSTALL_GATE='+JSON.stringify({setupBefore,setupAfter,synthetic:true}));
+  if(!setupBefore.installedButton?.includes('Я установил')||
+    !setupBefore.importHidden||!setupBefore.downloadVisible||
+    !setupAfter.importVisible||!setupAfter.autoVisible)failed=true;
+  await page.close();
+}
+// Cross-screen visual review. Each image is created from the actual site
+// markup with synthetic API data; no customer accounts or live payments.
+for(const scenario of [
+  {name:'12-support',url:'/#contact-support',expected:'support'},
+  {name:'13-payment-verification',url:'/?payment=returned',expected:'payment'},
+  {name:'14-cabinet-logged-out',url:'/#account',expected:'account'}
+]){
+  const page=await browser.newPage({viewport:{width:390,height:844}});
+  const pageErrors=[];
+  page.on('pageerror',e=>pageErrors.push(String(e.message).slice(0,220)));
+  await page.goto(base+scenario.url.slice(1),{waitUntil:'networkidle'});
+  await page.waitForFunction(()=>document.body.classList.contains('journey-active'),null,{timeout:10000});
+  const result=await page.evaluate(()=>({
+    route:location.hash,view:document.body.dataset.journeyView,
+    bodyHeight:document.documentElement.scrollHeight,viewportHeight:innerHeight,
+    overflowX:document.documentElement.scrollWidth>innerWidth+2,
+    visibleHeading:[...document.querySelectorAll('h1,h2')].filter(h=>{
+      const s=getComputedStyle(h),r=h.getBoundingClientRect();
+      return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0;
+    }).map(h=>h.textContent.trim()).slice(0,4)
+  }));
+  const dest=process.env.RUNNER_TEMP+'/mnebyvpn-audit-'+scenario.name+'-390x844.jpg';
+  await page.screenshot({path:dest,type:'jpeg',quality:82,fullPage:true});
+  console.log('AUDIT_SCREEN_'+scenario.name+'='+JSON.stringify({...result,pageErrors}));
+  if(result.overflowX||pageErrors.length||result.view!==scenario.expected)failed=true;
+  await page.close();
+}
+// Parent "About" dialog is a separate interactive screen.
+{
+  const page=await browser.newPage({viewport:{width:390,height:844}});
+  await page.goto(base,{waitUntil:'networkidle'});
+  await page.frameLocator('#journey-front-frame').locator('.top-links a[href="#about"]').click();
+  await page.waitForFunction(()=>document.querySelector('#about-dialog')?.open===true,null,{timeout:5000});
+  const file=process.env.RUNNER_TEMP+'/mnebyvpn-audit-15-about-390x844.jpg';
+  await page.screenshot({path:file,type:'jpeg',quality:82,fullPage:true});
+  console.log('AUDIT_ABOUT_DIALOG=open');
   await page.close();
 }
 await browser.close();
