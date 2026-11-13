@@ -7,7 +7,7 @@ const state = {
   inviteToken: null, refreshing: false, renewalTargetId: null,
   telegramLoginEnabled:false,emailLoginEnabled:false,emailLinkMode:false,
   trialStatus:'NONE',guestSubscriptionUrl:null,setupLoading:false,
-  purchaseIntent:null,telegramProxyBonusEnabled:false,
+  purchaseIntent:null,telegramProxyBonusEnabled:false,personalDotCanaryEnabled:false,
 };
 const productNames = { vpn:'VPN', smart_dns:'Smart DNS', bundle:'VPN + Smart DNS' };
 const stateNames = {
@@ -92,7 +92,10 @@ function renderPlan() {
   const plan = state.plans.find(p=>p.product===state.product && p.durationDays===state.days);
   text('selected-plan-name', plan?.title || productNames[state.product] + ' · ' + state.days + ' дней');
   text('selected-duration',state.days+' дней');
-  text('selected-quota',state.product==='vpn'?'1 устройство':plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
+  text('selected-quota',state.product==='vpn'?'1 устройство':
+    state.product==='smart_dns'&&state.personalDotCanaryEnabled?
+      'Учёт по DNS-запросам (не по трафику)':
+      plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
   text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):'—');
   byId('cancel-renewal-button').classList.toggle('hidden',!state.renewalTargetId);
   text('price-description',plan?(state.renewalTargetId?
@@ -169,6 +172,40 @@ async function loadTelegramProxyBonus(entitlementId, button, item) {
   }finally{button.disabled=false;}
 }
 
+async function rotatePersonalDns(entitlementId,button,item) {
+  if(!state.personalDotCanaryEnabled||!state.loggedIn)return;
+  if(!window.confirm('Заменить персональный DNS-адрес? Старый адрес сразу перестанет работать на всех устройствах.'))return;
+  button.disabled=true;
+  try{
+    const status=await api('/api/personal-dns/status?entitlementId='+encodeURIComponent(entitlementId));
+    const revision=Number(status.credential_revision);
+    if(!Number.isSafeInteger(revision)||revision<1)throw Error('INVALID_DNS_REVISION');
+    const changed=await api('/api/personal-dns/rotate',{
+      method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
+      body:JSON.stringify({entitlementId,expectedRevision:revision}),
+    });
+    if(changed.status!=='ROTATED'||typeof changed.hostname!=='string')
+      throw Error('INVALID_DNS_ROTATION_RESPONSE');
+    const holder=node('div','dns-personal-actions');
+    holder.append(node('p','','Новый адрес Private DNS (сохраните сейчас; повторно он не отображается):'));
+    const hostname=node('code','dns-personal-host',changed.hostname);
+    const copy=node('button','button button-secondary','Скопировать DNS-адрес');
+    copy.type='button';
+    copy.addEventListener('click',async()=>{
+      try{await navigator.clipboard.writeText(changed.hostname);toast('DNS-адрес скопирован.');}
+      catch{toast('Скопируйте адрес вручную из поля выше.');}
+    });
+    holder.append(hostname,copy);
+    item.append(holder);
+    button.disabled=true; // Further rotation requires reload/new revision.
+    toast('Новая DNS-ссылка выпущена. Старая недействительна.');
+  }catch(error){
+    button.disabled=false;
+    toast(error?.message==='DENY_STALE'?'Ссылка уже заменена. Обновите кабинет.':
+      'Не удалось заменить DNS-адрес. Проверьте доступ или обратитесь в поддержку.');
+  }
+}
+
 function renderAccess(accesses) {
   const list=byId('access-list');
   list.replaceChildren();
@@ -193,25 +230,59 @@ function renderAccess(accesses) {
           : 'Срок начнётся после подтверждённой активации.';
     item.append(top,node('p','',accessDetail));
     if (a.product==='smart_dns') {
-      item.append(node('p','',a.quotaLimitBytes?
-        'Пакет DNS: '+fmtBytes(a.quotaLimitBytes):'DNS-квота пока не установлена'));
-      if (a.meteringVerified && a.quotaUsedBytes!==null && a.quotaRemainingBytes!==null) {
-        const used=safeBigInt(a.quotaUsedBytes),limit=safeBigInt(a.quotaLimitBytes);
-        const pct=(used!==null && limit!==null && limit>0n)?
-          Math.max(0,Math.min(100,Number(used*100n/limit))):0;
-        const box=node('div','usage');
-        const track=node('div','usage-track');
-        const fill=node('div','usage-fill');
-        fill.style.width=pct+'%';
-        track.append(fill);
-        const totals=node('div','usage-info');
-        totals.append(node('span','','Израсходовано: '+fmtBytes(a.quotaUsedBytes)),
-          node('span','','Осталось: '+fmtBytes(a.quotaRemainingBytes)));
-        box.append(track,totals);item.append(box);
-      } else {
-        item.append(node('div','usage-unavailable',
-          'Учёт расхода DNS пока не подтверждён. Использовано / осталось: нет достоверных данных.'));
+      if(state.personalDotCanaryEnabled){
+        // Personal DoT quotas count settled DNS queries, never traffic bytes.
+        // The endpoint verifies ownership and does not reveal the hostname.
+        const meter=node('div','usage-unavailable','Проверяем счётчик DNS-запросов…');
+        item.append(meter);
+        void api('/api/personal-dns/status?entitlementId='+encodeURIComponent(a.id))
+          .then(info=>{
+            if(!state.loggedIn||!item.isConnected)return;
+            const used=safeBigInt(info.used_queries);
+            const left=safeBigInt(info.remaining_queries);
+            const limit=safeBigInt(info.allowed_queries);
+            if(used===null||left===null||limit===null||
+               used<0n||left<0n||limit<=0n){
+              meter.textContent='Счётчик DNS-запросов пока недоступен.';
+              return;
+            }
+            const fmt=value=>value.toLocaleString('ru-RU');
+            meter.textContent='DNS-запросы за расчётный период: '+fmt(used)+
+              ' использовано · '+fmt(left)+' осталось из '+fmt(limit)+'.';
+          })
+          .catch(()=>{
+            if(state.loggedIn&&item.isConnected)
+              meter.textContent='Счётчик DNS-запросов пока недоступен.';
+          });
+      }else{
+        // Older DNS byte ledger remains separate from personalized DoT pilot.
+        item.append(node('p','',a.quotaLimitBytes?
+          'Пакет DNS: '+fmtBytes(a.quotaLimitBytes):'DNS-квота пока не установлена'));
+        if (a.meteringVerified && a.quotaUsedBytes!==null && a.quotaRemainingBytes!==null) {
+          const used=safeBigInt(a.quotaUsedBytes),limit=safeBigInt(a.quotaLimitBytes);
+          const pct=(used!==null && limit!==null && limit>0n)?
+            Math.max(0,Math.min(100,Number(used*100n/limit))):0;
+          const box=node('div','usage');
+          const track=node('div','usage-track');
+          const fill=node('div','usage-fill');
+          fill.style.width=pct+'%';
+          track.append(fill);
+          const totals=node('div','usage-info');
+          totals.append(node('span','','Израсходовано: '+fmtBytes(a.quotaUsedBytes)),
+            node('span','','Осталось: '+fmtBytes(a.quotaRemainingBytes)));
+          box.append(track,totals);item.append(box);
+        } else {
+          item.append(node('div','usage-unavailable',
+            'Учёт расхода DNS пока не подтверждён. Использовано / осталось: нет достоверных данных.'));
+        }
       }
+    }
+    if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
+       a.secondsRemaining!==null&&a.secondsRemaining>0&&state.personalDotCanaryEnabled){
+      const rotate=node('button','button button-secondary setup-button','Перегенерировать DNS-ссылку');
+      rotate.type='button';
+      rotate.addEventListener('click',()=>rotatePersonalDns(a.id,rotate,item));
+      item.append(rotate);
     }
     if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
        a.secondsRemaining!==null&&a.secondsRemaining>0&&state.telegramProxyBonusEnabled){
@@ -304,6 +375,7 @@ function renderPurchaseResult(payload) {
 function renderAccount(payload) {
   state.loggedIn=true;state.csrf=payload.csrf;
   state.telegramProxyBonusEnabled=payload.telegramProxyBonusEnabled===true;
+  state.personalDotCanaryEnabled=payload.personalDotCanaryEnabled===true;
   byId('login-prompt').classList.add('hidden');
   byId('account-content').classList.remove('hidden');
   byId('logout-button').classList.remove('hidden');
@@ -365,6 +437,7 @@ function renderLoggedOut() {
   // a shared browser screen. Keep the public catalog and selected product.
   state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;
   state.telegramProxyBonusEnabled=false;
+  state.personalDotCanaryEnabled=false;
   byId('guest-trial-card').classList.add('hidden');
   byId('purchase-result').classList.add('hidden');
   byId('link-email').classList.add('hidden');
