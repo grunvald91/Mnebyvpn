@@ -1841,7 +1841,7 @@ body.journey-active[data-journey-view="trial-auth"] .header-actions{
 }
 body.journey-active[data-journey-view="trial-auth"] .header-actions .about-trigger,
 body.journey-active[data-journey-view="trial-auth"] .header-actions .journey-header-account{
-  min-height:34px;
+  min-height:0;
   padding:8px 12px;
   font:italic 700 12px/1 Inter,system-ui,sans-serif;
   border-radius:99px;
