@@ -169,6 +169,8 @@ test('private canary DoT TLS + DB + origin/mapped DNS roundtrip and measured lat
    const begin=performance.now();
    const reply=await io.send(makeQuery('claude.ai',0x3000+i));
    assert.equal(reply.readUInt16BE(2)&15,0);
+   assert.equal(Array.from(reply.subarray(-4)).join('.'),'192.0.2.14',
+     'Every paid DNS answer must contain the mapped A record');
    latencies.push(performance.now()-begin);
   }
   latencies.sort((a,b)=>a-b);
@@ -197,6 +199,14 @@ test('private canary DoT TLS + DB + origin/mapped DNS roundtrip and measured lat
   assert.equal(Array.from(rotatedAnswer.subarray(-4)).join('.'),'192.0.2.14');
   const final=await db.query('SELECT * FROM personal_dns_query_status($1)',[entitlement]);
   assert.equal(BigInt(final.rows[0].used_queries),14n);
+  await db.query(
+    'UPDATE personal_dns_credentials SET query_limit_per_30d=14 WHERE entitlement_id=$1',
+    [entitlement]);
+  const afterQuota=await fresh.send(makeQuery('claude.ai',0x3500));
+  assert.equal(Array.from(afterQuota.subarray(-4)).join('.'),'198.51.100.8',
+    'After quota expires, only the independent real/origin A record may be returned');
+  const verified=await db.query('SELECT * FROM personal_dns_query_status($1)',[entitlement]);
+  assert.equal(BigInt(verified.rows[0].used_queries),14n);
   console.info('MNEBYDNS_CANARY_LOCAL_END_TO_END=PASS');
  }finally{
   client?.destroy();
