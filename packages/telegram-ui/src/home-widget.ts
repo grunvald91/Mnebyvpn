@@ -25,7 +25,7 @@ header{display:flex;gap:10px;align-items:center;margin-bottom:9px}
 footer{font-size:10px;color:#b5c7e5;margin-top:5px;line-height:1.3}
 @media(max-width:240px){.earth{width:57px;height:57px}.hero h2{font-size:16px}.item{font-size:10px;padding:8px 6px}}
 </style><body><header><div class="avatar" aria-hidden="true"></div><div><div class="name">Мне бы VPN</div><div class="tag">Ваш доступ · MNEBYVPN</div></div></header>
-<section class="hero"><div class="copy"><h2>Интернет<br><span>без стен.</span></h2><p>VPN, пробный доступ, подключение и помощь — в одном месте.</p></div><div class="earth" aria-hidden="true"></div></section>
+<section class="hero"><div class="copy"><h2>Интернет<br><span>без стен.</span></h2><p>VPN, персональный DNS, подключение и помощь — в одном месте.</p></div><div class="earth" aria-hidden="true"></div></section>
 <div class="label">ВЫБЕРИТЕ ДЕЙСТВИЕ</div><nav class="grid">
 <button class="item" data-a="vpn"><strong>🌐</strong> VPN и тарифы</button>
 <button class="item" data-a="trial"><strong>🎁</strong> Бесплатные 24 часа</button>
@@ -33,13 +33,13 @@ footer{font-size:10px;color:#b5c7e5;margin-top:5px;line-height:1.3}
 <button class="item" data-a="connect"><strong>🔌</strong> Подключить</button>
 <button class="item" data-a="renew"><strong>🔁</strong> Продление</button>
 <button class="item" data-a="share"><strong>💙</strong> Поддержать проект</button>
-<button class="item" data-a="dns"><strong>🧭</strong> Smart DNS · скоро</button>
+<button class="item" data-a="dns"><strong>🧭</strong> Smart DNS · 200 ⭐</button>
 <button class="item" data-a="help"><strong>❔</strong> Помощь</button>
 <button class="item" data-a="support" id="support"><strong>✉️</strong> Поддержка</button>
 <button class="item" data-a="site"><strong>🌍</strong> Сайт · резервный</button>
 <button class="item wide" data-a="dnsadmin" id="admin" hidden>🛠 Управление Smart DNS</button>
 </nav><div id="notice" aria-live="polite"></div>
-<footer>VPN развивается. Smart DNS пока в разработке. Пробные 24 часа начнутся после активации.</footer>
+<footer>VPN и персональный Smart DNS · 200 ⭐ за 30 дней. Пробные 24 часа начинаются после активации.</footer>
 <script>
 (()=>{const w=typeof TelegramWidget==='undefined'?null:TelegramWidget,items=document.querySelectorAll('.item'),notice=document.getElementById('notice');let busy=false;
 let data={v:1,a:0,o:0};try{data=JSON.parse(w&&w.chatData||'{}')}catch{}
