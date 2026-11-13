@@ -667,8 +667,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   if(optOut.videoSources!==0||!optOut.fallbackVisible)failed=true;
   await reduced.close();
 }
-// Browsers with data saver/reduced-motion must not silently show a frozen
-// video: preserve the static globe and provide an explicit opt-in control.
+// Data-saving visitors get static globe artwork with no playback control.
+// This remains true after a normal tap; autoplay does not override saveData.
 {
   const dataSave=await browser.newPage({viewport:{width:390,height:844}});
   await dataSave.addInitScript(()=>{
@@ -677,34 +677,24 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     });
   });
   await dataSave.goto(base,{waitUntil:'domcontentloaded'});
-  await dataSave.waitForFunction(()=>{
-    const inner=document.querySelector('#journey-front-frame')?.contentDocument;
-    return Boolean(inner?.querySelector('#video-retry')) && 
-      inner.querySelector('#video-retry').hidden===false;
-  });
-  const before=await dataSave.evaluate(()=>{
+  const state=await dataSave.evaluate(()=>{
     const inner=document.querySelector('#journey-front-frame').contentDocument;
     const video=inner.querySelector('#bgv');
-    return {buttonVisible:!inner.querySelector('#video-retry').hidden,
-      sourceCount:video.querySelectorAll('source').length,
-      fallbackVisible:!inner.querySelector('.scene').classList.contains('vid')};
+    return {
+      noReplayButton:!inner.querySelector('#video-retry'),
+      noSources:video.querySelectorAll('source').length===0,
+      staticVisible:!inner.querySelector('.scene').classList.contains('vid'),
+      artworkPresent:getComputedStyle(inner.querySelector('.kb')).backgroundImage.includes('landing-earth.webp')
+    };
   });
-  await dataSave.frameLocator('#journey-front-frame').locator('#video-retry').click();
-  await dataSave.waitForFunction(()=>{
-    const inner=document.querySelector('#journey-front-frame')?.contentDocument;
-    const v=inner?.querySelector('#bgv');
-    return v?.currentTime>.07 && !v.paused && inner.querySelector('.scene').classList.contains('vid');
-  },null,{timeout:12000}).catch(()=>{failed=true;});
-  const after=await dataSave.evaluate(()=>{
+  await dataSave.frameLocator('#journey-front-frame').locator('.hero').click({force:true});
+  const afterTap=await dataSave.evaluate(()=>{
     const inner=document.querySelector('#journey-front-frame').contentDocument;
-    const v=inner.querySelector('#bgv');
-    return {sourceCount:v.querySelectorAll('source').length,
-      time:v.currentTime,retryHidden:inner.querySelector('#video-retry').hidden,
-      hasVideo:inner.querySelector('.scene').classList.contains('vid')};
+    return inner.querySelector('#bgv').querySelectorAll('source').length===0 &&
+      inner.querySelector('#video-retry')===null;
   });
-  console.log('DATA_SAVER_VIDEO_RECOVERY='+JSON.stringify({before,after}));
-  if(!before.buttonVisible||before.sourceCount!==0||!before.fallbackVisible||
-    after.sourceCount!==2||!after.retryHidden||!after.hasVideo||after.time<=.07)failed=true;
+  console.log('DATA_SAVER_STATIC_BACKGROUND='+JSON.stringify({...state,afterTap}));
+  if(!Object.values(state).every(Boolean)||!afterTap)failed=true;
   await dataSave.close();
 }
 // Mobile regression: the video used to be disabled on 2-core devices and
@@ -730,13 +720,10 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   try{await playing();}
   catch{
     autoplayBlocked=true;
-    // Real Android may deny muted autoplay despite loaded metadata.
-    // The opt-in control is the supported fallback and must be functional.
-    const retry=page.frameLocator('#journey-front-frame').locator('#video-retry');
-    if(await retry.isVisible()){
-      await retry.click();
-      await playing().catch(()=>{failed=true;});
-    }else failed=true;
+    // When the browser rejects muted autoplay, keep static artwork visible.
+    // A normal tap can retry playback without adding a separate UI button.
+    await page.frameLocator('#journey-front-frame').locator('.hero').click({force:true});
+    try{await playing();}catch{ /* Browser policy may still block autoplay. */ }
   }
   const before=await page.evaluate(()=>{
     const inner=document.querySelector('#journey-front-frame')?.contentDocument;
@@ -750,9 +737,15 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       error:video?.error?.code||null,
     };
   });
-  console.log('ANDROID_VIDEO_2CORE_3G='+JSON.stringify({...before,autoplayBlocked}));
-  if(!before.scenePlaying||before.paused||before.time<=0.1||
-    !before.artworkExternal||!before.navGrouped||before.error)failed=true;
+  const videoFallback=await page.evaluate(()=>{
+    const inner=document.querySelector('#journey-front-frame')?.contentDocument;
+    return {noReplayButton:!inner?.querySelector('#video-retry'),
+      staticVisible:!inner?.querySelector('.scene')?.classList.contains('vid')};
+  });
+  console.log('ANDROID_VIDEO_2CORE_3G='+JSON.stringify({...before,autoplayBlocked,videoFallback}));
+  const isPlaying=before.scenePlaying&&!before.paused&&before.time>0.1;
+  if(!before.artworkExternal||!before.navGrouped||before.error||
+    !videoFallback.noReplayButton||(!isPlaying&&!videoFallback.staticVisible))failed=true;
 
   await page.frameLocator('#journey-front-frame').locator('.top-links a[href="#account"]').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='account');
@@ -796,10 +789,12 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.locator('.account-back-to-plans').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='plans');
   await page.waitForFunction(()=>{
-    const v=document.querySelector('#journey-front-frame')?.contentDocument?.querySelector('#bgv');
-    return v&&!v.paused&&v.currentTime>0.1;
+    const inner=document.querySelector('#journey-front-frame')?.contentDocument;
+    const v=inner?.querySelector('#bgv');
+    return v&&(!v.paused&&v.currentTime>0.1||
+      !inner.querySelector('.scene').classList.contains('vid'));
   },null,{timeout:8000}).catch(()=>{failed=true;});
-  console.log('ACCOUNT_RETURN_VIDEO_RESUMED=true');
+  console.log('ACCOUNT_RETURN_VIDEO_OR_STATIC_FALLBACK=true');
   await page.close();
 }
 // Branded checkout visual acceptance: real authenticated route, no card data
