@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
+import {seoPages,seoPaths,renderSeoPage} from '../apps/web/src/seo-pages.ts';
 import {
   PUBLIC_SEO_PATHS,canonicalAlias,requiresNoindex,renderRobots,renderSitemap,
 } from '../apps/web/src/seo-core.ts';
@@ -60,4 +61,28 @@ test('static public pages expose matching self-canonical and description',()=>{
     assert.match(html,/<meta name="description" content="[^"]+">/);
     assert.equal((html.match(/rel="canonical"/g)??[]).length,1);
   }
+});
+
+test('ten verified articles are present, unique and linked into the existing sitemap',()=>{
+  assert.equal(seoPages.length,10);
+  assert.equal(new Set(seoPaths()).size,10);
+  assert.equal(new Set(seoPages.map(p=>p.title)).size,10);
+  assert.equal(new Set(seoPages.map(p=>p.description)).size,10);
+  for(const article of seoPages){
+    const html=renderSeoPage(article.path,origin);
+    assert.ok(html,article.path);
+    assert.ok(PUBLIC_SEO_PATHS.includes(article.path),article.path);
+    assert.ok(renderSitemap(origin).includes('<loc>'+origin+article.path+'</loc>'));
+    assert.ok(html.includes('rel="canonical" href="'+origin+article.path+'"'));
+    assert.ok(html.includes('<h1>'+article.heading+'</h1>'));
+    assert.ok(html.includes('<section class="seo-sources">'));
+    assert.ok(html.includes('rel="noopener noreferrer"'));
+    assert.ok(html.includes('application/ld+json'));
+    assert.ok(html.includes('href="/#plans"'));
+    assert.equal(canonicalAlias(article.path+'/'),article.path);
+    assert.equal(requiresNoindex(article.path),false);
+    assert.doesNotMatch(html,/\d[\d\s]*₽|гарантируем.{0,50}(?:доступ|работу)|100%|без ограничений/i);
+    assert.doesNotMatch(html,/\/(?:sub|install|auth)\/[A-Za-z0-9_-]{20,}/);
+  }
+  assert.equal(renderSeoPage('/does-not-exist',origin),null);
 });
