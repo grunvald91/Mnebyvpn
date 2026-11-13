@@ -4,7 +4,7 @@
  * Run from GitHub Actions only; screenshots are an audit, not a design mock.
  */
 import http from 'node:http';
-import { readFileSync, copyFileSync } from 'node:fs';
+import { readFileSync, copyFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -864,10 +864,13 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     importVisible:!document.querySelector('#journey-import-step')?.hidden,
     autoVisible:document.querySelector('#journey-auto')?.getBoundingClientRect().height>0
   }));
-  await page.screenshot({
-    path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-11-setup-import-390x844.jpg',
-    type:'jpeg',quality:82,fullPage:true
-  });
+  const setupImportImage=process.env.RUNNER_TEMP+'/mnebyvpn-audit-11-setup-import-390x844.jpg';
+  await page.screenshot({path:setupImportImage,type:'jpeg',quality:82,fullPage:true});
+  if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
+    console.log('AUDIT_SETUP_IMPORT_JPEG_BEGIN');
+    console.log(readFileSync(setupImportImage).toString('base64'));
+    console.log('AUDIT_SETUP_IMPORT_JPEG_END');
+  }
   console.log('AUDIT_INSTALL_GATE='+JSON.stringify({setupBefore,setupAfter,synthetic:true}));
   if(!setupBefore.installedButton?.includes('Я установил')||
     !setupBefore.importHidden||!setupBefore.downloadVisible||
@@ -897,6 +900,11 @@ for(const scenario of [
   }));
   const dest=process.env.RUNNER_TEMP+'/mnebyvpn-audit-'+scenario.name+'-390x844.jpg';
   await page.screenshot({path:dest,type:'jpeg',quality:82,fullPage:true});
+  if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
+    console.log('AUDIT_SCREEN_JPEG_'+scenario.name+'_BEGIN');
+    console.log(readFileSync(dest).toString('base64'));
+    console.log('AUDIT_SCREEN_JPEG_'+scenario.name+'_END');
+  }
   console.log('AUDIT_SCREEN_'+scenario.name+'='+JSON.stringify({...result,pageErrors}));
   if(result.overflowX||pageErrors.length||result.view!==scenario.expected)failed=true;
   await page.close();
@@ -912,6 +920,35 @@ for(const scenario of [
   console.log('AUDIT_ABOUT_DIALOG=open');
   await page.close();
 }
+// Build one self-contained HTML gallery in the downloadable workflow artifact.
+const auditFiles=readdirSync(process.env.RUNNER_TEMP)
+  .filter(name=>/^mnebyvpn-audit-.*\.jpg$/.test(name)).sort();
+const auditLabels={
+  '01':'Главная / тарифы','02':'Smart DNS / подсказка','03':'Оплата / подсказка',
+  '04':'Выбор бесплатного доступа','05':'Email / 24 часа','06':'Ввод кода из письма',
+  '07':'Личный кабинет','08':'Подтверждение заказа',
+  '09':'Подключение / ожидание','10':'Подключение / установка клиента',
+  '11':'Подключение / автоимпорт','12':'Поддержка','13':'Проверка оплаты',
+  '14':'Кабинет без авторизации','15':'О проекте'
+};
+const figures=auditFiles.map(name=>{
+  const code=name.match(/^mnebyvpn-audit-(\d+)/)?.[1]||'';
+  const title=auditLabels[code]||name;
+  return '<figure><img loading="lazy" src="'+name+'" alt="'+title+'"><figcaption>'+code+' · '+title+'</figcaption></figure>';
+}).join('\n');
+const gallery='<!doctype html><html lang="ru"><meta charset="utf-8">'+
+  '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+  '<title>MNEBYVPN · визуальная проверка экранов</title>'+
+  '<style>body{background:#080e27;color:#eef8ff;font:15px system-ui;margin:0;padding:20px}'+
+  'h1{font-size:22px}p{color:#bfcfe4}section{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}'+
+  'figure{margin:0;background:#131e40;border:1px solid #3274a6;border-radius:13px;padding:8px}'+
+  'img{width:100%;height:auto;max-height:620px;object-fit:contain;display:block;border-radius:8px}'+
+  'figcaption{padding:7px 2px;font-weight:650}'+
+  '</style><h1>MNEBYVPN · обзор мобильных экранов</h1>'+
+  '<p>Реальные HTML/CSS/JS страницы в тестовом браузере, размер 390×844. Тарифы, email и ключи синтетические; никаких реальных оплат и подписок.</p>'+
+  '<section>'+figures+'</section></html>';
+writeFileSync(process.env.RUNNER_TEMP+'/mnebyvpn-audit-gallery.html',gallery);
+console.log('AUDIT_SCREENSHOT_SET='+JSON.stringify(auditFiles));
 await browser.close();
 server.close();
 if(failed){
