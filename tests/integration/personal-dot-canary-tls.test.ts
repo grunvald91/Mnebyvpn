@@ -24,15 +24,26 @@ function makeQuery(name:string,id=0x2468):Buffer{
  return Buffer.concat([head,...name.split('.').map(s=>
   Buffer.concat([Buffer.from([s.length]),Buffer.from(s)])),Buffer.from([0,0,1,0,1])]);
 }
-function response(query:Buffer,rcode:number):Buffer{
+function response(query:Buffer,rcode:number,ipv4?:string):Buffer{
  const result=Buffer.from(query);
- result.writeUInt16BE(0x8180|rcode,2);return result;
+ result.writeUInt16BE(0x8180|rcode,2);
+ if(!ipv4)return result;
+ const rr=Buffer.alloc(16);
+ rr.writeUInt16BE(0xc00c,0); // compressed owner = request QNAME
+ rr.writeUInt16BE(1,2);rr.writeUInt16BE(1,4);
+ rr.writeUInt32BE(30,6);rr.writeUInt16BE(4,10);
+ const bytes=ipv4.split('.').map(Number);
+ if(bytes.length!==4||bytes.some(x=>!Number.isInteger(x)||x<0||x>255))
+   throw Error('Invalid fixture IPv4 A answer');
+ rr.set(bytes,12);
+ result.writeUInt16BE(1,6);
+ return Buffer.concat([result,rr]);
 }
 function framed(wire:Buffer):Buffer{
  const result=Buffer.alloc(2+wire.length);
  result.writeUInt16BE(wire.length,0);wire.copy(result,2);return result;
 }
-async function mockDns(rcode:number):Promise<{server:TcpServer,count:()=>number}>{
+async function mockDns(rcode:number,ipv4?:string):Promise<{server:TcpServer,count:()=>number}>{
  let count=0;
  const server=createTcpServer(socket=>{
   let input=Buffer.alloc(0);
@@ -43,7 +54,7 @@ async function mockDns(rcode:number):Promise<{server:TcpServer,count:()=>number}
    const n=input.readUInt16BE(0);
    if(input.length<n+2)return;
    count++;
-   socket.end(framed(response(input.subarray(2,n+2),rcode)));
+   socket.end(framed(response(input.subarray(2,n+2),rcode,ipv4)));
   });
  });
  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -123,8 +134,8 @@ test('private canary DoT TLS + DB + origin/mapped DNS roundtrip and measured lat
     [entitlement,first.label,first.tokenSha256,30]);
   assert.equal(provision.rows[0].verdict,'ISSUED');
 
-  mapped=await mockDns(0);
-  direct=await mockDns(3);
+  mapped=await mockDns(0,'192.0.2.14');
+  direct=await mockDns(0,'198.51.100.8');
   const policyBytes=Buffer.from(JSON.stringify(['claude.ai','*.premium.example']));
   const classifier=pinnedCanaryPolicy(policyBytes,createHash('sha256').update(policyBytes).digest('hex'));
   assert.equal(classifier({name:'claude.ai',type:1,dnsClass:1}),'premium');
@@ -145,8 +156,12 @@ test('private canary DoT TLS + DB + origin/mapped DNS roundtrip and measured lat
   const listenPort=(listener.address() as AddressInfo).port;
   client=await tlsClient(cert,listenPort,first.hostname);
   const io=clientFrames(client);
-  assert.equal((await io.send(makeQuery('example.org'))).readUInt16BE(2)&15,3);
-  assert.equal((await io.send(makeQuery('claude.ai'))).readUInt16BE(2)&15,0);
+  const ordinary=await io.send(makeQuery('example.org'));
+  assert.equal(ordinary.readUInt16BE(2)&15,0);
+  assert.equal(Array.from(ordinary.subarray(-4)).join('.'),'198.51.100.8');
+  const premium=await io.send(makeQuery('claude.ai'));
+  assert.equal(premium.readUInt16BE(2)&15,0);
+  assert.equal(Array.from(premium.subarray(-4)).join('.'),'192.0.2.14');
   assert.equal(mapped.count(),1);
   assert.equal(direct.count(),1);
   const latencies:number[]=[];
@@ -165,7 +180,9 @@ test('private canary DoT TLS + DB + origin/mapped DNS roundtrip and measured lat
   assert.equal(BigInt(used.rows[0].used_queries),13n);
   assert.equal(BigInt(used.rows[0].remaining_queries),17n);
   outage=true;
-  assert.equal((await io.send(makeQuery('claude.ai'))).readUInt16BE(2)&15,3);
+  const outageAnswer=await io.send(makeQuery('claude.ai'));
+  assert.equal(outageAnswer.readUInt16BE(2)&15,0);
+  assert.equal(Array.from(outageAnswer.subarray(-4)).join('.'),'198.51.100.8');
   outage=false;
   const changed=await db.query(
    'SELECT rotate_personal_dns_credential($1,$2,$3,$4,$5) AS verdict',
@@ -175,7 +192,9 @@ test('private canary DoT TLS + DB + origin/mapped DNS roundtrip and measured lat
   client.destroy();
   client=await tlsClient(cert,listenPort,second.hostname);
   const fresh=clientFrames(client);
-  assert.equal((await fresh.send(makeQuery('claude.ai'))).readUInt16BE(2)&15,0);
+  const rotatedAnswer=await fresh.send(makeQuery('claude.ai'));
+  assert.equal(rotatedAnswer.readUInt16BE(2)&15,0);
+  assert.equal(Array.from(rotatedAnswer.subarray(-4)).join('.'),'192.0.2.14');
   const final=await db.query('SELECT * FROM personal_dns_query_status($1)',[entitlement]);
   assert.equal(BigInt(final.rows[0].used_queries),14n);
   console.info('MNEBYDNS_CANARY_LOCAL_END_TO_END=PASS');
