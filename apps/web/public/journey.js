@@ -123,6 +123,16 @@
     if(hash==='#contact-support')return 'support';
     return 'plans';
   }
+  function updatePaymentAction(){
+    if(!paymentIntro)return;
+    const button=el('journey-payment-to-account');
+    if(button)button.textContent=state.loggedIn?'Открыть мой VPN':'Войти и проверить заказ';
+    if(!state.loggedIn){
+      el('journey-payment-heading').textContent='Проверка заказа';
+      el('journey-payment-info').textContent=
+        'Чтобы проверить оплату, войдите в аккаунт, которым оформляли заказ. Возврат на сайт сам по себе не подтверждает платёж.';
+    }
+  }
   function setView(next,writeHash=false){
     if(!allViews.has(next))return;
     if(view==='trial-auth'&&next!=='trial-auth'){
@@ -143,6 +153,7 @@
     if(trialAuth)trialAuth.hidden=next!=='trial-auth';
     if(next==='trial-auth')mountTrialEmail();
     if(next==='checkout')updateOrder();
+    if(next==='payment')updatePaymentAction();
     if(writeHash){
       if(next!=='payment')paymentLanding=false;
       const hash=next==='payment'?'#account':next==='checkout'?'#checkout':next==='trial-auth'?'#try':next==='setup'?'#connect':
@@ -281,10 +292,14 @@
     macos:{name:'INCY',url:'https://github.com/INCY-DEV/incy-platforms/releases',client:'incy'},
     linux:{name:'INCY',url:'https://github.com/INCY-DEV/incy-platforms/releases',client:'incy'},
   };
+  const platformNames={android:'Android',ios:'iPhone',windows:'Windows',macos:'macOS',linux:'Linux'};
   function setPlatform(platform){
     if(!Object.hasOwn(downloads,platform))return;
     chosenPlatform=platform;installed=false;
     el('journey-import-step').hidden=true;
+    el('journey-platform-name').textContent=platformNames[platform];
+    el('journey-platform-grid').hidden=true;
+    el('journey-platform-change').setAttribute('aria-expanded','false');
     for(const button of setup.querySelectorAll('[data-journey-platform]')){
       button.setAttribute('aria-pressed',String(button.dataset.journeyPlatform===platform));
     }
@@ -425,6 +440,7 @@
         void loadSubscription(target.id);
       }
     }
+    if(view==='payment')updatePaymentAction();
     if(pendingIntent())resumeCheckout();
   }
   function loggedOut(){
@@ -434,6 +450,7 @@
     el('journey-url').value='';
     if(view==='setup')setView('account',true);
     else if(paymentLanding)setView('payment');
+    if(view==='payment')updatePaymentAction();
   }
   const originalShowPaymentLink=window.showPaymentLink;
   window.showPaymentLink=function(url){
@@ -501,6 +518,11 @@
     setView('plans',true);
   });
   setup.querySelectorAll('[data-journey-platform]').forEach(btn=>btn.addEventListener('click',()=>setPlatform(btn.dataset.journeyPlatform)));
+  el('journey-platform-change').addEventListener('click',()=>{
+    const grid=el('journey-platform-grid'),button=el('journey-platform-change');
+    grid.hidden=!grid.hidden;
+    button.setAttribute('aria-expanded',String(!grid.hidden));
+  });
   el('journey-installed').addEventListener('click',()=>{
     installed=true;updateSetup();el('journey-auto').focus();
   });
