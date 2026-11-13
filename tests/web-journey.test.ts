@@ -65,13 +65,13 @@ test('illustrated storefront keeps lock clear and payment fine print in a dialog
   assert.doesNotMatch(art,/<p class="note"/);
   assert.doesNotMatch(art,/<p class="note2"/);
 });
-test('payment helper is non-modal and video retry is user-initiated',()=>{
+test('payment helper stays non-modal and video has no manual replay button',()=>{
   const art=file('apps/web/public/landing-art.html');
   assert.match(art,/id="payment-info-dialog" class="payment-popover" role="dialog" aria-modal="false"/);
-  assert.match(art,/\.payment-popover\[hidden\],\.video-retry\[hidden\]/);
-  assert.match(art,/id="video-retry" hidden/);
-  assert.match(art,/dataSaver=Boolean\(navigator\.connection\?\.saveData\)/);
-  assert.match(art,/retry\.addEventListener\('click'/);
+  assert.match(art,/\.payment-popover\[hidden\]/);
+  assert.match(art,/autoplayAllowed=!R&&!navigator\.connection\?\.saveData/);
+  assert.match(art,/attempt\?\.catch\?\.\(showStaticArtwork\)/);
+  assert.doesNotMatch(art,/video-retry|Включить фон|optedIn/);
   assert.doesNotMatch(art,/paymentInfoDialog\.showModal/);
 });
 test('trial footer includes all landing links and seller details',()=>{
@@ -222,8 +222,9 @@ test('original background videos are bundled and served only by the public web r
   assert.match(art,/\['\/bg3\.webm\?v=6e816d6e','video\/webm/);
   assert.match(art,/\['\/bg3\.mp4\?v=30d2f12d','video\/mp4/);
   assert.match(art,/connection\?\.saveData/);
-  assert.match(art,/autoplayAllowed=!R&&!dataSaver/);
-  assert.match(art,/if\(!scene\|\|!video\|\|!retry\)return/);
+  assert.match(art,/autoplayAllowed=!R&&!navigator\.connection\?\.saveData/);
+  assert.match(art,/if\(!scene\|\|!video\)return/);
+  assert.doesNotMatch(art,/video-retry/);
   assert.doesNotMatch(art,/\/_blob\//);
   assert.match(server,/media-src 'self'/);
   assert.match(art,/class="legal-links"/);
