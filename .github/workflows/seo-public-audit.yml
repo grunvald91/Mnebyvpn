@@ -5,6 +5,8 @@ on:
       - '.github/workflows/seo-public-audit.yml'
       - 'scripts/seo_public_audit_20261113.py'
   workflow_dispatch:
+  schedule:
+    - cron: '21 4 * * *'
 permissions:
   contents: read
 jobs:
