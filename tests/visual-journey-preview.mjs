@@ -232,8 +232,40 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   if(dnsOnly.selected!=='true'||!dnsOnly.disabled||
     !dnsOnly.text.includes('скоро')||dnsOnly.frameLoads!==0)failed=true;
   await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="30"]').click();
+  const chooserBefore=await page.evaluate(()=>{
+    const frame=document.querySelector('#journey-front-frame');
+    const doc=frame.contentDocument;
+    const slot=doc.querySelector('#trial-slot').getBoundingClientRect();
+    const footer=doc.querySelector('footer').getBoundingClientRect();
+    return {slotHeight:slot.height,slotTop:slot.top,footerTop:footer.top,
+      scrollHeight:doc.documentElement.scrollHeight,
+      frameHeight:frame.getBoundingClientRect().height};
+  });
   await page.frameLocator('#journey-front-frame').locator('.try').click();
   if(!await page.frameLocator('#journey-front-frame').locator('#trial-options').isVisible())failed=true;
+  await page.waitForTimeout(100);
+  const chooserAfter=await page.evaluate(()=>{
+    const frame=document.querySelector('#journey-front-frame');
+    const doc=frame.contentDocument;
+    const slot=doc.querySelector('#trial-slot').getBoundingClientRect();
+    const footer=doc.querySelector('footer').getBoundingClientRect();
+    const free=doc.querySelector('.trial-slot .free').getBoundingClientRect();
+    const options=doc.querySelector('#trial-options').getBoundingClientRect();
+    return {slotHeight:slot.height,slotTop:slot.top,footerTop:footer.top,
+      scrollHeight:doc.documentElement.scrollHeight,
+      frameHeight:frame.getBoundingClientRect().height,
+      optionsOnStrip:Math.abs(free.top-options.top)<=1 &&
+        Math.abs(free.bottom-options.bottom)<=1,
+      freeHidden:getComputedStyle(doc.querySelector('.trial-slot .free')).visibility==='hidden',
+      open:doc.querySelector('.try').getAttribute('aria-expanded')==='true'};
+  });
+  console.log('TRIAL_IN_PLACE_'+width+'='+JSON.stringify({chooserBefore,chooserAfter}));
+  if(!chooserAfter.optionsOnStrip||!chooserAfter.freeHidden||!chooserAfter.open||
+     Math.abs(chooserAfter.slotHeight-chooserBefore.slotHeight)>1||
+     Math.abs(chooserAfter.slotTop-chooserBefore.slotTop)>1||
+     Math.abs(chooserAfter.footerTop-chooserBefore.footerTop)>1||
+     Math.abs(chooserAfter.scrollHeight-chooserBefore.scrollHeight)>2||
+     Math.abs(chooserAfter.frameHeight-chooserBefore.frameHeight)>2)failed=true;
   await page.frameLocator('#journey-front-frame').locator('#trial-dns').click();
   const trialDns=await page.frameLocator('#journey-front-frame').locator('#trial-dns-status');
   if(!await trialDns.isVisible())failed=true;
@@ -280,6 +312,20 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       })(),
       telegramExplained:document.querySelector('.journey-telegram-method .journey-telegram-note')?.textContent,
       horizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
+      viewportHeight:innerHeight,
+      documentHeight:document.documentElement.scrollHeight,
+      noVerticalScroll:document.documentElement.scrollHeight<=innerHeight+2,
+      footerInsideViewport:document.querySelector('.footer').getBoundingClientRect().bottom<=innerHeight+2,
+      headerVisualMatch:(()=>{
+        const front=document.querySelector('#journey-front-frame')?.contentDocument;
+        const original=front?.querySelector('.top-links .pill');
+        const native=document.querySelector('.header-actions .about-trigger');
+        if(!original||!native)return false;
+        const a=getComputedStyle(original),b=getComputedStyle(native);
+        return a.fontSize===b.fontSize && a.paddingLeft===b.paddingLeft &&
+          Math.abs(parseFloat(b.height)-parseFloat(a.height))<2 &&
+          parseFloat(getComputedStyle(document.querySelector('.header')).borderBottomWidth)===0;
+      })(),
       trialTitle:document.querySelector('#journey-trial-title')?.textContent,
       emailButton:(()=>{
         const input=document.querySelector('#email-input')?.getBoundingClientRect();
@@ -303,6 +349,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
      !trial.header.insideViewport||trial.footer.layout!=='flex'||
      trial.footer.height>130||trial.footer.innerHeight>129||!trial.footer.centered||
      trial.footer.links!==5||trial.footer.overflow||
+     !trial.headerVisualMatch||!trial.footerInsideViewport||
+     (width<=390&&!trial.noVerticalScroll)||
      !trial.emailButton||Math.abs(trial.emailButton.centerDelta)>5||
      trial.emailButton.width<200||trial.emailButton.height>54||
      trial.emailButton.radius<20||trial.emailButton.leftRadius!==trial.emailButton.radius)failed=true;
@@ -342,20 +390,21 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   );
   const disabled=await page.evaluate(()=>{
     const button=document.querySelector('#journey-trial-telegram');
-    const note=document.querySelector('.journey-telegram-method .journey-telegram-note');
+    const method=document.querySelector('.journey-telegram-method');
     return {
       aria:button.getAttribute('aria-disabled'),
       hidden:getComputedStyle(button).display==='none',
-      noteReadable:note&&getComputedStyle(note).display!=='none',
+      methodHidden:method.hidden&&getComputedStyle(method).display==='none',
       footerHeight:Math.round(document.querySelector('.footer').getBoundingClientRect().height),
       overflow:document.documentElement.scrollWidth>innerWidth+1,
+      noVerticalScroll:document.documentElement.scrollHeight<=innerHeight+2,
     };
   });
   const image=process.env.RUNNER_TEMP+'/mnebyvpn-trial-disabled-390x844.jpg';
   await page.screenshot({path:image,type:'jpeg',quality:78,fullPage:true});
   console.log('TRIAL_UNLINKED_TELEGRAM_METRICS='+JSON.stringify(disabled));
-  if(disabled.aria!=='true'||!disabled.hidden||!disabled.noteReadable||
-     disabled.footerHeight>130||disabled.overflow)failed=true;
+  if(disabled.aria!=='true'||!disabled.hidden||!disabled.methodHidden||
+     disabled.footerHeight>130||disabled.overflow||!disabled.noVerticalScroll)failed=true;
   await page.close();
 }
 /* Real Android regression: iframe may load before journey.js is available.
