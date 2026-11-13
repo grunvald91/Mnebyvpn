@@ -165,14 +165,51 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     console.log(readFileSync(file).toString('base64'));
     console.log('VISUAL_JPEG_'+width+'_END');
   }
-  // DNS info is a real keyboard-accessible dialog. It must name target
-  // services accurately without promising all are operational right now.
+  // Smart DNS information must behave as a small in-card popover:
+  // no modal overlay, no page growth, and all service caveats remain visible.
+  const beforeDns=await page.evaluate(()=>{
+    const doc=document.querySelector('#journey-front-frame').contentDocument;
+    return {h:doc.documentElement.scrollHeight,footer:doc.querySelector('footer').getBoundingClientRect().top};
+  });
   await page.frameLocator('#journey-front-frame').locator('#dns-info-open').click();
-  const info=await page.frameLocator('#journey-front-frame').locator('#dns-info-dialog');
+  const info=page.frameLocator('#journey-front-frame').locator('#dns-info-dialog');
   if(!await info.isVisible())failed=true;
   const infoContent=await info.textContent();
   if(!['YouTube','ChatGPT','Gemini','Claude','Antigravity','Grok','TikTok','X'].every(x=>infoContent.includes(x))||
     !infoContent.includes('домен')||!infoContent.includes('VPN'))failed=true;
+  const dnsMetrics=await page.evaluate(()=>{
+    const doc=document.querySelector('#journey-front-frame').contentDocument;
+    const pop=doc.querySelector('#dns-info-dialog');
+    const rect=pop.getBoundingClientRect();
+    const card=doc.querySelector('.card').getBoundingClientRect();
+    return {
+      width:Math.round(rect.width),height:Math.round(rect.height),
+      top:Math.round(rect.top),bottom:Math.round(rect.bottom),
+      ariaModal:pop.getAttribute('aria-modal'),
+      buttonExpanded:doc.querySelector('#dns-info-open').getAttribute('aria-expanded'),
+      modalCount:doc.querySelectorAll('dialog[open]').length,
+      backdrop:getComputedStyle(pop).position,
+      scrollHeight:doc.documentElement.scrollHeight,
+      footerTop:doc.querySelector('footer').getBoundingClientRect().top,
+      cardVisible:card.height>0,
+      hasScrollableContent:pop.scrollHeight>pop.clientHeight,
+    };
+  });
+  console.log('SMART_DNS_TIP_'+width+'='+JSON.stringify(dnsMetrics));
+  if(dnsMetrics.width>301||dnsMetrics.height>253||dnsMetrics.top<0||
+    dnsMetrics.ariaModal!=='false'||dnsMetrics.buttonExpanded!=='true'||
+    dnsMetrics.modalCount!==0||dnsMetrics.backdrop!=='absolute'||
+    !dnsMetrics.cardVisible||beforeDns.h!==dnsMetrics.scrollHeight||
+    Math.abs(beforeDns.footer-dnsMetrics.footerTop)>1)failed=true;
+  if(width===390&&height===844){
+    const file=process.env.RUNNER_TEMP+'/mnebyvpn-audit-02-smartdns-popover-390x844.jpg';
+    await page.screenshot({path:file,type:'jpeg',quality:82,fullPage:true});
+    if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
+      console.log('AUDIT_SMARTDNS_JPEG_BEGIN');
+      console.log(readFileSync(file).toString('base64'));
+      console.log('AUDIT_SMARTDNS_JPEG_END');
+    }
+  }
   await page.frameLocator('#journey-front-frame').locator('#dns-info-close').click();
   if(await info.isVisible())failed=true;
   // The informational card must float above price tiles and never open a modal
@@ -204,6 +241,12 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     popupMetrics.backgroundBackdrop!==0||!popupMetrics.contentVisible||
     popupMetrics.scrollHeight!==beforeInfo.h||
     Math.abs(popupMetrics.footerTop-beforeInfo.footer)>1)failed=true;
+  if(width===390&&height===844){
+    await page.screenshot({
+      path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-03-payment-popover-390x844.jpg',
+      type:'jpeg',quality:82,fullPage:true
+    });
+  }
   await page.frameLocator('#journey-front-frame').locator('#payment-info-close').click();
   if(await paymentInfo.isVisible())failed=true;
   // One VPN and one DNS may be selected at the same time. No iframe
