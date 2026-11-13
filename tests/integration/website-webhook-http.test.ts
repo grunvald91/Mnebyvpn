@@ -221,6 +221,8 @@ test('SEO endpoints: canonical public pages, robot map and protected API indexin
 });
 
 test('informational SEO guides answer on canonical routes without changing checkout',async()=>{
+  const origin='http://127.0.0.1:'+port;
+  const get=(p:string)=>fetch(origin+p,{redirect:'manual'});
   const paths=['/vpn','/smart-dns','/vpn-android','/vpn-iphone','/private-dns-android',
     '/youtube','/instagram','/telegram','/google-gemini','/ai-services'];
   for(const path of paths){
