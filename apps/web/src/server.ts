@@ -615,7 +615,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if (req.method === 'GET' || req.method === 'HEAD') {
     const guide=renderSeoPage(url.pathname,publicOrigin);
     if(guide!==null) {
-      const jsonLd=/<script type="application\\/ld\\+json">([^<]*)<\\/script>/.exec(guide)?.[1];
+      const jsonLd=guide.split('<script type="application/ld+json">')[1]?.split('</script>')[0];
       if(!jsonLd) {json(res,503,{code:'SEO_MARKUP_INVALID'});return;}
       const scriptHash=createHash('sha256').update(jsonLd).digest('base64');
       const guidePolicy=policy.replace("script-src 'self'",
