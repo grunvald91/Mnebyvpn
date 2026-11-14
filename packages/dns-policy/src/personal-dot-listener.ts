@@ -1,6 +1,8 @@
-/** Private, opt-in DNS-over-TLS canary. This module NEVER listens on its own.
- * The caller MUST bind only 127.0.0.1:8853 and perform explicit release gates.
- * TLS SNI carries a transferable bearer identity; it is not device binding.
+/** Private DNS-over-TLS listener factory; it never binds a socket by itself.
+ * The caller MUST validate the private bind IP, port, network ACL, wildcard
+ * certificate and explicit release gates. Production currently uses the
+ * WireGuard-only RU :8856 endpoint; the separate canary has its own port.
+ * TLS SNI carries a transferable bearer identity, not device binding.
  */
 import {X509Certificate,createHash} from 'node:crypto';
 import {connect as connectTcp} from 'node:net';
