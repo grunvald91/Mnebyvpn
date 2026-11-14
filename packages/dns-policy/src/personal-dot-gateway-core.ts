@@ -114,6 +114,34 @@ export function dnsResponseMatchesQuestion(
   }catch{return false;}
 }
 
+/** A fail-closed DNS response for technical premium-routing errors.
+ * Preserve transaction ID, original question and RD; strip optional EDNS
+ * options and all counts, then return QR/RA/SERVFAIL. Unlike a connection
+ * reset, SERVFAIL lets Android retry without silently bypassing Smart DNS.
+ */
+export function servfailDnsResponse(query:Uint8Array):Uint8Array{
+  parseDnsQuestion(query);
+  const sent=Buffer.from(query.buffer,query.byteOffset,query.byteLength);
+  let pos=12;
+  for(let i=0;i<127;i++){
+    const len=sent[pos++];
+    if(len===0)break;
+    pos+=len;
+  }
+  const end=pos+4;
+  const reply=Buffer.from(sent.subarray(0,end));
+  // QR | preserved RD | RA | RCODE=2 (SERVFAIL).
+  reply.writeUInt16BE(0x8082|(sent.readUInt16BE(2)&0x0100),2);
+  reply.writeUInt16BE(1,4);
+  reply.writeUInt16BE(0,6);
+  reply.writeUInt16BE(0,8);
+  reply.writeUInt16BE(0,10);
+  return reply;
+}
+
+const expectedNonPremiumDenial=(status:string):boolean=>
+  status==='DENY_QUOTA'||status==='DENY_INACTIVE';
+
 /**
  * After a customer's quota is used or a subscription is inactive,
  * fall back to trusted DIRECT upstream DNS, not to the SmartDNS-mapped
@@ -140,7 +168,7 @@ export async function resolvePersonalDnsMessage(
   }catch{
     // Missing/failed route policy must not break ordinary DNS or grant
     // unmetered premium answers: resolve the origin through direct DNS.
-    return direct(dnsWire);
+    return servfailDnsResponse(dnsWire);
   }
   if(route==='direct')return direct(dnsWire);
   if(route!=='premium')throw new Error('Untrusted DNS route classification');
@@ -149,7 +177,7 @@ export async function resolvePersonalDnsMessage(
     status=await consume(label);
   }catch{
     // A DB failure never opens unbilled SmartDNS routes; normal DNS only.
-    return direct(dnsWire);
+    return servfailDnsResponse(dnsWire);
   }
   if(status==='ALLOWED'){
     try{
@@ -157,11 +185,13 @@ export async function resolvePersonalDnsMessage(
     }catch{
       // Premium upstream failure should not take down Android Private DNS.
       // The accepted query was already charged; telemetry must track this.
-      return direct(dnsWire);
+      return servfailDnsResponse(dnsWire);
     }
   }
-  // Quota expired, refunded, unknown: no mapped answer.
-  return direct(dnsWire);
+  // Explicit expiry/quota denial may revert to ordinary DNS; infrastructure
+  // errors or unknown authorization verdicts must never silently go direct.
+  return expectedNonPremiumDenial(status)
+    ?direct(dnsWire):servfailDnsResponse(dnsWire);
 }
 
 
@@ -185,14 +215,15 @@ export async function resolvePersonalDnsWithSettlement(
   if(signal?.aborted)throw Error('DNS request aborted');
   let route:DnsRoute;
   try{route=await classify(question);}
-  catch{return direct(dnsWire,signal);}
+  catch{return servfailDnsResponse(dnsWire);}
   if(route==='direct')return direct(dnsWire,signal);
   if(route!=='premium')throw Error('Untrusted DNS route classification');
   const id=randomUUID();
   let status:string;
   try{status=await reserve(label,id);}
-  catch{return direct(dnsWire,signal);}
-  if(status!=='RESERVED')return direct(dnsWire,signal);
+  catch{return servfailDnsResponse(dnsWire);}
+  if(status!=='RESERVED')return expectedNonPremiumDenial(status)
+    ?direct(dnsWire,signal):servfailDnsResponse(dnsWire);
   let released=false;
   const release=async()=>{
     if(released)return;
@@ -205,7 +236,7 @@ export async function resolvePersonalDnsWithSettlement(
     if(signal?.aborted||!dnsResponseMatchesQuestion(dnsWire,result)){
       await release();
       if(signal?.aborted)throw Error('DNS request aborted');
-      return direct(dnsWire,signal);
+      return servfailDnsResponse(dnsWire);
     }
     // Do not send a paid mapping if a DB commit failed or the credential was
     // rotated/revoked while this request was in flight.
@@ -213,10 +244,11 @@ export async function resolvePersonalDnsWithSettlement(
     released=true;
     if(signal?.aborted)throw Error('DNS request aborted');
     if(verdict==='SETTLED')return result;
-    return direct(dnsWire,signal);
+    return expectedNonPremiumDenial(verdict)
+      ?direct(dnsWire,signal):servfailDnsResponse(dnsWire);
   }catch(err){
     await release();
     if(signal?.aborted)throw Error('DNS request aborted');
-    return direct(dnsWire,signal);
+    return servfailDnsResponse(dnsWire);
   }
 }
