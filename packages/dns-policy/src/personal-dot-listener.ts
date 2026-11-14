@@ -11,6 +11,7 @@ import type {Writable} from 'node:stream';
 import type {Pool} from 'pg';
 import {
   resolvePersonalDnsWithSettlement,dnsResponseMatchesQuestion,
+  parseDnsQuestion,servfailDnsResponse,
   type Classifier,type DnsResolver,
 } from './personal-dot-gateway-core.ts';
 import {parsePersonalDoTHostname} from './personal-dot-identity.ts';
@@ -241,8 +242,18 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
           activeSignals.add(controller);
           let answer:Uint8Array;
           try{
-            const work=offlineDirectOnly?o.direct(request,controller.signal):
-              resolvePersonalDnsWithSettlement(name,request,o.classify,
+            // A recently recognized subscriber may resolve ordinary domains
+            // during a temporary recognition outage, but must never receive
+            // an unmetered origin IP for a premium domain.
+            const work=offlineDirectOnly
+              ?(async()=>{
+                try{
+                  const route=await o.classify(parseDnsQuestion(request));
+                  if(route==='direct')return o.direct(request,controller.signal);
+                }catch{/* unknown policy is never a safe direct route */}
+                return servfailDnsResponse(request);
+              })()
+              :resolvePersonalDnsWithSettlement(name,request,o.classify,
                 async(token,id)=>{
                   const r=await o.db.query(
                     'SELECT reserve_personal_dns_query($1,$2::uuid) AS verdict',
