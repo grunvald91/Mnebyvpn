@@ -118,8 +118,9 @@ test('different web and bot databases share only signed localhost support inbox/
       from:{id:owner},chat:{id:owner,type:'private'},text:'/start',
     }});
     const home=await ownerMenu.json() as any;
-    assert.equal(home.method,'sendWidget');
-    assert.equal(JSON.parse(home.chat_data).o,1);
+    assert.equal(home.method,'sendMessage');
+    assert.ok(home.reply_markup.inline_keyboard.flat().some((b:any)=>
+      b.callback_data==='support:page:0'));
     const legacy=await update({update_id:4310,callback_query:{
       id:'legacy-support',from:{id:owner},
       message:{chat:{id:owner,type:'private'},message_id:101},
