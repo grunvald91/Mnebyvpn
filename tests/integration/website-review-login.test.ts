@@ -74,7 +74,12 @@ test('review login uses eight digits without email; sessions work from two brows
   const first=a.headers.get('set-cookie')?.split(';')[0];
   const second=b.headers.get('set-cookie')?.split(';')[0];
   assert.ok(first);assert.ok(second);assert.notEqual(first,second);
-  assert.equal((await fetch(base+'/api/me',{headers:{cookie:first}})).status,200);
+  const me=await fetch(base+'/api/me',{headers:{cookie:first}});
+  assert.equal(me.status,200);
+  const own=await me.json() as {identity:{provider:string;email:string};orders:unknown[]};
+  assert.equal(own.identity.provider,'email');
+  assert.equal(own.identity.email,email);
+  assert.deepEqual(own.orders,[]);
   assert.equal((await fetch(base+'/api/me',{headers:{cookie:second}})).status,200);
   await pool.query('UPDATE web_review_login SET enabled=false WHERE account_id=$1',[account]);
   assert.equal((await fetch(base+'/api/me',{headers:{cookie:first}})).status,401);
