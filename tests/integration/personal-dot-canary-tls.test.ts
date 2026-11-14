@@ -183,8 +183,8 @@ test('private canary DoT TLS + DB + origin/mapped DNS roundtrip and measured lat
   assert.equal(BigInt(used.rows[0].remaining_queries),17n);
   outage=true;
   const outageAnswer=await io.send(makeQuery('claude.ai'));
-  assert.equal(outageAnswer.readUInt16BE(2)&15,0);
-  assert.equal(Array.from(outageAnswer.subarray(-4)).join('.'),'198.51.100.8');
+  assert.equal(outageAnswer.readUInt16BE(2)&15,2,'premium outage must SERVFAIL');
+  assert.equal(outageAnswer.readUInt16BE(6),0,'premium outage must never expose the direct origin');
   outage=false;
   const changed=await db.query(
    'SELECT rotate_personal_dns_credential($1,$2,$3,$4,$5) AS verdict',
@@ -195,7 +195,8 @@ test('private canary DoT TLS + DB + origin/mapped DNS roundtrip and measured lat
   const stillDirect=await io.send(makeQuery('example.org'));
   assert.equal(Array.from(stillDirect.subarray(-4)).join('.'),'198.51.100.8');
   const rejectedPremium=await io.send(makeQuery('claude.ai',0x3520));
-  assert.equal(Array.from(rejectedPremium.subarray(-4)).join('.'),'198.51.100.8');
+  assert.equal(rejectedPremium.readUInt16BE(2)&15,2,'rotated credential must fail closed');
+  assert.equal(rejectedPremium.readUInt16BE(6),0);
   const afterRotation=await db.query('SELECT * FROM personal_dns_query_status($1)',[entitlement]);
   assert.equal(BigInt(afterRotation.rows[0].used_queries),13n);
   authClock+=60000;
