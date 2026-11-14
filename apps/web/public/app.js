@@ -611,6 +611,7 @@ async function copyGuestSubscription(){
 }
 
 let pendingEmail=null;
+let pendingReviewCode=false;
 async function beginEmail(event){
   event.preventDefault();
   if(!state.emailLoginEnabled)return;
@@ -618,15 +619,27 @@ async function beginEmail(event){
   if(!email)return;
   const button=byId('email-send-button');
   button.disabled=true;
-  text('email-status','Отправляем код с mnebyvpn@servgo.ru…');
+  text('email-status','Проверяем способ входа…');
   try{
     const payload={email};
     if(state.loggedIn&&state.emailLinkMode)payload.link=true;
-    await api('/api/auth/email/start',{method:'POST',
+    const response=await api('/api/auth/email/start',{method:'POST',
       headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     pendingEmail=email;
+    pendingReviewCode=response.status==='REVIEW_CODE_REQUIRED';
+    const codeInput=byId('email-code-input');
+    const digits=pendingReviewCode?8:6;
+    codeInput.value='';
+    codeInput.setAttribute('pattern','[0-9]{'+digits+'}');
+    codeInput.maxLength=digits;
+    codeInput.placeholder=digits+' цифр';
+    codeInput.setAttribute('autocomplete',pendingReviewCode?'off':'one-time-code');
+    document.querySelector('label[for="email-code-input"]').textContent=
+      pendingReviewCode?'Постоянный код':'Код из письма';
     byId('email-verify-form').classList.remove('hidden');
-    text('email-status','Письмо отправлено. Код действителен 10 минут. Проверьте также папку «Спам».');
+    text('email-status',pendingReviewCode?
+      'Введите постоянный восьмизначный код тестовой учётной записи.':
+      'Письмо отправлено. Код действителен 10 минут. Проверьте также папку «Спам».');
     byId('email-code-input').focus();
   }catch(error){
     text('email-status',error.message==='EMAIL_RATE_LIMIT'?
@@ -638,13 +651,15 @@ async function finishEmail(event){
   event.preventDefault();
   if(!pendingEmail)return;
   const code=byId('email-code-input').value.trim();
-  if(!/^[0-9]{6}$/.test(code)){text('email-status','Введите шесть цифр из письма.');return;}
+  if(!(pendingReviewCode?/^[0-9]{8}$/:/^[0-9]{6}$/).test(code)){
+    text('email-status',pendingReviewCode?'Введите восемь цифр постоянного кода.':'Введите шесть цифр из письма.');return;
+  }
   const button=byId('email-verify-button');
   button.disabled=true;
   try{
     await api('/api/auth/email/verify',{method:'POST',
       headers:{'Content-Type':'application/json'},body:JSON.stringify({email:pendingEmail,code})});
-    pendingEmail=null;state.emailLinkMode=false;
+    pendingEmail=null;pendingReviewCode=false;state.emailLinkMode=false;
     byId('email-verify-form').classList.add('hidden');
     await refresh();
     await consumePendingTrial();
@@ -655,7 +670,8 @@ async function finishEmail(event){
   }catch(error){
     text('email-status',error.message==='EMAIL_ALREADY_LINKED'?
       'Этот email уже привязан к другой учётной записи. Слияние не выполнено.':
-      'Код неверен или истёк. Проверьте письмо или запросите новый.');
+      error.message==='EMAIL_RATE_LIMIT'?'Слишком много попыток. Повторите позже.':
+      pendingReviewCode?'Неверный код или доступ временно заблокирован.':'Код неверен или истёк. Проверьте письмо или запросите новый.');
   }finally{button.disabled=false;}
 }
 function openEmailLink(){
