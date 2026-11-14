@@ -2,8 +2,11 @@
  * It never binds public :853 or rewrites an existing CoreDNS/Nginx listener.
  * External SNI demux is a separate guarded infrastructure release.
  *
- * Trust boundary: TLS cert wildcard + 12-symbol SNI + PostgreSQL credential
- * authorization on EVERY message, including direct lookups.
+ * Trust boundary: wildcard TLS cert + 12-symbol SNI + positive-only cached
+ * PostgreSQL credential recognition for at most 60 seconds. Every premium
+ * DNS message still performs database quota reservation and settlement;
+ * ordinary/direct DNS messages remain unmetered. Revocation of direct-only
+ * access becomes visible on the next recognition check, no later than 60s.
  */
 import {readFileSync} from 'node:fs';
 import {X509Certificate} from 'node:crypto';
