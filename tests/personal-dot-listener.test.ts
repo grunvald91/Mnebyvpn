@@ -70,10 +70,15 @@ test('personal DoT server accepts framed TLS requests, meters mapped only and di
     assert.equal(mapped,1);assert.equal(debits,1);
     reads.length=0;
     dbOutage=true;
-    // Recently verified bearer can only resolve real/direct DNS during
-    // a brief PostgreSQL outage; no mapped answers or extra charges.
+    // A recent authorization cache does not authorize premium DNS during
+    // an outage. Return SERVFAIL, never the direct real origin IP.
     await send(request('claude.ai'));
-    assert.equal(mapped,1);assert.equal(direct,2);assert.equal(debits,1);
+    const fail=Buffer.concat(reads);
+    assert.equal(fail.readUInt16BE(2+2),0x8182);
+    assert.equal(mapped,1);assert.equal(direct,1);assert.equal(debits,1);
+    reads.length=0;
+    await send(request('example.org'));
+    assert.equal(direct,2,'ordinary websites stay direct during grace');
     reads.length=0;
     dbOutage=false;
     known=false; // Rotation becomes visible at the next 60s recheck.
