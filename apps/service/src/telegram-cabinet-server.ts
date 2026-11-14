@@ -23,7 +23,6 @@ import {activationView,deviceView,manualView}
 import {formatDuration,formatRoubles} from '../../../packages/telegram-ui/src/menu.ts';
 import {vpnPurchaseWidgetPayload,vpnPurchaseWidgetData} from '../../../packages/telegram-ui/src/purchase-widget.ts';
 import {planWidgetKey} from '../../../packages/telegram-ui/src/widget-104.ts';
-import {homeWidgetPayload} from '../../../packages/telegram-ui/src/home-widget.ts';
 import {makePersonalStarsLinkPayload,parsePersonalStarsLinkPayload} from '../../../packages/billing/src/stars-links.ts';
 import {dnsAdminOwner,dnsAdminIntro,dnsAdminPrompt,dnsAdminSearchPrompt,dnsAdminSearch,dnsAdminAction,dnsAdminAdd,DNS_ADMIN_PROMPT,DNS_ADMIN_SEARCH_PROMPT}
   from './dns-admin.ts';
@@ -782,10 +781,12 @@ async function processUpdate(update:any){
   try {
     if(action==='nav:menu:legacy')
       return {method:'sendMessage',chat_id:actor.id,...main(actor.id)};
+    // Bot API 10.4 widgets are restricted for general bots in production.
+    // Use reliable standard Telegram messages for the public entry and shop.
     if(action==='nav:home'||action==='home')
-      return homeWidgetPayload(actor.id,actor.id===dnsAdminId,support?.operatorId===actor.id);
+      return oneAction(actor,main(actor.id));
     if(['nav:vpn','info:vpn','nav:plans:vpn','nav:catalog','nav:plans'].includes(action))
-      return await vpnBubble(actor.id);
+      return oneAction(actor,await vpnPlans());
     if(action==='nav:vpn:list')return oneAction(actor,await vpnPlans());
     if(action==='dns:issue'||/^dns:rotate:(confirm|execute):[1-9][0-9]{0,12}$/.test(action)){
       // Do not issue without an actually enabled public DoT listener.
