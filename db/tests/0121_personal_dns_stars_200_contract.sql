@@ -7,7 +7,7 @@ BEGIN
     SELECT 1 FROM pricing_drafts
     WHERE product='smart_dns' AND duration_seconds=2592000
       AND title='Smart DNS · 30 дней · персональный адрес'
-      AND stars=200 AND rub_minor=20000 AND dns_quota_bytes IS NULL
+      AND stars=200 AND rub_minor IS NULL AND dns_quota_bytes IS NULL AND dns_quota_queries_per_30d=1000000
   ) THEN RAISE EXCEPTION 'Approved Smart DNS price not saved exactly'; END IF;
   IF EXISTS(
     SELECT 1 FROM billing_plans

@@ -27,8 +27,10 @@ import {makePersonalStarsLinkPayload,parsePersonalStarsLinkPayload} from '../../
 import {dnsAdminOwner,dnsAdminIntro,dnsAdminPrompt,dnsAdminSearchPrompt,dnsAdminSearch,dnsAdminAction,dnsAdminAdd,DNS_ADMIN_PROMPT,DNS_ADMIN_SEARCH_PROMPT}
   from './dns-admin.ts';
 import {effectiveAccessState,formatRemainingTime,formatRemainingQuota} from '../../../packages/telegram-ui/src/access-format.ts';
-import {personalDnsTelegramMenu,personalDnsTelegramAction}
-  from './personal-dot-telegram-view.ts';
+import {personalDnsTelegramMenu,personalDnsTelegramAction,personalDnsGuide,
+  personalDnsPreview} from './personal-dot-telegram-view.ts';
+import {approvedPersonalDnsOffer} from '../../../packages/dns-policy/src/smart-dns-offers.ts';
+import {sendPersonalDnsMobileconfig} from '../../../packages/dns-policy/src/personal-dot-profile.ts';
 
 const digest=process.env.TELEGRAM_WEBHOOK_SECRET_SHA256??'';
 if(!/^[a-f0-9]{64}$/.test(digest))
@@ -80,13 +82,13 @@ const msg=(text:string,keyboard:Button[][])=>{
 const main=(id:number)=>msg(
   '🌐 MNEBYVPN\n\nМы только начинаем. Наша цель — простое подключение, понятное управление и оперативная помощь без технической путаницы. Со временем хотим объединить больше возможностей в одном сервисе.\n\nVPN и персональный Smart DNS. Выберите подключение ниже.\n\n🎁 Пробные 24 часа зависят от готовности выдачи VPN; отсчёт начинается после активации.\n\n💙 Поддержите проект: расскажите о нём друзьям. Выберите действие ниже.',
   [
-    [{text:'🌐 VPN и тарифы',callback_data:'nav:vpn'}],
+    [{text:'🌐 Купить VPN',callback_data:'nav:vpn'},
+     {text:'🧭 Купить Smart DNS',callback_data:'nav:dns'}],
     [{text:'🎁 Бесплатные 24 часа',callback_data:'nav:trial'}],
     [{text:'🔐 Мои подключения',callback_data:'nav:status'},
      {text:'🔌 Подключить',callback_data:'nav:connect'}],
     [{text:'🔁 Продление',callback_data:'nav:renew'},
      {text:'💙 Поддержать проект',callback_data:'nav:share'}],
-    [{text:'🧭 Smart DNS · 200 ⭐',callback_data:'nav:dns'}],
     [{text:'❔ Помощь',callback_data:'nav:help'}],
     ...(id===dnsAdminId ? [[{text:'🛠 Управление Smart DNS',callback_data:'dnsadmin:menu'}]] : []),
     [{text:support?.operatorId===id?'📥 Входящие заявки':'✉️ Поддержка',
@@ -341,8 +343,7 @@ async function issueStars(id:number,planId:string,updateId:number){
   const plan=await store.plan(planId);
   if(!plan||plan.stars===null||
      (plan.product!=='vpn'&&
-       !(plan.product==='smart_dns'&&personalDnsReady&&
-         plan.durationSeconds===30*86400&&plan.stars===200)))
+       !(personalDnsReady&&approvedPersonalDnsOffer(plan)!==null)))
     throw new Error('PLAN_NOT_OFFERED');
   const order=await store.createTelegramOrder(id,planId,'cabinet-stars:'+updateId);
   const invoice=buildStarsInvoice(starsOrderFromDB(order),
@@ -430,7 +431,7 @@ async function receiveStars(update:any){
     if(status==='APPLIED')
       return {method:'sendMessage',chat_id:m.from.id,
         text:record?.product==='smart_dns'
-          ?'✅ Оплата 200 ⭐ подтверждена. Создаём персональный DNS-адрес. Откройте «Мой DNS», когда статус станет активным.'
+          ?'✅ Оплата '+record.amount+' ⭐ подтверждена. Заказ записан. После активации в «Мой Smart DNS» можно получить персональный адрес и файл iPhone/iPad.'
           :'✅ Оплата Stars подтверждена. Заказ записан, проверяем выдачу VPN. Статус — в «Мои подключения».',
         reply_markup:{inline_keyboard:[[{text:'🔐 Мои подключения',callback_data:'nav:status'}],
           ...(record?.product==='smart_dns'?
@@ -481,9 +482,7 @@ async function trial(id:number){
     [{text:'🌐 Тарифы VPN',callback_data:'nav:vpn'}],[homeButton]]);
 }
 function info(data:string,id:number){
-  if(data==='nav:dns'||data==='info:dns')
-    return msg('🧭 Smart DNS\n\nТариф подготовлен: 200 ⭐ за 30 дней. Для каждого клиента — свой DNS-адрес. Учитываются DNS-запросы, а не гигабайты трафика. До проверки публичного DNS оплата закрыта.\n\nПока доступен раздел VPN.',
-      [[{text:'🌐 VPN',callback_data:'nav:vpn'}],[homeButton]]);
+  if(data==='nav:dns'||data==='info:dns')return personalDnsPreview();
   if(data==='nav:share')
     return msg('💙 Поддержать проект\n\nМы только в начале пути. Если вам нравится идея простого VPN, поделитесь ссылкой на бота. Это помогает развитию проекта и не требует оплаты.',
       [[{text:'📤 Поделиться',url:'https://t.me/share/url?url=https%3A%2F%2Ft.me%2FMNEBYVPN_bot'}],
@@ -503,9 +502,8 @@ async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
   if(data==='nav:status'||data==='nav:renew'||data==='nav:manage')return packages(id);
   if((data==='nav:dns'||data==='info:dns')&&personalDnsReady&&pool){
     const plans=store?await store.plans('telegram_stars'):[];
-    const offer=plans.find(p=>p.product==='smart_dns'&&
-      p.durationSeconds===30*86400&&p.stars===200);
-    return personalDnsTelegramMenu(pool,id,offer?.planId??null);
+    const offers=plans.filter(p=>approvedPersonalDnsOffer(p)!==null);
+    return personalDnsTelegramMenu(pool,id,offers);
   }
   if(data==='nav:trial'||data==='trial:vpn')return trial(id);
   if(data==='nav:connect')return pool?await activationView(pool,id)??dbUnavailable():dbUnavailable();
@@ -777,6 +775,7 @@ async function processUpdate(update:any){
     else if(text==='/connect')action='nav:connect';
     else if(text==='/share')action='nav:share';
     else if(text==='/help')action='nav:help';
+    else if(text==='/dns')action='nav:dns';
   }
   try {
     if(action==='nav:menu:legacy')
@@ -788,12 +787,14 @@ async function processUpdate(update:any){
     if(['nav:vpn','info:vpn','nav:plans:vpn','nav:catalog','nav:plans'].includes(action))
       return oneAction(actor,await vpnPlans());
     if(action==='nav:vpn:list')return oneAction(actor,await vpnPlans());
+    if(/^dns:guide:(ios|android|router|services)$/.test(action))
+      return oneAction(actor,personalDnsGuide(action.slice('dns:guide:'.length)));
     if(action==='dns:issue'||/^dns:rotate:(confirm|execute):[1-9][0-9]{0,12}$/.test(action)){
-      // Do not issue without an actually enabled public DoT listener.
-      // SQL owner verification and entitlement status are independent checks.
+      // Paid entitlement and public DNS readiness are independent gates.
       if(!personalDnsReady||!pool)return oneAction(actor,info('nav:dns',actor.id));
-      const view=await personalDnsTelegramAction(pool,actor.id,action);
-      // First-issued hostname must not be lost by editing an old widget.
+      const view=await personalDnsTelegramAction(pool,actor.id,action,hostname=>
+        sendPersonalDnsMobileconfig(actor.id,hostname,outboundBotToken));
+      // One-time credential and sendDocument result are private, not editable.
       return {method:'sendMessage',chat_id:actor.id,...view};
     }
     if(/^buy:stars:[a-z0-9][a-z0-9_-]{0,52}$/.test(action))

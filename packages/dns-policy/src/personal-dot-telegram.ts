@@ -46,11 +46,15 @@ async function latest(db:Pool,telegramId:number):Promise<Access|null>{
     `SELECT e.id::text entitlement_id,e.account_id::text account_id,
        e.state,e.expires_at,c.credential_revision,c.revoked_at
        FROM entitlements e JOIN accounts a ON a.id=e.account_id
+       JOIN orders o ON o.id=e.source_order_id
        LEFT JOIN personal_dns_credentials c ON c.entitlement_id=e.id
        WHERE a.telegram_user_id=$1 AND e.product='smart_dns'
+       -- A fresh paid package is a new entitlement with its own 1M quota.
+       -- Prefer the newest ACTIVE purchase; do not fall back to an older,
+       -- longer package whose monthly quota may already be exhausted.
        ORDER BY CASE WHEN e.state='ACTIVE' AND
          e.expires_at>clock_timestamp() THEN 0 ELSE 1 END,
-         e.expires_at DESC NULLS LAST,e.id LIMIT 1`,[String(telegramId)]);
+         o.created_at DESC,e.expires_at DESC NULLS LAST,e.id LIMIT 1`,[String(telegramId)]);
   return rows[0]??null;
 }
 export async function telegramPersonalDnsSummary(
