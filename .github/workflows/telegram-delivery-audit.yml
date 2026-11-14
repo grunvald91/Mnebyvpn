@@ -50,3 +50,5 @@ jobs:
           assert url=='https://cdn.servgo.ru:8443/mnebyvpn-telegram/webhook', 'Wrong Telegram webhook endpoint'
           assert not newer, 'Telegram had a new delivery error on port 8443'
           PY
+
+# Diagnostic rerun 2026-11-14: inspect Telegram webhook delivery without changing production.
