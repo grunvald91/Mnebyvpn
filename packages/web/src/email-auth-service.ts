@@ -2,7 +2,7 @@ import {randomInt} from 'node:crypto';
 import type {Pool,PoolClient} from 'pg';
 import {otpHash,otpMatches,privateDigest,deliverEmailOtp} from './email-otp.ts';
 
-async function incrementRate(client:PoolClient,key:string,cap:number,
+export async function incrementRate(client:PoolClient,key:string,cap:number,
   windowMs:number,secret:string):Promise<boolean>{
   const hash=privateDigest('mail-rate',key,secret);
   await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[hash]);
