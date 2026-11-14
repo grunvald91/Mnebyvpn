@@ -64,30 +64,25 @@ test('production cabinet: Stars invoice, checked payment, durable settlement and
       .filter(p=>{try{vpnPurchaseWidgetData([p]);return true}catch{return false}});
     assert.ok(validOffers.some(p=>p.planId===planId));
     assert.doesNotThrow(()=>vpnPurchaseWidgetPayload(user,validOffers));
-    // This is the ACTUAL production cabinet path behind the screenshot's
-    // "🌐 VPN и тарифы" button, not the parallel legacy bot-navigation path.
+    // Normal Telegram menu remains available when HTML widgets are restricted.
     const home=await post({update_id:80999,message:{chat:{id:user,type:'private'},
       from:{id:user},text:'/start'}});
-    assert.equal(JSON.parse(home.data).method,'sendWidget');
-    assert.equal(JSON.parse(home.data).reply_markup.inline_keyboard[0][0].callback_data,'nav:menu:legacy');
+    const startReply=JSON.parse(home.data);
+    assert.equal(startReply.method,'sendMessage');
+    assert.ok(startReply.reply_markup.inline_keyboard.flat().some((b:any)=>b.callback_data==='nav:vpn'));
     const menu=await post(button(81001,'nav:vpn'));
     assert.equal(menu.resp.status,200);
     const shown=JSON.parse(menu.data);
-    assert.equal(shown.method,'sendWidget');
+    assert.equal(shown.method,'editMessageText');
     assert.equal(shown.chat_id,user);
-    assert.equal(shown.allow_queries,false);
-    assert.match(shown.html,/TelegramWidget/);
-    assert.ok(shown.html.includes('data:image/webp;base64,'));
-    const state=JSON.parse(shown.chat_data);
+    assert.match(shown.text,/VPN/);
+    assert.ok(shown.reply_markup.inline_keyboard.flat().some((b:any)=>b.callback_data==='buy:stars:'+planId));
+    assert.ok(shown.reply_markup.inline_keyboard.flat().some((b:any)=>
+      b.url==='https://mnebyvpn.site/?product=vpn&days=30'));
     const visible=validOffers.slice().sort((a,b)=>
       a.durationSeconds-b.durationSeconds||a.planId.localeCompare(b.planId)).slice(0,4);
-    assert.deepEqual(state.p.map((p:(string|number)[])=>p[4]),visible.map(planWidgetKey));
-    assert.ok(state.p.every((p:(string|number)[])=>p[5]==='')); // tokenless integration
-    // The entire purchase UX is now inside the HTML bubble. Do not attach
-    // another tariff keyboard that asks the buyer to select twice.
-    assert.equal(shown.reply_markup,undefined);
-    assert.equal(shown.html.includes('Оплатите кнопкой под карточкой'),false);
-    const selectedKey=state.p[0][4];
+    // Existing widget-query receipts must remain safe for previously sent widgets.
+    const selectedKey=planWidgetKey(visible[0]);
     const fromWidget=await post({update_id:81009,widget_query:{
       id:'wq-81009',from:{id:user},chat:{id:user,type:'private'},message_id:543,
       type:{type:'data'},data:'buy:'+selectedKey,

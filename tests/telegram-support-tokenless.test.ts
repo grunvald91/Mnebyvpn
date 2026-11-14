@@ -98,8 +98,9 @@ test('main webhook bot relays private support requests and operator replies with
     const menu=await update({update_id:1905,message:{
       chat:{id:operator,type:'private'},from:{id:operator},text:'/start'}});
     const ordinary=await menu.json() as any;
-    assert.equal(ordinary.method,'sendWidget');
-    assert.equal(JSON.parse(ordinary.chat_data).o,1);
+    assert.equal(ordinary.method,'sendMessage');
+    assert.ok(ordinary.reply_markup.inline_keyboard.flat().some((b:any)=>
+      b.callback_data==='support:page:0'));
     const ordinaryMenu=await update({update_id:1906,callback_query:{
       id:'legacy-open',from:{id:operator},
       message:{chat:{id:operator,type:'private'},message_id:19},
