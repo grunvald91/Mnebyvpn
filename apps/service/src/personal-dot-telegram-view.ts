@@ -86,6 +86,7 @@ export async function personalDnsTelegramMenu(
     [...buy,...guideButtons]);
   const active=status.state==='ACTIVE'&&status.expiresAt!==null&&
     status.expiresAt.getTime()>Date.now();
+  const exhausted=active&&status.accessStatus==='QUOTA_EXHAUSTED';
   const date=status.expiresAt
     ?status.expiresAt.toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow'}):'—';
   const counters=status.queryUsed!==null&&status.queryRemaining!==null&&status.queryLimit!==null
@@ -100,7 +101,8 @@ export async function personalDnsTelegramMenu(
       callback_data:'dns:rotate:confirm:'+status.credentialRevision}]);
   actions.push(...buy,[{text:'🔁 Обновить статус',callback_data:'nav:dns'}],...guideButtons);
   return message(headline+'\n\n'+
-    (active?'Подписка активна.':'Платные маршруты сейчас неактивны.')+
+    (exhausted?'⚠️ Лимит запросов исчерпан. Для нового лимита купите ещё один тариф и после активации получите новый адрес.':
+      active?'Подписка активна.':'Платные маршруты сейчас неактивны.')+
     '\nДействует до: '+date+counters+
     (status.credentialIssued
       ?'\n\nАдрес уже выдавался. В базе хранится только его хэш. Сохраните файл; при потере замените персональный адрес.':''),
