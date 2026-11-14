@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {makePersonalDoTIdentity} from '../packages/dns-policy/src/personal-dot-identity.ts';
 import {
-  parseDnsQuestion,resolvePersonalDnsMessage,dnsResponseMatchesQuestion,
+  parseDnsQuestion,resolvePersonalDnsMessage,dnsResponseMatchesQuestion,servfailDnsResponse,
 } from '../packages/dns-policy/src/personal-dot-gateway-core.ts';
 
 function query(domain:string,qtype=1):Uint8Array{
@@ -106,7 +106,7 @@ test('a premium domain consumes one query before the SmartDNS mapped answer',asy
 });
 
 test('quota exhaustion or refund preserves ordinary DNS and never uses premium mapping',async()=>{
-  for(const outcome of ['DENY_QUOTA','DENY_INACTIVE','DENY_UNKNOWN','DENY_INVALID']){
+  for(const outcome of ['DENY_QUOTA','DENY_INACTIVE']){
     const steps:string[]=[];
     const data=await resolvePersonalDnsMessage(host,query('claude.ai'),
       ()=> 'premium',
@@ -126,7 +126,7 @@ test('database outage cannot grant free SmartDNS mapping',async()=>{
     async()=>{mappedCalled=true;throw new Error('unbilled');},
     async()=>Uint8Array.from([8]));
   assert.equal(mappedCalled,false);
-  assert.deepEqual([...res],[8]);
+  assert.deepEqual([...res],[...servfailDnsResponse(query('www.tiktok.com',28))]);
 });
 
 test('classifier outage preserves ordinary DNS without premium mapping',async()=>{
@@ -136,7 +136,7 @@ test('classifier outage preserves ordinary DNS without premium mapping',async()=
     async()=>{charged=true;return 'ALLOWED';},
     async()=>{mappedUsed=true;return Uint8Array.from([1]);},
     async()=>Uint8Array.from([9]));
-  assert.deepEqual([...response],[9]);
+  assert.deepEqual([...response],[...servfailDnsResponse(query('claude.ai'))]);
   assert.equal(charged,false);
   assert.equal(mappedUsed,false);
 });
@@ -148,9 +148,21 @@ test('mapped resolver failure preserves direct DNS after one paid debit',async()
     async()=>{charged++;return 'ALLOWED';},
     async()=>{throw new Error('mapped upstream offline');},
     async()=>{directCalls++;return Uint8Array.from([6]);});
-  assert.deepEqual([...response],[6]);
+  assert.deepEqual([...response],[...servfailDnsResponse(query('claude.ai'))]);
   assert.equal(charged,1);
-  assert.equal(directCalls,1);
+  assert.equal(directCalls,0);
+});
+
+test('unexpected nonpremium authorization verdict never falls back directly',async()=>{
+  for(const verdict of ['DENY_UNKNOWN','DENY_INVALID']){
+    let directCalls=0;
+    const out=await resolvePersonalDnsMessage(host,query('claude.ai'),
+      ()=>'premium',async()=>verdict,
+      async()=>{throw Error('premium unexpected');},
+      async()=>{directCalls++;return Uint8Array.from([11]);});
+    assert.deepEqual([...out],[...servfailDnsResponse(query('claude.ai'))]);
+    assert.equal(directCalls,0);
+  }
 });
 
 test('invalid DoT identity, DNS wire or non-authoritative classification cannot forward',async()=>{
