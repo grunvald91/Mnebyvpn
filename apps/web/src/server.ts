@@ -26,6 +26,8 @@ import {bonusReleaseReady,loadCustomerProxyBonus,parseBonusRoutes}
   from '../../../packages/web/src/telegram-proxy-bonus.ts';
 import {normalizeLoginEmail} from '../../../packages/web/src/email-otp.ts';
 import {beginEmailCode,verifyEmailCode} from '../../../packages/web/src/email-auth-service.ts';
+import {isReviewEmail,isReviewAccount,beginReviewCode,verifyReviewCode}
+  from '../../../packages/web/src/review-login.ts';
 import { parseProdamusFormData, isProdamusContentType } from '../../../packages/billing/src/multipart.ts';
 import { handleProdamusDelivery } from '../../../packages/billing/src/handlers.ts';
 
@@ -306,8 +308,10 @@ async function authorized(req:IncomingMessage):Promise<{
   // Each request verifies its signed account-scoped bearer against revocable DB state.
   const {rows}=await authPool.query(`SELECT a.id,a.telegram_user_id,a.email_address
     FROM website_sessions s JOIN accounts a ON a.id=s.account_id
+    LEFT JOIN web_review_login reviewer ON reviewer.account_id=a.id
     WHERE s.token_sha256=$1 AND s.account_id=$2
-      AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()`,
+      AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
+      AND (reviewer.account_id IS NULL OR reviewer.enabled=true)`,
     [sessionHash(raw),accountId]);
   if(rows.length!==1)return null;
   const tg=rows[0].telegram_user_id;
@@ -376,6 +380,20 @@ async function emailStart(req:IncomingMessage,res:ServerResponse):Promise<void>{
   }
   const current=body.link===true?await authorized(req):null;
   if(body.link===true&&!current){json(res,401,{code:'LOGIN_REQUIRED'});return;}
+  // Reviewer identities cannot be linked to a customer's Telegram/email.
+  if(body.link===true&&current&&await isReviewAccount(authPool,current.accountId)){
+    json(res,403,{code:'FORBIDDEN'});return;
+  }
+  if(await isReviewEmail(authPool,email)){
+    if(body.link===true){json(res,409,{code:'EMAIL_ALREADY_LINKED'});return;}
+    const review=await beginReviewCode(authPool,{
+      email,ip:sourceAddress(req),secret:sessionSecret,
+    });
+    if(review==='RATE_LIMIT'){json(res,429,{code:'EMAIL_RATE_LIMIT'});return;}
+    if(review==='DISABLED'){json(res,403,{code:'EMAIL_NOT_AVAILABLE'});return;}
+    json(res,200,{status:'REVIEW_CODE_REQUIRED',codeLength:8});
+    return;
+  }
   const result=await beginEmailCode(authPool,{
     email,ip:sourceAddress(req),linkAccountId:current?.accountId??null,
     secret:sessionSecret,gatewaySecret:mailGatewaySecret,
@@ -391,16 +409,28 @@ async function emailVerify(req:IncomingMessage,res:ServerResponse):Promise<void>
   }
   const body=await bodyJson(req);
   const email=normalizeLoginEmail(body.email);
-  if(!email||typeof body.code!=='string'||!/^[0-9]{6}$/.test(body.code)){
+  if(!email||typeof body.code!=='string'){
+    json(res,400,{code:'INVALID_EMAIL_CODE'});return;
+  }
+  const review=await isReviewEmail(authPool,email);
+  if(!(review?/^[0-9]{8}$/:/^[0-9]{6}$/).test(body.code)){
     json(res,400,{code:'INVALID_EMAIL_CODE'});return;
   }
   const current=await authorized(req);
-  const result=await verifyEmailCode(authPool,{
-    email,code:body.code,currentAccountId:current?.accountId??null,secret:sessionSecret,
-  });
+  if(current&&await isReviewAccount(authPool,current.accountId)&&current.email!==email){
+    json(res,403,{code:'FORBIDDEN'});return;
+  }
+  const result=review
+    ?await verifyReviewCode(authPool,{
+      email,code:body.code,ip:sourceAddress(req),secret:sessionSecret,
+    })
+    :await verifyEmailCode(authPool,{
+      email,code:body.code,currentAccountId:current?.accountId??null,secret:sessionSecret,
+    });
   if(result.status!=='SIGNED_IN'||!result.accountId){
-    json(res,result.status==='CONFLICT'?409:401,{
-      code:result.status==='CONFLICT'?'EMAIL_ALREADY_LINKED':'INVALID_OR_EXPIRED_CODE',
+    json(res,result.status==='CONFLICT'?409:result.status==='RATE_LIMIT'?429:401,{
+      code:result.status==='CONFLICT'?'EMAIL_ALREADY_LINKED':
+        result.status==='RATE_LIMIT'?'EMAIL_RATE_LIMIT':'INVALID_OR_EXPIRED_CODE',
     });return;
   }
   const token=issueAccountSession(result.accountId,sessionSecret);
@@ -462,6 +492,8 @@ async function callback(req:IncomingMessage,res:ServerResponse,url:URL){
       const current=await authorized(req);
       if(!current||current.accountId!==linkAccountId)
         throw Error('Account linking requires the same authenticated session');
+      if(await isReviewAccount(authPool,current.accountId))
+        throw Error('Reviewer account cannot link Telegram');
       const updated=await authPool.query(
         'UPDATE accounts SET telegram_user_id=$1 WHERE id=$2 '+
         'AND (telegram_user_id IS NULL OR telegram_user_id=$1) RETURNING id',
