@@ -34,7 +34,7 @@ function frame(q:Uint8Array):Buffer{
   const f=Buffer.alloc(q.length+2);f.writeUInt16BE(q.length,0);f.set(q,2);return f;
 }
 test('personal DoT server accepts framed TLS requests, meters mapped only and disables rotated identity',async()=>{
-  let known=true,debits=0,direct=0,mapped=0,dbOutage=false;
+  let known=true,debits=0,direct=0,mapped=0,dbOutage=false,clock=1000;
   const db={query:async(sql:string)=>{
     if(dbOutage)throw Error('temporary database outage');
     if(sql.includes('recognize_personal_dns_credential'))return{rows:[{known}]};
@@ -42,7 +42,7 @@ test('personal DoT server accepts framed TLS requests, meters mapped only and di
     if(sql.includes('finish_personal_dns_query')){debits++;return{rows:[{verdict:'SETTLED'}]};}
     throw Error('unexpected SQL');
   }} as unknown as Pick<Pool,'query'>;
-  const server=createPersonalDotListener({key,cert,db,queryTimeoutMs:2000,
+  const server=createPersonalDotListener({key,cert,db,now:()=>clock,queryTimeoutMs:2000,
     classify:q=>q.name==='claude.ai'?'premium':'direct',
     mapped:async q=>{mapped++;return answer(q);},
     direct:async q=>{direct++;return answer(q);},
@@ -76,7 +76,8 @@ test('personal DoT server accepts framed TLS requests, meters mapped only and di
     assert.equal(mapped,1);assert.equal(direct,2);assert.equal(debits,1);
     reads.length=0;
     dbOutage=false;
-    known=false; // rotation invalidates even preexisting TLS sessions.
+    known=false; // Rotation becomes visible at the next 60s recheck.
+    clock+=60000;
     sock.write(frame(request('example.org')));
     await once(sock,'close');
     assert.equal(direct,2);assert.equal(debits,1);
@@ -85,6 +86,97 @@ test('personal DoT server accepts framed TLS requests, meters mapped only and di
     await new Promise<void>(resolve=>server.close(()=>resolve()));
   }
 });
+
+test('60-second authorization cache still settles each successful premium DNS answer',async()=>{
+  let clock=1000,recognitions=0,reservations=0,settlements=0,mapped=0,direct=0;
+  const db={query:async(sql:string)=>{
+    if(sql.includes('recognize_personal_dns_credential')){
+      recognitions++;return{rows:[{known:true}]};
+    }
+    if(sql.includes('reserve_personal_dns_query')){
+      reservations++;return{rows:[{verdict:'RESERVED'}]};
+    }
+    if(sql.includes('finish_personal_dns_query')){
+      settlements++;return{rows:[{verdict:'SETTLED'}]};
+    }
+    throw Error('unexpected SQL');
+  }} as unknown as Pick<Pool,'query'>;
+  const listener=createPersonalDotListener({
+    key,cert,db,now:()=>clock,queryTimeoutMs:2000,
+    classify:q=>q.name==='claude.ai'?'premium':'direct',
+    // Simulate an upstream DNS cache returning a repeatable answer.
+    mapped:async q=>{mapped++;return answer(q);},
+    direct:async q=>{direct++;return answer(q);},
+  });
+  await new Promise<void>(resolve=>listener.listen(0,'127.0.0.1',resolve));
+  const socket=connectTls({host:'127.0.0.1',
+    port:(listener.address() as AddressInfo).port,
+    servername:hostname,rejectUnauthorized:false});
+  socket.on('error',()=>{});
+  try{
+    await once(socket,'secureConnect');
+    async function send(domain:string):Promise<void>{
+      const reply=once(socket,'data');
+      socket.write(frame(request(domain)));
+      await reply;
+    }
+    await send('claude.ai');
+    assert.deepEqual([recognitions,reservations,settlements,mapped],[1,1,1,1]);
+    // A cached identity and a cached upstream DNS answer still count separately.
+    await send('claude.ai');
+    assert.deepEqual([recognitions,reservations,settlements,mapped],[1,2,2,2]);
+    clock=60999; // 59,999ms since first authorization
+    await send('example.org');
+    assert.equal(recognitions,1);
+    assert.equal(direct,1);
+    clock=61000; // exactly 60 seconds: compulsory revalidation
+    await send('claude.ai');
+    assert.deepEqual([recognitions,reservations,settlements,mapped],[2,3,3,3]);
+  }finally{
+    socket.destroy();
+    await new Promise<void>(resolve=>listener.close(()=>resolve()));
+  }
+});
+
+test('cached authorization does not bypass premium quota denial',async()=>{
+  let clock=1000,recognitions=0,reservations=0,settlements=0,mapped=0,direct=0;
+  const db={query:async(sql:string)=>{
+    if(sql.includes('recognize_personal_dns_credential')){
+      recognitions++;return{rows:[{known:true}]};
+    }
+    if(sql.includes('reserve_personal_dns_query')){
+      reservations++;return{rows:[{verdict:reservations===1?'RESERVED':'DENY_QUOTA'}]};
+    }
+    if(sql.includes('finish_personal_dns_query')){
+      settlements++;return{rows:[{verdict:'SETTLED'}]};
+    }
+    throw Error('unexpected SQL');
+  }} as unknown as Pick<Pool,'query'>;
+  const listener=createPersonalDotListener({
+    key,cert,db,now:()=>clock,queryTimeoutMs:2000,
+    classify:q=>q.name==='claude.ai'?'premium':'direct',
+    mapped:async q=>{mapped++;return answer(q);},
+    direct:async q=>{direct++;return answer(q);},
+  });
+  await new Promise<void>(resolve=>listener.listen(0,'127.0.0.1',resolve));
+  const socket=connectTls({host:'127.0.0.1',
+    port:(listener.address() as AddressInfo).port,
+    servername:hostname,rejectUnauthorized:false});
+  socket.on('error',()=>{});
+  try{
+    await once(socket,'secureConnect');
+    for(let i=0;i<2;i++){
+      const reply=once(socket,'data');
+      socket.write(frame(request('claude.ai')));
+      await reply;
+    }
+    assert.deepEqual([recognitions,reservations,settlements,mapped,direct],[1,2,1,1,1]);
+  }finally{
+    socket.destroy();
+    await new Promise<void>(resolve=>listener.close(()=>resolve()));
+  }
+});
+
 test('local TCP DNS resolver rejects same-ID reply for wrong domain',async()=>{
   const mock=createTcpServer(socket=>{
     let received=Buffer.alloc(0);
