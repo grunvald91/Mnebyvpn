@@ -19,6 +19,7 @@ const MAX_BUFFER=(MAX_DNS+2)*MAX_QUEUE;
 const TEST_HOST_A='aaaaaaaaaaaa.dns.mnebyvpn.site';
 const TEST_HOST_B='bbbbbbbbbbbb.dns.mnebyvpn.site';
 const MAX_AUTH_CACHE=4096;
+const AUTH_RECHECK_MS=60000;
 const AUTH_OUTAGE_GRACE_MS=90000;
 const LABEL_RATE_PER_SEC=30;
 const LABEL_BURST=60;
@@ -143,9 +144,13 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
   if(!hasWildcard||!cert.checkHost(TEST_HOST_A)||!cert.checkHost(TEST_HOST_B))
     throw Error('TLS certificate must contain the personal DNS wildcard SAN');
   const now=o.now??Date.now;
-  // A bounded, positive-only identity cache permits DIRECT DNS for a recently
-  // verified bearer during a short DB outage. Never grants premium routing.
-  // Keep only SHA-256 key digests; no bearer hostname in cache or logs.
+  // Positive-only 60s identity cache: avoid a DB existence check on every DNS
+  // message while retaining all per-premium-query reserve/settle operations.
+  // Recheck upon the next request after 60s; never extend validity on a hit.
+  // During a DB outage, a verified identity may use DIRECT-only for 90s from
+  // the last successful lookup; cached identity NEVER authorizes premium use.
+  // Revocation of direct-only use takes effect no later than next recheck.
+  // Cache stores only SHA-256 key digests, never plaintext bearer names.
   const authCache=new Map<string,number>();
   const labelRates=new Map<string,{tokens:number,last:number}>();
   // TLS clients forwarded by Nginx stream often all have loopback source IP.
@@ -200,21 +205,34 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
           labelRates.set(digest,{tokens:available-1,last:current});
           trim(labelRates);
           let offlineDirectOnly=false;
-          try{
-            // All connections, including direct routes, require an existing
-            // non-revoked credential; otherwise this is an open DNS resolver.
-            const {rows}=await o.db.query(
-              'SELECT recognize_personal_dns_credential($1) AS known',[label]);
-            if(rows.length!==1||rows[0].known!==true){
-              authCache.delete(digest);stop();return;
-            }
+          const verifiedAt=authCache.get(digest);
+          // Auth-cache hits skip only the credential existence check. Premium
+          // DNS messages still reserve and settle quota individually below.
+          if(verifiedAt!==undefined&&current>=verifiedAt&&
+             current-verifiedAt<AUTH_RECHECK_MS){
             authCache.delete(digest);
-            authCache.set(digest,current+AUTH_OUTAGE_GRACE_MS);
-            trim(authCache);
-          }catch{
-            const goodUntil=authCache.get(digest)??0;
-            if(current>=goodUntil){authCache.delete(digest);stop();return;}
-            offlineDirectOnly=true;
+            authCache.set(digest,verifiedAt); // LRU touch, not sliding TTL
+          }else{
+            try{
+              // All connections, including direct routes, must initially be
+              // recognized. Failed/revoked identities are NEVER cached.
+              const {rows}=await o.db.query(
+                'SELECT recognize_personal_dns_credential($1) AS known',[label]);
+              if(rows.length!==1||rows[0].known!==true){
+                authCache.delete(digest);stop();return;
+              }
+              authCache.delete(digest);
+              authCache.set(digest,current);
+              trim(authCache);
+            }catch{
+              // Old positive status permits DIRECT-only DNS temporarily,
+              // never paid/mapped answers during an authorization DB outage.
+              if(verifiedAt===undefined||current<verifiedAt||
+                 current-verifiedAt>=AUTH_OUTAGE_GRACE_MS){
+                authCache.delete(digest);stop();return;
+              }
+              offlineDirectOnly=true;
+            }
           }
           let deadline:NodeJS.Timeout|undefined;
           const controller=new AbortController();
