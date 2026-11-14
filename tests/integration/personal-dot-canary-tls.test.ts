@@ -115,7 +115,7 @@ test('private canary DoT TLS + DB + origin/mapped DNS roundtrip and measured lat
  const account=randomUUID(),order=randomUUID(),entitlement=randomUUID();
  const first=makePersonalDoTIdentity(undefined,new Uint8Array(16).fill(71));
  const second=makePersonalDoTIdentity(undefined,new Uint8Array(16).fill(82));
- let outage=false,client:TLSSocket|undefined;
+ let outage=false,authClock=1000,client:TLSSocket|undefined;
  try{
   execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes',
    '-keyout',keyPath,'-out',certPath,'-days','1',
@@ -148,7 +148,7 @@ test('private canary DoT TLS + DB + origin/mapped DNS roundtrip and measured lat
    },
   } as unknown as Pick<Pool,'query'>;
   listener=createPersonalDotListener({
-   key,cert,db:sourceDb,classify:classifier,queryTimeoutMs:3500,
+   key,cert,db:sourceDb,classify:classifier,queryTimeoutMs:3500,now:()=>authClock,
    mapped:(wire,signal)=>queryLoopbackDnsTcp({host:'127.0.0.1',port:port(mapped!.server)},wire,2000,signal),
    direct:(wire,signal)=>queryLoopbackDnsTcp({host:'127.0.0.1',port:port(direct!.server)},wire,2000,signal),
   });
@@ -190,6 +190,15 @@ test('private canary DoT TLS + DB + origin/mapped DNS roundtrip and measured lat
    'SELECT rotate_personal_dns_credential($1,$2,$3,$4,$5) AS verdict',
    [account,entitlement,1,second.label,second.tokenSha256]);
   assert.equal(changed.rows[0].verdict,'ROTATED');
+  // The verified identity may serve DIRECT answers until the non-sliding
+  // 60s TTL ends. Premium authorization still checks revoked keys in SQL.
+  const stillDirect=await io.send(makeQuery('example.org'));
+  assert.equal(Array.from(stillDirect.subarray(-4)).join('.'),'198.51.100.8');
+  const rejectedPremium=await io.send(makeQuery('claude.ai',0x3520));
+  assert.equal(Array.from(rejectedPremium.subarray(-4)).join('.'),'198.51.100.8');
+  const afterRotation=await db.query('SELECT * FROM personal_dns_query_status($1)',[entitlement]);
+  assert.equal(BigInt(afterRotation.rows[0].used_queries),13n);
+  authClock+=60000;
   await io.expectClosed(makeQuery('example.org'));
   client.destroy();
   client=await tlsClient(cert,listenPort,second.hostname);
