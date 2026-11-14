@@ -1,6 +1,7 @@
-/** Test-only private DNS-over-TLS listener. No production launch allowed.
- * Run with explicit disposable database and two known loopback DNS upstreams.
- * Does not bind :853, touch Nginx, modify CoreDNS, or sell DNS.
+/** Shared pinned DNS policy classifier plus a separate test-only canary
+ * entrypoint. The classifier is also imported by the production private DoT
+ * sidecar. Running this file as a server requires the offline-test environment
+ * and loopback/test upstreams; it must never publish a production listener.
  */
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
