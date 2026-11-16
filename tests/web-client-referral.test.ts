@@ -23,7 +23,7 @@ function openPage(href:string,stored:Map<string,string>,authenticated=false){
     return elements.get(id);
   };
   const document={
-    getElementById:el,querySelectorAll:()=>[],
+    getElementById:el,querySelector:()=>null,querySelectorAll:()=>[],
     addEventListener:()=>{},visibilityState:'visible',
   };
   const fetch=async(path:string,options?:{body?:string})=>{
