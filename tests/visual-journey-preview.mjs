@@ -753,7 +753,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   if(!before.artworkExternal||!before.navGrouped||before.error||
     !videoFallback.noReplayButton||(!isPlaying&&!videoFallback.staticVisible))failed=true;
 
-  await page.frameLocator('#journey-front-frame').locator('.top-links a[href="#account"]').click();
+  await page.frameLocator('#journey-front-frame').locator('.top-links a[href="/#account"]').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='account');
   await page.waitForFunction(()=>{
     const v=document.querySelector('#journey-front-frame')?.contentDocument?.querySelector('#bgv');
