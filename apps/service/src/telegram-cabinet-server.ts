@@ -31,6 +31,7 @@ import {personalDnsTelegramMenu,personalDnsTelegramAction,personalDnsGuide,
   personalDnsPreview} from './personal-dot-telegram-view.ts';
 import {approvedPersonalDnsOffer} from '../../../packages/dns-policy/src/smart-dns-offers.ts';
 import {sendPersonalDnsMobileconfig} from '../../../packages/dns-policy/src/personal-dot-profile.ts';
+import {ownerDnsKey,ownerDnsLinksAction,ownerDnsExpiryPrompt,ownerDnsExpiryReply,OWNER_DNS_EXPIRY_PROMPT} from './owner-dns-links.ts';
 
 const digest=process.env.TELEGRAM_WEBHOOK_SECRET_SHA256??'';
 if(!/^[a-f0-9]{64}$/.test(digest))
@@ -61,6 +62,7 @@ const store=pool?new PgBillingStore(pool):null;
 const personalDnsReady=process.env.MNEBYDNS_PERSONAL_DOT_ENABLED==='yes';
 const support=supportConfig();
 const dnsAdminId=dnsAdminOwner();
+const ownerLinkKey=ownerDnsKey(process.env.MNEBYDNS_OWNER_LINK_KEY);
 const bridgeSecret=process.env.SUPPORT_BRIDGE_SECRET??'';
 const supportAuthKey=/^[a-f0-9]{64}$/.test(bridgeSecret)
   ?bridgeSecret:(support?.botToken??'');
@@ -126,7 +128,7 @@ function respond(res:ServerResponse,status:number,payload:unknown){
   res.writeHead(status);
   res.end(payload===null?'':JSON.stringify(payload));
 }
-function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string;currentText?:string;replyToSupport?:boolean;replyToDns?:boolean;replyToDnsSearch?:boolean}|null{
+function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string;currentText?:string;replyToSupport?:boolean;replyToDns?:boolean;replyToDnsSearch?:boolean;ownerDnsPrompt?:string}|null{
   const cb=update.callback_query;
   if(cb){
     if(!validId(cb.from?.id)||!cb.message||cb.message.chat?.type!=='private'||
@@ -146,7 +148,9 @@ function privateActor(update:any):{id:number;messageId?:number;callbackId?:strin
     typeof replied.text==='string'&&replied.text.startsWith(DNS_ADMIN_PROMPT);
   const replyToDnsSearch=replied?.from?.is_bot===true &&
     typeof replied.text==='string'&&replied.text.startsWith(DNS_ADMIN_SEARCH_PROMPT);
-  return {id:m.from.id,text:typeof m.text==='string'?m.text:'',replyToSupport,replyToDns,replyToDnsSearch};
+  const ownerDnsPrompt=replied?.from?.is_bot===true&&typeof replied.text==='string'&&
+    replied.text.startsWith(OWNER_DNS_EXPIRY_PROMPT)?replied.text:undefined;
+  return {id:m.from.id,text:typeof m.text==='string'?m.text:'',replyToSupport,replyToDns,replyToDnsSearch,ownerDnsPrompt};
 }
 async function packages(id:number){
   if(!store)throw new Error('DB unavailable');
@@ -727,14 +731,24 @@ async function processUpdate(update:any){
   const text=actor.text?.trim()??'';
   const operator=support&&actor.id===support.operatorId;
   const dnsAction=actor.data?.startsWith('dnsadmin:')??false;
+  const ownerLinkAction=actor.data?.startsWith('dnslinks:')??false;
   const dnsTextCommand=text==='/dnsadmin';
-  if((dnsAction||dnsTextCommand||actor.replyToDns||actor.replyToDnsSearch)&&
+  if((dnsAction||ownerLinkAction||actor.ownerDnsPrompt||dnsTextCommand||actor.replyToDns||actor.replyToDnsSearch)&&
       (dnsAdminId===null||actor.id!==dnsAdminId)){
     if(actor.callbackId)return {method:'answerCallbackQuery',
       callback_query_id:actor.callbackId,text:'Недоступно',show_alert:true};
     return oneAction(actor,msg('Эта функция недоступна.',[[homeButton]]));
   }
   if(dnsAdminId!==null&&actor.id===dnsAdminId){
+    if(ownerLinkAction||actor.ownerDnsPrompt){
+      const prompt=ownerDnsExpiryPrompt(actor.data??'');
+      if(prompt)return {method:'sendMessage',chat_id:actor.id,...prompt};
+      const action=actor.ownerDnsPrompt?ownerDnsExpiryReply(actor.ownerDnsPrompt,text):actor.data;
+      if(!action)return oneAction(actor,msg('Неверный срок. Ответьте, например: «12 ч» или «7 д».',[
+        [{text:'↩️ Мои DNS-ссылки',callback_data:'dnslinks:menu'}]]));
+      return oneAction(actor,await ownerDnsLinksAction(pool,dnsAdminId,actor.id,ownerLinkKey,action,
+        String(update.update_id)));
+    }
     if(actor.data==='dnsadmin:add')
       return {method:'sendMessage',chat_id:actor.id,...dnsAdminPrompt()};
     if(actor.data==='dnsadmin:search')

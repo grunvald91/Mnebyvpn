@@ -148,6 +148,18 @@ test('visitor cannot call owner callback even if they guess its ID',async()=>{
   assert.equal(j.show_alert,true);
   assert.match(j.text,/Недоступно/);
 });
+test('owner link callbacks reject outsider, group, mismatched private chat and unsigned webhook',async()=>{
+  const forged=await (await request(callback(visitor,9102,'dnslinks:permanent'))).json() as any;
+  assert.equal(forged.method,'answerCallbackQuery');assert.equal(forged.show_alert,true);
+  for(const chat of [{id:admin,type:'group'},{id:visitor,type:'private'}]){
+    const update=callback(admin,9103,'dnslinks:permanent');update.callback_query.message.chat=chat;
+    const r=await request(update);assert.equal(r.status,200);
+    const body=await r.text();assert.ok(!body.includes('.dns.mnebyvpn.site'));
+  }
+  assert.equal((await request(callback(admin,9104,'dnslinks:permanent'),'bad-secret')).status,401);
+  const own=await (await request(callback(admin,9105,'dnslinks:permanent'))).json() as any;
+  assert.match(own.text,/недоступно/);
+});
 test('owner can open panel, get force-reply prompt and add a pending request',async()=>{
   const menu=await (await request(callback(admin,103,'dnsadmin:menu'))).json() as any;
   assert.equal(menu.method,'editMessageText');

@@ -88,6 +88,12 @@ export async function runPersonalDotProduction():Promise<void>{
   await db.query('SELECT 1');
   const tlsServer=createPersonalDotListener({
     key,cert,db,classify,
+    ...(process.env.MNEBYDNS_OWNER_LINKS_ENABLED==='yes'?{
+      ownerLinkStatus:async(label:string)=>{
+        const r=await db.query('SELECT owner_dns_link_status($1) AS status',[label]);
+        return String(r.rows[0]?.status??'DENY_UNKNOWN');
+      },
+    }:{}),
     queryTimeoutMs:8500,
     mapped:(query,signal)=>queryVerifiedDotTls(mapped,query,7000,signal),
     direct:(query,signal)=>queryVerifiedDotTls(direct,query,7000,signal),

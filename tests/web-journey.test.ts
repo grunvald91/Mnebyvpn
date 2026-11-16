@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 const file=(path:string)=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const index=file('apps/web/public/index.html');
 const journey=file('apps/web/public/journey.js');
@@ -10,7 +11,7 @@ const server=file('apps/web/src/server.ts');
 const prodamus=file('packages/billing/src/prodamus.ts');
 
 test('journey assets are valid JavaScript and served by the same-origin website',()=>{
-  const check=spawnSync(process.execPath,['--check',new URL('../apps/web/public/journey.js',import.meta.url).pathname],{encoding:'utf8'});
+  const check=spawnSync(process.execPath,['--check',fileURLToPath(new URL('../apps/web/public/journey.js',import.meta.url))],{encoding:'utf8'});
   assert.equal(check.status,0,check.stderr);
   for(const path of ['journey.css','journey.js']){
     assert.ok(index.includes('/'+path));
