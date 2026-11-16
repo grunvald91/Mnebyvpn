@@ -67,6 +67,18 @@ test('unsigned, tampered, expired or revoked node is not published',()=>{
     signed({expires_at:new Date(expiresAt.getTime()-2000)}),
     signed({profile_uri:good.profile_uri.replace('nl-node-02','127.0.0.1')}),
     signed({country_code:'ZZ'}),
+    signed({
+      endpoint_host:'bad.-invalid.example.net',
+      profile_uri:good.profile_uri.replace('nl-node-02.nodes.example.net',
+        'bad.-invalid.example.net'),
+    }),
+    signed({
+      endpoint_host:'bad.invalid-.example.net',
+      profile_uri:good.profile_uri.replace('nl-node-02.nodes.example.net',
+        'bad.invalid-.example.net'),
+    }),
+    signed({profile_uri:good.profile_uri.replace(
+      'sni=www.cloudflare.com','sni=bad.-invalid.example.net')}),
   ];
   for(const item of scenarios){
     assert.deepEqual(verifiedAdditionalVpnLinks([item],owner,pub,now.getTime()),[],
@@ -80,6 +92,18 @@ test('unsigned, tampered, expired or revoked node is not published',()=>{
 test('identity, expiry and website key all must agree; never trust arbitrary DB text',()=>{
   const entry=receipt();
   assert.equal(verifiedAdditionalVpnLinks([entry],owner,pub,now.getTime()).length,1);
+  // Ed25519 signatures are 64 bytes => the final unpadded base64url
+  // character has four unused bits. Different text for the SAME signature
+  // bytes is still rejected to keep audit logs/receipts canonical.
+  const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const end=alphabet.indexOf(entry.signature.at(-1)??'');
+  assert.ok(end>=0);
+  const nonCanonical=entry.signature.slice(0,-1)+
+    alphabet[(end&~15)|((end+1)&15)];
+  assert.notEqual(nonCanonical,entry.signature);
+  assert.deepEqual(verifiedAdditionalVpnLinks([
+    {...entry,signature:nonCanonical},
+  ],owner,pub,now.getTime()),[]);
   const foreign=generateKeyPairSync('ed25519');
   const foreignPub=additionalNodeVerificationKey(
     foreign.publicKey.export({format:'der',type:'spki'}).toString('base64url'));
