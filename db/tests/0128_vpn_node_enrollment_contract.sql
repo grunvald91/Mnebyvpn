@@ -1,5 +1,5 @@
 BEGIN;
-DO $
+DO $$
 DECLARE was_blocked boolean;
 BEGIN
   INSERT INTO vpn_node_enrollment_inventory(
