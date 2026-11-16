@@ -47,7 +47,7 @@ const server=http.createServer((req,res)=>{
         telegramLoginEnabled:false,emailLoginEnabled:true,trialOffers:['vpn']};
       const encoded=Buffer.from(JSON.stringify(payload),'utf8').toString('base64');
       bytes=Buffer.from(bytes.toString('utf8').replace('</head>',
-        '<meta name="mnebyvpn-public-catalog" content="'+encoded+'">\\n</head>'));
+        '<meta name="mnebyvpn-public-catalog" content="'+encoded+'"></head>'));
     }
     res.writeHead(200,{'Content-Type':types[path.extname(pathname)]||'application/octet-stream',
       'Cache-Control':'no-store'});
