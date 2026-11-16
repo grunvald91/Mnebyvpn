@@ -52,24 +52,28 @@ export class TelemtAdminClient implements TelemtAdministrator{
     this.origin=url.origin;
   }
   private async call(method:string,path:string,body?:Record<string,unknown>):
-      Promise<{status:number;json:Record<string,unknown>|null}>{
+      Promise<{status:number;data:Record<string,unknown>|null}>{
     const response=await this.transport(this.origin+path,{
       method,headers:{Authorization:this.authHeader,
         ...(body?{'Content-Type':'application/json'}:{})},
       body:body?JSON.stringify(body):undefined,
       signal:AbortSignal.timeout(8000),redirect:'error',cache:'no-store',
     });
-    if(response.status===404)return {status:404,json:null};
-    if(response.status===409)return {status:409,json:null};
+    if(response.status===404)return {status:404,data:null};
+    if(response.status===409)return {status:409,data:null};
     if(!response.ok)throw Error('Telemt request failed');
-    const raw=await response.text();
-    return {status:response.status,json:safeJson(raw)};
+    const parsed=safeJson(await response.text());
+    // Telemt API returns {ok:true,data:<UserInfo|CreateUserResponse>},
+    // never a bare user. Reject gray/empty 200 and error envelopes.
+    if(parsed.ok!==true||!parsed.data||typeof parsed.data!=='object'||
+       Array.isArray(parsed.data))throw Error('Telemt success envelope missing');
+    return {status:response.status,data:parsed.data as Record<string,unknown>};
   }
   async get(username:string):Promise<TelemtUser|null>{
     if(!/^dns_[0-9a-f]{24}$/.test(username))throw Error('Invalid Telemt username');
     const response=await this.call('GET','/v1/users/'+username);
     if(response.status===404)return null;
-    const data=response.json;
+    const data=response.data;
     if(!data||data.username!==username||
        typeof data.enabled!=='boolean'||typeof data.in_runtime!=='boolean')
       throw Error('Telemt state unverified');
@@ -85,6 +89,13 @@ export class TelemtAdminClient implements TelemtAdministrator{
         username,secret,enabled:true,expiration_rfc3339,
       });
       if(![201,202,409].includes(created.status))return false;
+      if(created.status!==409){
+        const createdUser=created.data?.user;
+        if(created.data?.secret!==secret||!createdUser||
+           typeof createdUser!=='object'||
+           (createdUser as Record<string,unknown>).username!==username)
+          throw Error('Telemt create response unverified');
+      }
       // A racing existing username is updated only with our persisted secret.
       forceSecret=created.status===409;
     }else{
