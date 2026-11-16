@@ -1,6 +1,4 @@
 import {randomBytes,scrypt,scryptSync,timingSafeEqual} from 'node:crypto';
-import {promisify} from 'node:util';
-const scryptAsync=promisify(scrypt);
 import {setTimeout as delay} from 'node:timers/promises';
 import type {Pool,PoolClient} from 'pg';
 import {incrementRate} from './email-auth-service.ts';
@@ -22,8 +20,12 @@ export function newReviewSalt():string{
 async function matchesHash(expected:string,email:string,code:string,salt:string,secret:string):Promise<boolean>{
   if(!REVIEW_CODE_PATTERN.test(code)||!/^[a-f0-9]{64}$/.test(expected)||
      !/^[a-f0-9]{32}$/.test(salt))return false;
-  const actual=await scryptAsync(email+':'+code+':'+secret,Buffer.from(salt,'hex'),32,
-    {N:16384,r:8,p:1,maxmem:64*1024*1024}) as Buffer;
+  const actual=await new Promise<Buffer>((resolve,reject)=>{
+    scrypt(email+':'+code+':'+secret,Buffer.from(salt,'hex'),32,
+      {N:16384,r:8,p:1,maxmem:64*1024*1024},(err,derived)=>{
+        if(err)reject(err);else resolve(derived);
+      });
+  });
   return timingSafeEqual(Buffer.from(expected,'hex'),actual);
 }
 
