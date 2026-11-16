@@ -15,6 +15,7 @@ import {
   type Classifier,type DnsResolver,
 } from './personal-dot-gateway-core.ts';
 import {parsePersonalDoTHostname} from './personal-dot-identity.ts';
+import {resolveOwnerDnsMessage,type OwnerDnsStatus} from './owner-dns-access.ts';
 
 const MAX_DNS=16384;
 const MAX_QUEUE=16;
@@ -124,6 +125,7 @@ export function queryLoopbackDnsTcp(
 }
 
 export interface PersonalDotListenerOptions {
+  ownerLinkStatus?:OwnerDnsStatus;
   key:string|Buffer;
   cert:string|Buffer;
   db:Pick<Pool,'query'>;
@@ -176,6 +178,7 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
     credentialConnections.set(digest,connected+1);
     const activeSignals=new Set<AbortController>();
     let buffer=Buffer.alloc(0),busy=false,closed=false;
+    let ownerLink:boolean|undefined;
     const pending:Buffer[]=[];
     const stop=()=>{
       if(closed)return;
@@ -208,10 +211,19 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
           labelRates.set(digest,{tokens:available-1,last:current});
           trim(labelRates);
           let offlineDirectOnly=false;
+          if(ownerLink===undefined&&o.ownerLinkStatus){
+            // Probe once per TLS connection for regular customer identities.
+            // A failed lookup cannot fall through to an unmetered route.
+            const status=await o.ownerLinkStatus(label!);
+            if(status!=='UNKNOWN'&&status!=='ALLOWED'){stop();return;}
+            ownerLink=status==='ALLOWED';
+          }
           const verifiedAt=authCache.get(digest);
           // Auth-cache hits skip only the credential existence check. Premium
           // DNS messages still reserve and settle quota individually below.
-          if(verifiedAt!==undefined&&current>=verifiedAt&&
+          if(ownerLink){
+            // Owner links have their own per-message expiry checks below.
+          }else if(verifiedAt!==undefined&&current>=verifiedAt&&
              current-verifiedAt<AUTH_RECHECK_MS){
             authCache.delete(digest);
             authCache.set(digest,verifiedAt); // LRU touch, not sliding TTL
@@ -245,7 +257,9 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
             // A recently recognized subscriber may resolve ordinary domains
             // during a temporary recognition outage, but must never receive
             // an unmetered origin IP for a premium domain.
-            const work=offlineDirectOnly
+            const work=ownerLink&&o.ownerLinkStatus
+              ?resolveOwnerDnsMessage(label!,request,o.ownerLinkStatus,o.classify,o.mapped,o.direct,controller.signal)
+              :offlineDirectOnly
               ?(async()=>{
                 try{
                   const route=await o.classify(parseDnsQuestion(request));

@@ -62,6 +62,7 @@ export function dnsAdminIntro():AdminPage{
     '1. Найди домен в ожидающих или через поиск. 2. Открой карточку. '+
     '3. Запусти проверку и 60-минутный тест. 4. Проверь на телефоне '+
     'и подтверди либо откати. Пока статус PENDING, реальный DNS не изменён.',[
+      [{text:'🔐 Персональные ссылки',callback_data:'dnslinks:menu'}],
       [{text:'🪟 Microsoft · 6 доменов',callback_data:'dnsadmin:microsoft'}],
       [{text:'🟡 Ожидающие',callback_data:'dnsadmin:list:pending:0'},
        {text:'🟢 Работающие',callback_data:'dnsadmin:list:active:0'}],
