@@ -79,3 +79,23 @@ test('owner uses mapped premium and direct ordinary routes without consuming cus
     assert.deepEqual(r,answer);assert.equal(mapped,route==='premium'?1:0);assert.equal(direct,route==='direct'?1:0);
   }
 });
+function videoQuestion(rrType:number):Buffer{
+  const header=Buffer.alloc(12);header.writeUInt16BE(42);header.writeUInt16BE(256,2);header.writeUInt16BE(1,4);
+  const domain='rr1---sn-gxuo03g-ig3s.googlevideo.com';
+  const tail=Buffer.alloc(5);tail.writeUInt16BE(rrType,1);tail.writeUInt16BE(1,3);
+  return Buffer.concat([header,...domain.split('.').map(x=>Buffer.concat([Buffer.from([x.length]),Buffer.from(x)])),tail]);
+}
+test('owner video A keeps real CDN addresses even when Smart DNS classifies it as premium',async()=>{
+  let direct=0,mapped=0;
+  const q=videoQuestion(1),a=Buffer.from(q);a.writeUInt16BE(0x8180,2);
+  const r=await resolveOwnerDnsMessage('abcdefghijkl',q,async()=> 'ALLOWED',()=> 'premium',async()=>{mapped++;return a},async()=>{direct++;return a});
+  assert.deepEqual(r,a);assert.equal(direct,1);assert.equal(mapped,0);
+});
+test('owner video IPv6 and HTTPS/SVCB hints are NODATA for the deployed IPv4 VPN',async()=>{
+  for(const type of [28,64,65]){
+    let upstream=0,checks=0;const q=videoQuestion(type);
+    const r=Buffer.from(await resolveOwnerDnsMessage('abcdefghijkl',q,async()=>{checks++;return 'ALLOWED'},()=> 'premium',async()=>{upstream++;return answer},async()=>{upstream++;return answer}));
+    assert.equal(r.readUInt16BE(2)&15,0);assert.equal(r.readUInt16BE(6),0);assert.equal(r.readUInt16BE(4),1);
+    assert.equal(upstream,0);assert.equal(checks,2);
+  }
+});
