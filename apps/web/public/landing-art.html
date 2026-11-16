@@ -534,7 +534,7 @@ footer .seller-details{margin:6px 0 0;color:#b2c8e3;font:500 clamp(9px,2.6vw,10.
     </a>
     <nav class="top-links" aria-label="Разделы сайта">
       <a class="pill" href="#about">О проекте</a>
-      <a class="pill g" href="#account">Мой VPN</a>
+      <a class="pill g" href="/#account" target="_top">Мой VPN</a>
     </nav>
   </header>
 
@@ -799,13 +799,11 @@ const cta=$('.cta');
   selections.forEach(el=>el.addEventListener('click',()=>{
     if(el.disabled)return;
     const day=Number(el.dataset.d);
-    if(vpnSelected&&vpnDays===day){
-      vpnSelected=false; // Tap selected day again to exclude VPN.
-    }else{
-      vpnSelected=true;
-      vpnDays=day;
-      send('select',{days:day});
-    }
+    // The chosen VPN duration is a radio selection, never a toggle-off.
+    // Tapping the highlighted tariff again must not disable checkout.
+    vpnSelected=true;
+    vpnDays=day;
+    send('select',{days:day});
     updateView();
   }));
   dnsSelections.forEach(el=>el.addEventListener('click',()=>{
@@ -877,7 +875,11 @@ const cta=$('.cta');
   });
   document.querySelector('.logo')?.addEventListener('click',e=>{e.preventDefault();send('plans')});
   document.querySelector('a[href="#about"]')?.addEventListener('click',e=>{e.preventDefault();send('about')});
-  document.querySelector('a[href="#account"]')?.addEventListener('click',e=>{e.preventDefault();send('account')});
+  document.querySelector('a[href="/#account"]')?.addEventListener('click',e=>{
+    // If the iframe handshake is unavailable, fall back to the real
+    // top-level cabinet URL instead of swallowing the click.
+    if(ready){e.preventDefault();send('account');}
+  });
   document.querySelector('a[href="#roadmap"]')?.addEventListener('click',e=>{e.preventDefault();send('roadmap')});
   document.querySelector('a[href="#support"]')?.addEventListener('click',e=>{e.preventDefault();send('support')});
   if(typeof ResizeObserver!=='undefined'){
