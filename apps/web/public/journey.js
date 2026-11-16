@@ -213,6 +213,7 @@
   function updatePlan(){
     const isVpn=state.product==='vpn';
     el('journey-front-stage').hidden=!isVpn;
+    el('journey-dns-links').hidden=isVpn;
     el('journey-title').textContent=isVpn?'VPN без лишних шагов':
       state.product==='smart_dns'?'Персональный Smart DNS':'VPN + Smart DNS';
     landing.querySelectorAll('[data-journey-product]').forEach(button=>{
