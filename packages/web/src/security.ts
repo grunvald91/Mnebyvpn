@@ -69,7 +69,9 @@ export function readSession(raw: string | undefined, secret: string, now = Date.
 const ACCOUNT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export function issueAccountSession(accountId: string, secret: string, now = Date.now()): string {
   if (!ACCOUNT_UUID.test(accountId)) throw new Error('Invalid website account');
-  return signEnvelope({accountId, issuedAt:now, expiresAt:now+SESSION_MS},secret);
+  // Each login must have a unique bearer, including concurrent sign-ins within the same millisecond.
+  return signEnvelope({accountId, issuedAt:now, expiresAt:now+SESSION_MS,
+    nonce:randomBytes(16).toString('base64url')},secret);
 }
 export function readAccountSession(raw: string | undefined, secret: string, now = Date.now()): string | null {
   const data = verifyEnvelope(raw,secret);
