@@ -1,4 +1,6 @@
-import {randomBytes,scryptSync,timingSafeEqual} from 'node:crypto';
+import {randomBytes,scrypt,scryptSync,timingSafeEqual} from 'node:crypto';
+import {promisify} from 'node:util';
+const scryptAsync=promisify(scrypt);
 import {setTimeout as delay} from 'node:timers/promises';
 import type {Pool,PoolClient} from 'pg';
 import {incrementRate} from './email-auth-service.ts';
@@ -17,11 +19,12 @@ export function reviewCodeHash(email:string,code:string,salt:string,secret:strin
 export function newReviewSalt():string{
   return randomBytes(16).toString('hex');
 }
-function matchesHash(expected:string,email:string,code:string,salt:string,secret:string):boolean{
+async function matchesHash(expected:string,email:string,code:string,salt:string,secret:string):Promise<boolean>{
   if(!REVIEW_CODE_PATTERN.test(code)||!/^[a-f0-9]{64}$/.test(expected)||
      !/^[a-f0-9]{32}$/.test(salt))return false;
-  const actual=reviewCodeHash(email,code,salt,secret);
-  return timingSafeEqual(Buffer.from(expected,'hex'),Buffer.from(actual,'hex'));
+  const actual=await scryptAsync(email+':'+code+':'+secret,Buffer.from(salt,'hex'),32,
+    {N:16384,r:8,p:1,maxmem:64*1024*1024}) as Buffer;
+  return timingSafeEqual(Buffer.from(expected,'hex'),actual);
 }
 
 export async function isReviewEmail(pool:Pool,email:string):Promise<boolean>{
@@ -73,7 +76,7 @@ export async function verifyReviewCode(pool:Pool,options:{
       const locked=lockedUntil>now;
       const attempts=lockedUntil>0&&lockedUntil<=now?0:Number(entry.failed_attempts);
       if(entry.enabled===true&&!locked){
-        const matching=matchesHash(entry.code_hash,email,code,entry.code_salt,secret);
+        const matching=await matchesHash(entry.code_hash,email,code,entry.code_salt,secret);
         if(matching){
           // A disabled, renamed or detached review account must never authenticate.
           const owner=await client.query(
