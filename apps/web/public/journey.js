@@ -61,6 +61,7 @@
       return;
     }
     if(!frontReady)return;
+    if(msg.type==='refresh'){void loadCatalog();return;}
     if(msg.type==='plans'){paymentLanding=false;setView('plans',true);return;}
     if(msg.type==='about'){
       document.querySelector('[data-about-open="about"]')?.click();return;
