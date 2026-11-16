@@ -1,5 +1,6 @@
 BEGIN;
-DO $$
+DO $
+DECLARE was_blocked boolean;
 BEGIN
   INSERT INTO vpn_node_enrollment_inventory(
     node_id,endpoint_host,identity_public_spki)
@@ -29,26 +30,29 @@ BEGIN
   UPDATE vpn_node_enrollment_inventory SET
     status='enrolled',enrolled_at=clock_timestamp() WHERE node_id='test-node-01';
 
+  was_blocked:=false;
   BEGIN
     UPDATE vpn_node_enrollment_inventory SET identity_public_spki=repeat('B',59)
       WHERE node_id='test-node-01';
-    RAISE EXCEPTION 'Enrolled identity overwritten';
-  EXCEPTION WHEN raise_exception THEN NULL; END;
+  EXCEPTION WHEN raise_exception THEN was_blocked:=true; END;
+  IF NOT was_blocked THEN RAISE EXCEPTION 'Enrolled identity overwritten'; END IF;
 
+  was_blocked:=false;
   BEGIN
     UPDATE vpn_node_enrollment_inventory SET status='planned'
       WHERE node_id='test-node-01';
-    RAISE EXCEPTION 'Enrolled identity reset';
-  EXCEPTION WHEN raise_exception THEN NULL; END;
+  EXCEPTION WHEN raise_exception THEN was_blocked:=true; END;
+  IF NOT was_blocked THEN RAISE EXCEPTION 'Enrolled identity reset'; END IF;
 
   UPDATE vpn_node_enrollment_inventory SET status='revoked'
     WHERE node_id='test-node-01';
+  was_blocked:=false;
   BEGIN
     UPDATE vpn_node_enrollment_inventory SET
       status='approved',approved_at=clock_timestamp()
       WHERE node_id='test-node-01';
-    RAISE EXCEPTION 'Revoked identity reused';
-  EXCEPTION WHEN raise_exception THEN NULL; END;
+  EXCEPTION WHEN raise_exception THEN was_blocked:=true; END;
+  IF NOT was_blocked THEN RAISE EXCEPTION 'Revoked identity reused'; END IF;
 
   IF EXISTS(
     SELECT 1 FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) a
