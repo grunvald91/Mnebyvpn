@@ -80,6 +80,12 @@ function verify(code:string,origin=base){
   });
 }
 test('email code verification creates a real session; OTP is consumed and logout revokes cookie',async()=>{
+  // Login capabilities must be available independently of the billing catalog.
+  const optionsResponse=await fetch(base+'/api/auth/options');
+  assert.equal(optionsResponse.status,200);
+  assert.deepEqual(await optionsResponse.json(),{
+    loginEnabled:true,telegramLoginEnabled:false,emailLoginEnabled:true,
+  });
   const plans=await fetch(base+'/api/plans');
   assert.equal(plans.status,200);
   const settings=await plans.json() as {emailLoginEnabled:boolean;checkoutEnabled:boolean;trialOffers:string[]};

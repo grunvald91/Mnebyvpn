@@ -493,21 +493,40 @@ async function refresh() {
     toast('Не удалось загрузить кабинет. Попробуйте обновить страницу.');
   } finally {state.refreshing=false;}
 }
-async function loadCatalog() {
-  try {
-    const data=await api('/api/plans');
-    state.plans=Array.isArray(data.plans)?data.plans:[];
-    state.checkoutEnabled=data.checkoutEnabled===true;
+async function loadLoginOptions(){
+  // Public login options are independent of the database-backed tariff catalog.
+  // An intermittent pricing API error must never hide the email login form.
+  try{
+    const data=await api('/api/auth/options');
     state.loginEnabled=data.loginEnabled===true;
     state.telegramLoginEnabled=data.telegramLoginEnabled===true;
     state.emailLoginEnabled=data.emailLoginEnabled===true;
-    state.trialOffers=Array.isArray(data.trialOffers)?data.trialOffers:[];
-    state.dnsPreviewOffers=Array.isArray(data.dnsPreviewOffers)?
-      data.dnsPreviewOffers.filter(p=>Number.isSafeInteger(p.days)&&
-        [14,30,60,90].includes(p.days)&&Number.isSafeInteger(p.stars)&&p.stars>0):[];
     if(!state.loggedIn)syncLoginLinks();
-  } catch {
-    toast('Не удалось загрузить тарифы. Попробуйте позже.');
+  }catch{ /* The catalog may still provide login capabilities. */ }
+}
+async function loadCatalog() {
+  // Mobile networks sometimes lose one request during network switching.
+  // Retry the read-only catalog; never manufacture plans or prices locally.
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      const data=await api('/api/plans');
+      if(!Array.isArray(data.plans))throw Error('INVALID_CATALOG');
+      state.plans=data.plans;
+      state.checkoutEnabled=data.checkoutEnabled===true;
+      state.loginEnabled=data.loginEnabled===true;
+      state.telegramLoginEnabled=data.telegramLoginEnabled===true;
+      state.emailLoginEnabled=data.emailLoginEnabled===true;
+      state.trialOffers=Array.isArray(data.trialOffers)?data.trialOffers:[];
+      state.dnsPreviewOffers=Array.isArray(data.dnsPreviewOffers)?
+        data.dnsPreviewOffers.filter(p=>Number.isSafeInteger(p.days)&&
+          [14,30,60,90].includes(p.days)&&Number.isSafeInteger(p.stars)&&p.stars>0):[];
+      if(!state.loggedIn)syncLoginLinks();
+      break;
+    }catch{
+      if(attempt<2)
+        await new Promise(resolve=>setTimeout(resolve,attempt===0?400:1200));
+      else toast('Не удалось загрузить тарифы. Проверьте соединение и обновите страницу.');
+    }
   }
   renderPlan();
 }
@@ -895,7 +914,7 @@ async function consumePendingTrial(){
     if(pending)await claimTrial();
   }
 }
-Promise.all([loadCatalog(),refresh()]).then(consumePendingTrial);
+Promise.all([loadLoginOptions(),loadCatalog(),refresh()]).then(consumePendingTrial);
 // Payment verification and provisioning can complete after the user returns.
 setInterval(()=>{if(document.visibilityState==='visible' && state.loggedIn)refresh();},15000);
 document.addEventListener('visibilitychange',()=>{
