@@ -21,7 +21,7 @@ test('journey assets are valid JavaScript and served by the same-origin website'
 test('main storefront preserves four tariffs, idempotent VPN selection and cabinet fallback',()=>{
   const art=file('apps/web/public/landing-art.html');
   assert.match(art,/href="\/#account" target="_top"/);
-  assert.match(art,/if\(ready\)\{e\.preventDefault\(\);send\('account'\)\}/);
+  assert.match(art,/if\(ready\)\{e\.preventDefault\(\);send\('account'\);\}/);
   assert.match(art,/vpnSelected=true;\s+vpnDays=day;\s+send\('select'/);
   assert.doesNotMatch(art,/vpnSelected=false/);
   assert.match(server,/url\.pathname === '\/api\/auth\/options'/);
