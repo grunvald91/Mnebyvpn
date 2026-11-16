@@ -29,7 +29,7 @@ CREATE TABLE vpn_additional_nodes (
 CREATE TABLE vpn_additional_node_receipts (
   entitlement_id uuid NOT NULL REFERENCES entitlements(id) ON DELETE CASCADE,
   node_id text NOT NULL REFERENCES vpn_additional_nodes(node_id) ON DELETE CASCADE,
-  revision bigint NOT NULL CHECK (revision >= 1),
+  revision integer NOT NULL CHECK (revision BETWEEN 1 AND 1000000000),
   expires_at timestamptz NOT NULL,
   observed_at timestamptz NOT NULL,
   profile_uri text NOT NULL CHECK (length(profile_uri) BETWEEN 80 AND 2048),
