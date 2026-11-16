@@ -154,9 +154,11 @@ test('mobile VPN remains compact while DNS and bundle navigation are accessible'
   assert.doesNotMatch(html,/Не входит/);
   assert.doesNotMatch(client,/Перейти к оплате →|Не входит/);
   assert.match(css,/\.hero-art,\.hero-actions,\.hero-notes,\.features\{display:none\}/);
-  assert.match(client,/const inDevelopment=state\.product!=='vpn'/);
-  assert.match(client,/if\(state\.product!=='vpn'\|\|!plan/);
-  assert.match(client,/Способ оплаты выбирается на защищённой странице/);
+  assert.match(client,/const telegramChannel=state\.product!=='vpn'/);
+  assert.match(client,/if\(!plan\|\|!state\.checkoutEnabled\)/);
+  assert.match(client,/https:\/\/t\.me\/MNEBYVPN_bot/);
+  assert.match(html,/href="\/\?product=smart_dns&amp;days=14#plans"/);
+  assert.match(html,/href="\/\?product=smart_dns&amp;days=90#plans"/);
 });
 
 
