@@ -74,10 +74,12 @@ test('operator-approved node enrollment uses signed challenges and atomic one-ti
       'SELECT count(*)::int AS total FROM vpn_additional_nodes WHERE node_id=$1',[nodeId]);
     assert.equal(published.rows[0].total,0);
   }finally{
+    // Keep the audit tombstone: enrolled/revoked identities are not reusable.
+    await pool.query(
+      "UPDATE vpn_node_enrollment_inventory SET status='revoked' "+
+      "WHERE node_id=$1 AND status IN ('approved','enrolled')",[nodeId]).catch(()=>{});
     await pool.query(
       'DELETE FROM vpn_node_enrollment_challenges WHERE node_id=$1',[nodeId]).catch(()=>{});
-    await pool.query(
-      'DELETE FROM vpn_node_enrollment_inventory WHERE node_id=$1',[nodeId]).catch(()=>{});
     await pool.end();
   }
 });
@@ -99,9 +101,12 @@ test('expired challenge is unredeemable despite valid node signature',async()=>{
   try{
     await pool.query(
       'INSERT INTO vpn_node_enrollment_inventory('+
-      'node_id,endpoint_host,identity_public_spki,status,approved_at) '+
-      "VALUES($1,$2,$3,'approved',clock_timestamp())",
+      'node_id,endpoint_host,identity_public_spki) '+
+      'VALUES($1,$2,$3)',
       [nodeId,host,publicSpki]);
+    await pool.query(
+      "UPDATE vpn_node_enrollment_inventory SET status='approved',"+
+      'approved_at=clock_timestamp() WHERE node_id=$1',[nodeId]);
     const challenge=await beginNodeEnrollment(pool,
       {nodeId,endpointHost:host,publicSpki},controllerPair.privateKey);
     const proof={
@@ -120,9 +125,12 @@ test('expired challenge is unredeemable despite valid node signature',async()=>{
       'SELECT status FROM vpn_node_enrollment_inventory WHERE node_id=$1',[nodeId]);
     assert.equal(result.rows[0].status,'approved');
   }finally{
+    // Retain immutable enrollment audit records, even in a disposable test DB.
+    // Never bypass production deletion protections just to clean a fixture.
+    await pool.query(
+      "UPDATE vpn_node_enrollment_inventory SET status='revoked' "+
+      "WHERE node_id=$1 AND status IN ('approved','enrolled')",[nodeId]).catch(()=>{});
     await pool.query('DELETE FROM vpn_node_enrollment_challenges WHERE node_id=$1',[nodeId])
-      .catch(()=>{});
-    await pool.query('DELETE FROM vpn_node_enrollment_inventory WHERE node_id=$1',[nodeId])
       .catch(()=>{});
     await pool.end();
   }

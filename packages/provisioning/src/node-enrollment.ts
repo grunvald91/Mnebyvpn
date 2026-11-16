@@ -171,7 +171,8 @@ export async function completeNodeEnrollment(
     const used=await client.query(
       'UPDATE vpn_node_enrollment_challenges '+
       'SET consumed_at=clock_timestamp() '+
-      'WHERE challenge_id=$1 AND consumed_at IS NULL',[proof.challengeId]);
+      'WHERE challenge_id=$1 AND consumed_at IS NULL '+
+      'AND expires_at>clock_timestamp()',[proof.challengeId]);
     if(used.rowCount!==1)throw new NodeEnrollmentError('Challenge reuse');
     const changed=await client.query(
       "UPDATE vpn_node_enrollment_inventory SET status='enrolled',"+

@@ -68,10 +68,14 @@ export function additionalNodeVerificationKey(base64url:string):KeyObject {
   return key;
 }
 
-const validHost=(host:string):boolean=>
-  HOST.test(host)&&host.includes('.')&&!host.includes('..')&&
-  !isIP(host)&&!host.endsWith('.local')&&!host.endsWith('.internal')&&
-  host!=='localhost';
+const validHost=(host:string):boolean=>{
+  if(!HOST.test(host)||!host.includes('.')||host.includes('..')||
+     isIP(host)||host==='localhost'||host.endsWith('.local')||
+     host.endsWith('.internal'))return false;
+  return host.split('.').every(label=>
+    label.length>=1&&label.length<=63&&
+    !label.startsWith('-')&&!label.endsWith('-'));
+};
 
 function verifiedUri(row:AdditionalNodeReceipt):boolean {
   let url:URL;
@@ -117,7 +121,8 @@ function safeRow(row:AdditionalNodeReceipt,owner:ActiveAdditionalEntitlement,
      !verifiedUri(row))return false;
   try{
     const sig=Buffer.from(row.signature,'base64url');
-    return sig.length===64&&verify(null,additionalNodeReceiptPayload(row),key,sig);
+    return sig.length===64&&sig.toString('base64url')===row.signature&&
+      verify(null,additionalNodeReceiptPayload(row),key,sig);
   }catch{return false;}
 }
 
