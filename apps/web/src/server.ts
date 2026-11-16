@@ -680,7 +680,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       const payload=await publicCatalog();
       const encoded=Buffer.from(JSON.stringify(payload),'utf8').toString('base64');
       page=Buffer.from(html.toString('utf8').replace('</head>',
-        '<meta name="mnebyvpn-public-catalog" content="'+encoded+'">\\n</head>'));
+        '<meta name="mnebyvpn-public-catalog" content="'+encoded+'"></head>'));
     }catch{
       // Never make the informational page or login inaccessible because
       // the pricing database is briefly unavailable.
