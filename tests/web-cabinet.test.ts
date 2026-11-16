@@ -117,7 +117,7 @@ test('web cabinet reserves OIDC login for explicit BotFather integration',async(
   assert.match(ui,/cabinet-login-link/);
 });
 
-test('mobile VPN purchase is compact and unlaunched features are clearly unavailable',async()=>{
+test('mobile VPN remains compact while DNS and bundle navigation are accessible',async()=>{
   const {readFileSync}=await import('node:fs');
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
   const css=readFileSync(new URL('../apps/web/public/site.css',import.meta.url),'utf8');
@@ -125,8 +125,10 @@ test('mobile VPN purchase is compact and unlaunched features are clearly unavail
   assert.match(html,/Выберите тариф VPN/);
   assert.match(html,/Обычный интернет при ограничениях мобильной сети/);
   assert.match(html,/Планируем отдельный режим для ситуаций/);
-  assert.match(html,/data-product="smart_dns"[^>]*disabled/);
-  assert.match(html,/data-product="bundle"[^>]*disabled/);
+  assert.match(html,/data-product="smart_dns"[^>]*>Smart DNS<\/button>/);
+  assert.match(html,/data-product="bundle"[^>]*>VPN \+ DNS<\/button>/);
+  assert.match(html,/data-journey-product="smart_dns"[^>]*>Smart DNS<\/button>/);
+  assert.match(html,/data-journey-product="bundle"[^>]*>VPN \+ DNS<\/button>/);
   assert.match(css,/VPN-first mobile checkout/);
   const neoCss=readFileSync(new URL('../apps/web/public/neo.css',import.meta.url),'utf8');
   const server=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
