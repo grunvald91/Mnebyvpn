@@ -2555,4 +2555,4 @@ body.journey-active[data-journey-view="account"] .metric-card{
 .journey-dns-link-grid a{padding:13px 9px;border:1px solid rgba(100,200,239,.33);border-radius:11px;text-align:center;background:rgba(14,43,75,.62);font-size:13px;color:#d6f9ff;font-weight:750}
 .journey-dns-link-grid a:hover,.journey-dns-link-grid a:focus-visible{border-color:#65e8fb;background:rgba(29,81,121,.8)}
 .journey-dns-links .journey-secondary{margin-bottom:0}
-.journey-front-stage[hidden],.journey-duration-grid button[hidden]{display:none!important}
+.journey-front-stage[hidden],.journey-duration-grid button[hidden],.journey-dns-links[hidden]{display:none!important}
