@@ -18,6 +18,19 @@ test('journey assets are valid JavaScript and served by the same-origin website'
   }
   assert.match(css,/body\.journey-active/);
 });
+test('public HTML bootstrap and in-place retry preserve live DB authority',()=>{
+  const app=file('apps/web/public/app.js');
+  const art=file('apps/web/public/landing-art.html');
+  assert.match(server,/publicCatalog\(\)/);
+  assert.match(server,/name="mnebyvpn-public-catalog"/);
+  assert.match(server,/Buffer\.from\(JSON\.stringify\(payload\),'utf8'\)/);
+  assert.match(app,/function embeddedPublicCatalog\(\)/);
+  assert.match(app,/function applyPublicCatalog\(data\)/);
+  assert.match(app,/window\.addEventListener\('online'/);
+  assert.match(art,/send\('refresh'\)/);
+  assert.match(journey,/if\(msg\.type==='refresh'\)\{void loadCatalog\(\);return;\}/);
+  assert.doesNotMatch(server,/staticVpnPrices|mockVpnPrices/);
+});
 test('main storefront preserves four tariffs, idempotent VPN selection and cabinet fallback',()=>{
   const art=file('apps/web/public/landing-art.html');
   assert.match(art,/href="\/#account" target="_top"/);
