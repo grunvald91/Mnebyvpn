@@ -100,10 +100,23 @@ BEGIN
   INSERT INTO vpn_node_enrollment_inventory(
     node_id,endpoint_host,identity_public_spki)
   VALUES('test-guard-02','guard02.example.net',repeat('B',59));
+  blocked:=false;
+  BEGIN
+    UPDATE vpn_node_enrollment_inventory SET
+      status='revoked',approved_at=clock_timestamp()
+      WHERE node_id='test-guard-02';
+  EXCEPTION WHEN raise_exception THEN blocked:=true; END;
+  IF NOT blocked THEN RAISE EXCEPTION 'Revocation forged approval timestamp'; END IF;
   UPDATE vpn_node_enrollment_inventory SET status='revoked'
     WHERE node_id='test-guard-02';
   IF (SELECT status FROM vpn_node_enrollment_inventory
       WHERE node_id='test-guard-02')<>'revoked' THEN
     RAISE EXCEPTION 'Planned node could not be revoked'; END IF;
+  blocked:=false;
+  BEGIN
+    UPDATE vpn_node_enrollment_inventory SET
+      approved_at=clock_timestamp() WHERE node_id='test-guard-02';
+  EXCEPTION WHEN raise_exception THEN blocked:=true; END;
+  IF NOT blocked THEN RAISE EXCEPTION 'Revoked approval timestamp changed'; END IF;
 END $$;
 ROLLBACK;
