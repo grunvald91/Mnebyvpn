@@ -358,21 +358,23 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   });
   if(cleared.vpn30!=='true'||cleared.dns30!=='false'||cleared.frameLoads!==0||
      !cleared.price.includes('VPN'))failed=true;
-  // DNS alone is a preview, never sends a VPN purchase by accident.
+  // VPN is always a valid radio selection: re-tapping the current plan
+  // must NOT erase VPN and block checkout, even when DNS preview is selected.
   await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="30"]').click();
   await page.frameLocator('#journey-front-frame').locator('.plans-dns .plan[data-d="60"]').click();
-  const dnsOnly=await page.evaluate(()=>{
+  const bothAgain=await page.evaluate(()=>{
     const inner=document.querySelector('#journey-front-frame').contentDocument;
     return{
       selected:inner.querySelector('.plans-dns .plan[data-d="60"]').getAttribute('aria-pressed'),
+      vpn:inner.querySelector('.plans-vpn .plan[data-d="30"]').getAttribute('aria-pressed'),
       disabled:inner.querySelector('.cta').disabled,
       text:inner.querySelector('.cta').textContent,
       frameLoads:window.__frontLoads,
     };
   });
-  if(dnsOnly.selected!=='true'||!dnsOnly.disabled||
-    !dnsOnly.text.includes('Telegram-боте')||dnsOnly.frameLoads!==0)failed=true;
-  await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="30"]').click();
+  if(bothAgain.selected!=='true'||bothAgain.vpn!=='true'||bothAgain.disabled||
+    bothAgain.text!=='Оформить только VPN'||bothAgain.frameLoads!==0)failed=true;
+  await page.frameLocator('#journey-front-frame').locator('.plans-dns .plan[data-d="60"]').click();
   // Let the iframe finish any deferred parent-height sync from tariff taps.
   await page.waitForTimeout(220);
   const chooserBefore=await page.evaluate(()=>{
@@ -820,8 +822,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.goto(base,{waitUntil:'networkidle'});
   await page.waitForFunction(()=>document.body.classList.contains('journey-active')&&
     !document.querySelector('#journey-buy').disabled);
-  // Initial VPN 15-day tariff is already active; a second tap deselects it.
-  // Change to 30 and back to exercise the parent's real catalog selection.
+  // Re-select the existing VPN duration after changing it; it must remain active.
   await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="30"]').click();
   await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="15"]').click();
   await page.frameLocator('#journey-front-frame').locator('.cta').click();
