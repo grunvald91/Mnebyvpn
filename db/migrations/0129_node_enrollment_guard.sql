@@ -32,10 +32,22 @@ BEGIN
       WHEN 'approved' THEN 'enrolled'
       WHEN 'enrolled' THEN 'revoked'
       ELSE 'revoked' END,
-    CASE OLD.status WHEN 'approved' THEN 'revoked'
+    CASE OLD.status WHEN 'planned' THEN 'revoked'
+      WHEN 'approved' THEN 'revoked'
       ELSE OLD.status END
   ) THEN
     RAISE EXCEPTION 'Invalid node enrollment state transition';
+  END IF;
+  IF NEW.status='planned' AND
+     (NEW.approved_at IS NOT NULL OR NEW.enrolled_at IS NOT NULL) THEN
+    RAISE EXCEPTION 'Unapproved node cannot have approval/enrollment timestamps';
+  END IF;
+  IF NEW.status='approved' AND NEW.enrolled_at IS NOT NULL THEN
+    RAISE EXCEPTION 'Unenrolled node cannot have enrollment timestamp';
+  END IF;
+  IF OLD.status='revoked' AND
+     NEW.enrolled_at IS DISTINCT FROM OLD.enrolled_at THEN
+    RAISE EXCEPTION 'Revoked node timestamps are immutable';
   END IF;
   IF OLD.approved_at IS NOT NULL AND
      NEW.approved_at IS DISTINCT FROM OLD.approved_at THEN
