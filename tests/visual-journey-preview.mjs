@@ -666,8 +666,13 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
 // The tariff service can fail. Never leave the visual frame spinning forever.
 {
   const page=await browser.newPage({viewport:{width:390,height:700}});
-  await page.route('**/api/plans',route=>route.fulfill({
+  let catalogUnavailable=true;
+  await page.route('**/api/plans',route=>route.fulfill(catalogUnavailable?{
     status:503,contentType:'application/json',body:'{"code":"TEMP_UNAVAILABLE"}',
+  }:{
+    status:200,contentType:'application/json',
+    body:JSON.stringify({plans,checkoutEnabled:true,loginEnabled:true,
+      telegramLoginEnabled:true,emailLoginEnabled:true,trialOffers:['vpn']}),
   }));
   await page.goto(base,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>{
@@ -685,6 +690,23 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   });
   console.log('CATALOG_FAILURE_FALLBACK='+JSON.stringify(result));
   if(result.loading||!result.retryVisible||!result.retryTopLevel||!result.purchaseDisabled)failed=true;
+  // A recovered mobile connection should update the iframe without a full
+  // page reload, preserving the selected product and pending account intent.
+  catalogUnavailable=false;
+  await page.frameLocator('#journey-front-frame').locator('#front-retry').click();
+  await page.waitForFunction(()=>{
+    const doc=document.querySelector('#journey-front-frame').contentDocument;
+    return doc.querySelector('.plan[data-d="15"] strong')?.textContent?.includes('₽') &&
+      !doc.querySelector('.cta').disabled;
+  },null,{timeout:15000});
+  const recovered=await page.evaluate(()=>{
+    const doc=document.querySelector('#journey-front-frame').contentDocument;
+    return {price:doc.querySelector('.plan[data-d="15"] strong').textContent,
+      retryHidden:doc.querySelector('#front-retry').hidden,
+      buyDisabled:doc.querySelector('.cta').disabled};
+  });
+  console.log('CATALOG_RETRY_WITHOUT_RELOAD='+JSON.stringify(recovered));
+  if(!recovered.retryHidden||recovered.buyDisabled||!recovered.price.includes('₽'))failed=true;
   await page.close();
 }
 // Verify the original owner video loads on normal connections and stays
