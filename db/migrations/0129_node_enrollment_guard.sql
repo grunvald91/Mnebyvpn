@@ -51,8 +51,13 @@ BEGIN
   IF NEW.status='approved' AND NEW.enrolled_at IS NOT NULL THEN
     RAISE EXCEPTION 'Unenrolled node cannot have enrollment timestamp';
   END IF;
+  IF OLD.status='planned' AND NEW.status='revoked' AND
+     (NEW.approved_at IS NOT NULL OR NEW.enrolled_at IS NOT NULL) THEN
+    RAISE EXCEPTION 'Unapproved node cannot forge revocation history';
+  END IF;
   IF OLD.status='revoked' AND
-     NEW.enrolled_at IS DISTINCT FROM OLD.enrolled_at THEN
+     (NEW.approved_at IS DISTINCT FROM OLD.approved_at OR
+      NEW.enrolled_at IS DISTINCT FROM OLD.enrolled_at) THEN
     RAISE EXCEPTION 'Revoked node timestamps are immutable';
   END IF;
   IF OLD.approved_at IS NOT NULL AND
