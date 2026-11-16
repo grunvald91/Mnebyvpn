@@ -504,28 +504,56 @@ async function loadLoginOptions(){
     if(!state.loggedIn)syncLoginLinks();
   }catch{ /* The catalog may still provide login capabilities. */ }
 }
-async function loadCatalog() {
-  // Mobile networks sometimes lose one request during network switching.
-  // Retry the read-only catalog; never manufacture plans or prices locally.
+function applyPublicCatalog(data){
+  if(!data||!Array.isArray(data.plans))throw Error('INVALID_CATALOG');
+  // Only server-supplied prices and flags; never create synthetic offers.
+  state.plans=data.plans.filter(p=>p&&typeof p.id==='string'&&
+    ['vpn','smart_dns','bundle'].includes(p.product)&&
+    Number.isSafeInteger(p.durationDays)&&p.durationDays>0&&
+    Number.isSafeInteger(p.rubMinor)&&p.rubMinor>0);
+  state.checkoutEnabled=data.checkoutEnabled===true;
+  state.loginEnabled=data.loginEnabled===true;
+  state.telegramLoginEnabled=data.telegramLoginEnabled===true;
+  state.emailLoginEnabled=data.emailLoginEnabled===true;
+  state.trialOffers=Array.isArray(data.trialOffers)?data.trialOffers:[];
+  state.dnsPreviewOffers=Array.isArray(data.dnsPreviewOffers)?
+    data.dnsPreviewOffers.filter(p=>Number.isSafeInteger(p.days)&&
+      [14,30,60,90].includes(p.days)&&Number.isSafeInteger(p.stars)&&p.stars>0):[];
+  if(!state.loggedIn)syncLoginLinks();
+  renderPlan();
+}
+function embeddedPublicCatalog(){
+  const encoded=document.querySelector('meta[name="mnebyvpn-public-catalog"]')?.content;
+  if(!encoded||encoded.length>32768)return null;
+  try{
+    const json=new TextDecoder().decode(Uint8Array.from(atob(encoded),
+      c=>c.charCodeAt(0)));
+    const data=JSON.parse(json);
+    return Array.isArray(data?.plans)?data:null;
+  }catch{return null;}
+}
+let catalogInFlight=null;
+function loadCatalog(){
+  if(catalogInFlight)return catalogInFlight;
+  catalogInFlight=loadCatalogOnce().finally(()=>{catalogInFlight=null;});
+  return catalogInFlight;
+}
+async function loadCatalogOnce(){
+  // Homepage and API both read the very same server-authoritative billing catalog.
+  // First paint needs no additional network request on unstable mobile networks.
+  if(!state.plans.length){
+    const embedded=embeddedPublicCatalog();
+    if(embedded)applyPublicCatalog(embedded);
+  }
   for(let attempt=0;attempt<3;attempt++){
     try{
-      const data=await api('/api/plans');
-      if(!Array.isArray(data.plans))throw Error('INVALID_CATALOG');
-      state.plans=data.plans;
-      state.checkoutEnabled=data.checkoutEnabled===true;
-      state.loginEnabled=data.loginEnabled===true;
-      state.telegramLoginEnabled=data.telegramLoginEnabled===true;
-      state.emailLoginEnabled=data.emailLoginEnabled===true;
-      state.trialOffers=Array.isArray(data.trialOffers)?data.trialOffers:[];
-      state.dnsPreviewOffers=Array.isArray(data.dnsPreviewOffers)?
-        data.dnsPreviewOffers.filter(p=>Number.isSafeInteger(p.days)&&
-          [14,30,60,90].includes(p.days)&&Number.isSafeInteger(p.stars)&&p.stars>0):[];
-      if(!state.loggedIn)syncLoginLinks();
-      break;
+      applyPublicCatalog(await api('/api/plans'));
+      return;
     }catch{
       if(attempt<2)
         await new Promise(resolve=>setTimeout(resolve,attempt===0?400:1200));
-      else toast('Не удалось загрузить тарифы. Проверьте соединение и обновите страницу.');
+      else if(!state.plans.length)
+        toast('Не удалось загрузить тарифы. Проверьте соединение и повторите запрос.');
     }
   }
   renderPlan();
@@ -917,8 +945,12 @@ async function consumePendingTrial(){
 Promise.all([loadLoginOptions(),loadCatalog(),refresh()]).then(consumePendingTrial);
 // Payment verification and provisioning can complete after the user returns.
 setInterval(()=>{if(document.visibilityState==='visible' && state.loggedIn)refresh();},15000);
+window.addEventListener('online',()=>{
+  if(!state.plans.length)void loadCatalog();
+});
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'){
     refresh();
+    if(!state.plans.length)void loadCatalog();
   }
 });
