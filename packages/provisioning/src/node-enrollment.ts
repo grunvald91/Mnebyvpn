@@ -125,9 +125,10 @@ export async function beginNodeEnrollment(
     if(active.rowCount)throw new NodeEnrollmentError('Enrollment challenge already active');
     const challengeId=randomUUID(),nonce=randomBytes(32).toString('base64url');
     const inserted=await client.query<{expires_at:Date}>(
+      'WITH stamp AS MATERIALIZED (SELECT clock_timestamp() AS at) '+
       'INSERT INTO vpn_node_enrollment_challenges('+
       'challenge_id,node_id,nonce_sha256,issued_at,expires_at) '+
-      "VALUES($1,$2,$3,clock_timestamp(),clock_timestamp()+interval '5 minutes') "+
+      "SELECT $1,$2,$3,at,at+interval '5 minutes' FROM stamp "+
       'RETURNING expires_at',
       [challengeId,request.nodeId,digest(nonce)]);
     const challenge={...request,challengeId,nonce,expiresAt:inserted.rows[0].expires_at};
