@@ -168,7 +168,7 @@ async function downloadAppleDnsProfile(entitlementId, button){
     link.click();
     link.remove();
     setTimeout(()=>URL.revokeObjectURL(url),60000);
-    toast('Профиль создан. Сохраните файл. На iPhone/iPad откройте Настройки → Профиль загружен; на Mac — Системные настройки → Профили.');
+    toast('Профиль создан. Сохраните файл. На iPhone/iPad откройте Настройки → Профиль загружен; на Mac — Системные настройки → Основные → Управление устройством.');
   }catch(error){
     const messages={
       DNS_PROFILE_ALREADY_ISSUED:'Профиль уже выпускался. Обновите кабинет и подтвердите замену адреса.',
@@ -214,8 +214,8 @@ async function loadTelegramProxyBonus(entitlementId, button, item) {
         const secret=target.searchParams.get('secret')||'';
         if(!/^(ee)?[a-f0-9]{32,512}$/i.test(secret))return;
         try{
-          await navigator.clipboard.writeText('Сервер: '+link.host+'\\nПорт: '+link.port+
-            '\\nТип: MTProto\\nСекрет: '+secret);
+          await navigator.clipboard.writeText('Сервер: '+link.host+'\nПорт: '+link.port+
+            '\nТип: MTProto\nСекрет: '+secret);
           toast('Данные Telegram-прокси скопированы.');
         }catch{toast('Копирование недоступно в этом браузере. Откройте ссылку подключения.');}
       });
@@ -226,7 +226,8 @@ async function loadTelegramProxyBonus(entitlementId, button, item) {
     container.append(node('h4','','Как подключить Telegram'));
     container.append(node('p','',
       '1. Оставьте Smart DNS установленным. 2. На этом устройстве нажмите «Подключить в Telegram» и подтвердите включение прокси. '+
-      '3. Если ссылка не открывается, скопируйте параметры: в Telegram на iPhone/iPad/Mac откройте Настройки → Данные и память → Прокси; '+
+      '3. Если ссылка не открывается, скопируйте параметры: на iPhone/iPad — Telegram → Настройки → Данные и память → Прокси; '+
+      'на Mac — Telegram → Настройки → Данные и память → Использовать прокси; '+
       'на Android — Настройки → Данные и память → Настройки прокси; в Telegram Desktop — Настройки → Продвинутые → Тип соединения. '+
       'Добавьте MTProto и вставьте сервер, порт и секрет. 4. При отсутствии связи попробуйте второй маршрут.'));
     container.append(node('p','',
