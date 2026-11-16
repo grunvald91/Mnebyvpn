@@ -16,6 +16,7 @@ const digest=(token:string)=>createHash('sha256').update(token,'utf8').digest('h
 export interface SubscriptionOwner {
   telegramUserId:number|null;
   entitlementId:string;
+  revision:number;
   expiresAt:Date;
 }
 
@@ -86,7 +87,7 @@ export async function subscriptionOwner(pool:Pool,token:string):
   Promise<SubscriptionOwner|null>{
   if(!TOKEN.test(token))return null;
   const {rows}=await pool.query(
-    "SELECT a.telegram_user_id,e.id AS entitlement_id,e.expires_at "+
+    "SELECT a.telegram_user_id,e.id AS entitlement_id,e.revision,e.expires_at "+
     "FROM vpn_subscription_links l "+
     "JOIN entitlements e ON e.id=l.entitlement_id "+
     "JOIN accounts a ON a.id=e.account_id "+
@@ -100,7 +101,9 @@ export async function subscriptionOwner(pool:Pool,token:string):
   const actor=Number(rows[0].telegram_user_id);
   if(rows[0].telegram_user_id!==null&&
     (!Number.isSafeInteger(actor)||actor<=0))throw Error('Invalid stored actor');
+  const revision=Number(rows[0].revision);
+  if(!Number.isSafeInteger(revision)||revision<1)throw Error('Invalid VPN subscription revision');
   return {telegramUserId:rows[0].telegram_user_id===null?null:actor,
-    entitlementId:String(rows[0].entitlement_id),
+    entitlementId:String(rows[0].entitlement_id),revision,
     expiresAt:rows[0].expires_at as Date};
 }

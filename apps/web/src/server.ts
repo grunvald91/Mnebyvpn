@@ -13,6 +13,8 @@ import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,val
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
 import {subscriptionOwner,subscriptionLink,issueSubscriptionLinkForAccount}
   from '../../../packages/provisioning/src/subscription-links.ts';
+import {additionalNodeVerificationKey,loadAdditionalVpnLinks}
+  from '../../../packages/provisioning/src/multi-node-subscriptions.ts';
 import {
   prepareWebsiteProdamusCheckout, type PayformLinkTransport,
 } from '../../../packages/billing/src/website-checkout.ts';
@@ -112,6 +114,10 @@ const subscriptionDbUrl=process.env.VPN_SUBSCRIPTION_DATABASE_URL;
 const subscriptionPool=subscriptionDbUrl
   ?new Pool({connectionString:subscriptionDbUrl,max:3,connectionTimeoutMillis:3000})
   :offline?pool:null;
+// Extra servers are double-gated: env opt-in + DB release flag. The website
+// sees only an Ed25519 verification key; signing keys stay with the controller.
+const extraVpnNodeKey=process.env.VPN_ADDITIONAL_NODES_ENABLED==='yes'
+  ?additionalNodeVerificationKey(required('VPN_ADDITIONAL_NODE_VERIFY_KEY')):null;
 // Login identities must live in the same canonical DB as the VPN node.
 // Never give the brochure site the bot's unrestricted writer credentials.
 const authDbUrl=process.env.WEB_AUTH_DATABASE_URL;
@@ -757,7 +763,18 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
          (requestedClient!==null&&requestedClient!=='incy'&&requestedClient!=='karing')){
         json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
       }
-      const profile=stableMultiClientVpnProfile(nodeProfile);
+      const legacyProfile=stableMultiClientVpnProfile(nodeProfile);
+      // An experimental registry failure cannot erase a working subscription.
+      // Only fresh cryptographically signed grants produce additional nodes.
+      let extraProfiles:string[]=[];
+      if(extraVpnNodeKey){
+        try{
+          extraProfiles=await loadAdditionalVpnLinks(subscriptionPool,owner,extraVpnNodeKey);
+        }catch{
+          console.error('Additional VPN node registry unavailable');
+        }
+      }
+      const profile=[legacyProfile,...extraProfiles].join('\n');
       // Standard V2Ray base64 subscription: clients repeatedly fetch this URL.
       // Network revocation is enforced both in DB and by the real Xray node.
       res.setHeader('subscription-userinfo',
