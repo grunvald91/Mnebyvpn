@@ -941,6 +941,12 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     }
     return;
   }
+  // Login availability must remain readable even when the billing catalog
+  // is temporarily unavailable (do not require a pricing DB query).
+  if (req.method === 'GET' && url.pathname === '/api/auth/options') {
+    json(res,200,{loginEnabled,telegramLoginEnabled,emailLoginEnabled});
+    return;
+  }
   if (req.method === 'GET' && url.pathname === '/api/plans') {
     const plans = await store.plans('prodamus');
     const trialOffers = trialEnabled
