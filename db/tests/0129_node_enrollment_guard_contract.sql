@@ -25,9 +25,21 @@ BEGIN
   EXCEPTION WHEN raise_exception THEN blocked:=true; END;
   IF NOT blocked THEN RAISE EXCEPTION 'Skipped approval state accepted'; END IF;
 
+  blocked:=false;
+  BEGIN
+    UPDATE vpn_node_enrollment_inventory SET enrolled_at=clock_timestamp()
+      WHERE node_id='test-guard-01';
+  EXCEPTION WHEN raise_exception THEN blocked:=true; END;
+  IF NOT blocked THEN RAISE EXCEPTION 'Planned node forged enrollment timestamp'; END IF;
   UPDATE vpn_node_enrollment_inventory SET
     status='approved',approved_at=clock_timestamp()
   WHERE node_id='test-guard-01';
+  blocked:=false;
+  BEGIN
+    UPDATE vpn_node_enrollment_inventory SET enrolled_at=clock_timestamp()
+      WHERE node_id='test-guard-01';
+  EXCEPTION WHEN raise_exception THEN blocked:=true; END;
+  IF NOT blocked THEN RAISE EXCEPTION 'Approved node forged enrollment timestamp'; END IF;
 
   blocked:=false;
   BEGIN
@@ -80,5 +92,13 @@ BEGIN
       WHERE node_id='test-guard-01';
   EXCEPTION WHEN raise_exception THEN blocked:=true; END;
   IF NOT blocked THEN RAISE EXCEPTION 'Revoked identity restored'; END IF;
-END $$;
+  INSERT INTO vpn_node_enrollment_inventory(
+    node_id,endpoint_host,identity_public_spki)
+  VALUES('test-guard-02','guard02.example.net',repeat('B',59));
+  UPDATE vpn_node_enrollment_inventory SET status='revoked'
+    WHERE node_id='test-guard-02';
+  IF (SELECT status FROM vpn_node_enrollment_inventory
+      WHERE node_id='test-guard-02')<>'revoked' THEN
+    RAISE EXCEPTION 'Planned node could not be revoked'; END IF;
+END $;
 ROLLBACK;
