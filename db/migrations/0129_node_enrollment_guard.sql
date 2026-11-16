@@ -68,9 +68,11 @@ BEGIN
        SELECT 1 FROM vpn_node_enrollment_challenges c
        WHERE c.node_id=OLD.node_id
          AND c.consumed_at IS NOT NULL
+         AND c.expires_at > clock_timestamp()
          AND c.consumed_at <= c.expires_at
          AND c.consumed_at >= c.issued_at
-         AND c.consumed_at >= clock_timestamp()-interval '5 minutes'
+         -- A historic consumed nonce may never authorize a later mutation.
+         AND c.consumed_at >= clock_timestamp()-interval '30 seconds'
      ) THEN
     RAISE EXCEPTION 'Enrollment requires a consumed unexpired challenge';
   END IF;
