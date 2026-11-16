@@ -92,6 +92,11 @@ BEGIN
       WHERE node_id='test-guard-01';
   EXCEPTION WHEN raise_exception THEN blocked:=true; END;
   IF NOT blocked THEN RAISE EXCEPTION 'Revoked identity restored'; END IF;
+  blocked:=false;
+  BEGIN
+    DELETE FROM vpn_node_enrollment_inventory WHERE node_id='test-guard-01';
+  EXCEPTION WHEN raise_exception THEN blocked:=true; END;
+  IF NOT blocked THEN RAISE EXCEPTION 'Revoked identity could be deleted and reused'; END IF;
   INSERT INTO vpn_node_enrollment_inventory(
     node_id,endpoint_host,identity_public_spki)
   VALUES('test-guard-02','guard02.example.net',repeat('B',59));
@@ -100,5 +105,5 @@ BEGIN
   IF (SELECT status FROM vpn_node_enrollment_inventory
       WHERE node_id='test-guard-02')<>'revoked' THEN
     RAISE EXCEPTION 'Planned node could not be revoked'; END IF;
-END $;
+END $$;
 ROLLBACK;
