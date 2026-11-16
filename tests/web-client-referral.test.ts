@@ -48,6 +48,7 @@ function openPage(href:string,stored:Map<string,string>,authenticated=false){
   };
   const context=vm.createContext({
     document,fetch,location,URL,crypto:{randomUUID:()=> 'aaaa-bbbb'},
+    window:{addEventListener:()=>{}},
     sessionStorage:{
       getItem:(k:string)=>stored.get(k)??null,
       setItem:(k:string,v:string)=>{stored.set(k,v);},
