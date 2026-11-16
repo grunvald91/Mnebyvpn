@@ -323,7 +323,8 @@ test('storefront caches original 130KB Earth image separately and restores mobil
   assert.match(art,/id="bgv"[^>]*autoplay muted loop playsinline/);
   assert.match(art,/video\.addEventListener\('playing'/);
   assert.match(art,/document\.addEventListener\('DOMContentLoaded',play/);
-  assert.doesNotMatch(art,/retry\.addEventListener|id="video-retry"|Включить фон/);
+  assert.doesNotMatch(art,/id="video-retry"|Включить фон/);
+  assert.match(art,/retry\.addEventListener\('click'/);
   assert.match(art,/type!=='visual'/);
   assert.doesNotMatch(art,/hardwareConcurrency/);
   assert.doesNotMatch(art,/effectiveType/);
