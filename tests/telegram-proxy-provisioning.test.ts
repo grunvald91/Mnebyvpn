@@ -31,9 +31,9 @@ test('new user: provision with personal secret and verify effective runtime iden
       assert.equal(body.username,name);
       assert.equal(body.secret,secret);
       assert.equal(body.expiration_rfc3339,expiry.toISOString());
-      return new Response(JSON.stringify({user:state,secret}),{status:201});
+      return new Response(JSON.stringify({ok:true,data:{user:state,secret}}),{status:201});
     }
-    return new Response(JSON.stringify(state),{status:200});
+    return new Response(JSON.stringify({ok:true,data:state}),{status:200});
   }) as typeof fetch;
   const admin=new TelemtAdminClient('http://127.0.0.1:9096/','Bearer '+secret,transport);
   assert.equal(await admin.ensure(name,secret,expiry,false),true);
@@ -47,7 +47,7 @@ test('existing user: rotate only when needed; disable and verify server state',a
     const path=new URL(url).pathname,method=init?.method;
     calls.push(method+' '+path);
     if(method==='POST')disabled=true;
-    return new Response(JSON.stringify({...state,enabled:!disabled}),{status:200});
+    return new Response(JSON.stringify({ok:true,data:{...state,enabled:!disabled}}),{status:200});
   }) as typeof fetch;
   const admin=new TelemtAdminClient('http://127.0.0.1:9096/','Bearer '+secret,transport);
   assert.equal(await admin.ensure(name,secret,expiry,false),true);
@@ -60,4 +60,14 @@ test('unknown remote user is treated as already disabled',async()=>{
   const transport=(async()=>new Response('',{status:404})) as typeof fetch;
   const admin=new TelemtAdminClient('http://127.0.0.1:9096/','Bearer '+secret,transport);
   assert.equal(await admin.disable(name),true);
+});
+
+test('Telemt rejects bare or false-success JSON envelopes, not just HTTP errors',async()=>{
+  const candidates=[JSON.stringify(state),JSON.stringify({ok:false,data:state}),
+    JSON.stringify({ok:true}),JSON.stringify({ok:true,data:[]})];
+  for(const candidate of candidates){
+    const transport=(async()=>new Response(candidate,{status:200})) as typeof fetch;
+    const admin=new TelemtAdminClient('http://127.0.0.1:9096/','Bearer '+secret,transport);
+    await assert.rejects(admin.get(name),/Telemt success envelope missing/);
+  }
 });
