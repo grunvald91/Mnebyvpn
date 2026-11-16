@@ -27,6 +27,11 @@ BEGIN
 
   UPDATE vpn_node_enrollment_inventory SET
     status='approved',approved_at=clock_timestamp() WHERE node_id='test-node-01';
+  INSERT INTO vpn_node_enrollment_challenges(
+    challenge_id,node_id,nonce_sha256,issued_at,expires_at,consumed_at)
+  VALUES('22222222-2222-4222-8222-222222222222','test-node-01',
+    repeat('b',64),clock_timestamp()-interval '2 seconds',
+    clock_timestamp()+interval '2 minutes',clock_timestamp());
   UPDATE vpn_node_enrollment_inventory SET
     status='enrolled',enrolled_at=clock_timestamp() WHERE node_id='test-node-01';
 
