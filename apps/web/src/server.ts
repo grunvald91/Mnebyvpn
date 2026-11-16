@@ -22,6 +22,7 @@ import {
   issueAccountSession, readAccountSession, verifyEnvelope, verifyTelegramIdToken, type Jwks,
 } from '../../../packages/web/src/security.ts';
 import { loadDashboard } from '../../../packages/web/src/dashboard.ts';
+import {PERSONAL_DNS_STARS_OFFERS} from '../../../packages/dns-policy/src/smart-dns-offers.ts';
 import {bonusReleaseReady,loadCustomerProxyBonus,parseBonusRoutes}
   from '../../../packages/web/src/telegram-proxy-bonus.ts';
 import {websitePersonalDnsStatus,issueWebsitePersonalDnsProfile}
@@ -947,6 +948,8 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       : [];
     json(res,200,{ loginEnabled, telegramLoginEnabled, emailLoginEnabled,
       checkoutEnabled, trialOffers,
+      // Approved Stars prices, not a guarantee of enabled bot checkout.
+      dnsPreviewOffers:PERSONAL_DNS_STARS_OFFERS.map(o=>({days:o.days,stars:o.stars})),
       plans: plans.map(p => ({
       id: p.planId, title: p.title, product: p.product,
       durationDays: p.durationSeconds / 86400, rubMinor: p.rubMinor,
