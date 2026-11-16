@@ -22,8 +22,11 @@ import {
   issueAccountSession, readAccountSession, verifyEnvelope, verifyTelegramIdToken, type Jwks,
 } from '../../../packages/web/src/security.ts';
 import { loadDashboard } from '../../../packages/web/src/dashboard.ts';
+import {PERSONAL_DNS_STARS_OFFERS} from '../../../packages/dns-policy/src/smart-dns-offers.ts';
 import {bonusReleaseReady,loadCustomerProxyBonus,parseBonusRoutes}
   from '../../../packages/web/src/telegram-proxy-bonus.ts';
+import {websitePersonalDnsStatus,issueWebsitePersonalDnsProfile}
+  from '../../../packages/web/src/personal-dns-apple.ts';
 import {normalizeLoginEmail} from '../../../packages/web/src/email-otp.ts';
 import {beginEmailCode,verifyEmailCode} from '../../../packages/web/src/email-auth-service.ts';
 import {isReviewEmail,isReviewAccount,beginReviewCode,verifyReviewCode}
@@ -89,6 +92,10 @@ const trialEnabled = loginEnabled && networkVerified &&
 // Deprecated WEB_GUEST_TRIAL_ENABLED is deliberately ignored. No anonymous grant routes.
 const meteringVerified = networkVerified && process.env.WEB_DNS_METERING_VERIFIED === 'yes';
 const proxyBonusEnabled=networkVerified&&bonusReleaseReady(process.env);
+// Apple profile generation is never offered until the real personal DoT ingress is tested.
+const appleDnsProfileEnabled=networkVerified &&
+  process.env.WEB_PERSONAL_DNS_APPLE_ENABLED==='yes' &&
+  process.env.WEB_PERSONAL_DNS_DOT_E2E_VERIFIED==='yes';
 // Brochure/support data remains isolated from the real VPN billing ledger.
 // Public checkout, signed callbacks and paid entitlements MUST use the
 // canonical VPN node database with an independent least-privilege role.
@@ -941,6 +948,8 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       : [];
     json(res,200,{ loginEnabled, telegramLoginEnabled, emailLoginEnabled,
       checkoutEnabled, trialOffers,
+      // Approved Stars prices, not a guarantee of enabled bot checkout.
+      dnsPreviewOffers:PERSONAL_DNS_STARS_OFFERS.map(o=>({days:o.days,stars:o.stars})),
       plans: plans.map(p => ({
       id: p.planId, title: p.title, product: p.product,
       durationDays: p.durationSeconds / 86400, rubMinor: p.rubMinor,
@@ -962,7 +971,55 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   if (!auth) { json(res, 401, { code: 'LOGIN_REQUIRED' }); return; }
   if (req.method === 'GET' && url.pathname === '/api/me') {
     const dashboard = await loadDashboard(authPool, auth.accountId, meteringVerified);
-    json(res,200,{ ...dashboard, telegramProxyBonusEnabled:proxyBonusEnabled, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
+    json(res,200,{ ...dashboard, telegramProxyBonusEnabled:proxyBonusEnabled, appleDnsProfileEnabled, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
+  }
+
+  if(req.method==='GET'&&url.pathname==='/api/dns/apple/status'){
+    res.setHeader('Cache-Control','private, no-store, max-age=0');
+    res.setHeader('X-Robots-Tag','noindex');
+    if(!appleDnsProfileEnabled){json(res,503,{code:'APPLE_DNS_PROFILE_NOT_READY'});return;}
+    const entitlementId=url.searchParams.get('entitlementId')??'';
+    if(url.searchParams.size!==1||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entitlementId)){
+      json(res,400,{code:'INVALID_ENTITLEMENT'});return;
+    }
+    const status=await websitePersonalDnsStatus(authPool,sessionHash(auth.raw),entitlementId);
+    if(!status){json(res,404,{code:'DNS_ACCESS_NOT_ACTIVE'});return;}
+    json(res,200,status);return;
+  }
+  if(req.method==='POST'&&url.pathname==='/api/dns/apple/profile'){
+    // A sensitive, one-time bearer hostname is issued only after verified
+    // login+CSRF, paid ACTIVE entitlement and dedicated DB RPC authorization.
+    if(!csrfAllowed(req,auth.raw)){json(res,403,{code:'FORBIDDEN'});return;}
+    if(!appleDnsProfileEnabled){json(res,503,{code:'APPLE_DNS_PROFILE_NOT_READY'});return;}
+    const body=await bodyJson(req);
+    const entitlementId=body.entitlementId;
+    const action=body.action;
+    const revision=body.expectedRevision;
+    if(typeof entitlementId!=='string'||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entitlementId)||
+      (action!=='issue'&&action!=='rotate')||
+      (action==='issue'&&Object.keys(body).sort().join(',')!=='action,entitlementId')||
+      (action==='rotate'&&
+        (Object.keys(body).sort().join(',')!=='action,entitlementId,expectedRevision'||
+         !Number.isSafeInteger(revision)||Number(revision)<1))){
+      json(res,400,{code:'INVALID_DNS_PROFILE_REQUEST'});return;
+    }
+    const result=await issueWebsitePersonalDnsProfile(authPool,sessionHash(auth.raw),
+      entitlementId,action,action==='rotate'?revision as number:undefined);
+    if(result.kind!=='ready'){
+      const code=result.kind==='already-issued'?'DNS_PROFILE_ALREADY_ISSUED':
+        result.kind==='stale'?'DNS_PROFILE_REVISION_CHANGED':
+        result.kind==='inactive'?'DNS_ACCESS_NOT_ACTIVE':
+        result.kind==='revoked'?'DNS_ACCESS_REVOKED':'DNS_PROFILE_UNAVAILABLE';
+      json(res,result.kind==='already-issued'||result.kind==='stale'?409:
+        result.kind==='inactive'||result.kind==='revoked'?403:503,{code});return;
+    }
+    res.setHeader('Content-Disposition','attachment; filename="MNEBYDNS-Apple.mobileconfig"');
+    res.setHeader('Pragma','no-cache');
+    res.setHeader('X-Robots-Tag','noindex');
+    send(res,200,result.xml,'application/x-apple-aspen-config');
+    return;
   }
   if(req.method==='GET'&&url.pathname==='/api/telegram-proxy-bonus'){
     // Do not expose credential-bearing URLs to an anonymous buyer, a

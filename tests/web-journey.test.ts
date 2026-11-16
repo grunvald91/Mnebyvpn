@@ -252,8 +252,8 @@ test('Smart DNS is preview-only while VPN checkout and trial remain server-autho
   assert.match(art,/id="dns-info-dialog"/);
   assert.match(art,/id="trial-options"/);
   assert.match(art,/id="trial-dns"/);
-  for(const [days,price] of [[15,120],[30,199],[60,379],[90,549]]){
-    assert.ok(art.includes('data-d="'+days+'" data-p="'+price+' ₽"'),
+  for(const [days,price] of [[14,100],[30,200],[60,400],[90,500]]){
+    assert.ok(art.includes('data-d="'+days+'" data-p="'+price+' ⭐"'),
       'Missing proposed DNS tariff '+days+'d');
   }
   for(const service of ['YouTube','ChatGPT','Gemini','Claude','Antigravity','Grok','TikTok']){

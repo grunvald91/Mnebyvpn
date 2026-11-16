@@ -110,7 +110,11 @@ async function auditNativeGeometry(page,selector,label){
 for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[390,1000],[1440,900]]){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
   const browserErrors=[];
-  page.on('pageerror',error=>browserErrors.push(String(error.message).slice(0,250)));
+  page.on('pageerror',error=>{
+    const message=String(error.message).slice(0,250);
+    browserErrors.push(message);
+    console.error('VISUAL_PAGE_ERROR='+message);
+  });
   await page.goto(base,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>{
     const frame=document.querySelector('#journey-front-frame');
@@ -199,7 +203,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   console.log('VISUAL_METRICS_'+width+'='+JSON.stringify({...metrics,browserErrors}));
   if(metrics.horizontalOverflow||metrics.innerHorizontalOverflow||browserErrors.length||
     !metrics.iframeHasHeader||!metrics.iframeHasEarth||!metrics.iframeHasTariffs||
-    JSON.stringify(metrics.dnsPrices)!==JSON.stringify(['120 ₽','199 ₽','379 ₽','549 ₽'])||
+    JSON.stringify(metrics.dnsPrices)!==JSON.stringify(['100 ⭐','200 ⭐','400 ⭐','500 ⭐'])||
     !metrics.videoPresent||metrics.retryVisible||metrics.cardOpacity<0.99||
     metrics.backdropFilter!=='none'||metrics.canvasPresent||metrics.introFilter!=='none'||
     (width<=390&&(metrics.lockWidth>52||metrics.clearLockGap<20||metrics.cardTop>314))||
@@ -326,7 +330,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   console.log('DUAL_SELECTION_'+width+'='+JSON.stringify(bothSelected));
   if(bothSelected.vpn!=='true'||bothSelected.dns!=='true'||
      !bothSelected.summary.includes('VPN')||!bothSelected.summary.includes('Smart DNS')||
-     !bothSelected.summary.includes('199 ₽')||
+     !bothSelected.summary.includes('200 ⭐')||
      bothSelected.buyText!=='Оформить только VPN'||!bothSelected.buyEnabled||
      bothSelected.frameLoads!==0||Number(bothSelected.opacity)<0.99)failed=true;
   await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="30"]').click();
@@ -367,7 +371,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     };
   });
   if(dnsOnly.selected!=='true'||!dnsOnly.disabled||
-    !dnsOnly.text.includes('скоро')||dnsOnly.frameLoads!==0)failed=true;
+    !dnsOnly.text.includes('Telegram-боте')||dnsOnly.frameLoads!==0)failed=true;
   await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="30"]').click();
   // Let the iframe finish any deferred parent-height sync from tariff taps.
   await page.waitForTimeout(220);

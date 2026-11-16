@@ -573,10 +573,10 @@ footer .seller-details{margin:6px 0 0;color:#b2c8e3;font:500 clamp(9px,2.6vw,10.
       </div>
     </div>
     <div class="plans plans-dns" role="group" aria-label="Тарифы Smart DNS — предварительный просмотр">
-      <button class="plan dns-plan" type="button" data-d="15" data-p="120 ₽" aria-pressed="false"><b>15 дней</b><strong>120 ₽</strong></button>
-      <button class="plan dns-plan" type="button" data-d="30" data-p="199 ₽" aria-pressed="false"><b>30 дней</b><strong>199 ₽</strong></button>
-      <button class="plan dns-plan" type="button" data-d="60" data-p="379 ₽" aria-pressed="false"><b>60 дней</b><strong>379 ₽</strong></button>
-      <button class="plan dns-plan" type="button" data-d="90" data-p="549 ₽" aria-pressed="false"><b>90 дней</b><strong>549 ₽</strong></button>
+      <button class="plan dns-plan" type="button" data-d="14" data-p="100 ⭐" aria-pressed="false"><b>14 дней</b><strong>100 ⭐</strong></button>
+      <button class="plan dns-plan" type="button" data-d="30" data-p="200 ⭐" aria-pressed="false"><b>30 дней</b><strong>200 ⭐</strong></button>
+      <button class="plan dns-plan" type="button" data-d="60" data-p="400 ⭐" aria-pressed="false"><b>60 дней</b><strong>400 ⭐</strong></button>
+      <button class="plan dns-plan" type="button" data-d="90" data-p="500 ⭐" aria-pressed="false"><b>90 дней</b><strong>500 ⭐</strong></button>
     </div>
     <div class="sum" aria-live="polite"><span id="sum" class="pop">Загрузка тарифов…</span><button class="payment-info" type="button" id="payment-info-open" aria-label="Условия оплаты и напоминания" aria-haspopup="dialog" aria-controls="payment-info-dialog" aria-expanded="false">i</button>
       <div id="payment-info-dialog" class="payment-popover" role="dialog" aria-modal="false" aria-labelledby="payment-info-title" hidden>
@@ -586,7 +586,7 @@ footer .seller-details{margin:6px 0 0;color:#b2c8e3;font:500 clamp(9px,2.6vw,10.
         <p>Telegram-напоминания — после привязки бота.</p>
       </div>
     </div>
-    <p class="dns-preview-note" id="dns-preview-note" hidden>Предпросмотр тарифов · оформление Smart DNS пока не подключено</p>
+    <p class="dns-preview-note" id="dns-preview-note" hidden>Подготовленные тарифы в Stars · откройте Telegram-бот; доступность оплаты проверяет бот</p>
     <button class="cta" type="button" disabled>Загрузка тарифов…</button><p class="front-error" id="front-error" role="alert" aria-live="assertive" hidden></p><a class="front-retry" id="front-retry" href="/" target="_top" hidden>Не удалось получить тарифы. Обновить страницу</a>
     
     <div class="trial-slot" id="trial-slot">
@@ -767,7 +767,7 @@ const cta=$('.cta');
     const dnsChosen=Boolean(selectedDns);
     dnsPreview.hidden=!dnsChosen;
     if(!vpnPart){
-      setText(button,dnsChosen?'Оформление Smart DNS скоро':
+      setText(button,dnsChosen?'Тарифы Smart DNS — в Telegram-боте':
         vpnSelected?'Тариф пока недоступен':'Выберите тариф VPN');
       button.disabled=true;
     }else if(dnsChosen){

@@ -7,7 +7,8 @@ const state = {
   inviteToken: null, refreshing: false, renewalTargetId: null,
   telegramLoginEnabled:false,emailLoginEnabled:false,emailLinkMode:false,
   trialStatus:'NONE',guestSubscriptionUrl:null,setupLoading:false,
-  purchaseIntent:null,telegramProxyBonusEnabled:false,
+  purchaseIntent:null,telegramProxyBonusEnabled:false,appleDnsProfileEnabled:false,
+  dnsPreviewOffers:[],
 };
 const productNames = { vpn:'VPN', smart_dns:'Smart DNS', bundle:'VPN + Smart DNS' };
 const stateNames = {
@@ -71,8 +72,13 @@ async function api(url, options) {
   }
   return data;
 }
+function validOfferDays(product,days){
+  if(product==='smart_dns')return [14,30,60,90].includes(days);
+  return ['vpn','bundle'].includes(product)&&[15,30,60,90].includes(days);
+}
 function setSelection(product, days) {
-  if (!Object.hasOwn(productNames,product) || ![15,30,60,90].includes(days)) return;
+  if (!Object.hasOwn(productNames,product))return;
+  if(!validOfferDays(product,days))days=product==='vpn'?15:30;
   if (product !== state.product || days !== state.days) {
     state.requestId = null;showPaymentLink(null);checkoutError('');
   }
@@ -89,34 +95,45 @@ function setSelection(product, days) {
   renderPlan();
 }
 function renderPlan() {
-  const plan = state.plans.find(p=>p.product===state.product && p.durationDays===state.days);
-  text('selected-plan-name', plan?.title || productNames[state.product] + ' · ' + state.days + ' дней');
+  const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
+  const preview=state.product==='smart_dns'?
+    state.dnsPreviewOffers.find(p=>p.days===state.days):null;
+  const webCheckout=Boolean(plan&&state.checkoutEnabled);
+  const telegramChannel=state.product!=='vpn'&&!webCheckout;
+  text('selected-plan-name',plan?.title||productNames[state.product]+' · '+state.days+' дней');
   text('selected-duration',state.days+' дней');
-  text('selected-quota',state.product==='vpn'?'1 устройство':plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
-  text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):'—');
+  text('selected-quota',state.product==='vpn'?'1 устройство':
+    state.product==='smart_dns'?'1 000 000 DNS-запросов / 30 дней':
+    plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Уточняется');
+  text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):
+    preview?preview.stars+' ⭐':'—');
+  text('price-unit',plan?.rubMinor?'₽ за период':preview?'Telegram Stars':'Цена не опубликована');
+  document.querySelectorAll('[data-days]').forEach(button=>{
+    button.hidden=!validOfferDays(state.product,Number(button.dataset.days));
+  });
   byId('cancel-renewal-button').classList.toggle('hidden',!state.renewalTargetId);
   text('price-description',plan?(state.renewalTargetId?
     'Срок прибавится к выбранному доступу после подтверждения оплаты.':
     'Новая покупка создаёт отдельный доступ. Для продления используйте кнопку в кабинете.'):
-    'Тариф ещё не опубликован. Стоимость появится после утверждения.');
+    preview?'Подготовленный тариф Telegram Stars; наличие оплаты проверяется в боте.':
+    'Цена пока не опубликована.');
   const buy=byId('buy-button');
-  const inDevelopment=state.product!=='vpn';
-  buy.disabled=inDevelopment||!plan||!state.checkoutEnabled||state.busy;
-  buy.textContent=inDevelopment?'В разработке':state.busy?'Создаём заказ…':!plan?'Тариф пока недоступен':
-    !state.checkoutEnabled?'Оплата пока недоступна':
+  buy.disabled=state.busy||(!telegramChannel&&!webCheckout);
+  buy.textContent=state.busy?'Создаём заказ…':
+    telegramChannel?(state.product==='smart_dns'?'Открыть тарифы DNS в Telegram':'Уточнить комплект в Telegram'):
     !state.loggedIn?'Войти для оплаты':state.renewalTargetId?'К оплате продления':'Перейти к оплате';
   const trial=byId('trial-button');
-  const trialAvailable=state.product==='vpn' &&
-    state.trialOffers.includes(state.product) && state.loginEnabled;
+  const trialAvailable=state.product==='vpn'&&state.trialOffers.includes('vpn')&&state.loginEnabled;
   trial.disabled=!trialAvailable||state.busy;
   trial.textContent=state.busy?'Проверяем заявку…':
     !state.loginEnabled?'Бесплатный доступ временно недоступен':
     trialAvailable?(state.loggedIn?'🎁 Получить 24 часа бесплатно':'Войти и получить 24 часа бесплатно'):
     'Бесплатный доступ временно недоступен';
-  text('checkout-hint',inDevelopment?'Smart DNS и совместный тариф находятся в разработке и пока не продаются.':
+  text('checkout-hint',telegramChannel?
+    'Ссылка открывает Telegram-бот. На сайте пока нет рублёвых DNS-тарифов; способы оплаты проверяются ботом.':
     !plan?'Неопубликованные тарифы не продаются.':
-    !state.checkoutEnabled?'Онлайн-оплата включится после проверки платёжного подключения.':
-    'Способ оплаты выбирается на защищённой странице платёжного провайдера.');
+    !state.checkoutEnabled?'Онлайн-оплата временно недоступна.':
+    'Доступ выдаётся только после проверки оплаты сервером.');
 }
 function node(tag, cls, content) {
   const el=document.createElement(tag);
@@ -128,6 +145,59 @@ function statusLabel(access) {
   if(access.state==='ACTIVE' && access.secondsRemaining===0) return 'Истёк';
   return stateNames[access.state] || access.state;
 }
+
+async function downloadAppleDnsProfile(entitlementId, button){
+  if(!state.loggedIn||button.disabled)return;
+  button.disabled=true;
+  try{
+    const status=await api('/api/dns/apple/status?entitlementId='+encodeURIComponent(entitlementId));
+    if(status.revoked)throw Error('DNS_ACCESS_REVOKED');
+    let action='issue';
+    if(status.issued){
+      if(!Number.isSafeInteger(status.revision)||status.revision<1)
+        throw Error('DNS_PROFILE_UNAVAILABLE');
+      const confirmed=window.confirm(
+        'Персональный DNS-профиль уже выдавался. В целях безопасности прежний адрес не хранится. '+
+        'Для скачивания нового файла придётся заменить DNS-адрес: старый профиль перестанет работать '+
+        'на всех устройствах. Продолжить?');
+      if(!confirmed)return;
+      action='rotate';
+    }
+    const response=await fetch('/api/dns/apple/profile',{
+      method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
+      body:JSON.stringify({action,entitlementId,
+        ...(action==='rotate'?{expectedRevision:status.revision}:{})}),
+    });
+    if(!response.ok){
+      const problem=await response.json().catch(()=>({code:'DNS_PROFILE_UNAVAILABLE'}));
+      throw Error(problem.code||'DNS_PROFILE_UNAVAILABLE');
+    }
+    if(!(response.headers.get('content-type')||'').includes('application/x-apple-aspen-config'))
+      throw Error('DNS_PROFILE_UNAVAILABLE');
+    const data=await response.blob();
+    if(data.size<200||data.size>32768)throw Error('DNS_PROFILE_UNAVAILABLE');
+    const url=URL.createObjectURL(data);
+    const link=node('a');
+    link.href=url;
+    link.download='MNEBYDNS-Apple.mobileconfig';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+    toast('Профиль создан. Сохраните файл. На iPhone/iPad откройте Настройки → Профиль загружен; на Mac — Системные настройки → Основные → Управление устройством.');
+  }catch(error){
+    const messages={
+      DNS_PROFILE_ALREADY_ISSUED:'Профиль уже выпускался. Обновите кабинет и подтвердите замену адреса.',
+      DNS_PROFILE_REVISION_CHANGED:'DNS-адрес уже изменён на другом устройстве. Обновите страницу.',
+      DNS_ACCESS_NOT_ACTIVE:'DNS-подписка неактивна или оплата не подтверждена.',
+      DNS_ACCESS_REVOKED:'Этот DNS-доступ отозван.',
+      APPLE_DNS_PROFILE_NOT_READY:'Выдача Apple-профилей пока не включена.',
+    };
+    toast(messages[error.message]||'Не удалось скачать профиль DNS. Повторите попытку или обратитесь в поддержку.');
+  }finally{button.disabled=false;}
+}
+
 async function loadTelegramProxyBonus(entitlementId, button, item) {
   if(!state.loggedIn||button.disabled)return;
   button.disabled=true;
@@ -141,7 +211,7 @@ async function loadTelegramProxyBonus(entitlementId, button, item) {
     const container=node('section','dns-proxy-bonus-links');
     container.append(node('h4','','Ваш Telegram-прокси · бесплатно с DNS'));
     container.append(node('p','',
-      'Два маршрута. В Telegram можно сохранить оба и переключаться между ними.'));
+      'Telegram-прокси работает внутри Telegram независимо от системного Smart DNS. Отключать DNS не требуется.'));
     for(const link of data.links){
       if(!['direct','ru'].includes(link.route))continue;
       const address=node('div','',link.host+':'+link.port);
@@ -155,12 +225,31 @@ async function loadTelegramProxyBonus(entitlementId, button, item) {
       anchor.target='_blank';
       anchor.rel='noopener noreferrer';
       anchor.referrerPolicy='no-referrer';
+      const manual=node('button','button button-secondary','Скопировать адрес, порт и секрет');
+      manual.type='button';
+      manual.addEventListener('click',async()=>{
+        const secret=target.searchParams.get('secret')||'';
+        if(!/^(ee)?[a-f0-9]{32,512}$/i.test(secret))return;
+        try{
+          await navigator.clipboard.writeText('Сервер: '+link.host+'\nПорт: '+link.port+
+            '\nТип: MTProto\nСекрет: '+secret);
+          toast('Данные Telegram-прокси скопированы.');
+        }catch{toast('Копирование недоступно в этом браузере. Откройте ссылку подключения.');}
+      });
       const row=node('div','dns-proxy-bonus-route');
-      row.append(header,address,anchor);
+      row.append(header,address,anchor,manual);
       container.append(row);
     }
+    container.append(node('h4','','Как подключить Telegram'));
     container.append(node('p','',
-      'Ссылки персональные. Не пересылайте их другим людям. После окончания подписки DNS доступ должен отключаться сервером.'));
+      '1. Оставьте Smart DNS установленным. 2. На этом устройстве нажмите «Подключить в Telegram» и подтвердите включение прокси. '+
+      '3. Если ссылка не открывается, скопируйте параметры: на iPhone/iPad — Telegram → Настройки → Данные и память → Прокси; '+
+      'на Mac — Telegram → Настройки → Данные и память → Использовать прокси; '+
+      'на Android — Настройки → Данные и память → Настройки прокси; в Telegram Desktop — Настройки → Продвинутые → Тип соединения. '+
+      'Добавьте MTProto и вставьте сервер, порт и секрет. 4. При отсутствии связи попробуйте второй маршрут.'));
+    container.append(node('p','',
+      'MTProto-прокси предназначен для переписки и медиа Telegram; звонки через него могут не работать. '+
+      'Доступ персональный, не пересылайте ссылки. После окончания оплаченного DNS-срока прокси должен отключаться сервером.'));
     item.append(container);
   }catch(error){
     toast(error.message==='PROXY_BONUS_NOT_ASSIGNED'?
@@ -212,6 +301,13 @@ function renderAccess(accesses) {
         item.append(node('div','usage-unavailable',
           'Учёт расхода DNS пока не подтверждён. Использовано / осталось: нет достоверных данных.'));
       }
+    }
+    if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
+       a.secondsRemaining!==null&&a.secondsRemaining>0&&state.appleDnsProfileEnabled){
+      const apple=node('button','button button-secondary setup-button','Скачать профиль iPhone / iPad / Mac');
+      apple.type='button';
+      apple.addEventListener('click',()=>downloadAppleDnsProfile(a.id,apple));
+      item.append(apple,node('p','','Личный файл .mobileconfig. После загрузки сохраните его в безопасном месте. Повторный выпуск заменит адрес на всех устройствах.'));
     }
     if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
        a.secondsRemaining!==null&&a.secondsRemaining>0&&state.telegramProxyBonusEnabled){
@@ -279,31 +375,36 @@ function renderPurchaseResult(payload) {
     return;
   }
   const access=(payload.access||[]).find(a=>
-    a.product==='vpn' &&
+    a.product===order.product &&
     (a.sourceOrderId===order.id ||
       (intent.renewalTargetId && a.id===intent.renewalTargetId)));
   const verified=order.state==='PAID';
-  const ready=verified&&access?.state==='ACTIVE'&&access.secondsRemaining>0;
+  const ready=verified&&access?.state==='ACTIVE'&&access.secondsRemaining>0&&
+    (order.product==='vpn'||(order.product==='smart_dns'&&state.appleDnsProfileEnabled));
   notice.classList.remove('hidden');
   text('purchase-result-title',!verified?
     (order.state==='PENDING'?'⏳ Проверяем оплату':
       'Состояние заказа: '+(stateNames[order.state]||order.state)):
-    ready?'✅ Ваш VPN готов!':'✅ Оплата подтверждена');
+    ready?(order.product==='smart_dns'?'✅ Ваш Smart DNS активен!':'✅ Ваш VPN готов!'):'✅ Оплата подтверждена');
   text('purchase-result-text',!verified?
     'Пока нет подтверждения оплаты. Если деньги списаны, не оплачивайте повторно — проверьте статус или напишите в поддержку.':
-    ready?'Подключите VPN в несколько нажатий. Выберите приложение для своего устройства.':
-    'Деньги получены. VPN-сервер готовит подключение. Инструкция появится после подтверждения активации.');
+    ready?(order.product==='smart_dns'?'Скачайте персональный профиль для iPhone, iPad или Mac. Telegram-прокси также доступен в разделе подписки после проверки его выдачи.':
+      'Подключите VPN в несколько нажатий. Выберите приложение для своего устройства.'):
+    'Деньги получены. Доступ появится после подтверждения серверной активации.');
   text('purchase-result-details',
     (order.title||productNames[order.product]||'VPN')+
     ' · '+(order.currency==='RUB'?formatMoney(order.amountMinor):String(order.amountMinor)+' ⭐'));
   const connect=byId('purchase-connect');
   connect.classList.toggle('hidden',!ready);
   connect.dataset.entitlementId=ready?access.id:'';
+  connect.dataset.product=ready?order.product:'';
+  connect.textContent=ready&&order.product==='smart_dns'?'Скачать профиль Apple':'🔌 Подключить VPN';
   byId('purchase-refresh').classList.toggle('hidden',ready);
 }
 function renderAccount(payload) {
   state.loggedIn=true;state.csrf=payload.csrf;
   state.telegramProxyBonusEnabled=payload.telegramProxyBonusEnabled===true;
+  state.appleDnsProfileEnabled=payload.appleDnsProfileEnabled===true;
   byId('login-prompt').classList.add('hidden');
   byId('account-content').classList.remove('hidden');
   byId('logout-button').classList.remove('hidden');
@@ -365,6 +466,7 @@ function renderLoggedOut() {
   // a shared browser screen. Keep the public catalog and selected product.
   state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;
   state.telegramProxyBonusEnabled=false;
+  state.appleDnsProfileEnabled=false;
   byId('guest-trial-card').classList.add('hidden');
   byId('purchase-result').classList.add('hidden');
   byId('link-email').classList.add('hidden');
@@ -400,6 +502,9 @@ async function loadCatalog() {
     state.telegramLoginEnabled=data.telegramLoginEnabled===true;
     state.emailLoginEnabled=data.emailLoginEnabled===true;
     state.trialOffers=Array.isArray(data.trialOffers)?data.trialOffers:[];
+    state.dnsPreviewOffers=Array.isArray(data.dnsPreviewOffers)?
+      data.dnsPreviewOffers.filter(p=>Number.isSafeInteger(p.days)&&
+        [14,30,60,90].includes(p.days)&&Number.isSafeInteger(p.stars)&&p.stars>0):[];
     if(!state.loggedIn)syncLoginLinks();
   } catch {
     toast('Не удалось загрузить тарифы. Попробуйте позже.');
@@ -438,10 +543,10 @@ function applyLinkOptions() {
   state.inviteToken=token;
   const product=url.searchParams.get('product');
   const days=Number(url.searchParams.get('days'));
-  if(Object.hasOwn(productNames,product)&&[15,30,60,90].includes(days)){
+  if(Object.hasOwn(productNames,product)&&validOfferDays(product,days)){
     state.product=product;state.days=days;
   } else if(saved && Object.hasOwn(productNames,saved.product) &&
-    [15,30,60,90].includes(saved.days)) {
+    validOfferDays(saved.product,saved.days)) {
     state.product=saved.product;state.days=saved.days;
   }
   setSelection(state.product,state.days);
@@ -460,7 +565,11 @@ function applyLinkOptions() {
 async function purchase() {
   const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
   if(state.busy)return;
-  if(state.product!=='vpn'||!plan||!state.checkoutEnabled){
+  if((state.product==='smart_dns'||state.product==='bundle')&&
+     (!plan||!state.checkoutEnabled)){
+    location.assign('https://t.me/MNEBYVPN_bot');return;
+  }
+  if(!plan||!state.checkoutEnabled){
     checkoutError('Оплата этого тарифа пока недоступна.');return;
   }
   if(!state.loggedIn){
@@ -762,7 +871,9 @@ byId('trial-button').addEventListener('click',claimTrial);
 byId('purchase-refresh').addEventListener('click',refresh);
 byId('purchase-connect').addEventListener('click',()=>{
   const id=byId('purchase-connect').dataset.entitlementId;
-  if(id)loadSubscription(id);
+  if(id&&byId('purchase-connect').dataset.product==='smart_dns')
+    downloadAppleDnsProfile(id,byId('purchase-connect'));
+  else if(id)loadSubscription(id);
 });
 byId('guest-copy-subscription').addEventListener('click',copyGuestSubscription);
 byId('cancel-renewal-button').addEventListener('click',()=>{

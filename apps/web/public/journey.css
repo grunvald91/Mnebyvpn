@@ -2543,3 +2543,16 @@ body.journey-active[data-journey-view="account"] .metric-card{
     margin-top:4px;
   }
 }
+
+/* Smart DNS and VPN+DNS remain selectable in the live mobile-first journey. */
+.journey-product-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:14px}
+.journey-product-grid button{min-height:44px;padding:8px 5px;border:1px solid rgba(128,164,219,.28);border-radius:12px;background:rgba(8,23,52,.6);color:#d8ecff;font-weight:750;font-size:12px}
+.journey-product-grid button[aria-pressed="true"]{border-color:#43e5f0;background:rgba(15,101,133,.65);color:#efffff}
+.journey-dns-links{margin-top:20px;border:1px solid rgba(87,181,242,.26);border-radius:19px;background:rgba(12,26,56,.75);padding:20px}
+.journey-dns-links h2{font-size:18px;margin:0 0 9px}
+.journey-dns-links p{font-size:12px;line-height:1.6;color:#b9cee7}
+.journey-dns-link-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:15px 0}
+.journey-dns-link-grid a{padding:13px 9px;border:1px solid rgba(100,200,239,.33);border-radius:11px;text-align:center;background:rgba(14,43,75,.62);font-size:13px;color:#d6f9ff;font-weight:750}
+.journey-dns-link-grid a:hover,.journey-dns-link-grid a:focus-visible{border-color:#65e8fb;background:rgba(29,81,121,.8)}
+.journey-dns-links .journey-secondary{margin-bottom:0}
+.journey-front-stage[hidden],.journey-duration-grid button[hidden],.journey-dns-links[hidden]{display:none!important}
