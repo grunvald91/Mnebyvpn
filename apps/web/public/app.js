@@ -8,6 +8,7 @@ const state = {
   telegramLoginEnabled:false,emailLoginEnabled:false,emailLinkMode:false,
   trialStatus:'NONE',guestSubscriptionUrl:null,setupLoading:false,
   purchaseIntent:null,telegramProxyBonusEnabled:false,appleDnsProfileEnabled:false,
+  dnsPreviewOffers:[],
 };
 const productNames = { vpn:'VPN', smart_dns:'Smart DNS', bundle:'VPN + Smart DNS' };
 const stateNames = {
@@ -71,8 +72,13 @@ async function api(url, options) {
   }
   return data;
 }
+function validOfferDays(product,days){
+  if(product==='smart_dns')return [14,30,60,90].includes(days);
+  return ['vpn','bundle'].includes(product)&&[15,30,60,90].includes(days);
+}
 function setSelection(product, days) {
-  if (!Object.hasOwn(productNames,product) || ![15,30,60,90].includes(days)) return;
+  if (!Object.hasOwn(productNames,product))return;
+  if(!validOfferDays(product,days))days=product==='vpn'?15:30;
   if (product !== state.product || days !== state.days) {
     state.requestId = null;showPaymentLink(null);checkoutError('');
   }
@@ -89,34 +95,45 @@ function setSelection(product, days) {
   renderPlan();
 }
 function renderPlan() {
-  const plan = state.plans.find(p=>p.product===state.product && p.durationDays===state.days);
-  text('selected-plan-name', plan?.title || productNames[state.product] + ' · ' + state.days + ' дней');
+  const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
+  const preview=state.product==='smart_dns'?
+    state.dnsPreviewOffers.find(p=>p.days===state.days):null;
+  const webCheckout=Boolean(plan&&state.checkoutEnabled);
+  const telegramChannel=state.product!=='vpn'&&!webCheckout;
+  text('selected-plan-name',plan?.title||productNames[state.product]+' · '+state.days+' дней');
   text('selected-duration',state.days+' дней');
-  text('selected-quota',state.product==='vpn'?'1 устройство':plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Не опубликована');
-  text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):'—');
+  text('selected-quota',state.product==='vpn'?'1 устройство':
+    state.product==='smart_dns'?'1 000 000 DNS-запросов / 30 дней':
+    plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Уточняется');
+  text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):
+    preview?preview.stars+' ⭐':'—');
+  text('price-unit',plan?.rubMinor?'₽ за период':preview?'Telegram Stars':'Цена не опубликована');
+  document.querySelectorAll('[data-days]').forEach(button=>{
+    button.hidden=!validOfferDays(state.product,Number(button.dataset.days));
+  });
   byId('cancel-renewal-button').classList.toggle('hidden',!state.renewalTargetId);
   text('price-description',plan?(state.renewalTargetId?
     'Срок прибавится к выбранному доступу после подтверждения оплаты.':
     'Новая покупка создаёт отдельный доступ. Для продления используйте кнопку в кабинете.'):
-    'Тариф ещё не опубликован. Стоимость появится после утверждения.');
+    preview?'Подготовленный тариф Telegram Stars; наличие оплаты проверяется в боте.':
+    'Цена пока не опубликована.');
   const buy=byId('buy-button');
-  const inDevelopment=state.product!=='vpn';
-  buy.disabled=inDevelopment||!plan||!state.checkoutEnabled||state.busy;
-  buy.textContent=inDevelopment?'В разработке':state.busy?'Создаём заказ…':!plan?'Тариф пока недоступен':
-    !state.checkoutEnabled?'Оплата пока недоступна':
+  buy.disabled=state.busy||(!telegramChannel&&!webCheckout);
+  buy.textContent=state.busy?'Создаём заказ…':
+    telegramChannel?(state.product==='smart_dns'?'Открыть тарифы DNS в Telegram':'Уточнить комплект в Telegram'):
     !state.loggedIn?'Войти для оплаты':state.renewalTargetId?'К оплате продления':'Перейти к оплате';
   const trial=byId('trial-button');
-  const trialAvailable=state.product==='vpn' &&
-    state.trialOffers.includes(state.product) && state.loginEnabled;
+  const trialAvailable=state.product==='vpn'&&state.trialOffers.includes('vpn')&&state.loginEnabled;
   trial.disabled=!trialAvailable||state.busy;
   trial.textContent=state.busy?'Проверяем заявку…':
     !state.loginEnabled?'Бесплатный доступ временно недоступен':
     trialAvailable?(state.loggedIn?'🎁 Получить 24 часа бесплатно':'Войти и получить 24 часа бесплатно'):
     'Бесплатный доступ временно недоступен';
-  text('checkout-hint',inDevelopment?'Smart DNS и совместный тариф находятся в разработке и пока не продаются.':
+  text('checkout-hint',telegramChannel?
+    'Ссылка открывает Telegram-бот. На сайте пока нет рублёвых DNS-тарифов; способы оплаты проверяются ботом.':
     !plan?'Неопубликованные тарифы не продаются.':
-    !state.checkoutEnabled?'Онлайн-оплата включится после проверки платёжного подключения.':
-    'Способ оплаты выбирается на защищённой странице платёжного провайдера.');
+    !state.checkoutEnabled?'Онлайн-оплата временно недоступна.':
+    'Доступ выдаётся только после проверки оплаты сервером.');
 }
 function node(tag, cls, content) {
   const el=document.createElement(tag);
@@ -485,6 +502,9 @@ async function loadCatalog() {
     state.telegramLoginEnabled=data.telegramLoginEnabled===true;
     state.emailLoginEnabled=data.emailLoginEnabled===true;
     state.trialOffers=Array.isArray(data.trialOffers)?data.trialOffers:[];
+    state.dnsPreviewOffers=Array.isArray(data.dnsPreviewOffers)?
+      data.dnsPreviewOffers.filter(p=>Number.isSafeInteger(p.days)&&
+        [14,30,60,90].includes(p.days)&&Number.isSafeInteger(p.stars)&&p.stars>0):[];
     if(!state.loggedIn)syncLoginLinks();
   } catch {
     toast('Не удалось загрузить тарифы. Попробуйте позже.');
@@ -523,10 +543,10 @@ function applyLinkOptions() {
   state.inviteToken=token;
   const product=url.searchParams.get('product');
   const days=Number(url.searchParams.get('days'));
-  if(Object.hasOwn(productNames,product)&&[15,30,60,90].includes(days)){
+  if(Object.hasOwn(productNames,product)&&validOfferDays(product,days)){
     state.product=product;state.days=days;
   } else if(saved && Object.hasOwn(productNames,saved.product) &&
-    [15,30,60,90].includes(saved.days)) {
+    validOfferDays(saved.product,saved.days)) {
     state.product=saved.product;state.days=saved.days;
   }
   setSelection(state.product,state.days);
@@ -545,7 +565,11 @@ function applyLinkOptions() {
 async function purchase() {
   const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
   if(state.busy)return;
-  if(state.product!=='vpn'||!plan||!state.checkoutEnabled){
+  if((state.product==='smart_dns'||state.product==='bundle')&&
+     (!plan||!state.checkoutEnabled)){
+    location.assign('https://t.me/MNEBYVPN_bot');return;
+  }
+  if(!plan||!state.checkoutEnabled){
     checkoutError('Оплата этого тарифа пока недоступна.');return;
   }
   if(!state.loggedIn){
