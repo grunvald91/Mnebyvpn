@@ -200,36 +200,55 @@
       emailPanel.classList.toggle('hidden',!state.emailLoginEnabled||state.loggedIn&&!state.emailLinkMode);
     }
   }
-  function priceFor(days) {
-    const p=state.plans.find(p=>p.product==='vpn'&&p.durationDays===days);
-    return p?.rubMinor?formatMoney(p.rubMinor):'—';
+  function validDays(product,day){
+    return product==='smart_dns'?[14,30,60,90].includes(day):
+      ['vpn','bundle'].includes(product)&&[15,30,60,90].includes(day);
+  }
+  function priceFor(days){
+    const p=state.plans.find(p=>p.product===state.product&&p.durationDays===days);
+    const preview=state.product==='smart_dns'?
+      (state.dnsPreviewOffers||[]).find(o=>o.days===days):null;
+    return p?.rubMinor?formatMoney(p.rubMinor):preview?preview.stars+' ⭐':'—';
   }
   function updatePlan(){
+    const isVpn=state.product==='vpn';
+    el('journey-front-stage').hidden=!isVpn;
+    el('journey-title').textContent=isVpn?'VPN без лишних шагов':
+      state.product==='smart_dns'?'Персональный Smart DNS':'VPN + Smart DNS';
+    landing.querySelectorAll('[data-journey-product]').forEach(button=>{
+      button.setAttribute('aria-pressed',String(button.dataset.journeyProduct===state.product));
+    });
     for(const button of landing.querySelectorAll('[data-journey-days]')){
-      const day=Number(button.dataset.journeyDays);
-      const selected=day===state.days;
-      button.setAttribute('aria-pressed',String(selected));
+      const day=Number(button.dataset.journeyDays),valid=validDays(state.product,day);
+      button.hidden=!valid;
+      button.setAttribute('aria-pressed',String(day===state.days));
       const price=landing.querySelector('[data-journey-price="'+day+'"]');
       if(price)price.textContent=priceFor(day);
-      button.disabled=!state.plans.some(p=>p.product==='vpn'&&p.durationDays===day);
+      button.disabled=!valid||(isVpn&&!state.plans.some(p=>p.product==='vpn'&&p.durationDays===day));
     }
     const original=el('buy-button'),buy=el('journey-buy');
-    const plan=state.plans.find(p=>p.product==='vpn'&&p.durationDays===state.days);
+    const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
     buy.disabled=original.disabled;
     buy.textContent=original.textContent;
-    const trialAvailable=state.trialOffers.includes('vpn');
+    const trialAvailable=isVpn&&state.trialOffers.includes('vpn');
     el('journey-trial').disabled=el('trial-button').disabled;
     el('journey-trial-offer').hidden=!trialAvailable;
     updateTrialAuth();
-    el('journey-summary').textContent=plan?'VPN · '+state.days+' дней · '+priceFor(state.days):
-      'Выбранный тариф пока не опубликован';
+    const title=state.product==='smart_dns'?'Smart DNS':
+      state.product==='bundle'?'VPN + Smart DNS':'VPN';
+    el('journey-summary').textContent=(plan||state.product==='smart_dns'&&
+      (state.dnsPreviewOffers||[]).some(o=>o.days===state.days))?
+      title+' · '+state.days+' дней · '+priceFor(state.days):
+      'Цена не опубликована. Подробности — в Telegram-боте.';
     el('journey-error').textContent=el('checkout-error').textContent||'';
     syncFront();
   }
   function updateOrder(){
-    const plan=state.plans.find(p=>p.product==='vpn'&&p.durationDays===state.days);
+    const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
     const verified=state.loggedIn&&lastAccount?.identity?.email;
-    el('journey-order-period').textContent='VPN · '+state.days+' дней';
+    el('journey-order-period').textContent=
+      (state.product==='smart_dns'?'Smart DNS':state.product==='bundle'?'VPN + DNS':'VPN')+
+      ' · '+state.days+' дней';
     el('journey-order-price').textContent=plan?priceFor(state.days):'—';
     el('journey-order-email').textContent=verified?lastAccount.identity.email:'Требуется вход по email';
     const pay=el('journey-order-pay');
@@ -246,7 +265,7 @@
   function pendingIntent(){
     try{
       const v=JSON.parse(sessionStorage.getItem('mnebyvpn-pending-checkout')||'null');
-      return v&&v.product==='vpn'&&[15,30,60,90].includes(v.days)&&
+      return v&&validDays(v.product,v.days)&&
         Number.isSafeInteger(v.createdAt)&&Date.now()-v.createdAt<30*60*1000?v:null;
     }catch{return null;}
   }
@@ -262,6 +281,12 @@
     }
   }
   function beginCheckout(){
+    const current=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
+    if((state.product==='smart_dns'||state.product==='bundle')&&
+       (!current||!state.checkoutEnabled)){
+      location.assign('https://t.me/MNEBYVPN_bot');return;
+    }
+    if(!current||!state.checkoutEnabled)return;
     if(!state.loggedIn){
       storeIntent();saveSelection();setView('account',true);
       el('email-input')?.focus();return;
@@ -274,15 +299,15 @@
   }
   function resumeCheckout(){
     const pending=pendingIntent();
-    if(!pending||!state.loggedIn||!state.plans.some(p=>p.product==='vpn'&&p.durationDays===pending.days))return;
+    if(!pending||!state.loggedIn||!state.plans.some(p=>p.product===pending.product&&p.durationDays===pending.days))return;
     if(!lastAccount?.identity?.email){
       beginEmailLink();return;
     }
     // Clear before setSelection, which synchronously triggers renderPlan.
     // Otherwise its wrapper would recursively resume the same checkout.
     clearIntent();
-    state.product='vpn';
-    setSelection('vpn',pending.days);
+    state.product=pending.product;
+    setSelection(pending.product,pending.days);
     setView('checkout',true);
   }
   const downloads={
@@ -491,8 +516,11 @@
     const result=originalVpnSetup(...args);
     installed=false;updateSetup();setView('setup',true);return result;
   };
+  landing.querySelectorAll('[data-journey-product]').forEach(btn=>btn.addEventListener('click',()=>{
+    setSelection(btn.dataset.journeyProduct,state.days);updatePlan();
+  }));
   landing.querySelectorAll('[data-journey-days]').forEach(btn=>btn.addEventListener('click',()=>{
-    setSelection('vpn',Number(btn.dataset.journeyDays));updatePlan();
+    setSelection(state.product,Number(btn.dataset.journeyDays));updatePlan();
   }));
   el('journey-buy').addEventListener('click',beginCheckout);
   el('journey-order-pay').addEventListener('click',()=>{
@@ -558,7 +586,7 @@
   else if(/Mac OS X|Macintosh/i.test(ua))chosenPlatform='macos';
   else if(/Linux/i.test(ua))chosenPlatform='linux';
   setPlatform(chosenPlatform);
-  if(state.product!=='vpn')setSelection('vpn',state.days);
+  // Deep links to DNS must not silently reset selection to VPN.
   root.classList.add('journey-active');
   setView(getRoute());
   updatePlan();
