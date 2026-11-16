@@ -12,6 +12,12 @@ BEGIN
     END IF;
     RETURN NEW;
   END IF;
+  IF TG_OP='DELETE' THEN
+    IF OLD.status<>'planned' THEN
+      RAISE EXCEPTION 'Approved or revoked node identity must not be deleted';
+    END IF;
+    RETURN OLD;
+  END IF;
 
   -- Approving one identity may not later silently authorize another.
   IF OLD.status <> 'planned' AND
@@ -74,7 +80,7 @@ $$;
 
 DROP TRIGGER vpn_node_enrollment_immutability ON vpn_node_enrollment_inventory;
 CREATE TRIGGER vpn_node_enrollment_immutability
-  BEFORE INSERT OR UPDATE ON vpn_node_enrollment_inventory
+  BEFORE INSERT OR UPDATE OR DELETE ON vpn_node_enrollment_inventory
   FOR EACH ROW EXECUTE FUNCTION vpn_node_enrollment_guard_identity();
 
 REVOKE ALL ON FUNCTION vpn_node_enrollment_guard_identity() FROM PUBLIC;
