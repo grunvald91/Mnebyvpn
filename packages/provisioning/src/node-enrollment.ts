@@ -6,7 +6,8 @@
  * The caller must use a dedicated least-privilege database writer on a
  * trusted private control-plane host, never a browser, bot, or LLM.
  */
-import {createHash,createPublicKey,randomBytes,randomUUID,verify}
+import {createHash,createPublicKey,randomBytes,randomUUID,sign,verify,
+  type KeyObject}
   from 'node:crypto';
 import type {Pool} from 'pg';
 
@@ -29,6 +30,7 @@ export interface NodeEnrollmentChallenge extends NodeEnrollmentRequest {
   challengeId:string;
   nonce:string;
   expiresAt:Date;
+  controllerSignature:string;
 }
 export interface NodeEnrollmentProof {
   challengeId:string;
@@ -83,13 +85,27 @@ export function verifyNodeEnrollmentProof(proof:NodeEnrollmentProof):boolean{
   }catch{return false;}
 }
 
+/** Only controller-signed challenges may reach a new node's private key. */
+export function enrollmentControllerChallengeMessage(
+  challenge:Omit<NodeEnrollmentChallenge,'controllerSignature'>,
+):Buffer {
+  return Buffer.from(JSON.stringify([
+    'MNEBYVPN_ENROLL_CHALLENGE_V1',
+    challenge.nodeId,challenge.endpointHost,challenge.publicSpki,
+    challenge.challengeId,challenge.nonce,challenge.expiresAt.toISOString(),
+  ]),'utf8');
+}
+
 /** New challenges are minted only for identities independently approved in DB. */
 export async function beginNodeEnrollment(
   pool:Pick<Pool,'connect'>,
   request:NodeEnrollmentRequest,
+  controllerSigningKey:KeyObject,
 ):Promise<NodeEnrollmentChallenge>{
   if(!validNode(request))throw new NodeEnrollmentError('Invalid enrollment request');
   publicKey(request.publicSpki);
+  if(controllerSigningKey?.asymmetricKeyType!=='ed25519')
+    throw new NodeEnrollmentError('Trusted enrollment controller key is required');
   const client=await pool.connect();
   try{
     await client.query('BEGIN');
@@ -114,8 +130,11 @@ export async function beginNodeEnrollment(
       "VALUES($1,$2,$3,clock_timestamp(),clock_timestamp()+interval '5 minutes') "+
       'RETURNING expires_at',
       [challengeId,request.nodeId,digest(nonce)]);
+    const challenge={...request,challengeId,nonce,expiresAt:inserted.rows[0].expires_at};
+    const controllerSignature=sign(null,enrollmentControllerChallengeMessage(challenge),
+      controllerSigningKey).toString('base64url');
     await client.query('COMMIT');
-    return {...request,challengeId,nonce,expiresAt:inserted.rows[0].expires_at};
+    return {...challenge,controllerSignature};
   }catch(err){
     await client.query('ROLLBACK');
     throw err;
