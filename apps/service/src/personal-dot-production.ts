@@ -16,6 +16,7 @@ import {Pool} from 'pg';
 import {pinnedCanaryPolicy} from './personal-dot-canary.ts';
 import {queryVerifiedDotTls,type VerifiedDotUpstream}
   from '../../../packages/dns-policy/src/verified-dot-upstream.ts';
+import {createVerifiedDotPool} from '../../../packages/dns-policy/src/pooled-dot-upstream.ts';
 import {createPersonalDotListener}
   from '../../../packages/dns-policy/src/personal-dot-listener.ts';
 
@@ -86,6 +87,9 @@ export async function runPersonalDotProduction():Promise<void>{
     max:8,connectionTimeoutMillis:1200,statement_timeout:1150,
     query_timeout:1200,idleTimeoutMillis:10000});
   await db.query('SELECT 1');
+  const pooled=process.env.MNEBYDNS_DOT_POOL_ENABLED==='yes';
+  const mappedPool=pooled?createVerifiedDotPool(mapped):null;
+  const directPool=pooled?createVerifiedDotPool(direct):null;
   const tlsServer=createPersonalDotListener({
     key,cert,db,classify,
     ...(process.env.MNEBYDNS_OWNER_LINKS_ENABLED==='yes'?{
@@ -95,8 +99,8 @@ export async function runPersonalDotProduction():Promise<void>{
       },
     }:{}),
     queryTimeoutMs:8500,
-    mapped:(query,signal)=>queryVerifiedDotTls(mapped,query,7000,signal),
-    direct:(query,signal)=>queryVerifiedDotTls(direct,query,7000,signal),
+    mapped:(query,signal)=>mappedPool?mappedPool.query(query,7000,signal):queryVerifiedDotTls(mapped,query,7000,signal),
+    direct:(query,signal)=>directPool?directPool.query(query,7000,signal):queryVerifiedDotTls(direct,query,7000,signal),
   });
   let listening=false;
   const health=createServer(async(req,res)=>{
@@ -115,6 +119,7 @@ export async function runPersonalDotProduction():Promise<void>{
   });
   const shutdown=()=>{
     listening=false;
+    mappedPool?.close();directPool?.close();
     tlsServer.close(()=>{void db.end();});
     health.close();
   };
@@ -139,6 +144,7 @@ export async function runPersonalDotProduction():Promise<void>{
   });
   }catch(err){
     listening=false;
+    mappedPool?.close();directPool?.close();
     try{tlsServer.close();}catch{/* not listening yet */}
     try{health.close();}catch{/* not listening yet */}
     await db.end();
