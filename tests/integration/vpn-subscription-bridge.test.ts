@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,generateKeyPairSync,sign} from 'node:crypto';
+import {additionalNodeReceiptPayload,type AdditionalNodeReceipt}
+  from '../../packages/provisioning/src/multi-node-subscriptions.ts';
 import {createServer} from 'node:http';
 import {spawn,type ChildProcess} from 'node:child_process';
 import {Pool} from 'pg';
@@ -16,6 +18,8 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
  const telegramUser=9148723127;
  const token='aa'.repeat(32);
  const credential='12222222-3333-4333-8333-555555555555';
+ const {publicKey,privateKey}=generateKeyPairSync('ed25519');
+ const verifyKey=publicKey.export({format:'der',type:'spki'}).toString('base64url');
  let profile='vless://'+credential+'@cdn.servgo.ru:8443?encryption=none&security=tls&type=ws&host=cdn.servgo.ru&sni=cdn.servgo.ru&path=%2Fmnebyvpn-vpn%2Fws#Me';
  const worker=createServer(async(req,res)=>{
    if(req.url!=='/profile'||req.method!=='POST'||
@@ -70,7 +74,9 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
        WEB_BASE_URL:'http://127.0.0.1:'+webPort,
        WEB_PORT:String(webPort),MNEBYVPN_ENV:'offline-test',
        WEB_SESSION_SECRET:'A'.repeat(64),
-       VPN_WORKER_PROFILE_TOKEN:token},
+       VPN_WORKER_PROFILE_TOKEN:token,
+       VPN_ADDITIONAL_NODES_ENABLED:'yes',
+       VPN_ADDITIONAL_NODE_VERIFY_KEY:verifyKey},
    });
    const root='http://127.0.0.1:'+webPort;
    for(let i=0;i<45;i++){
@@ -130,6 +136,77 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.equal(single.status,200);
    assert.equal(Buffer.from((await single.text()).trim(),'base64')
      .toString('utf8').trim(),fallback);
+   // Multi-country nodes appear only after the DB release gate, fresh verified
+   // registry status, and a cryptographic grant for this SAME active entitlement.
+   const current=await pool.query(
+     'SELECT revision,expires_at FROM entitlements WHERE id=$1',[entitlement]);
+   const revision=Number(current.rows[0].revision);
+   const expiry=current.rows[0].expires_at as Date;
+   const observedAt=new Date();
+   const extras:AdditionalNodeReceipt[]=[
+     ['de-node-02','DE','Германия'],
+     ['nl-node-02','NL','Нидерланды'],
+   ].map(([nodeId,country,countryName])=>{
+     const endpoint=nodeId+'.nodes.example.net';
+     return {
+       node_id:nodeId,country_code:country,country_name_ru:countryName,
+       endpoint_host:endpoint,endpoint_port:2053,state:'enabled',
+       exit_country_proof_sha256:'a'.repeat(64),
+       vpn_e2e_proof_sha256:'b'.repeat(64),
+       verified_at:observedAt,entitlement_id:entitlement,revision,
+       expires_at:expiry,observed_at:observedAt,
+       profile_uri:'vless://'+credential+'@'+endpoint+':2053?encryption=none'+
+         '&security=reality&type=tcp&flow=xtls-rprx-vision'+
+         '&sni=www.cloudflare.com&fp=chrome&pbk='+('A'.repeat(43))+
+         '&sid=ab12cd34ef56a789&spx=%2F',
+       signature:'',
+     };
+   });
+   // The web env flag was enabled from startup, but the DB release gate is
+   // still false: existing clients cannot see staged endpoints.
+   const notReleased=await fetch(root+'/sub/'+issued!.token);
+   assert.equal(Buffer.from((await notReleased.text()).trim(),'base64')
+     .toString('utf8').trim(),fallback);
+   for(const row of extras){
+     await pool.query(
+       'INSERT INTO vpn_additional_nodes(node_id,country_code,country_name_ru,'+
+       'endpoint_host,endpoint_port,state,exit_country_proof_sha256,'+
+       'vpn_e2e_proof_sha256,verified_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+       [row.node_id,row.country_code,row.country_name_ru,row.endpoint_host,
+        row.endpoint_port,row.state,row.exit_country_proof_sha256,
+        row.vpn_e2e_proof_sha256,row.verified_at]);
+     row.signature=sign(null,additionalNodeReceiptPayload(row),privateKey)
+       .toString('base64url');
+     await pool.query(
+       'INSERT INTO vpn_additional_node_receipts(entitlement_id,node_id,'+
+       'revision,expires_at,observed_at,profile_uri,signature) '+
+       'VALUES($1,$2,$3,$4,$5,$6,$7)',
+       [entitlement,row.node_id,row.revision,row.expires_at,row.observed_at,
+        row.profile_uri,row.signature]);
+   }
+   await pool.query("UPDATE vpn_release_flags SET enabled=true WHERE feature='vpn_additional_nodes'");
+   const withCountries=await fetch(root+'/sub/'+issued!.token);
+   assert.equal(withCountries.status,200);
+   const delivered=Buffer.from((await withCountries.text()).trim(),'base64')
+     .toString('utf8').trim().split('\n');
+   assert.equal(delivered.length,3);
+   assert.equal(delivered[0],fallback);
+   assert.match(delivered[1],new RegExp(encodeURIComponent('🇩🇪 MNEBYVPN')));
+   assert.match(delivered[2],new RegExp(encodeURIComponent('🇳🇱 MNEBYVPN')));
+   const forKaring=await fetch(root+'/sub/'+issued!.token+'?client=karing');
+   assert.deepEqual(Buffer.from((await forKaring.text()).trim(),'base64')
+     .toString('utf8').trim().split('\n'),delivered);
+   await pool.query("UPDATE vpn_additional_nodes SET state='degraded' WHERE node_id='nl-node-02'");
+   const degraded=await fetch(root+'/sub/'+issued!.token);
+   assert.equal(Buffer.from((await degraded.text()).trim(),'base64')
+     .toString('utf8').trim().split('\n').length,2);
+   await pool.query(
+     "UPDATE vpn_additional_node_receipts SET signature=$1 WHERE node_id='de-node-02'",
+     ['0'.repeat(86)]);
+   const tampered=await fetch(root+'/sub/'+issued!.token);
+   assert.equal(Buffer.from((await tampered.text()).trim(),'base64')
+     .toString('utf8').trim(),fallback);
+   await pool.query("UPDATE vpn_release_flags SET enabled=false WHERE feature='vpn_additional_nodes'");
    assert.equal((await fetch(root+'/sub/'+'B'.repeat(43))).status,404);
    const installer=await fetch(root+'/install/'+issued!.token+'?client=incy');
    assert.equal(installer.status,200);
@@ -150,6 +227,9 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
  } finally {
    child?.kill('SIGTERM');
    await new Promise<void>(resolve=>worker.close(()=>resolve()));
+   await pool.query("UPDATE vpn_release_flags SET enabled=false WHERE feature='vpn_additional_nodes'").catch(()=>{});
+   await pool.query('DELETE FROM vpn_additional_node_receipts WHERE entitlement_id=$1',[entitlement]).catch(()=>{});
+   await pool.query("DELETE FROM vpn_additional_nodes WHERE node_id IN ('de-node-02','nl-node-02')").catch(()=>{});
    await pool.query('DELETE FROM vpn_subscription_links WHERE entitlement_id=$1',[entitlement]).catch(()=>{});
    await pool.query('DELETE FROM provisioning_state WHERE entitlement_id=$1',[entitlement]).catch(()=>{});
    await pool.query('DELETE FROM entitlements WHERE id=$1',[entitlement]).catch(()=>{});
