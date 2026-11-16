@@ -110,7 +110,11 @@ async function auditNativeGeometry(page,selector,label){
 for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[390,1000],[1440,900]]){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
   const browserErrors=[];
-  page.on('pageerror',error=>browserErrors.push(String(error.message).slice(0,250)));
+  page.on('pageerror',error=>{
+    const message=String(error.message).slice(0,250);
+    browserErrors.push(message);
+    console.error('VISUAL_PAGE_ERROR='+message);
+  });
   await page.goto(base,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>{
     const frame=document.querySelector('#journey-front-frame');
