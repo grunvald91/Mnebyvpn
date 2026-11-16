@@ -37,8 +37,11 @@ function safeJson(text:string):Record<string,unknown>{
 /** Local-only Telemt API. Never send customer keys to an arbitrary URL. */
 export class TelemtAdminClient implements TelemtAdministrator{
   private readonly origin:string;
-  constructor(endpoint:string,private readonly authHeader:string,
-    private readonly transport:typeof fetch=fetch){
+  private readonly authHeader:string;
+  private readonly transport:typeof fetch;
+  constructor(endpoint:string,authHeader:string,transport:typeof fetch=fetch){
+    this.authHeader=authHeader;
+    this.transport=transport;
     const url=new URL(endpoint);
     if(url.protocol!=='http:'||url.hostname!=='127.0.0.1'||
        !url.port||url.pathname!=='/'||url.search||url.hash||
