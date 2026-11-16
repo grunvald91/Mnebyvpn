@@ -42,6 +42,9 @@ test('provider-specific PKCE and account session cannot be reused across identit
   const id='11111111-1111-4111-8111-111111111111';
   const raw=issueAccountSession(id,secret,now);
   assert.equal(readAccountSession(raw,secret,now+60_000),id);
+  const simultaneous=issueAccountSession(id,secret,now);
+  assert.notEqual(raw,simultaneous,'two logins in the same millisecond need distinct session tokens');
+  assert.equal(readAccountSession(simultaneous,secret,now+60_000),id);
   assert.equal(readAccountSession(raw,secret,now+12*60*60_000+1),null);
   assert.equal(readAccountSession(raw+'x',secret,now),null);
   assert.throws(()=>issueAccountSession('not-an-uuid',secret,now));

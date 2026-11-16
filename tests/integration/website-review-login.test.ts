@@ -68,8 +68,11 @@ test('review login uses eight digits without email; sessions work from two brows
   assert.deepEqual(await start.json(),{status:'REVIEW_CODE_REQUIRED',codeLength:8});
   assert.equal((await pool.query('SELECT 1 FROM web_email_codes WHERE email=$1',[email])).rowCount,0);
   assert.equal((await post('/api/auth/email/verify',email,'00000000')).status,401);
-  const a=await post('/api/auth/email/verify',email,pin);
-  const b=await post('/api/auth/email/verify',email,pin);
+  // Concurrent sign-ins used to collide when the millisecond timestamp matched.
+  const [a,b]=await Promise.all([
+    post('/api/auth/email/verify',email,pin),
+    post('/api/auth/email/verify',email,pin),
+  ]);
   assert.equal(a.status,200);assert.equal(b.status,200);
   const first=a.headers.get('set-cookie')?.split(';')[0];
   const second=b.headers.get('set-cookie')?.split(';')[0];
