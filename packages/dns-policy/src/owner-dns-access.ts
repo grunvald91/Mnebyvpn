@@ -15,7 +15,7 @@ export async function resolveOwnerDnsMessage(
     // the owner's VPN. A shared relay IP can merge incompatible connections.
     const video=question.name==='googlevideo.com'||question.name.endsWith('.googlevideo.com');
     let answer:Uint8Array;
-    if(video&&['AAAA','HTTPS','SVCB'].includes(question.rrType)){
+    if(video&&[28,64,65].includes(question.type)){
       // The deployed VPN egress is IPv4-only. Suppress IPv6 and service hints,
       // consistently with the existing VPN video-origin DNS policy.
       const nodata=Buffer.from(servfailDnsResponse(wire));
