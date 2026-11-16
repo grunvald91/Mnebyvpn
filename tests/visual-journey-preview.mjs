@@ -39,7 +39,16 @@ const server=http.createServer((req,res)=>{
     res.writeHead(403);res.end();return;
   }
   try{
-    const bytes=readFileSync(pathname);
+    let bytes=readFileSync(pathname);
+    // Simulate the real server-rendered catalog inside the initial HTML,
+    // then make /api/plans fail to reproduce the screenshot without hardcoded UI prices.
+    if(url.pathname==='/'&&url.searchParams.get('test_bootstrap')==='1'){
+      const payload={plans,checkoutEnabled:true,loginEnabled:true,
+        telegramLoginEnabled:false,emailLoginEnabled:true,trialOffers:['vpn']};
+      const encoded=Buffer.from(JSON.stringify(payload),'utf8').toString('base64');
+      bytes=Buffer.from(bytes.toString('utf8').replace('</head>',
+        '<meta name="mnebyvpn-public-catalog" content="'+encoded+'"></head>'));
+    }
     res.writeHead(200,{'Content-Type':types[path.extname(pathname)]||'application/octet-stream',
       'Cache-Control':'no-store'});
     res.end(bytes);
@@ -625,11 +634,45 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   if(result.top>12||result.reloadVisible||!result.price.includes('₽')||result.error)failed=true;
   await page.close();
 }
+// A phone may load HTML successfully and lose every subsequent API request.
+// Server-rendered prices must still appear and the regular cabinet must work.
+{
+  const page=await browser.newPage({viewport:{width:390,height:844}});
+  await page.route('**/api/plans',route=>route.abort('failed'));
+  await page.goto(base+'/?test_bootstrap=1#plans',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>{
+    const doc=document.querySelector('#journey-front-frame')?.contentDocument;
+    return doc?.querySelector('.plan[data-d="30"] strong')?.textContent?.includes('₽')&&
+      !doc?.querySelector('.cta')?.disabled;
+  },null,{timeout:15000});
+  const first=await page.evaluate(()=>{
+    const doc=document.querySelector('#journey-front-frame').contentDocument;
+    return {price:doc.querySelector('.plan[data-d="30"] strong').textContent,
+      unavailable:doc.querySelector('#sum').textContent.includes('недоступен'),
+      checkoutDisabled:doc.querySelector('.cta').disabled,
+      retryVisible:!doc.querySelector('#front-retry').hidden};
+  });
+  await page.frameLocator('#journey-front-frame').locator('.top-links a[href="/#account"]').click();
+  await page.waitForFunction(()=>document.body.dataset.journeyView==='account');
+  const cabinet=await page.evaluate(()=>({
+    emailShown:document.getElementById('email-auth-panel').getBoundingClientRect().width>0,
+    hash:location.hash,
+  }));
+  console.log('BOOTSTRAPPED_CATALOG_NETWORK_LOSS='+JSON.stringify({first,cabinet}));
+  if(!first.price.includes('₽')||first.unavailable||first.checkoutDisabled||
+     first.retryVisible||!cabinet.emailShown||cabinet.hash!=='#account')failed=true;
+  await page.close();
+}
 // The tariff service can fail. Never leave the visual frame spinning forever.
 {
   const page=await browser.newPage({viewport:{width:390,height:700}});
-  await page.route('**/api/plans',route=>route.fulfill({
+  let catalogUnavailable=true;
+  await page.route('**/api/plans',route=>route.fulfill(catalogUnavailable?{
     status:503,contentType:'application/json',body:'{"code":"TEMP_UNAVAILABLE"}',
+  }:{
+    status:200,contentType:'application/json',
+    body:JSON.stringify({plans,checkoutEnabled:true,loginEnabled:true,
+      telegramLoginEnabled:true,emailLoginEnabled:true,trialOffers:['vpn']}),
   }));
   await page.goto(base,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>{
@@ -647,6 +690,23 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   });
   console.log('CATALOG_FAILURE_FALLBACK='+JSON.stringify(result));
   if(result.loading||!result.retryVisible||!result.retryTopLevel||!result.purchaseDisabled)failed=true;
+  // A recovered mobile connection should update the iframe without a full
+  // page reload, preserving the selected product and pending account intent.
+  catalogUnavailable=false;
+  await page.frameLocator('#journey-front-frame').locator('#front-retry').click();
+  await page.waitForFunction(()=>{
+    const doc=document.querySelector('#journey-front-frame').contentDocument;
+    return doc.querySelector('.plan[data-d="15"] strong')?.textContent?.includes('₽') &&
+      !doc.querySelector('.cta').disabled;
+  },null,{timeout:15000});
+  const recovered=await page.evaluate(()=>{
+    const doc=document.querySelector('#journey-front-frame').contentDocument;
+    return {price:doc.querySelector('.plan[data-d="15"] strong').textContent,
+      retryHidden:doc.querySelector('#front-retry').hidden,
+      buyDisabled:doc.querySelector('.cta').disabled};
+  });
+  console.log('CATALOG_RETRY_WITHOUT_RELOAD='+JSON.stringify(recovered));
+  if(!recovered.retryHidden||recovered.buyDisabled||!recovered.price.includes('₽'))failed=true;
   await page.close();
 }
 // Verify the original owner video loads on normal connections and stays

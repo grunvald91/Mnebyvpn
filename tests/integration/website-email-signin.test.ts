@@ -86,9 +86,17 @@ test('email code verification creates a real session; OTP is consumed and logout
   assert.deepEqual(await optionsResponse.json(),{
     loginEnabled:true,telegramLoginEnabled:false,emailLoginEnabled:true,
   });
-  const plans=await fetch(base+'/api/plans');
-  assert.equal(plans.status,200);
-  const settings=await plans.json() as {emailLoginEnabled:boolean;checkoutEnabled:boolean;trialOffers:string[]};
+  const [home,plans]=await Promise.all([fetch(base+'/'),fetch(base+'/api/plans')]);
+  assert.equal(home.status,200);
+  const html=await home.text();
+  const encoded=html.match(/<meta name="mnebyvpn-public-catalog" content="([A-Za-z0-9+/=]+)">/)?.[1];
+  assert.ok(encoded,'Homepage must embed server-verified public prices and login modes');
+  const initial=JSON.parse(Buffer.from(encoded,'base64').toString('utf8'));
+  assert.deepEqual(initial,await (await fetch(base+'/api/plans')).json(),
+    'Embedded initial prices must use exactly the same source as the API');
+  const plansResponse=plans;
+  assert.equal(plansResponse.status,200);
+  const settings=await plansResponse.json() as {emailLoginEnabled:boolean;checkoutEnabled:boolean;trialOffers:string[]};
   assert.equal(settings.emailLoginEnabled,true);
   assert.equal(settings.checkoutEnabled,false);
   assert.deepEqual(settings.trialOffers,[]);

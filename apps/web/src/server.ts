@@ -204,6 +204,22 @@ const journeyJs = await readFile(new URL('../public/journey.js', import.meta.url
 const aboutJs = await readFile(new URL('../public/about.js', import.meta.url));
 const vpnInstallJs=await readFile(new URL('../public/vpn-install.js',import.meta.url));
 const workerProfileToken=process.env.VPN_WORKER_PROFILE_TOKEN??'';
+/** Public-only, DB-authoritative catalog. Does not expose a user's orders or secrets. */
+async function publicCatalog(){
+  const plans=await store.plans('prodamus');
+  const trialOffers=trialEnabled
+    ? (await billingPool.query('SELECT product FROM trial_offers WHERE enabled=true')).rows.map(r=>r.product as string)
+    : [];
+  return {loginEnabled,telegramLoginEnabled,emailLoginEnabled,checkoutEnabled,trialOffers,
+    dnsPreviewOffers:PERSONAL_DNS_STARS_OFFERS.map(o=>({days:o.days,stars:o.stars})),
+    plans:plans.map(p=>({
+      id:p.planId,title:p.title,product:p.product,
+      durationDays:p.durationSeconds/86400,rubMinor:p.rubMinor,
+      deviceLimit:p.deviceLimit??1,
+      dnsQuotaBytes:p.dnsQuotaBytes?.toString()??null,
+    }))};
+}
+
 const policy = [
   "default-src 'none'", "script-src 'self'", "style-src 'self'",
   "connect-src 'self'", "img-src 'self' data:", "font-src 'self'",
@@ -655,7 +671,21 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const device=cookie(req,deviceCookie);
     if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
       setCookie(res,deviceCookie,randomBytes(32).toString('base64url'),365*24*60*60);
-    send(res, 200, html, 'text/html; charset=utf-8'); return;
+    // Public, read-only prices come from the same billing DB as /api/plans.
+    // Embedding them in the HTML lets mobile browsers render the catalog when
+    // subsequent API fetches are interrupted (VPN/DNS/network switching).
+    // Payment always revalidates the plan on the server.
+    let page=html;
+    try{
+      const payload=await publicCatalog();
+      const encoded=Buffer.from(JSON.stringify(payload),'utf8').toString('base64');
+      page=Buffer.from(html.toString('utf8').replace('</head>',
+        '<meta name="mnebyvpn-public-catalog" content="'+encoded+'"></head>'));
+    }catch{
+      // Never make the informational page or login inaccessible because
+      // the pricing database is briefly unavailable.
+    }
+    send(res, 200, page, 'text/html; charset=utf-8'); return;
   }
   if (req.method === 'GET' && url.pathname === '/landing-art.html') {
     sendArt(res); return;
@@ -948,20 +978,7 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     return;
   }
   if (req.method === 'GET' && url.pathname === '/api/plans') {
-    const plans = await store.plans('prodamus');
-    const trialOffers = trialEnabled
-      ? (await billingPool.query('SELECT product FROM trial_offers WHERE enabled=true')).rows.map(r=>r.product as string)
-      : [];
-    json(res,200,{ loginEnabled, telegramLoginEnabled, emailLoginEnabled,
-      checkoutEnabled, trialOffers,
-      // Approved Stars prices, not a guarantee of enabled bot checkout.
-      dnsPreviewOffers:PERSONAL_DNS_STARS_OFFERS.map(o=>({days:o.days,stars:o.stars})),
-      plans: plans.map(p => ({
-      id: p.planId, title: p.title, product: p.product,
-      durationDays: p.durationSeconds / 86400, rubMinor: p.rubMinor,
-      deviceLimit: p.deviceLimit ?? 1,
-      dnsQuotaBytes: p.dnsQuotaBytes?.toString() ?? null,
-    })) }); return;
+    json(res,200,await publicCatalog());return;
   }
   // Reject every anonymous trial request, even if a stale operator flag remains enabled.
   if(url.pathname.startsWith('/api/guest/')){

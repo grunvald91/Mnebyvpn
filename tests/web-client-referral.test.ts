@@ -23,7 +23,7 @@ function openPage(href:string,stored:Map<string,string>,authenticated=false){
     return elements.get(id);
   };
   const document={
-    getElementById:el,querySelectorAll:()=>[],
+    getElementById:el,querySelector:()=>null,querySelectorAll:()=>[],
     addEventListener:()=>{},visibilityState:'visible',
   };
   const fetch=async(path:string,options?:{body?:string})=>{
@@ -48,6 +48,7 @@ function openPage(href:string,stored:Map<string,string>,authenticated=false){
   };
   const context=vm.createContext({
     document,fetch,location,URL,crypto:{randomUUID:()=> 'aaaa-bbbb'},
+    window:{addEventListener:()=>{}},
     sessionStorage:{
       getItem:(k:string)=>stored.get(k)??null,
       setItem:(k:string,v:string)=>{stored.set(k,v);},
