@@ -1,0 +1,25 @@
+# Isolated opt-in DNS-over-TLS laboratory; NOT a public Android Private DNS.
+# Never add 0.0.0.0/public port publishing or a live 853 listener here.
+name: mnebyvpn-dns-poc
+services:
+  resolver:
+    image: coredns/coredns:1.15.0
+    command: ["-conf", "/etc/coredns/Corefile"]
+    ports:
+      - "127.0.0.1:1853:8853/tcp"
+    volumes:
+      - "./Corefile:/etc/coredns/Corefile:ro"
+      - "./certs:/certs:ro"
+    # Test key is mode 0600 and owned by CoreDNS's unprivileged UID 65532.
+    # The test certificate is provisioned on the host; no privileges needed to read it.
+    user: "65532:65532"
+    # CoreDNS image contains file capability cap_net_bind_service=ep;
+    # dropping even this bound causes exec /coredns: operation not permitted.
+    cap_drop: ["ALL"]
+    cap_add: ["NET_BIND_SERVICE"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.5
+    restart: "no"
