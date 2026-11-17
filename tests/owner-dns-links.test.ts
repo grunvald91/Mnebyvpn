@@ -144,6 +144,9 @@ test('owner link policy change during DNS resolution fails closed',async()=>{
 });
 
 test('owner Smart DNS permanent creation preserves old VPN link, route and idempotency',async()=>{
+  const previous=process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED;
+  process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED='yes';
+  try{
   const key=randomBytes(32),records=new Map<string,any>(),operations:any[]=[];
   const db={query:async(sql:string,args:any[])=>{
     operations.push({sql,args});
@@ -172,9 +175,16 @@ test('owner Smart DNS permanent creation preserves old VPN link, route and idemp
   assert.match(smart.text,/Smart DNS без VPN/);
   assert.match(vpn.text,/для VPN/);
   assert.ok(!operations.some(x=>JSON.stringify(x.args).includes('.dns.mnebyvpn.site')));
+  }finally{
+    if(previous===undefined)delete process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED;
+    else process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED=previous;
+  }
 });
 
 test('Smart DNS temporary action and custom duration stay separated from VPN action',async()=>{
+  const previous=process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED;
+  process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED='yes';
+  try{
   const prompt=ownerDnsExpiryPrompt('dnslinks:custom:smartdns-new');
   assert.ok(prompt);
   assert.equal(ownerDnsExpiryReply(prompt!.text,'2 ч'),'dnslinks:smartdns:new:s7200');
@@ -191,4 +201,25 @@ test('Smart DNS temporary action and custom duration stay separated from VPN act
   }} as any;
   const r=await ownerDnsLinksAction(db,23,23,key,'dnslinks:smartdns:new:s7200','unique');
   assert.match(r.text,/Smart DNS без VPN/);
+  }finally{
+    if(previous===undefined)delete process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED;
+    else process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED=previous;
+  }
+});
+
+test('new Smart DNS link issuance fails closed before gateway readiness flag',async()=>{
+  const prior=process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED;
+  delete process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED;
+  try{
+    let calls=0;
+    const db={query:async()=>{calls++;throw Error('no database access allowed');}} as any;
+    const hidden=await ownerDnsLinksAction(db,23,23,randomBytes(32),'dnslinks:menu','a');
+    assert.doesNotMatch(hidden.text,/Smart DNS без VPN/);
+    const denied=await ownerDnsLinksAction(db,23,23,randomBytes(32),'dnslinks:smartdns:permanent','b');
+    assert.match(denied.text,/не включён/);
+    assert.equal(calls,0);
+  }finally{
+    if(prior===undefined)delete process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED;
+    else process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED=prior;
+  }
 });
