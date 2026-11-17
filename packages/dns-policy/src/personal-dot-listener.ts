@@ -215,7 +215,7 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
             // Probe once per TLS connection for regular customer identities.
             // A failed lookup cannot fall through to an unmetered route.
             const status=await o.ownerLinkStatus(label!);
-            if(status!=='UNKNOWN'&&status!=='ALLOWED'){stop();return;}
+            if(status!=='UNKNOWN'&&status!=='ALLOWED'&&status!=='ALLOWED_SMART_DNS'){stop();return;}
             ownerLink=status==='ALLOWED';
           }
           const verifiedAt=authCache.get(digest);
