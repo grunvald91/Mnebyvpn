@@ -137,9 +137,9 @@ export async function ownerDnsLinksAction(
   }catch{return page('Не удалось выполнить действие. Существующие ссылки сохранены.');}
 }
 export function ownerDnsExpiryPrompt(action:string):{text:string;reply_markup:{force_reply:true;selective:true}}|null{
-  const m=new RegExp('^dnslinks:custom:(smartdns-new|new|'+UUID+')
+  const m=new RegExp('^dnslinks:custom:(smartdns-new|new|'+UUID+')$').exec(action);
   if(!m)return null;
-  return {text:OWNER_DNS_EXPIRY_PROMPT+'\n['+m[1]+']\n\nВведите срок: «12 ч», «7 д» или «30» (дней). От 1 часа до 3650 дней. Новый срок начинается сейчас.',reply_markup:{force_reply:true,selective:true}};
+  return {text:OWNER_DNS_EXPIRY_PROMPT+'\n['+m[1]+']\n\nВведите срок: «12 ч», «7 д» или «30» (дней). От 1 часа до 3650 дней. Новый срок начинается сейчас.',reply_markup:{force_reply:true;selective:true}};
 }
 export function ownerDnsExpiryReply(prompt:string,value:string):string|null{
   const target=new RegExp('^'+OWNER_DNS_EXPIRY_PROMPT+'\\n\\[(smartdns-new|new|'+UUID+')\\]\\n').exec(prompt)?.[1];
@@ -147,14 +147,4 @@ export function ownerDnsExpiryReply(prompt:string,value:string):string|null{
   if(!target||seconds===null)return null;
   return target==='smartdns-new'?'dnslinks:smartdns:new:s'+seconds:
     target==='new'?'dnslinks:new:s'+seconds:'dnslinks:expire:'+target+':'+seconds;
-}
-).exec(action);
-  if(!m)return null;
-  return {text:OWNER_DNS_EXPIRY_PROMPT+'\n['+m[1]+']\n\nВведите срок: «12 ч», «7 д» или «30» (дней). От 1 часа до 3650 дней. Новый срок начинается сейчас.',reply_markup:{force_reply:true,selective:true}};
-}
-export function ownerDnsExpiryReply(prompt:string,value:string):string|null{
-  const target=new RegExp('^'+OWNER_DNS_EXPIRY_PROMPT+'\\n\\[(new|'+UUID+')\\]\\n').exec(prompt)?.[1];
-  const seconds=ownerDnsDuration(value);
-  if(!target||seconds===null)return null;
-  return target==='new'?'dnslinks:new:s'+seconds:'dnslinks:expire:'+target+':'+seconds;
 }
