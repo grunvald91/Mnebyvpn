@@ -9,10 +9,9 @@
 import type {KeyObject} from 'node:crypto';
 import type {Pool} from 'pg';
 import {
-  additionalNodeVerificationKey,
   verifiedAdditionalVpnLinks,
   type AdditionalNodeReceipt,
-} from './multi-node-subscriptions.js';
+} from './multi-node-subscriptions.ts';
 
 export class NodeCatalogError extends Error {}
 
