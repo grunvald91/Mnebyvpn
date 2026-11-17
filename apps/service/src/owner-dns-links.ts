@@ -11,6 +11,7 @@ type Db=Pick<Pool,'query'>;
 type Link={id:string;owner_telegram_id:string;token_ciphertext:string;permanent:boolean;expires_at:Date|null;revoked_at:Date|null;video_route?:'vpn_origin'|'smart_dns'};
 const UUID='[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
 const back:Button={text:'↩️ Мои DNS-ссылки',callback_data:'dnslinks:menu'};
+const smartDnsLinksEnabled=():boolean=>process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED==='yes';
 const page=(text:string,buttons:Button[][]=[[back]]):Page=>({text,reply_markup:{inline_keyboard:buttons}});
 export const OWNER_DNS_EXPIRY_PROMPT='🔐 MNEBYDNS • срок ссылки';
 export const ownerDnsKey=(value:string|undefined):Buffer|null=>value&&/^[a-f0-9]{64}$/.test(value)?Buffer.from(value,'hex'):null;
@@ -44,12 +45,20 @@ function expiry(row:Link):string{
     new Date(row.expires_at!).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})+' МСК';
 }
 export function ownerDnsMenu():Page{
-  return page('🔐 Персональные Smart DNS ссылки\n\nТолько владелец может получать и создавать ссылки, менять срок и отзывать их. Любой, кому вы передадите адрес, сможет использовать его до окончания срока.\n\nПостоянная ссылка сохраняется при повторном получении. Сроки временных ссылок отсчитываются от создания.',[
+  const links:Button[][]=smartDnsLinksEnabled()?[
     [{text:'♾ Smart DNS без VPN',callback_data:'dnslinks:smartdns:permanent'}],
     [{text:'🛡 DNS для VPN (старая ссылка)',callback_data:'dnslinks:permanent'}],
     [{text:'➕ На 1 час',callback_data:'dnslinks:smartdns:new:1h'},{text:'На 24 часа',callback_data:'dnslinks:smartdns:new:1d'}],
     [{text:'➕ На 7 дней',callback_data:'dnslinks:smartdns:new:7d'},{text:'На 30 дней',callback_data:'dnslinks:smartdns:new:30d'}],
     [{text:'✏️ Свой срок Smart DNS',callback_data:'dnslinks:custom:smartdns-new'}],
+  ]:[
+    [{text:'♾ Моя постоянная ссылка (VPN)',callback_data:'dnslinks:permanent'}],
+    [{text:'➕ На 1 час',callback_data:'dnslinks:new:1h'},{text:'На 24 часа',callback_data:'dnslinks:new:1d'}],
+    [{text:'➕ На 7 дней',callback_data:'dnslinks:new:7d'},{text:'На 30 дней',callback_data:'dnslinks:new:30d'}],
+    [{text:'✏️ Свой срок',callback_data:'dnslinks:custom:new'}],
+  ];
+  return page('🔐 Персональные DNS-ссылки\n\nСуществующие ссылки сохраняют маршруты. Smart DNS для видео появится после проверки DNS-шлюза.',[
+    ...links,
     [{text:'📋 Выданные ссылки',callback_data:'dnslinks:list:0'}],
     [{text:'↩️ Управление Smart DNS',callback_data:'dnsadmin:menu'}],
   ]);
@@ -76,6 +85,9 @@ export async function ownerDnsLinksAction(
   if(!db||!key)return page('Управление ссылками пока недоступно.');
   try{
     if(action==='dnslinks:menu')return ownerDnsMenu();
+    // Fail closed even for replayed Telegram callbacks before gateway rollout.
+    if(!smartDnsLinksEnabled()&&(action.startsWith('dnslinks:smartdns:')||
+      action==='dnslinks:custom:smartdns-new'))return page('Режим Smart DNS для видео ещё не включён. Действующие ссылки сохранены.');
     const list=/^dnslinks:list:(0|[1-9][0-9]{0,3})$/.exec(action);
     if(list){
       const offset=Number(list[1]);
