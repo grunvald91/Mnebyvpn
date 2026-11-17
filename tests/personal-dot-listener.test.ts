@@ -287,3 +287,46 @@ test('listener refuses certificate not covering the customer wildcard',()=>{
     direct:async()=>new Uint8Array(),
   }));
 });
+
+
+test('Smart DNS owner remains authenticated as owner and video A reaches mapped DNS',async()=>{
+  let checks=0,customerQueries=0,mapped=0,direct=0,allowed=true;
+  const db={query:async()=>{customerQueries++;throw Error('owner must not use paid customer quota');}} as unknown as Pick<Pool,'query'>;
+  const listener=createPersonalDotListener({
+    key,cert,db,queryTimeoutMs:2000,
+    ownerLinkStatus:async()=>{checks++;return allowed?'ALLOWED_SMART_DNS':'DENY_INACTIVE';},
+    classify:()=> 'direct',
+    mapped:async q=>{mapped++;return answer(q);},
+    direct:async q=>{direct++;return answer(q);},
+  });
+  await new Promise<void>(resolve=>listener.listen(0,'127.0.0.1',resolve));
+  const socket=connectTls({host:'127.0.0.1',
+    port:(listener.address() as AddressInfo).port,
+    servername:hostname,rejectUnauthorized:false});
+  socket.on('error',()=>{});
+  try{
+    await once(socket,'secureConnect');
+    let reply=once(socket,'data');
+    socket.write(frame(request('rr1---sn-gxuo03g-ig3s.googlevideo.com')));
+    await reply;
+    assert.equal(mapped,1);
+    assert.equal(direct,0);
+    assert.equal(customerQueries,0);
+    assert.ok(checks>=3,'owner status check at handshake and around DNS resolution');
+    reply=once(socket,'data');
+    socket.write(frame(request('example.org')));
+    await reply;
+    assert.equal(direct,1);
+    allowed=false;
+    reply=once(socket,'data');
+    socket.write(frame(request('rr1---sn-gxuo03g-ig3s.googlevideo.com')));
+    const [revoked]=await reply;
+    const wire=Buffer.from(revoked);
+    assert.equal(wire.readUInt16BE(4)&15,2,'revocation must give SERVFAIL');
+    assert.equal(mapped,1);
+    assert.equal(customerQueries,0);
+  }finally{
+    socket.destroy();
+    await new Promise<void>(resolve=>listener.close(()=>resolve()));
+  }
+});

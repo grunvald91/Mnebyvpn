@@ -8,9 +8,10 @@ import {makePersonalDoTIdentity,parsePersonalDoTHostname} from '../../../package
 type Button={text:string;callback_data?:string;copy_text?:{text:string}};
 type Page={text:string;reply_markup:{inline_keyboard:Button[][]}};
 type Db=Pick<Pool,'query'>;
-type Link={id:string;owner_telegram_id:string;token_ciphertext:string;permanent:boolean;expires_at:Date|null;revoked_at:Date|null};
+type Link={id:string;owner_telegram_id:string;token_ciphertext:string;permanent:boolean;expires_at:Date|null;revoked_at:Date|null;video_route?:'vpn_origin'|'smart_dns'};
 const UUID='[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
 const back:Button={text:'↩️ Мои DNS-ссылки',callback_data:'dnslinks:menu'};
+const smartDnsLinksEnabled=():boolean=>process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED==='yes';
 const page=(text:string,buttons:Button[][]=[[back]]):Page=>({text,reply_markup:{inline_keyboard:buttons}});
 export const OWNER_DNS_EXPIRY_PROMPT='🔐 MNEBYDNS • срок ссылки';
 export const ownerDnsKey=(value:string|undefined):Buffer|null=>value&&/^[a-f0-9]{64}$/.test(value)?Buffer.from(value,'hex'):null;
@@ -44,11 +45,20 @@ function expiry(row:Link):string{
     new Date(row.expires_at!).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})+' МСК';
 }
 export function ownerDnsMenu():Page{
-  return page('🔐 Персональные Smart DNS ссылки\n\nТолько владелец может получать и создавать ссылки, менять срок и отзывать их. Любой, кому вы передадите адрес, сможет использовать его до окончания срока.\n\nПостоянная ссылка сохраняется при повторном получении. Сроки временных ссылок отсчитываются от создания.',[
-    [{text:'♾ Моя постоянная ссылка',callback_data:'dnslinks:permanent'}],
+  const links:Button[][]=smartDnsLinksEnabled()?[
+    [{text:'♾ Smart DNS без VPN',callback_data:'dnslinks:smartdns:permanent'}],
+    [{text:'🛡 DNS для VPN (старая ссылка)',callback_data:'dnslinks:permanent'}],
+    [{text:'➕ На 1 час',callback_data:'dnslinks:smartdns:new:1h'},{text:'На 24 часа',callback_data:'dnslinks:smartdns:new:1d'}],
+    [{text:'➕ На 7 дней',callback_data:'dnslinks:smartdns:new:7d'},{text:'На 30 дней',callback_data:'dnslinks:smartdns:new:30d'}],
+    [{text:'✏️ Свой срок Smart DNS',callback_data:'dnslinks:custom:smartdns-new'}],
+  ]:[
+    [{text:'♾ Моя постоянная ссылка (VPN)',callback_data:'dnslinks:permanent'}],
     [{text:'➕ На 1 час',callback_data:'dnslinks:new:1h'},{text:'На 24 часа',callback_data:'dnslinks:new:1d'}],
     [{text:'➕ На 7 дней',callback_data:'dnslinks:new:7d'},{text:'На 30 дней',callback_data:'dnslinks:new:30d'}],
     [{text:'✏️ Свой срок',callback_data:'dnslinks:custom:new'}],
+  ];
+  return page('🔐 Персональные DNS-ссылки\n\nСуществующие ссылки сохраняют маршруты. Smart DNS для видео появится после проверки DNS-шлюза.',[
+    ...links,
     [{text:'📋 Выданные ссылки',callback_data:'dnslinks:list:0'}],
     [{text:'↩️ Управление Smart DNS',callback_data:'dnsadmin:menu'}],
   ]);
@@ -63,7 +73,7 @@ function card(row:Link,ownerId:number,key:Buffer):Page{
     buttons.push([{text:'🚫 Отозвать',callback_data:'dnslinks:revoke:'+row.id}]);
   }
   buttons.push([back]);
-  return page('🔐 Персональный Smart DNS\n\n'+expiry(row)+(hostname?'\n\n'+hostname+
+  return page((row.video_route==='smart_dns'?'🌐 Smart DNS без VPN':'🛡 DNS для VPN (старая политика)')+'\n\n'+expiry(row)+(hostname?'\n\n'+hostname+
     '\n\nAndroid: Настройки → Частный DNS → Имя хоста провайдера. Вставьте только адрес выше. Не передавайте постоянную ссылку посторонним.':'')+
     (row.permanent?'\n\nБез срока действия и без лимита запросов; защита от частых запросов сохраняется.':''),buttons);
 }
@@ -75,11 +85,14 @@ export async function ownerDnsLinksAction(
   if(!db||!key)return page('Управление ссылками пока недоступно.');
   try{
     if(action==='dnslinks:menu')return ownerDnsMenu();
+    // Fail closed even for replayed Telegram callbacks before gateway rollout.
+    if(!smartDnsLinksEnabled()&&(action.startsWith('dnslinks:smartdns:')||
+      action==='dnslinks:custom:smartdns-new'))return page('Режим Smart DNS для видео ещё не включён. Действующие ссылки сохранены.');
     const list=/^dnslinks:list:(0|[1-9][0-9]{0,3})$/.exec(action);
     if(list){
       const offset=Number(list[1]);
-      const {rows}=await db.query('SELECT id,permanent,expires_at,revoked_at FROM owner_dns_links WHERE owner_telegram_id=$1 ORDER BY created_at DESC,id LIMIT 11 OFFSET $2',[String(ownerId),offset]);
-      const buttons:Button[][]=rows.slice(0,10).map((r:any)=>[{text:(r.permanent?'♾ ':'🔗 ')+expiry(r),callback_data:'dnslinks:show:'+r.id}]);
+      const {rows}=await db.query('SELECT id,permanent,expires_at,revoked_at,video_route FROM owner_dns_links WHERE owner_telegram_id=$1 ORDER BY created_at DESC,id LIMIT 11 OFFSET $2',[String(ownerId),offset]);
+      const buttons:Button[][]=rows.slice(0,10).map((r:Link)=>[{text:(r.video_route==='smart_dns'?'🌐 ':'🛡 ')+(r.permanent?'♾ ':'🔗 ')+expiry(r),callback_data:'dnslinks:show:'+r.id}]);
       if(offset)buttons.push([{text:'← Назад',callback_data:'dnslinks:list:'+Math.max(0,offset-10)}]);
       if(rows.length>10)buttons.push([{text:'Ещё →',callback_data:'dnslinks:list:'+(offset+10)}]);
       buttons.push([back]);
@@ -97,18 +110,21 @@ export async function ownerDnsLinksAction(
       const r=await db.query('UPDATE owner_dns_links SET revoked_at=COALESCE(revoked_at,clock_timestamp()) WHERE owner_telegram_id=$1 AND id=$2 AND NOT permanent RETURNING id',[String(ownerId),revoke[2]]);
       return page(r.rows.length?'Ссылка отозвана.':'Ссылка не найдена или является постоянной.');
     }
-    const duration=/^dnslinks:new:(1h|1d|7d|30d|s[0-9]+)$/.exec(action);
-    if(action==='dnslinks:permanent'||duration){
-      const permanent=action==='dnslinks:permanent';
-      const seconds=permanent?null:({'1h':3600,'1d':86400,'7d':604800,'30d':2592000}[duration![1]]??Number(duration![1].slice(1)));
+    const duration=/^dnslinks:(smartdns:)?new:(1h|1d|7d|30d|s[0-9]+)$/.exec(action);
+    if(action==='dnslinks:permanent'||action==='dnslinks:smartdns:permanent'||duration){
+      const permanent=action==='dnslinks:permanent'||action==='dnslinks:smartdns:permanent';
+      const smartDns=action.startsWith('dnslinks:smartdns:');
+      const durationKey=duration?.[2]??'';
+      const seconds=permanent?null:({'1h':3600,'1d':86400,'7d':604800,'30d':2592000}[durationKey]??Number(durationKey.slice(1)));
       if(!permanent&&(!Number.isSafeInteger(seconds)||Number(seconds)<3600||Number(seconds)>315360000))return page('Неверный срок.');
       if(!/^[A-Za-z0-9:_-]{1,80}$/.test(requestId))return page('Неверный запрос.');
       const id=randomUUID(),identity=makePersonalDoTIdentity();
-      const requestKey=permanent?'permanent':'new:'+requestId;
-      await db.query(`INSERT INTO owner_dns_links(id,owner_telegram_id,token_sha256,token_ciphertext,request_key,permanent,expires_at)
-        VALUES($1,$2,$3,$4,$5,$6,CASE WHEN $6 THEN NULL ELSE clock_timestamp()+$7::bigint*interval '1 second' END)
+      const requestKey=permanent?(smartDns?'smartdns:permanent':'permanent'):
+        (smartDns?'smartdns:new:':'new:')+requestId;
+      await db.query(`INSERT INTO owner_dns_links(id,owner_telegram_id,token_sha256,token_ciphertext,request_key,permanent,expires_at,video_route)
+        VALUES($1,$2,$3,$4,$5,$6,CASE WHEN $6 THEN NULL ELSE clock_timestamp()+$7::bigint*interval '1 second' END,$8)
         ON CONFLICT(owner_telegram_id,request_key) DO NOTHING`,
-        [id,String(ownerId),identity.tokenSha256,encryptOwnerDnsLabel(identity.label,id,ownerId,key),requestKey,permanent,seconds]);
+        [id,String(ownerId),identity.tokenSha256,encryptOwnerDnsLabel(identity.label,id,ownerId,key),requestKey,permanent,seconds,smartDns?'smart_dns':'vpn_origin']);
       const {rows}=await db.query('SELECT * FROM owner_dns_links WHERE owner_telegram_id=$1 AND request_key=$2',[String(ownerId),requestKey]);
       return rows.length?card(rows[0],ownerId,key):page('Ссылка не создана.');
     }
@@ -133,13 +149,14 @@ export async function ownerDnsLinksAction(
   }catch{return page('Не удалось выполнить действие. Существующие ссылки сохранены.');}
 }
 export function ownerDnsExpiryPrompt(action:string):{text:string;reply_markup:{force_reply:true;selective:true}}|null{
-  const m=new RegExp('^dnslinks:custom:(new|'+UUID+')$').exec(action);
+  const m=new RegExp('^dnslinks:custom:(smartdns-new|new|'+UUID+')$').exec(action);
   if(!m)return null;
   return {text:OWNER_DNS_EXPIRY_PROMPT+'\n['+m[1]+']\n\nВведите срок: «12 ч», «7 д» или «30» (дней). От 1 часа до 3650 дней. Новый срок начинается сейчас.',reply_markup:{force_reply:true,selective:true}};
 }
 export function ownerDnsExpiryReply(prompt:string,value:string):string|null{
-  const target=new RegExp('^'+OWNER_DNS_EXPIRY_PROMPT+'\\n\\[(new|'+UUID+')\\]\\n').exec(prompt)?.[1];
+  const target=new RegExp('^'+OWNER_DNS_EXPIRY_PROMPT+'\\n\\[(smartdns-new|new|'+UUID+')\\]\\n').exec(prompt)?.[1];
   const seconds=ownerDnsDuration(value);
   if(!target||seconds===null)return null;
-  return target==='new'?'dnslinks:new:s'+seconds:'dnslinks:expire:'+target+':'+seconds;
+  return target==='smartdns-new'?'dnslinks:smartdns:new:s'+seconds:
+    target==='new'?'dnslinks:new:s'+seconds:'dnslinks:expire:'+target+':'+seconds;
 }

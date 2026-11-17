@@ -99,3 +99,127 @@ test('owner video IPv6 and HTTPS/SVCB hints are NODATA for the deployed IPv4 VPN
     assert.equal(upstream,0);assert.equal(checks,2);
   }
 });
+
+
+test('owner Smart DNS video A uses mapped CDN, legacy VPN link still resolves origin',async()=>{
+  const q=videoQuestion(1),a=Buffer.from(q);a.writeUInt16BE(0x8180,2);
+  for(const [decision,expected] of [
+    ['ALLOWED','direct'],['ALLOWED_SMART_DNS','mapped'],
+  ] as const){
+    let mapped=0,direct=0,checks=0;
+    const r=await resolveOwnerDnsMessage('abcdefghijkl',q,
+      async()=>{checks++;return decision},()=> 'direct',
+      async()=>{mapped++;return a},async()=>{direct++;return a});
+    assert.deepEqual(r,a);
+    assert.equal(mapped,expected==='mapped'?1:0);
+    assert.equal(direct,expected==='direct'?1:0);
+    assert.equal(checks,2);
+  }
+});
+
+test('Smart DNS owner still uses direct resolver for ordinary domains and suppresses untrusted video hints',async()=>{
+  let mapped=0,direct=0;
+  const r=await resolveOwnerDnsMessage('abcdefghijkl',question,
+    async()=> 'ALLOWED_SMART_DNS',()=> 'direct',
+    async()=>{mapped++;return answer},async()=>{direct++;return answer});
+  assert.deepEqual(r,answer);
+  assert.equal(direct,1);assert.equal(mapped,0);
+  for(const rr of [28,64,65]){
+    let upstream=0;
+    const result=Buffer.from(await resolveOwnerDnsMessage('abcdefghijkl',videoQuestion(rr),
+      async()=> 'ALLOWED_SMART_DNS',()=> 'premium',
+      async()=>{upstream++;return answer},async()=>{upstream++;return answer}));
+    assert.equal(result.readUInt16BE(2)&15,0);
+    assert.equal(result.readUInt16BE(6),0);
+    assert.equal(upstream,0);
+  }
+});
+
+test('owner link policy change during DNS resolution fails closed',async()=>{
+  const q=videoQuestion(1),a=Buffer.from(q);a.writeUInt16BE(0x8180,2);
+  let mode='ALLOWED_SMART_DNS';
+  const r=Buffer.from(await resolveOwnerDnsMessage('abcdefghijkl',q,
+    async()=>mode,()=> 'premium',async()=>{mode='ALLOWED';return a},async()=>a));
+  assert.equal(r.readUInt16BE(2)&15,2);
+});
+
+test('owner Smart DNS permanent creation preserves old VPN link, route and idempotency',async()=>{
+  const previous=process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED;
+  process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED='yes';
+  try{
+  const key=randomBytes(32),records=new Map<string,any>(),operations:any[]=[];
+  const db={query:async(sql:string,args:any[])=>{
+    operations.push({sql,args});
+    if(sql.startsWith('INSERT INTO owner_dns_links')){
+      const [id,owner,tokenSha,encrypted,requestKey,permanent,seconds,route]=args;
+      assert.equal(owner,'23');
+      assert.equal(permanent,true);
+      assert.equal(seconds,null);
+      assert.ok(route==='vpn_origin'||route==='smart_dns');
+      if(!records.has(requestKey)){
+        records.set(requestKey,{id,owner_telegram_id:owner,token_ciphertext:encrypted,
+          video_route:route,permanent,expires_at:null,revoked_at:null});
+      }
+      return {rows:[]};
+    }
+    return {rows:[records.get(args[1])].filter(Boolean)};
+  }} as any;
+  const smart=await ownerDnsLinksAction(db,23,23,key,'dnslinks:smartdns:permanent','a');
+  const again=await ownerDnsLinksAction(db,23,23,key,'dnslinks:smartdns:permanent','b');
+  const vpn=await ownerDnsLinksAction(db,23,23,key,'dnslinks:permanent','c');
+  assert.equal(smart.text,again.text);
+  assert.notEqual(smart.text,vpn.text);
+  assert.equal(records.size,2);
+  assert.equal(records.get('permanent').video_route,'vpn_origin');
+  assert.equal(records.get('smartdns:permanent').video_route,'smart_dns');
+  assert.match(smart.text,/Smart DNS без VPN/);
+  assert.match(vpn.text,/для VPN/);
+  assert.ok(!operations.some(x=>JSON.stringify(x.args).includes('.dns.mnebyvpn.site')));
+  }finally{
+    if(previous===undefined)delete process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED;
+    else process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED=previous;
+  }
+});
+
+test('Smart DNS temporary action and custom duration stay separated from VPN action',async()=>{
+  const previous=process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED;
+  process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED='yes';
+  try{
+  const prompt=ownerDnsExpiryPrompt('dnslinks:custom:smartdns-new');
+  assert.ok(prompt);
+  assert.equal(ownerDnsExpiryReply(prompt!.text,'2 ч'),'dnslinks:smartdns:new:s7200');
+  assert.equal(ownerDnsExpiryReply(ownerDnsExpiryPrompt('dnslinks:custom:new')!.text,'2 ч'),'dnslinks:new:s7200');
+  const key=randomBytes(32),rows:any[]=[];
+  const db={query:async(sql:string,args:any[])=>{
+    if(sql.startsWith('INSERT INTO owner_dns_links')){
+      assert.equal(args[5],false);assert.equal(args[6],7200);assert.equal(args[7],'smart_dns');
+      rows.push({id:args[0],owner_telegram_id:args[1],token_ciphertext:args[3],
+        video_route:args[7],permanent:false,expires_at:new Date(Date.now()+7200000),revoked_at:null});
+      return {rows:[]};
+    }
+    return {rows};
+  }} as any;
+  const r=await ownerDnsLinksAction(db,23,23,key,'dnslinks:smartdns:new:s7200','unique');
+  assert.match(r.text,/Smart DNS без VPN/);
+  }finally{
+    if(previous===undefined)delete process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED;
+    else process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED=previous;
+  }
+});
+
+test('new Smart DNS link issuance fails closed before gateway readiness flag',async()=>{
+  const prior=process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED;
+  delete process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED;
+  try{
+    let calls=0;
+    const db={query:async()=>{calls++;throw Error('no database access allowed');}} as any;
+    const hidden=await ownerDnsLinksAction(db,23,23,randomBytes(32),'dnslinks:menu','a');
+    assert.doesNotMatch(hidden.text,/Smart DNS без VPN/);
+    const denied=await ownerDnsLinksAction(db,23,23,randomBytes(32),'dnslinks:smartdns:permanent','b');
+    assert.match(denied.text,/не включён/);
+    assert.equal(calls,0);
+  }finally{
+    if(prior===undefined)delete process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED;
+    else process.env.MNEBYDNS_OWNER_SMART_DNS_LINKS_ENABLED=prior;
+  }
+});
