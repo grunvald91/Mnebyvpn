@@ -139,7 +139,7 @@ export async function ownerDnsLinksAction(
 export function ownerDnsExpiryPrompt(action:string):{text:string;reply_markup:{force_reply:true;selective:true}}|null{
   const m=new RegExp('^dnslinks:custom:(smartdns-new|new|'+UUID+')$').exec(action);
   if(!m)return null;
-  return {text:OWNER_DNS_EXPIRY_PROMPT+'\n['+m[1]+']\n\nВведите срок: «12 ч», «7 д» или «30» (дней). От 1 часа до 3650 дней. Новый срок начинается сейчас.',reply_markup:{force_reply:true;selective:true}};
+  return {text:OWNER_DNS_EXPIRY_PROMPT+'\n['+m[1]+']\n\nВведите срок: «12 ч», «7 д» или «30» (дней). От 1 часа до 3650 дней. Новый срок начинается сейчас.',reply_markup:{force_reply:true,selective:true}};
 }
 export function ownerDnsExpiryReply(prompt:string,value:string):string|null{
   const target=new RegExp('^'+OWNER_DNS_EXPIRY_PROMPT+'\\n\\[(smartdns-new|new|'+UUID+')\\]\\n').exec(prompt)?.[1];
