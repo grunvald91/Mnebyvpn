@@ -291,7 +291,7 @@ test('listener refuses certificate not covering the customer wildcard',()=>{
 
 test('Smart DNS owner remains authenticated as owner and video A reaches mapped DNS',async()=>{
   let checks=0,customerQueries=0,mapped=0,direct=0,allowed=true;
-  const db={query:async()=>{customerQueries++;throw Error('owner must not use paid customer quota');}}
+  const db=({query:async()=>{customerQueries++;throw Error('owner must not use paid customer quota');}})
     as unknown as Pick<Pool,'query'>;
   const listener=createPersonalDotListener({
     key,cert,db,queryTimeoutMs:2000,
