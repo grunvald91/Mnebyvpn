@@ -98,7 +98,8 @@ function assertIdentity(nodeId:string,entitlementId:string,publicKey:string){
 export async function stageAwgGrant(
   db:Db,input:{nodeId:string;entitlementId:string;peerPublicKey:string;
     expectedBillingRevision:number;
-    expectedAllocationRevision?:number;onlyIfApplied?:boolean;},key:KeyObject,now=new Date(),
+    expectedAllocationRevision?:number;
+    expectedAllocationState?:'applied'|'staged'|'revoked';},key:KeyObject,now=new Date(),
 ):Promise<{command:SignedAwgLease;staged:true;published:false}>{
   assertIdentity(input.nodeId,input.entitlementId,input.peerPublicKey);
   assertControllerKey(key);assertNow(now);
@@ -150,8 +151,8 @@ export async function stageAwgGrant(
       'FROM vpn_awg_peer_allocations WHERE node_id=$1 AND entitlement_id=$2 FOR UPDATE',
       [input.nodeId,input.entitlementId]);
     const old=existing.rows[0];
-    if(input.onlyIfApplied===true &&
-       (old?.state!=='applied'||
+    if(input.expectedAllocationState!==undefined &&
+       (old?.state!==input.expectedAllocationState||
         old.revision!==input.expectedAllocationRevision))
       throw new AwgControllerError('Stale offline renewal candidate');
     if(old&&old.peer_public_key!==input.peerPublicKey)
@@ -222,7 +223,8 @@ export async function stageAwgGrant(
  */
 export async function stageAwgRevoke(
   db:Db,input:{nodeId:string;entitlementId:string;
-    expectedAllocationRevision?:number;onlyIfApplied?:boolean;},
+    expectedAllocationRevision?:number;
+    expectedAllocationState?:'applied'|'staged'|'revoked';},
   key:KeyObject,now=new Date(),
 ):Promise<{command:SignedAwgLease;staged:true;published:false}>{
   if(!NODE.test(input.nodeId)||!UUID.test(input.entitlementId))
@@ -236,8 +238,8 @@ export async function stageAwgRevoke(
       'FROM vpn_awg_peer_allocations WHERE node_id=$1 AND entitlement_id=$2 FOR UPDATE',
       [input.nodeId,input.entitlementId]);
     const old=found.rows[0];
-    if(input.onlyIfApplied===true &&
-       (old?.state!=='applied'||
+    if(input.expectedAllocationState!==undefined &&
+       (old?.state!==input.expectedAllocationState||
         old.revision!==input.expectedAllocationRevision))
       throw new AwgControllerError('Stale offline revocation candidate');
     if(!old||!validKey(old.peer_public_key)||
