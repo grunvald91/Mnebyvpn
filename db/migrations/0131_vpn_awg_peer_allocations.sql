@@ -57,8 +57,8 @@ BEGIN
   SELECT subnet_cidr INTO pool FROM vpn_awg_node_pools
     WHERE node_id=NEW.node_id FOR SHARE;
   IF pool IS NULL OR NOT NEW.client_ipv4 << pool OR
-     NEW.client_ipv4 = network(pool)::inet OR
-     NEW.client_ipv4 = broadcast(pool)::inet THEN
+     host(NEW.client_ipv4) = host(network(pool)) OR
+     host(NEW.client_ipv4) = host(broadcast(pool)) THEN
     RAISE EXCEPTION 'AWG client address outside approved node pool';
   END IF;
   IF TG_OP='UPDATE' THEN
