@@ -139,7 +139,7 @@ def stage(archive:Path,digest:str,commit:str):
             if required not in names:
                 raise RuntimeInstallError("Controller runtime module or unit missing")
         (stagepath/"bin/node").chmod(0o700)
-        if run(str(stagepath/"bin/node"),"-v")!="v22.16.0":
+        if run(str(stagepath/"bin/node"),"-v")!="v22.23.5":
             raise RuntimeInstallError("Node runtime version mismatch")
         # No production DB/keys, no service start during module validation.
         run(str(stagepath/"bin/node"),"--experimental-strip-types",
@@ -163,7 +163,7 @@ def stage(archive:Path,digest:str,commit:str):
                                   timeout=8)
             if result.returncode==0:
                 raise RuntimeInstallError("Unexpected active production controller worker")
-        return {"controller":"188.120.254.223","runtime":"v22.16.0",
+        return {"controller":"188.120.254.223","runtime":"v22.23.5",
                 "runtime_smoke":"passed","fi_enrollment_enabled":False,
                 "awg_delivery_enabled":False,"existing_services_restarted":False,
                 "subscriber_publication":False}
