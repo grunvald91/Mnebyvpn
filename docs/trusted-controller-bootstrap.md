@@ -3,7 +3,10 @@
 **Статус: только код установки и проверок для существующего сервера 188.** В production-контроллере ничего
 не запущено, FI-узел не зарегистрирован и клиентские ссылки не включены.
 
-Скрипт: `ops/trusted-controller-bootstrap.mjs` (Node.js 22.16+, OpenSSH).
+Основной для существующего RU188 установщик: `ops/controller188-key-bootstrap.py`
+(Python 3 + уже установленный OpenSSL/OpenSSH). Прежний
+`ops/trusted-controller-bootstrap.mjs` остаётся проверяемой Node.js-реализацией
+для других подготовленных сред, но на 188 нет `node` на хосте.
 Установка выполняется **только на существующем центральном сервере RU188**
 (`188.120.254.223`), где уже работают сайт, Telegram-бот, PostgreSQL и VPN-worker.
 Новый контроллер не создаём. Приватные подписывающие ключи держать отдельно
@@ -16,7 +19,7 @@ FI/DE89 или в GitHub Actions.
 На **сервере 188**, после read-only аудита существующих процессов и проверки исходного кода из `main`:
 
 ```bash
-sudo node ops/trusted-controller-bootstrap.mjs init
+sudo python3 ops/controller188-key-bootstrap.py init
 ```
 
 Скрипт создаёт в `/root/mnebyvpn-controller/`:
@@ -44,7 +47,7 @@ sudo node ops/trusted-controller-bootstrap.mjs init
 аудите, например:
 
 ```bash
-sudo node ops/trusted-controller-bootstrap.mjs audit \
+sudo python3 ops/controller188-key-bootstrap.py audit \
   --approved-controller-sha256 <ПРОВЕРЕННЫЙ_SHA256>
 ```
 
@@ -120,3 +123,23 @@ GitHub-репозитория и не могут считаться подтве
 **Прокси означает Telegram MTProto/Telemt**, уже используемый на DE89.
 Nginx Stream/SNI на новых узлах — компонент Smart DNS, а не Telegram-прокси.
 См. [схему](https://github.com/grunvald91/telegram-proxy-infra/blob/main/nodekit/CONTROLLER188_TELEGRAM_PROXY.md).
+
+
+## Факт живого аудита / почему используется Python
+
+18 ноября 2026 года проверка действующего контроллера через
+[GitHub Actions #44284224138](https://github.com/grunvald91/telegram-proxy-infra/actions/runs/44284224138)
+подтвердила: контейнеры PostgreSQL, сайта и VPN-worker работают; таблицы
+`vpn_node_enrollment_inventory`, `vpn_node_enrollment_challenges` и
+`vpn_awg_command_outbox` есть, но `fi-test-01` в реестре пока отсутствует.
+Защищённые файлы `/root/mnebyvpn-controller` тоже отсутствовали.
+
+Первый однократный запуск Node.js-установщика на 188 прекратился
+**до генерации ключей**, поскольку на хосте нет исполняемого `node`:
+[GitHub Actions #44284960356](https://github.com/grunvald91/telegram-proxy-infra/actions/runs/44284960356).
+Не нужно ради этой операции устанавливать Node.js в рабочую систему или
+трогать существующие контейнеры. Python/OpenSSL-скрипт с тем же форматом
+ключей/manifest создаёт их **локально на 188**, с root-only правами,
+без обновления ПО, БД, маршрутов или служб. Его аудит по умолчанию не
+принимает публичный ключ как независимо утверждённый: требуется отдельный
+контроль SHA-256 из проверенного независимого канала.
