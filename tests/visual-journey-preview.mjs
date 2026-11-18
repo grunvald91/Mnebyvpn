@@ -9,11 +9,23 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const publicDir=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../apps/web/public');
-const plans=[15,30,60,90].map((durationDays,i)=>({
-  id:'vpn_'+durationDays+'d_1device',
-  title:'VPN '+durationDays+' дней',product:'vpn',
-  durationDays,rubMinor:[6000,9900,19900,24900][i],deviceLimit:1,
-}));
+const plans=[
+  ...[15,30,60,90].map((durationDays,i)=>({
+    id:'vpn_'+durationDays+'d_1device',
+    title:'VPN Лайт · '+durationDays+' дней · 1 устройство',product:'vpn',
+    durationDays,rubMinor:[8900,14900,26900,36900][i],deviceLimit:1,dnsQuotaQueriesPer30d:null,
+  })),
+  ...[15,30,60,90].map((durationDays,i)=>({
+    id:'smart_dns_'+durationDays+'d_rub',
+    title:'Smart Доступ · '+durationDays+' дней · DNS + Telegram-прокси',product:'smart_dns',
+    durationDays,rubMinor:[14900,24900,44900,59900][i],deviceLimit:1,dnsQuotaQueriesPer30d:1000000,
+  })),
+  ...[15,30,60,90].map((durationDays,i)=>({
+    id:'bundle_'+durationDays+'d_3device',
+    title:'Экосистема «3 в 1» · '+durationDays+' дней · до 3 устройств',product:'bundle',
+    durationDays,rubMinor:[24900,39900,69900,94900][i],deviceLimit:3,dnsQuotaQueriesPer30d:1000000,
+  })),
+];
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
   '.css':'text/css; charset=utf-8','.webp':'image/webp',
   '.mp4':'video/mp4','.webm':'video/webm'};
@@ -173,12 +185,12 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       innerHorizontalOverflow:inner.documentElement.scrollWidth>frame.contentWindow.innerWidth+1,
       iframeHasHeader:Boolean(inner.querySelector('.top .brand')),
       headerNavGrouped:(()=>{
-        const links=[...inner.querySelectorAll('.top-links .pill')];
-        return links.length===2 &&
-          Math.abs(links[0].getBoundingClientRect().top-links[1].getBoundingClientRect().top)<=2 &&
-          links[1].getBoundingClientRect().left-links[0].getBoundingClientRect().right<=8;
+        const links=[...inner.querySelectorAll('.top-links .pill')]
+          .filter(el=>getComputedStyle(el).display!=='none');
+        return links.length>=2 && links.every(l=>
+          Math.abs(l.getBoundingClientRect().top-links[0].getBoundingClientRect().top)<=2);
       })(),
-      iframeHasEarth:Boolean(inner.querySelector('.kb')),
+      iframeHasEarth:Boolean(inner.querySelector('.kb')&&inner.querySelector('.desk-poster')),
       lockTop:Math.round(inner.querySelector('.lock').getBoundingClientRect().top),
       lockBottom:Math.round(inner.querySelector('.lock').getBoundingClientRect().bottom),
       lockWidth:Math.round(inner.querySelector('.lock').getBoundingClientRect().width),
@@ -188,18 +200,17 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       sellerVisible:getComputedStyle(inner.querySelector('.seller-details')).display!=='none',
       sellerText:inner.querySelector('.seller-details').textContent.trim(),
       paymentNotesRemoved:!inner.querySelector('.note,.note2'),
-      paymentInfoVisible:inner.querySelector('#payment-info-open').getBoundingClientRect().width>=22,
+      paymentInfoVisible:inner.querySelector('#payment-info-open').getBoundingClientRect().width>=20,
       backdropFilter:getComputedStyle(inner.querySelector('.card')).backdropFilter,
       canvasPresent:Boolean(inner.querySelector('canvas')),
       introFilter:getComputedStyle(inner.querySelector('.card')).filter,
-      videoPresent:Boolean(inner.querySelector('video#bgv')),
-      videoSources:inner.querySelectorAll('video#bgv source').length,
-      iframeHasTariffs:inner.querySelectorAll('.plans-vpn .plan').length===4 && inner.querySelectorAll('.plans-dns .plan').length===4,
-      dnsPrices:[...inner.querySelectorAll('.plans-dns .plan strong')].map(el=>el.textContent.trim()),
-      vpnFirst:inner.querySelector('.plans-vpn .plan[data-d="15"]').getAttribute('aria-pressed'),
+      videoPresent:Boolean(inner.querySelector('video#bgv')&&inner.querySelector('video#bgv-desktop')),
+      videoSources:inner.querySelectorAll('video source').length,
+      iframeHasTariffs:inner.querySelectorAll('.plans-mob .plan').length===4 && inner.querySelectorAll('.tier').length===3,
+      bundlePrice:inner.querySelector('#price-bundle')?.textContent?.trim()||'',
       cardOpacity:Number(getComputedStyle(inner.querySelector('.card')).opacity),
-      price:inner.querySelector('.plan[data-d="30"] strong').textContent,
-      selected:inner.querySelector('.plan[data-d="15"]').getAttribute('aria-pressed'),
+      price:inner.querySelector('.plans-mob .plan[data-d="30"] strong').textContent,
+      selected:inner.querySelector('.plans-mob .plan[data-d="30"]').getAttribute('aria-pressed'),
       buyText:inner.querySelector('.cta').textContent,
       trialVisible:getComputedStyle(inner.querySelector('.free')).display!=='none',
       retryVisible:getComputedStyle(inner.querySelector('#front-retry')).display!=='none',
@@ -212,9 +223,9 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   console.log('VISUAL_METRICS_'+width+'='+JSON.stringify({...metrics,browserErrors}));
   if(metrics.horizontalOverflow||metrics.innerHorizontalOverflow||browserErrors.length||
     !metrics.iframeHasHeader||!metrics.iframeHasEarth||!metrics.iframeHasTariffs||
-    JSON.stringify(metrics.dnsPrices)!==JSON.stringify(['100 ⭐','200 ⭐','400 ⭐','500 ⭐'])||
+    !metrics.bundlePrice.includes('₽')||
     !metrics.videoPresent||metrics.retryVisible||metrics.cardOpacity<0.99||
-    metrics.backdropFilter!=='none'||metrics.canvasPresent||metrics.introFilter!=='none'||
+    (width<900&&metrics.backdropFilter!=='none')||metrics.canvasPresent||metrics.introFilter!=='none'||
     (width<=390&&(metrics.lockWidth>52||metrics.clearLockGap<20||metrics.cardTop>314))||
     !metrics.paymentNotesRemoved||!metrics.paymentInfoVisible||!metrics.sellerVisible||
     (width<=390&&metrics.height>=700&&metrics.outerScrollHeight>metrics.height+2)||
@@ -223,7 +234,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     (width<=390&&(metrics.iframeBottomGap>12||!metrics.fullFrameBackground||
       !metrics.videoUncroppedAspect))||
     !metrics.trialVisible||metrics.selected!=='true'||
-    metrics.frameWidth>480||metrics.frameWidth<Math.min(360,width)||
+    (width<900&&metrics.frameWidth>480)||metrics.frameWidth<Math.min(360,width)||
     Math.abs(metrics.frameHeight-metrics.artBottom)>28||
     (width<=390&&metrics.outerScrollHeight>metrics.height+280)||
     !metrics.price.includes('₽'))failed=true;
@@ -238,13 +249,14 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     const doc=document.querySelector('#journey-front-frame').contentDocument;
     return {h:doc.documentElement.scrollHeight,footer:doc.querySelector('footer').getBoundingClientRect().top};
   });
-  await page.frameLocator('#journey-front-frame').locator('#dns-info-open').click();
+  const infoTrigger=width>=900?'#dns-info-open-desk':'#dns-info-open';
+  await page.frameLocator('#journey-front-frame').locator(infoTrigger).click();
   const info=page.frameLocator('#journey-front-frame').locator('#dns-info-dialog');
   if(!await info.isVisible())failed=true;
   const infoContent=await info.textContent();
-  if(!['YouTube','ChatGPT','Gemini','Claude','Antigravity','Grok','TikTok','X'].every(x=>infoContent.includes(x))||
+  if(!['YouTube','ChatGPT','Gemini','Claude','Antigravity','Grok','TikTok','Telegram'].every(x=>infoContent.includes(x))||
     !infoContent.includes('домен')||!infoContent.includes('VPN'))failed=true;
-  const dnsMetrics=await page.evaluate(()=>{
+  const dnsMetrics=await page.evaluate((sel)=>{
     const doc=document.querySelector('#journey-front-frame').contentDocument;
     const pop=doc.querySelector('#dns-info-dialog');
     const rect=pop.getBoundingClientRect();
@@ -253,7 +265,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       width:Math.round(rect.width),height:Math.round(rect.height),
       top:Math.round(rect.top),bottom:Math.round(rect.bottom),
       ariaModal:pop.getAttribute('aria-modal'),
-      buttonExpanded:doc.querySelector('#dns-info-open').getAttribute('aria-expanded'),
+      buttonExpanded:doc.querySelector(sel).getAttribute('aria-expanded'),
       modalCount:doc.querySelectorAll('dialog[open]').length,
       backdrop:getComputedStyle(pop).position,
       scrollHeight:doc.documentElement.scrollHeight,
@@ -261,11 +273,11 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       cardVisible:card.height>0,
       hasScrollableContent:pop.scrollHeight>pop.clientHeight,
     };
-  });
+  },infoTrigger);
   console.log('SMART_DNS_TIP_'+width+'='+JSON.stringify(dnsMetrics));
-  if(dnsMetrics.width>301||dnsMetrics.height>253||dnsMetrics.top<0||
+  if(dnsMetrics.width>450||dnsMetrics.height>420||dnsMetrics.top<0||
     dnsMetrics.ariaModal!=='false'||dnsMetrics.buttonExpanded!=='true'||
-    dnsMetrics.modalCount!==0||dnsMetrics.backdrop!=='absolute'||
+    dnsMetrics.modalCount!==0||dnsMetrics.backdrop!=='fixed'||
     !dnsMetrics.cardVisible||beforeDns.h!==dnsMetrics.scrollHeight||
     Math.abs(beforeDns.footer-dnsMetrics.footerTop)>1)failed=true;
   if(width===390&&height===844){
@@ -303,7 +315,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     };
   });
   console.log('PAYMENT_POPOVER_'+width+'='+JSON.stringify(popupMetrics));
-  if(popupMetrics.width>285||popupMetrics.height>181||popupMetrics.top<0||
+  if(popupMetrics.width>450||popupMetrics.height>240||popupMetrics.top<0||
     popupMetrics.ariaModal!=='false'||popupMetrics.hasModalState||
     popupMetrics.backgroundBackdrop!==0||!popupMetrics.contentVisible||
     popupMetrics.scrollHeight!==beforeInfo.h||
@@ -316,74 +328,31 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   }
   await page.frameLocator('#journey-front-frame').locator('#payment-info-close').click();
   if(await paymentInfo.isVisible())failed=true;
-  // One VPN and one DNS may be selected at the same time. No iframe
-  // reloads, fade-ins or route changes are allowed during tariff taps.
+  // Product & duration selection stays instant inside the iframe with zero reloads.
   await page.evaluate(()=>{
     window.__frontLoads=0;
     document.querySelector('#journey-front-frame')
       .addEventListener('load',()=>window.__frontLoads++);
   });
-  await page.frameLocator('#journey-front-frame').locator('.plans-dns .plan[data-d="30"]').click();
-  const bothSelected=await page.evaluate(()=>{
+  const pickSmart=width>=900?'.tier-pick[data-pick="smart_dns"]':'.prod-tab[data-prod="smart_dns"]';
+  const pickDuration60=width>=900?'.desk-durations .dur-pill[data-d="60"]':'.plans-mob .plan[data-d="60"]';
+  await page.frameLocator('#journey-front-frame').locator(pickSmart).click();
+  await page.frameLocator('#journey-front-frame').locator(pickDuration60).click();
+  const switched=await page.evaluate(({selProd,selDur})=>{
     const inner=document.querySelector('#journey-front-frame').contentDocument;
     return{
-      vpn:inner.querySelector('.plans-vpn .plan[data-d="15"]').getAttribute('aria-pressed'),
-      dns:inner.querySelector('.plans-dns .plan[data-d="30"]').getAttribute('aria-pressed'),
+      smartPressed:inner.querySelector(selProd).getAttribute('aria-pressed'),
+      dur60Pressed:inner.querySelector(selDur).getAttribute('aria-pressed'),
       summary:inner.querySelector('#sum').textContent,
-      buyText:inner.querySelector('.cta').textContent,
       buyEnabled:!inner.querySelector('.cta').disabled,
       frameLoads:window.__frontLoads,
       opacity:getComputedStyle(inner.querySelector('.card')).opacity,
     };
-  });
-  console.log('DUAL_SELECTION_'+width+'='+JSON.stringify(bothSelected));
-  if(bothSelected.vpn!=='true'||bothSelected.dns!=='true'||
-     !bothSelected.summary.includes('VPN')||!bothSelected.summary.includes('Smart DNS')||
-     !bothSelected.summary.includes('200 ⭐')||
-     bothSelected.buyText!=='Оформить только VPN'||!bothSelected.buyEnabled||
-     bothSelected.frameLoads!==0||Number(bothSelected.opacity)<0.99)failed=true;
-  await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="30"]').click();
-  await page.waitForFunction(()=>document.querySelector('#journey-summary')?.textContent?.includes('30 дней'));
-  const persisted=await page.evaluate(()=>{
-    const inner=document.querySelector('#journey-front-frame').contentDocument;
-    return{
-      vpn30:inner.querySelector('.plans-vpn .plan[data-d="30"]').getAttribute('aria-pressed'),
-      dns30:inner.querySelector('.plans-dns .plan[data-d="30"]').getAttribute('aria-pressed'),
-      frameLoads:window.__frontLoads,
-    };
-  });
-  console.log('DUAL_PERSISTED_'+width+'='+JSON.stringify(persisted));
-  if(persisted.vpn30!=='true'||persisted.dns30!=='true'||persisted.frameLoads!==0)failed=true;
-  // A second tap removes only the selected DNS tariff; VPN stays selected.
-  await page.frameLocator('#journey-front-frame').locator('.plans-dns .plan[data-d="30"]').click();
-  const cleared=await page.evaluate(()=>{
-    const inner=document.querySelector('#journey-front-frame').contentDocument;
-    return{
-      vpn30:inner.querySelector('.plans-vpn .plan[data-d="30"]').getAttribute('aria-pressed'),
-      dns30:inner.querySelector('.plans-dns .plan[data-d="30"]').getAttribute('aria-pressed'),
-      price:inner.querySelector('#sum').textContent,
-      frameLoads:window.__frontLoads,
-    };
-  });
-  if(cleared.vpn30!=='true'||cleared.dns30!=='false'||cleared.frameLoads!==0||
-     !cleared.price.includes('VPN'))failed=true;
-  // VPN is always a valid radio selection: re-tapping the current plan
-  // must NOT erase VPN and block checkout, even when DNS preview is selected.
-  await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="30"]').click();
-  await page.frameLocator('#journey-front-frame').locator('.plans-dns .plan[data-d="60"]').click();
-  const bothAgain=await page.evaluate(()=>{
-    const inner=document.querySelector('#journey-front-frame').contentDocument;
-    return{
-      selected:inner.querySelector('.plans-dns .plan[data-d="60"]').getAttribute('aria-pressed'),
-      vpn:inner.querySelector('.plans-vpn .plan[data-d="30"]').getAttribute('aria-pressed'),
-      disabled:inner.querySelector('.cta').disabled,
-      text:inner.querySelector('.cta').textContent,
-      frameLoads:window.__frontLoads,
-    };
-  });
-  if(bothAgain.selected!=='true'||bothAgain.vpn!=='true'||bothAgain.disabled||
-    bothAgain.text!=='Оформить только VPN'||bothAgain.frameLoads!==0)failed=true;
-  await page.frameLocator('#journey-front-frame').locator('.plans-dns .plan[data-d="60"]').click();
+  },{selProd:pickSmart,selDur:pickDuration60});
+  console.log('PRODUCT_SWITCH_'+width+'='+JSON.stringify(switched));
+  if(switched.smartPressed!=='true'||switched.dur60Pressed!=='true'||
+     !switched.summary.includes('Smart Доступ')||!switched.summary.includes('60')||
+     !switched.buyEnabled||switched.frameLoads!==0||Number(switched.opacity)<0.99)failed=true;
   // Let the iframe finish any deferred parent-height sync from tariff taps.
   await page.waitForTimeout(220);
   const chooserBefore=await page.evaluate(()=>{
@@ -677,7 +646,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.goto(base,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>{
     const doc=document.querySelector('#journey-front-frame')?.contentDocument;
-    return doc?.querySelector('.cta')?.textContent==='Тариф пока недоступен';
+    return doc?.querySelector('.cta')?.textContent==='Тариф недоступен';
   },null,{timeout:15000});
   const result=await page.evaluate(()=>{
     const doc=document.querySelector('#journey-front-frame').contentDocument;
@@ -696,12 +665,12 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.frameLocator('#journey-front-frame').locator('#front-retry').click();
   await page.waitForFunction(()=>{
     const doc=document.querySelector('#journey-front-frame').contentDocument;
-    return doc.querySelector('.plan[data-d="15"] strong')?.textContent?.includes('₽') &&
+    return doc.querySelector('.plans-mob .plan[data-d="15"] strong')?.textContent?.includes('₽') &&
       !doc.querySelector('.cta').disabled;
   },null,{timeout:15000});
   const recovered=await page.evaluate(()=>{
     const doc=document.querySelector('#journey-front-frame').contentDocument;
-    return {price:doc.querySelector('.plan[data-d="15"] strong').textContent,
+    return {price:doc.querySelector('.plans-mob .plan[data-d="15"] strong').textContent,
       retryHidden:doc.querySelector('#front-retry').hidden,
       buyDisabled:doc.querySelector('.cta').disabled};
   });
@@ -798,7 +767,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       time:video?.currentTime,paused:video?.paused,
       source:video?.currentSrc,videoWidth:video?.videoWidth,videoHeight:video?.videoHeight,
       scenePlaying:inner?.querySelector('.scene')?.classList.contains('vid'),
-      navGrouped:inner?.querySelector('.top-links')?.childElementCount===2,
+      navGrouped:[...inner.querySelectorAll('.top-links .pill')]
+        .filter(el=>getComputedStyle(el).display!=='none').length===2,
       artworkExternal:getComputedStyle(inner.querySelector('.kb')).backgroundImage.includes('landing-earth.webp'),
       error:video?.error?.code||null,
     };
@@ -882,9 +852,9 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.goto(base,{waitUntil:'networkidle'});
   await page.waitForFunction(()=>document.body.classList.contains('journey-active')&&
     !document.querySelector('#journey-buy').disabled);
-  // Re-select the existing VPN duration after changing it; it must remain active.
-  await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="30"]').click();
-  await page.frameLocator('#journey-front-frame').locator('.plans-vpn .plan[data-d="15"]').click();
+  // Re-select the existing duration after changing it; checkout remains active.
+  await page.frameLocator('#journey-front-frame').locator('.plans-mob .plan[data-d="30"]').click();
+  await page.frameLocator('#journey-front-frame').locator('.plans-mob .plan[data-d="15"]').click();
   await page.frameLocator('#journey-front-frame').locator('.cta').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='checkout');
   const order=await page.evaluate(()=>({

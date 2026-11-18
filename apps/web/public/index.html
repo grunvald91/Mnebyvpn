@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#080c20">
-  <meta name="description" content="MNEBYVPN — проект простого VPN-подключения и понятного управления доступом. Начинаем с VPN, другие возможности развиваем и проверяем.">
-  <title>MNEBYVPN — VPN без лишних шагов</title>
+  <meta name="description" content="MNEBYVPN — экосистема «3 в 1»: Smart DNS, Telegram-прокси и VPN до 3 устройств. Автовыдача профилей Apple (.mobileconfig), DoT для Android и маршрутов Telegram.">
+  <title>MNEBYVPN — Экосистема 3 в 1: Smart DNS, Telegram-прокси и VPN</title>
   <link rel="canonical" href="https://mnebyvpn.site/">
   <meta property="og:type" content="website">
   <meta property="og:locale" content="ru_RU">
@@ -61,8 +61,8 @@
       </div>
       <div class="journey-intro">
         <p class="journey-kicker">MNEBYVPN · ПОДКЛЮЧИЛ И НЕ ПАРИШЬСЯ</p>
-        <h1 id="journey-title">VPN без <span>лишних шагов</span></h1>
-        <p>Выберите срок доступа. Подключение покажем сразу после оплаты.</p>
+        <h1 id="journey-title">Один доступ — <span>3 технологии</span></h1>
+        <p>Smart DNS + Telegram-прокси + VPN до 3 устройств. Выберите вариант и срок.</p>
         <div class="journey-portal" aria-hidden="true">
           <div class="portal-art">
             <span class="portal-flare"></span>
@@ -74,14 +74,13 @@
       <div class="journey-checkout">
         <h2>Выберите тариф</h2>
         <div class="journey-product-grid" role="group" aria-label="Выбор продукта">
-          <button type="button" data-journey-product="vpn" aria-pressed="true">VPN</button>
-          <button type="button" data-journey-product="smart_dns" aria-pressed="false">Smart DNS</button>
-          <button type="button" data-journey-product="bundle" aria-pressed="false">VPN + DNS</button>
+          <button type="button" data-journey-product="vpn" aria-pressed="false">VPN Лайт</button>
+          <button type="button" data-journey-product="bundle" aria-pressed="true">Экосистема «3 в 1»</button>
+          <button type="button" data-journey-product="smart_dns" aria-pressed="false">Smart Доступ</button>
         </div>
         <div class="journey-duration-grid" role="group" aria-label="Срок подписки">
-          <button type="button" data-journey-days="14" aria-pressed="false" hidden><span>14 дней</span><strong data-journey-price="14">100 ⭐</strong></button>
-          <button type="button" data-journey-days="15" aria-pressed="true"><span>15 дней</span><strong data-journey-price="15">—</strong></button>
-          <button type="button" data-journey-days="30" aria-pressed="false"><span>30 дней</span><strong data-journey-price="30">—</strong></button>
+          <button type="button" data-journey-days="15" aria-pressed="false"><span>15 дней</span><strong data-journey-price="15">—</strong></button>
+          <button type="button" data-journey-days="30" aria-pressed="true"><span>30 дней</span><strong data-journey-price="30">—</strong></button>
           <button type="button" data-journey-days="60" aria-pressed="false"><span>60 дней</span><strong data-journey-price="60">—</strong></button>
           <button type="button" data-journey-days="90" aria-pressed="false"><span>90 дней</span><strong data-journey-price="90">—</strong></button>
         </div>
@@ -90,24 +89,12 @@
         <a id="journey-payment-link" class="button button-secondary journey-primary hidden" target="_blank" rel="noopener noreferrer">Открыть ссылку оплаты</a>
         <p role="alert" class="journey-error" id="journey-error" aria-live="assertive"></p>
         <div class="journey-trial-cta" id="journey-trial-offer">
-          <span class="journey-trial-label">⚡ Бесплатные 24 часа</span>
+          <span class="journey-trial-label">⚡ Бесплатные 24 часа VPN</span>
           <button type="button" class="journey-trial" id="journey-trial" disabled>Попробовать</button>
         </div>
-        <p class="journey-secondary">Без автосписаний. Заранее напомним, когда срок будет заканчиваться.</p>
+        <p class="journey-secondary">Разовая оплата через ЮKassa без автосписаний. Профиль Apple, DoT и Telegram-прокси выдаются после подтверждения оплаты.</p>
         <p class="journey-notice-condition">Напоминания в Telegram доступны после привязки бота.</p>
       </div>
-      <section class="journey-dns-links" id="journey-dns-links" aria-label="Тарифы Smart DNS" hidden>
-        <h2>Smart DNS: подготовленные тарифы в Telegram Stars</h2>
-        <p>Переходы на тарифы открыты. Возможность покупки подтвердит Telegram-бот. Персональный профиль Apple и Telegram-прокси выдаются только после оплаты и активации сервиса.</p>
-        <div class="journey-dns-link-grid">
-          <a href="/?product=smart_dns&amp;days=14#plans">14 дней · 100 ⭐</a>
-          <a href="/?product=smart_dns&amp;days=30#plans">30 дней · 200 ⭐</a>
-          <a href="/?product=smart_dns&amp;days=60#plans">60 дней · 400 ⭐</a>
-          <a href="/?product=smart_dns&amp;days=90#plans">90 дней · 500 ⭐</a>
-        </div>
-        <a class="button button-secondary journey-primary" href="https://t.me/MNEBYVPN_bot" rel="noopener noreferrer">Открыть тарифы в Telegram-боте</a>
-        <p class="journey-secondary">Оплата DNS на сайте в рублях ещё не подключена. VPN + DNS пока без опубликованной цены.</p>
-      </section>
     </section>
     <section class="journey-trial-auth shell" id="journey-trial-auth" aria-labelledby="journey-trial-title" hidden>
       <div class="journey-trial-auth-card">
@@ -186,40 +173,39 @@
 
     <section class="features shell" id="features">
       <div class="section-head">
-        <div><p class="eyebrow">ВОЗМОЖНОСТИ</p><h2>Начинаем с VPN. Идём к большему.</h2></div>
-        <p class="section-desc">Один понятный сервис для подключения и управления. Новые режимы появятся после проверки.</p>
+        <div><p class="eyebrow">ВОЗМОЖНОСТИ</p><h2>Один доступ — 3 технологии.</h2></div>
+        <p class="section-desc">90% времени сайты и Telegram работают через Smart DNS и прокси без постоянно включённого VPN. Когда нужен полный туннель — включаете VPN без конфликтов.</p>
       </div>
       <div class="feature-grid">
-        <article class="feature-card"><span class="feature-icon">◈</span><h3>VPN</h3><p>Защищённый туннель для интернет-соединений через совместимый VPN-клиент.</p><span class="feature-meta">Отдельный VPN-доступ</span></article>
-        <article class="feature-card"><span class="feature-icon">◎</span><h3>Smart DNS</h3><p>Персональный зашифрованный DNS. Тарифы представлены в Telegram Stars. Оплата и выдача — после проверки готовности в боте.</p><span class="feature-meta">Тарифы и инструкция</span></article>
-        <article class="feature-card"><span class="feature-icon">⌘</span><h3>VPN + DNS</h3><p>Совместный вариант планируется после проверки совместимости.</p><span class="feature-meta">В разработке</span></article>
+        <article class="feature-card"><span class="feature-icon">◈</span><h3>VPN Лайт</h3><p>Защищённый VPN-туннель для интернет-соединений через совместимый клиент.</p><span class="feature-meta">1 устройство · от 89 ₽</span></article>
+        <article class="feature-card"><span class="feature-icon">◎</span><h3>Smart Доступ</h3><p>Персональный Smart DNS (профиль Apple .mobileconfig и DoT Android) + Telegram-прокси в комплекте.</p><span class="feature-meta">DNS + Прокси · от 149 ₽</span></article>
+        <article class="feature-card"><span class="feature-icon">⌘</span><h3>Экосистема «3 в 1»</h3><p>Smart DNS (до 1 млн запросов/30 д) + Telegram-прокси + VPN до 3 устройств одновременно без конфликтов.</p><span class="feature-meta">★ Хит · от 249 ₽</span></article>
       </div>
     </section>
 
     <section class="plans-section" id="plans">
       <div class="shell">
         <div class="section-head">
-          <div><p class="eyebrow">ПОДПИСКИ</p><h2>Выберите тариф VPN</h2></div>
-          <p class="section-desc">1. Выберите срок. 2. Перейдите к оплате. Цены — только из опубликованных тарифов.</p>
+          <div><p class="eyebrow">ПОДПИСКИ</p><h2>Выберите тариф MNEBYVPN</h2></div>
+          <p class="section-desc">1. Выберите продукт и срок. 2. Оплатите в рублях через ЮKassa. Профиль Apple, DoT-адрес, VPN и Telegram-прокси выдаются автоматически.</p>
         </div>
         <div class="plan-controls">
           <div class="tabs" role="group" aria-label="Тип доступа">
-            <button class="tab selected" data-product="vpn" type="button" aria-pressed="true">VPN</button>
-            <button class="tab" data-product="smart_dns" type="button" aria-pressed="false">Smart DNS</button>
-            <button class="tab" data-product="bundle" type="button" aria-pressed="false">VPN + DNS</button>
+            <button class="tab" data-product="vpn" type="button" aria-pressed="false">VPN Лайт</button>
+            <button class="tab selected" data-product="bundle" type="button" aria-pressed="true">Экосистема «3 в 1»</button>
+            <button class="tab" data-product="smart_dns" type="button" aria-pressed="false">Smart Доступ</button>
           </div>
           <div class="days-tabs" role="group" aria-label="Срок тарифа">
-            <button class="days-tab" data-days="14" type="button" aria-pressed="false" hidden>14 дней</button>
-            <button class="days-tab selected" data-days="15" type="button" aria-pressed="true">15 дней</button>
-            <button class="days-tab" data-days="30" type="button" aria-pressed="false">30 дней</button>
+            <button class="days-tab" data-days="15" type="button" aria-pressed="false">15 дней</button>
+            <button class="days-tab selected" data-days="30" type="button" aria-pressed="true">30 дней</button>
             <button class="days-tab" data-days="60" type="button" aria-pressed="false">60 дней</button>
             <button class="days-tab" data-days="90" type="button" aria-pressed="false">90 дней</button>
           </div>
         </div>
         <div class="price-layout">
           <article class="price-card">
-            <div class="price-card-top"><span class="small-overline">ВАШ VPN</span><span class="pill">Без автосписаний</span></div>
-            <h3 id="selected-plan-name">VPN · 15 дней</h3>
+            <div class="price-card-top"><span class="small-overline">ВАШ ДОСТУП</span><span class="pill">Без автосписаний</span></div>
+            <h3 id="selected-plan-name">Экосистема «3 в 1» · 30 дней</h3>
             <div class="price-line"><strong id="selected-price">—</strong><span id="price-unit">₽ за период</span></div>
             <p class="price-sub" id="price-description">Проверяем доступные предложения…</p>
             <button type="button" class="text-button hidden" id="cancel-renewal-button">Отменить продление — купить новый доступ</button>
@@ -267,10 +253,10 @@
             <div class="benefit"><span class="benefit-number">03</span><div><h3>Данные без догадок</h3><p>Если сервер ещё не подтвердил расход DNS, цифры не подменяются условными значениями.</p></div></div>
           </aside>
         </div>
-        <section class="coming-soon" aria-label="Что появится позже">
-          <h3 class="upcoming-heading">Скоро в проекте</h3>
-          <div class="coming-item coming-dns"><span class="coming-icon" aria-hidden="true"><span class="layered-icon"></span></span><p><strong>Smart DNS и тариф VPN + DNS</strong><span>Ссылки на DNS-тарифы открыты; оплата и активация проверяются сервером. Цена комплекта ещё не опубликована.</span></p><span class="coming-status">Тарифы DNS</span></div>
-          <div class="coming-item coming-network"><span class="coming-icon" aria-hidden="true"><span class="signal-icon">▂▅▇</span></span><p><strong>Обычный интернет при ограничениях мобильной сети</strong><span>Планируем отдельный режим для ситуаций, когда привычные сайты и приложения недоступны. Пока не работает; возможности зависят от сети и устройства.</span></p><span class="coming-status">Планируется</span></div>
+        <section class="coming-soon" aria-label="Что уже работает">
+          <h3 class="upcoming-heading">Экосистема в сборе</h3>
+          <div class="coming-item coming-dns"><span class="coming-icon" aria-hidden="true"><span class="layered-icon"></span></span><p><strong>Smart Доступ и «3 в 1»</strong><span>Опубликованы в рублях (15 / 30 / 60 / 90 дней). После оплаты профиль Apple (.mobileconfig), DoT-адрес и Telegram-прокси создаются автоматически.</span></p><span class="coming-status">Готово</span></div>
+          <div class="coming-item coming-network"><span class="coming-icon" aria-hidden="true"><span class="signal-icon">▂▅▇</span></span><p><strong>Обычный интернет при ограничениях мобильной сети</strong><span>Исследуем дополнительные режимы для сложных мобильных сетей. Доступность зависит от оператора и устройства.</span></p><span class="coming-status">Развиваем</span></div>
         </section>
       </div>
     </section>
@@ -280,7 +266,7 @@
         <p class="eyebrow">ПРОЕКТ В НАЧАЛЕ ПУТИ</p>
         <h2 id="launch-support-title">Делаем сложное простым</h2>
         <p>«MNEBYVPN» создаётся с одной идеей: технологии должны помогать, а не заставлять разбираться в настройках. Наши ориентиры — понятное подключение, быстрая и человеческая помощь, удобная работа на разных устройствах и больше функций в одном месте.</p>
-        <p class="launch-support-state">VPN доступен по опубликованным тарифам. Для Smart DNS подготовлены тарифы в Telegram; персональная выдача после оплаты и активации. Совместный комплект пока без цены.</p>
+        <p class="launch-support-state">Опубликованы три тарифа: «VPN Лайт», «Smart Доступ» и «Экосистема 3 в 1». Оплата через ЮKassa и автовыдача профилей подключаются по единому стандарту безопасности.</p>
       </div>
       <div class="launch-support-action">
         <h3>Поддержите развитие проекта</h3>
@@ -319,14 +305,14 @@
     <section class="journey-order shell" id="journey-order" aria-labelledby="journey-order-title" hidden>
       <div class="journey-order-card">
         <p class="journey-kicker">MNEBYVPN · ОФОРМЛЕНИЕ</p>
-        <h1 id="journey-order-title">Ваш заказ VPN</h1>
+        <h1 id="journey-order-title">Ваш заказ MNEBYVPN</h1>
         <p class="journey-order-subtitle">Проверьте тариф перед переходом к оплате.</p>
         <div class="journey-order-plan">
-          <div><span>Ваш тариф</span><strong id="journey-order-period">VPN · 15 дней</strong></div>
+          <div><span>Ваш тариф</span><strong id="journey-order-period">Экосистема «3 в 1» · 30 дней</strong></div>
           <div><span>Аккаунт</span><strong id="journey-order-email">Подтверждённый email</strong></div>
           <div class="journey-order-total"><span>Итого</span><strong id="journey-order-price">—</strong></div>
         </div>
-        <p class="journey-order-disclaimer">Разовая покупка без автосписаний. Данные банковской карты не вводятся на сайте MNEBYVPN: для проведения платежа откроется защищённая форма платёжного партнёра. Доступ будет выдан после подтверждения оплаты сервером.</p>
+        <p class="journey-order-disclaimer">Разовая покупка без автосписаний. Данные банковской карты не вводятся на сайте MNEBYVPN: для проведения платежа откроется защищённая форма ЮKassa. Доступ, профиль Apple / DoT и Telegram-прокси будут выданы после подтверждения оплаты сервером.</p>
         <button type="button" class="button button-primary journey-primary" id="journey-order-pay">Перейти к защищённой оплате</button>
         <a id="journey-order-link" class="button button-secondary journey-primary hidden" target="_blank" rel="noopener noreferrer">Открыть оплату вручную</a>
         <p id="journey-order-error" class="journey-error" role="alert" aria-live="assertive"></p>
@@ -448,8 +434,8 @@
       <h3>К чему идём</h3>
       <ol class="about-roadmap">
         <li><strong>Удобный VPN</strong><span>Развиваем подключение и личный кабинет.</span></li>
-        <li><strong>Smart DNS</strong><span>Подготовленные тарифы в Telegram Stars. Выдача после оплаченной активации.</span></li>
-        <li><strong>VPN + Smart DNS одновременно</strong><span>Планируем совместную работу без ручного переключения.</span></li>
+        <li><strong>Smart Доступ в рублях</strong><span>Личный конфиг Apple (.mobileconfig), DoT для Android и Telegram-прокси.</span></li>
+        <li><strong>Экосистема «3 в 1»</strong><span>Smart DNS + Telegram-прокси + VPN до 3 устройств без ручного переключения.</span></li>
         <li><strong>Более устойчивое соединение</strong><span>Исследуем запасные узлы и режимы для сложных сетевых условий.</span></li>
         <li><strong>Собственное приложение</strong><span>Долгосрочная цель: единый удобный интерфейс для Android, iOS, Windows, macOS и Linux.</span></li>
       </ol>

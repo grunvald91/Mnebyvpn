@@ -34,14 +34,24 @@
   }
   function syncFront(){
     if(!frontReady||!frontFrame?.contentWindow)return;
+    const offers=[];
+    for(const product of ['vpn','smart_dns','bundle']){
+      for(const days of [15,30,60,90]){
+        const plan=state.plans.find(p=>p.product===product&&p.durationDays===days);
+        offers.push({
+          product,days,
+          available:Boolean(plan),
+          price:plan?.rubMinor?formatMoney(plan.rubMinor):'—',
+          title:plan?.title||'',
+          deviceLimit:plan?.deviceLimit||(product==='bundle'?3:1),
+        });
+      }
+    }
     frontFrame.contentWindow.postMessage({
-      channel:frontChannel,type:'sync',days:state.days,
-      offers:[15,30,60,90].map(days=>{
-        const plan=state.plans.find(p=>p.product==='vpn'&&p.durationDays===days);
-        return {days,available:Boolean(plan),price:plan?.rubMinor?formatMoney(plan.rubMinor):'—'};
-      }),
+      channel:frontChannel,type:'sync',product:state.product,days:state.days,
+      offers,
       buyDisabled:Boolean(el('journey-buy').disabled),
-      buyText:el('journey-buy').textContent||'Оплата пока недоступна',
+      buyText:el('journey-buy').textContent||'Оплата подключается',
       trialAvailable:state.trialOffers.includes('vpn'),
       trialDisabled:Boolean(el('journey-trial').disabled),
       error:el('journey-error').textContent||'',
@@ -73,9 +83,11 @@
     if(msg.type==='support'){paymentLanding=false;setView('support',true);return;}
     if(view!=='plans')return;
     if(msg.type==='select'){
+      const nextProduct=['vpn','smart_dns','bundle'].includes(msg.product)?msg.product:state.product;
       const days=Number(msg.days);
-      if([15,30,60,90].includes(days)&&state.plans.some(p=>p.product==='vpn'&&p.durationDays===days))
-        setSelection('vpn',days);
+      if([15,30,60,90].includes(days)){
+        setSelection(nextProduct,days);
+      }
       syncFront();return;
     }
     if(msg.type==='buy'){
@@ -202,21 +214,16 @@
     }
   }
   function validDays(product,day){
-    return product==='smart_dns'?[14,30,60,90].includes(day):
-      ['vpn','bundle'].includes(product)&&[15,30,60,90].includes(day);
+    return ['vpn','smart_dns','bundle'].includes(product)&&[15,30,60,90].includes(day);
   }
   function priceFor(days){
     const p=state.plans.find(p=>p.product===state.product&&p.durationDays===days);
-    const preview=state.product==='smart_dns'?
-      (state.dnsPreviewOffers||[]).find(o=>o.days===days):null;
-    return p?.rubMinor?formatMoney(p.rubMinor):preview?preview.stars+' ⭐':'—';
+    return p?.rubMinor?formatMoney(p.rubMinor):'—';
   }
   function updatePlan(){
-    const isVpn=state.product==='vpn';
-    el('journey-front-stage').hidden=!isVpn;
-    el('journey-dns-links').hidden=isVpn;
-    el('journey-title').textContent=isVpn?'VPN без лишних шагов':
-      state.product==='smart_dns'?'Персональный Smart DNS':'VPN + Smart DNS';
+    el('journey-front-stage').hidden=false;
+    const labels={vpn:'VPN Лайт',smart_dns:'Smart Доступ',bundle:'Экосистема «3 в 1»'};
+    el('journey-title').textContent=labels[state.product]||'Экосистема «3 в 1»';
     landing.querySelectorAll('[data-journey-product]').forEach(button=>{
       button.setAttribute('aria-pressed',String(button.dataset.journeyProduct===state.product));
     });
@@ -226,37 +233,34 @@
       button.setAttribute('aria-pressed',String(day===state.days));
       const price=landing.querySelector('[data-journey-price="'+day+'"]');
       if(price)price.textContent=priceFor(day);
-      button.disabled=!valid||(isVpn&&!state.plans.some(p=>p.product==='vpn'&&p.durationDays===day));
+      button.disabled=!valid||!state.plans.some(p=>p.product===state.product&&p.durationDays===day);
     }
     const original=el('buy-button'),buy=el('journey-buy');
     const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
     buy.disabled=original.disabled;
     buy.textContent=original.textContent;
-    const trialAvailable=isVpn&&state.trialOffers.includes('vpn');
+    const trialAvailable=state.trialOffers.includes('vpn');
     el('journey-trial').disabled=el('trial-button').disabled;
     el('journey-trial-offer').hidden=!trialAvailable;
     updateTrialAuth();
-    const title=state.product==='smart_dns'?'Smart DNS':
-      state.product==='bundle'?'VPN + Smart DNS':'VPN';
-    el('journey-summary').textContent=(plan||state.product==='smart_dns'&&
-      (state.dnsPreviewOffers||[]).some(o=>o.days===state.days))?
+    const title=labels[state.product]||'Экосистема «3 в 1»';
+    el('journey-summary').textContent=plan?
       title+' · '+state.days+' дней · '+priceFor(state.days):
-      'Цена не опубликована. Подробности — в Telegram-боте.';
+      'Тариф временно недоступен.';
     el('journey-error').textContent=el('checkout-error').textContent||'';
     syncFront();
   }
   function updateOrder(){
     const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
     const verified=state.loggedIn&&lastAccount?.identity?.email;
-    el('journey-order-period').textContent=
-      (state.product==='smart_dns'?'Smart DNS':state.product==='bundle'?'VPN + DNS':'VPN')+
-      ' · '+state.days+' дней';
+    const labels={vpn:'VPN Лайт',smart_dns:'Smart Доступ',bundle:'Экосистема «3 в 1»'};
+    el('journey-order-period').textContent=(labels[state.product]||'Экосистема «3 в 1»')+' · '+state.days+' дней';
     el('journey-order-price').textContent=plan?priceFor(state.days):'—';
     el('journey-order-email').textContent=verified?lastAccount.identity.email:'Требуется вход по email';
     const pay=el('journey-order-pay');
     pay.disabled=!plan||!state.checkoutEnabled||!verified||state.busy;
     pay.textContent=state.busy?'Оформляем заказ…':
-      !state.checkoutEnabled?'Оплата временно недоступна':
+      !state.checkoutEnabled?'Оплата подключается (ЮKassa)':
       !verified?'Войдите для оплаты':'Перейти к защищённой оплате';
     el('journey-order-error').textContent=el('checkout-error')?.textContent||'';
   }
@@ -284,10 +288,6 @@
   }
   function beginCheckout(){
     const current=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
-    if((state.product==='smart_dns'||state.product==='bundle')&&
-       (!current||!state.checkoutEnabled)){
-      location.assign('https://t.me/MNEBYVPN_bot');return;
-    }
     if(!current||!state.checkoutEnabled)return;
     if(!state.loggedIn){
       storeIntent();saveSelection();setView('account',true);
@@ -435,11 +435,20 @@
         heading.textContent='Проверяем ваш заказ';
         description.textContent='Войдите в аккаунт, с которого оформляли заказ. Оплата и подключение проверяются сервером.';
       }else if(order.state==='PAID'){
-        const ready=(payload.access||[]).some(a=>a.product==='vpn'&&a.state==='ACTIVE'&&a.secondsRemaining>0&&
+        const matching=(payload.access||[]).filter(a=>a.state==='ACTIVE'&&a.secondsRemaining>0&&
           (a.sourceOrderId===order.id || a.id===intent.renewalTargetId));
-        heading.textContent=ready?'VPN готов к подключению':'Оплата подтверждена';
-        description.textContent=ready?'Подготавливаем инструкцию для вашего устройства…':
-          'Платёж получен. Ожидаем подтверждения активации VPN на сервере.';
+        const hasVpn=matching.some(a=>a.product==='vpn');
+        const hasDns=matching.some(a=>a.product==='smart_dns');
+        const ready=order.product==='bundle'?(hasVpn||hasDns):
+          order.product==='smart_dns'?hasDns:hasVpn;
+        heading.textContent=ready?(order.product==='smart_dns'?'Smart Доступ готов!':
+          order.product==='bundle'?'Экосистема «3 в 1» готова!':'VPN готов к подключению'):'Оплата подтверждена';
+        description.textContent=ready?(order.product==='smart_dns'?
+          'Откройте «Мой VPN», чтобы скачать профиль Apple (.mobileconfig), DoT-адрес и ссылки Telegram-прокси.':
+          order.product==='bundle'?
+            'Ваш VPN, профиль Smart DNS и Telegram-прокси готовы. Откройте «Мой VPN» или установщик ниже.':
+            'Подготавливаем инструкцию для вашего устройства…'):
+          'Платёж получен. Ожидаем подтверждения активации на сервере.';
       }else if(order.state==='REFUNDED'||order.state==='CANCELLED'){
         heading.textContent='Оплаченного доступа нет';
         description.textContent='Статус заказа: '+(stateNames[order.state]||order.state)+'. Проверьте историю или напишите в поддержку.';

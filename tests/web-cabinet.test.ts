@@ -120,18 +120,18 @@ test('web cabinet reserves OIDC login for explicit BotFather integration',async(
   assert.match(ui,/cabinet-login-link/);
 });
 
-test('mobile VPN remains compact while DNS and bundle navigation are accessible',async()=>{
+test('website 3-in-1 navigation presents VPN Лайт, Smart Доступ and Экосистема «3 в 1» without Stars or Prodamus',async()=>{
   const {readFileSync}=await import('node:fs');
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
   const css=readFileSync(new URL('../apps/web/public/site.css',import.meta.url),'utf8');
   const client=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
-  assert.match(html,/Выберите тариф VPN/);
+  assert.match(html,/Выберите тариф MNEBYVPN/);
   assert.match(html,/Обычный интернет при ограничениях мобильной сети/);
-  assert.match(html,/Планируем отдельный режим для ситуаций/);
-  assert.match(html,/data-product="smart_dns"[^>]*>Smart DNS<\/button>/);
-  assert.match(html,/data-product="bundle"[^>]*>VPN \+ DNS<\/button>/);
-  assert.match(html,/data-journey-product="smart_dns"[^>]*>Smart DNS<\/button>/);
-  assert.match(html,/data-journey-product="bundle"[^>]*>VPN \+ DNS<\/button>/);
+  assert.match(html,/data-product="vpn"[^>]*>VPN Лайт<\/button>/);
+  assert.match(html,/data-product="smart_dns"[^>]*>Smart Доступ<\/button>/);
+  assert.match(html,/data-product="bundle"[^>]*>Экосистема «3 в 1»<\/button>/);
+  assert.match(html,/data-journey-product="smart_dns"[^>]*>Smart Доступ<\/button>/);
+  assert.match(html,/data-journey-product="bundle"[^>]*>Экосистема «3 в 1»<\/button>/);
   assert.match(css,/VPN-first mobile checkout/);
   const neoCss=readFileSync(new URL('../apps/web/public/neo.css',import.meta.url),'utf8');
   const server=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
@@ -153,15 +153,13 @@ test('mobile VPN remains compact while DNS and bundle navigation are accessible'
   assert.equal(avatar.subarray(8,12).toString('ascii'),'WEBP');
   assert.ok(avatar.byteLength > 1000 && avatar.byteLength < 20000);
   assert.match(html,/В тариф входит/);
-  assert.match(html,/VPN-подключение<\/span><strong id="selected-quota">Входит/);
-  assert.doesNotMatch(html,/Не входит/);
-  assert.doesNotMatch(client,/Перейти к оплате →|Не входит/);
-  assert.match(css,/\.hero-art,\.hero-actions,\.hero-notes,\.features\{display:none\}/);
-  assert.match(client,/const telegramChannel=state\.product!=='vpn'/);
+  assert.doesNotMatch(html,/Не входит|100 ⭐|200 ⭐|400 ⭐|500 ⭐|Prodamus/i);
+  assert.doesNotMatch(client,/dnsPreviewOffers/);
+  assert.match(client,/yookassa\.ru|yoomoney\.ru/);
+  assert.match(client,/\/api\/dns\/personal\/credentials/);
+  assert.match(client,/\/api\/telegram-proxy-bonus/);
+  assert.match(client,/\/api\/orders\/verify/);
   assert.match(client,/if\(!plan\|\|!state\.checkoutEnabled\)/);
-  assert.match(client,/https:\/\/t\.me\/MNEBYVPN_bot/);
-  assert.match(html,/href="\/\?product=smart_dns&amp;days=14#plans"/);
-  assert.match(html,/href="\/\?product=smart_dns&amp;days=90#plans"/);
 });
 
 
@@ -272,7 +270,7 @@ test('production email login uses canonical narrowly scoped auth DB, not public 
   assert.match(backend,/sameCanonicalPostgresDb\(billingDbUrl/);
 });
 
-test('checkout provides actionable errors and a manual Prodamus link if WebView navigation fails',()=>{
+test('checkout provides actionable errors and a manual YooKassa link if WebView navigation fails',()=>{
   const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
   const ui=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
   const backend=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');

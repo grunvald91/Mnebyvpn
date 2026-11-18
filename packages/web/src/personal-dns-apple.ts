@@ -10,7 +10,7 @@ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 const digest=/^[a-f0-9]{64}$/;
 export type WebsiteAppleDnsStatus={issued:boolean;revision:number|null;revoked:boolean};
 export type WebsiteAppleDnsResult=
-  |{kind:'ready';xml:string}
+  |{kind:'ready';xml:string;hostname:string}
   |{kind:'already-issued'|'stale'|'inactive'|'revoked'|'unavailable'};
 
 export async function websitePersonalDnsStatus(
@@ -49,7 +49,7 @@ export async function issueWebsitePersonalDnsProfile(
     const {rows}=await db.query(sql,params);
     const code=String(rows[0]?.code??'');
     if(code==='ISSUED'||code==='ROTATED')
-      return {kind:'ready',xml:buildPersonalDnsMobileconfig(identity.hostname)};
+      return {kind:'ready',xml:buildPersonalDnsMobileconfig(identity.hostname),hostname:identity.hostname};
     if(code==='DENY_TOKEN_COLLISION')continue;
     if(code==='DENY_ALREADY_ASSIGNED'||code==='ALREADY_ISSUED')
       return {kind:'already-issued'};

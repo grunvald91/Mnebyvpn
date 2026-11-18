@@ -2556,3 +2556,54 @@ body.journey-active[data-journey-view="account"] .metric-card{
 .journey-dns-link-grid a:hover,.journey-dns-link-grid a:focus-visible{border-color:#65e8fb;background:rgba(29,81,121,.8)}
 .journey-dns-links .journey-secondary{margin-bottom:0}
 .journey-front-stage[hidden],.journey-duration-grid button[hidden],.journey-dns-links[hidden]{display:none!important}
+
+/* Personal DNS & Telegram Proxy automatic delivery containers inside account */
+.dns-personal-credentials,.dns-proxy-bonus-links{
+  margin-top:12px;padding:12px 14px;border-radius:14px;
+  border:1px solid rgba(79,213,255,.35);
+  background:rgba(7,21,54,.68);
+}
+.dns-personal-credentials h4,.dns-proxy-bonus-links h4{
+  margin:0 0 8px;font-size:13.5px;color:#82f2ff;
+}
+.dns-personal-credentials p,.dns-proxy-bonus-links p{
+  margin:8px 0 0;font-size:12px;line-height:1.45;color:#cfe2f8;
+}
+.dns-proxy-bonus-route{
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  margin-top:8px;padding:9px 10px;border-radius:10px;
+  background:rgba(12,34,78,.7);border:1px solid rgba(105,168,242,.24);
+}
+.dns-proxy-bonus-route strong{flex:1 1 100%;font-size:12.5px;color:#f1f7ff}
+.dns-proxy-bonus-route div{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;color:#84efff;margin-right:auto}
+
+/* Full-width Desktop version (>= 900px): horizontal backdrop + spacious cabinet & checkout */
+@media(min-width:900px){
+  body.journey-active[data-journey-view="plans"] .journey-landing{
+    max-width:none;width:100%;margin:0;padding:0;
+  }
+  body.journey-active:not([data-journey-view="plans"])::before{
+    top:0;left:0;transform:none;width:100vw;height:100vh;
+    background:url('/bg-desktop-poster.webp') center 28%/cover no-repeat;
+    opacity:.32;
+    -webkit-mask-image:linear-gradient(#000 0%,rgba(0,0,0,.78) 65%,rgba(0,0,0,.45) 100%);
+    mask-image:linear-gradient(#000 0%,rgba(0,0,0,.78) 65%,rgba(0,0,0,.45) 100%);
+  }
+  body.journey-active:not([data-journey-view="plans"]) .header-inner{
+    width:min(1140px,calc(100vw - 48px));min-height:66px;
+  }
+  body.journey-active:not([data-journey-view="plans"]) .header-actions .about-trigger,
+  body.journey-active:not([data-journey-view="plans"]) .header-actions .journey-header-account{
+    padding:10px 18px!important;font-size:13.5px!important;
+  }
+  body.journey-active[data-journey-view="account"] .account-panel{
+    max-width:980px;
+  }
+  body.journey-active[data-journey-view="account"] .account-content-grid{
+    display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,.95fr);gap:22px;align-items:start;
+  }
+  body.journey-active .journey-setup{max-width:740px}
+  body.journey-active .journey-order-card,
+  body.journey-active .journey-payment-card,
+  body.journey-active .journey-trial-auth-card{max-width:580px;margin-inline:auto}
+}

@@ -1,7 +1,7 @@
 /**
- * Independent website: Telegram OIDC login, read-only customer dashboard,
- * and gated external-web Prodamus checkout. NO deployment or live credentials.
- * Bind to loopback behind a separately hardened HTTPS reverse proxy.
+ * Independent website: Telegram OIDC / email login, customer dashboard,
+ * and gated YooKassa checkout (plus optional legacy Prodamus webhook fallback).
+ * NO deployment or live credentials. Bind to loopback behind a hardened HTTPS reverse proxy.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -16,15 +16,19 @@ import {subscriptionOwner,subscriptionLink,issueSubscriptionLinkForAccount}
 import {additionalNodeVerificationKey,loadAdditionalVpnLinks}
   from '../../../packages/provisioning/src/multi-node-subscriptions.ts';
 import {
-  prepareWebsiteProdamusCheckout, type PayformLinkTransport,
+  prepareWebsiteProdamusCheckout, prepareWebsiteYookassaCheckout, type PayformLinkTransport,
 } from '../../../packages/billing/src/website-checkout.ts';
 import type { ProdamusConfig } from '../../../packages/billing/src/prodamus.ts';
+import {
+  HttpYookassaTransport, isAllowedYookassaWebhookIp, verifyYookassaPaymentObject,
+  type YookassaConfig,
+} from '../../../packages/billing/src/yookassa.ts';
+import { yookassaOrderFromDB } from '../../../packages/billing/src/store.ts';
 import {
   consumeLoginChallenge, createLoginChallenge, csrfForSession, isValidCsrf,
   issueAccountSession, readAccountSession, verifyEnvelope, verifyTelegramIdToken, type Jwks,
 } from '../../../packages/web/src/security.ts';
 import { loadDashboard } from '../../../packages/web/src/dashboard.ts';
-import {PERSONAL_DNS_STARS_OFFERS} from '../../../packages/dns-policy/src/smart-dns-offers.ts';
 import {bonusReleaseReady,loadCustomerProxyBonus,parseBonusRoutes}
   from '../../../packages/web/src/telegram-proxy-bonus.ts';
 import {websitePersonalDnsStatus,issueWebsitePersonalDnsProfile}
@@ -34,7 +38,7 @@ import {beginEmailCode,verifyEmailCode} from '../../../packages/web/src/email-au
 import {isReviewEmail,isReviewAccount,beginReviewCode,verifyReviewCode}
   from '../../../packages/web/src/review-login.ts';
 import { parseProdamusFormData, isProdamusContentType } from '../../../packages/billing/src/multipart.ts';
-import { handleProdamusDelivery } from '../../../packages/billing/src/handlers.ts';
+import { handleProdamusDelivery, handleYookassaDelivery } from '../../../packages/billing/src/handlers.ts';
 
 const required = (name: string): string => {
   const v = process.env[name];
@@ -83,9 +87,13 @@ const supportCookiePattern=/^([0-9a-f-]{36})\.([A-Za-z0-9_-]{43})$/;
 const networkVerified = process.env.WEB_NETWORK_PROVISIONING_VERIFIED === 'yes';
 // Never stop receiving previously-created payment notifications merely
 // because new sales were disabled. Both flags default to fail-closed.
+const yookassaWebhookEnabled = process.env.WEB_YOOKASSA_ENABLED === 'yes' &&
+  process.env.WEB_PAYMENT_PROVIDER_TESTED === 'yes';
 const webhookEnabled = process.env.WEB_PRODAMUS_WEBHOOK_ENABLED === 'yes' &&
   process.env.WEB_PAYMENT_PROVIDER_TESTED === 'yes';
-const checkoutEnabled = loginEnabled && webhookEnabled && networkVerified &&
+const activePaymentProvider: 'yookassa' | 'prodamus' | null =
+  yookassaWebhookEnabled ? 'yookassa' : (webhookEnabled ? 'prodamus' : null);
+const checkoutEnabled = loginEnabled && activePaymentProvider !== null && networkVerified &&
   process.env.WEB_CHECKOUT_ENABLED === '1' &&
   process.env.WEB_LEGAL_PAGES_PUBLISHED === 'yes';
 const trialEnabled = loginEnabled && networkVerified &&
@@ -145,11 +153,25 @@ function sameCanonicalPostgresDb(writer:string,reader:string|undefined):boolean{
       a.search===''&&b.search===''&&a.hash===''&&b.hash==='';
   }catch{return false;}
 }
-if(!offline && (trialEnabled||checkoutEnabled||webhookEnabled) &&
+if(!offline && (trialEnabled||checkoutEnabled||yookassaWebhookEnabled||webhookEnabled) &&
    !sameCanonicalPostgresDb(billingDbUrl??'',subscriptionDbUrl))
   throw Error('Live VPN paid checkout and webhooks require the canonical least-privilege billing database');
 if(!offline && billingDbUrl && !sameCanonicalPostgresDb(billingDbUrl,subscriptionDbUrl))
   throw Error('Invalid configured VPN billing database target');
+let yookassa: YookassaConfig | undefined;
+if (yookassaWebhookEnabled) {
+  const vatRaw = process.env.YOOKASSA_VAT_CODE;
+  const taxRaw = process.env.YOOKASSA_TAX_SYSTEM_CODE;
+  yookassa = {
+    shopId: required('YOOKASSA_SHOP_ID'),
+    secretKey: required('YOOKASSA_SECRET_KEY'),
+    returnUrl: process.env.YOOKASSA_RETURN_URL || (publicOrigin + '/payment/return'),
+    apiOrigin: offline ? process.env.YOOKASSA_API_ORIGIN : undefined,
+    vatCode: vatRaw ? Number(vatRaw) : 1,
+    taxSystemCode: taxRaw ? Number(taxRaw) : undefined,
+    sendReceipt: process.env.YOOKASSA_SEND_RECEIPT !== 'no',
+  };
+}
 let payform: ProdamusConfig | undefined;
 if (webhookEnabled) {
   payform = {
@@ -195,6 +217,9 @@ const html = await readFile(new URL('../public/index.html', import.meta.url));
 const landingArtHtml = await readFile(new URL('../public/landing-art.html', import.meta.url));
 const bg3Webm = await readFile(new URL('../public/bg3.webm', import.meta.url));
 const bg3Mp4 = await readFile(new URL('../public/bg3.mp4', import.meta.url));
+const bgDesktopWebm = await readFile(new URL('../public/bg-desktop.webm', import.meta.url));
+const bgDesktopMp4 = await readFile(new URL('../public/bg-desktop.mp4', import.meta.url));
+const bgDesktopPoster = await readFile(new URL('../public/bg-desktop-poster.webp', import.meta.url));
 const termsHtml = await readFile(new URL('../public/terms.html',import.meta.url));
 const privacyHtml = await readFile(new URL('../public/privacy.html',import.meta.url));
 const agreementHtml = await readFile(new URL('../public/agreement.html',import.meta.url));
@@ -212,17 +237,18 @@ const vpnInstallJs=await readFile(new URL('../public/vpn-install.js',import.meta
 const workerProfileToken=process.env.VPN_WORKER_PROFILE_TOKEN??'';
 /** Public-only, DB-authoritative catalog. Does not expose a user's orders or secrets. */
 async function publicCatalog(){
-  const plans=await store.plans('prodamus');
+  const plans=await store.plans(activePaymentProvider??'yookassa');
   const trialOffers=trialEnabled
     ? (await billingPool.query('SELECT product FROM trial_offers WHERE enabled=true')).rows.map(r=>r.product as string)
     : [];
-  return {loginEnabled,telegramLoginEnabled,emailLoginEnabled,checkoutEnabled,trialOffers,
-    dnsPreviewOffers:PERSONAL_DNS_STARS_OFFERS.map(o=>({days:o.days,stars:o.stars})),
+  return {loginEnabled,telegramLoginEnabled,emailLoginEnabled,checkoutEnabled,
+    paymentProvider:activePaymentProvider,trialOffers,
     plans:plans.map(p=>({
       id:p.planId,title:p.title,product:p.product,
       durationDays:p.durationSeconds/86400,rubMinor:p.rubMinor,
       deviceLimit:p.deviceLimit??1,
       dnsQuotaBytes:p.dnsQuotaBytes?.toString()??null,
+      dnsQuotaQueriesPer30d:p.dnsQuotaQueriesPer30d?.toString()??null,
     }))};
 }
 
@@ -702,6 +728,16 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if ((req.method === 'GET'||req.method === 'HEAD') && url.pathname === '/bg3.mp4') {
     sendBackgroundVideo(req, res, bg3Mp4, 'video/mp4'); return;
   }
+  if ((req.method === 'GET'||req.method === 'HEAD') && url.pathname === '/bg-desktop.webm') {
+    sendBackgroundVideo(req, res, bgDesktopWebm, 'video/webm'); return;
+  }
+  if ((req.method === 'GET'||req.method === 'HEAD') && url.pathname === '/bg-desktop.mp4') {
+    sendBackgroundVideo(req, res, bgDesktopMp4, 'video/mp4'); return;
+  }
+  if ((req.method === 'GET'||req.method === 'HEAD') && url.pathname === '/bg-desktop-poster.webp') {
+    res.setHeader('Cache-Control','public, max-age=86400');
+    send(res, 200, bgDesktopPoster, 'image/webp'); return;
+  }
   if (req.method === 'GET' && (url.pathname === '/terms' || url.pathname === '/terms.html')) {
     send(res,200,termsHtml,'text/html; charset=utf-8');return;
   }
@@ -959,8 +995,36 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     }
     await callback(req,res,url);return;
   }
-  // Prodamus's server-to-server POST is the ONLY payment proof, never /success.
-  // The original FormData and Sign header are verified before SQL settlement.
+  // YooKassa webhooks NEVER trust unauthenticated JSON alone: every event
+  // is re-verified directly against YooKassa GET /v3/payments/{id} or /v3/refunds/{id}.
+  if (req.method === 'POST' && url.pathname === '/webhooks/yookassa') {
+    if (!yookassaWebhookEnabled || !yookassa) {send(res,503,'NOT_READY','text/plain; charset=utf-8');return;}
+    if (process.env.YOOKASSA_WEBHOOK_ENFORCE_IP === 'yes') {
+      const allowed=process.env.YOOKASSA_WEBHOOK_ALLOWED_IPS?.split(',').map(s=>s.trim()).filter(Boolean);
+      if (!isAllowedYookassaWebhookIp(sourceAddress(req), allowed && allowed.length ? allowed : undefined)) {
+        send(res,403,'FORBIDDEN','text/plain; charset=utf-8');return;
+      }
+    }
+    const ct=req.headers['content-type'];
+    if (typeof ct!=='string' || !ct.toLowerCase().startsWith('application/json')) {
+      send(res,415,'UNSUPPORTED_MEDIA_TYPE','text/plain; charset=utf-8');return;
+    }
+    try {
+      const raw=(await readPaymentBody(req)).toString('utf8');
+      const parsed:unknown=JSON.parse(raw);
+      const answer=await handleYookassaDelivery(parsed,store,new HttpYookassaTransport(yookassa));
+      console.info('MNEBYVPN_YOOKASSA_WEBHOOK_RESULT',answer.statusCode,answer.text);
+      send(res,answer.statusCode,answer.text,'text/plain; charset=utf-8');
+    } catch(error) {
+      const sqlstate=(error as {code?:unknown})?.code;
+      console.error('MNEBYVPN_YOOKASSA_WEBHOOK_PROCESSING_ERROR',
+        typeof sqlstate==='string'&&/^[0-9A-Z]{5}$/.test(sqlstate)
+          ?'SQLSTATE_'+sqlstate:'PARSE_OR_PROCESSING_FAILURE');
+      send(res,503,'WEBHOOK_PROCESSING_ERROR','text/plain; charset=utf-8');
+    }
+    return;
+  }
+  // Legacy Prodamus callback support for in-flight payments during migration.
   if (req.method === 'POST' && url.pathname === '/webhooks/prodamus') {
     if (!webhookEnabled || !payform) {send(res,503,'NOT_READY','text/plain; charset=utf-8');return;}
     const sign=req.headers.sign;
@@ -1011,7 +1075,40 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   if (!auth) { json(res, 401, { code: 'LOGIN_REQUIRED' }); return; }
   if (req.method === 'GET' && url.pathname === '/api/me') {
     const dashboard = await loadDashboard(authPool, auth.accountId, meteringVerified);
-    json(res,200,{ ...dashboard, telegramProxyBonusEnabled:proxyBonusEnabled, appleDnsProfileEnabled, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
+    json(res,200,{ ...dashboard, telegramProxyBonusEnabled:proxyBonusEnabled, appleDnsProfileEnabled, personalDnsEnabled:appleDnsProfileEnabled, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
+  }
+
+  async function issuePersonalDnsFromRequest(
+    req: IncomingMessage,
+    res: ServerResponse,
+    rawSession: string,
+  ): Promise<ReturnType<typeof issueWebsitePersonalDnsProfile> | null> {
+    if(!csrfAllowed(req,rawSession)){json(res,403,{code:'FORBIDDEN'});return null;}
+    if(!appleDnsProfileEnabled){json(res,503,{code:'APPLE_DNS_PROFILE_NOT_READY'});return null;}
+    const body=await bodyJson(req);
+    const entitlementId=body.entitlementId;
+    const action=body.action;
+    const revision=body.expectedRevision;
+    if(typeof entitlementId!=='string'||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entitlementId)||
+      (action!=='issue'&&action!=='rotate')||
+      (action==='issue'&&Object.keys(body).sort().join(',')!=='action,entitlementId')||
+      (action==='rotate'&&
+        (Object.keys(body).sort().join(',')!=='action,entitlementId,expectedRevision'||
+         !Number.isSafeInteger(revision)||Number(revision)<1))){
+      json(res,400,{code:'INVALID_DNS_PROFILE_REQUEST'});return null;
+    }
+    const result=await issueWebsitePersonalDnsProfile(authPool,sessionHash(rawSession),
+      entitlementId,action,action==='rotate'?revision as number:undefined);
+    if(result.kind!=='ready'){
+      const code=result.kind==='already-issued'?'DNS_PROFILE_ALREADY_ISSUED':
+        result.kind==='stale'?'DNS_PROFILE_REVISION_CHANGED':
+        result.kind==='inactive'?'DNS_ACCESS_NOT_ACTIVE':
+        result.kind==='revoked'?'DNS_ACCESS_REVOKED':'DNS_PROFILE_UNAVAILABLE';
+      json(res,result.kind==='already-issued'||result.kind==='stale'?409:
+        result.kind==='inactive'||result.kind==='revoked'?403:503,{code});return null;
+    }
+    return result;
   }
 
   if(req.method==='GET'&&url.pathname==='/api/dns/apple/status'){
@@ -1030,35 +1127,23 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   if(req.method==='POST'&&url.pathname==='/api/dns/apple/profile'){
     // A sensitive, one-time bearer hostname is issued only after verified
     // login+CSRF, paid ACTIVE entitlement and dedicated DB RPC authorization.
-    if(!csrfAllowed(req,auth.raw)){json(res,403,{code:'FORBIDDEN'});return;}
-    if(!appleDnsProfileEnabled){json(res,503,{code:'APPLE_DNS_PROFILE_NOT_READY'});return;}
-    const body=await bodyJson(req);
-    const entitlementId=body.entitlementId;
-    const action=body.action;
-    const revision=body.expectedRevision;
-    if(typeof entitlementId!=='string'||
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entitlementId)||
-      (action!=='issue'&&action!=='rotate')||
-      (action==='issue'&&Object.keys(body).sort().join(',')!=='action,entitlementId')||
-      (action==='rotate'&&
-        (Object.keys(body).sort().join(',')!=='action,entitlementId,expectedRevision'||
-         !Number.isSafeInteger(revision)||Number(revision)<1))){
-      json(res,400,{code:'INVALID_DNS_PROFILE_REQUEST'});return;
-    }
-    const result=await issueWebsitePersonalDnsProfile(authPool,sessionHash(auth.raw),
-      entitlementId,action,action==='rotate'?revision as number:undefined);
-    if(result.kind!=='ready'){
-      const code=result.kind==='already-issued'?'DNS_PROFILE_ALREADY_ISSUED':
-        result.kind==='stale'?'DNS_PROFILE_REVISION_CHANGED':
-        result.kind==='inactive'?'DNS_ACCESS_NOT_ACTIVE':
-        result.kind==='revoked'?'DNS_ACCESS_REVOKED':'DNS_PROFILE_UNAVAILABLE';
-      json(res,result.kind==='already-issued'||result.kind==='stale'?409:
-        result.kind==='inactive'||result.kind==='revoked'?403:503,{code});return;
-    }
+    const result=await issuePersonalDnsFromRequest(req,res,auth.raw);
+    if(!result||result.kind!=='ready')return;
     res.setHeader('Content-Disposition','attachment; filename="MNEBYDNS-Apple.mobileconfig"');
     res.setHeader('Pragma','no-cache');
     res.setHeader('X-Robots-Tag','noindex');
     send(res,200,result.xml,'application/x-apple-aspen-config');
+    return;
+  }
+  if(req.method==='POST'&&url.pathname==='/api/dns/personal/credentials'){
+    // Issues/rotates the same one-time personal DoT identity and returns BOTH
+    // the Apple .mobileconfig payload and the plain DoT hostname for Android/routers.
+    const result=await issuePersonalDnsFromRequest(req,res,auth.raw);
+    if(!result||result.kind!=='ready')return;
+    res.setHeader('Cache-Control','private, no-store, max-age=0');
+    res.setHeader('Pragma','no-cache');
+    res.setHeader('X-Robots-Tag','noindex');
+    json(res,200,{hostname:result.hostname,mobileconfig:result.xml});
     return;
   }
   if(req.method==='GET'&&url.pathname==='/api/telegram-proxy-bonus'){
@@ -1135,9 +1220,45 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     json(res,200,{subscriptionUrl:link.link,expiresAt:link.expiresAt.toISOString()});
     return;
   }
+  if (req.method === 'POST' && url.pathname === '/api/orders/verify') {
+    if (!csrfAllowed(req,auth.raw)) { json(res,403,{code:'FORBIDDEN'});return; }
+    if (!yookassaWebhookEnabled || !yookassa) {
+      json(res,503,{code:'PAYMENT_NOT_AVAILABLE'});return;
+    }
+    const body = await bodyJson(req);
+    const orderId = body.orderId;
+    if (typeof orderId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(orderId)) {
+      json(res,400,{code:'INVALID_ORDER'});return;
+    }
+    const order = await store.order(orderId);
+    if (!order || order.accountId !== auth.accountId) {
+      json(res,404,{code:'ORDER_NOT_FOUND'});return;
+    }
+    if (order.state !== 'PENDING' || order.provider !== 'yookassa') {
+      json(res,200,{state:order.state});return;
+    }
+    const paymentId = await store.yookassaPaymentIdForOrder(order.id);
+    if (!paymentId) {
+      json(res,200,{state:order.state});return;
+    }
+    try {
+      const transport = new HttpYookassaTransport(yookassa);
+      const paymentObj = await transport.getPayment(paymentId);
+      const checked = verifyYookassaPaymentObject(paymentObj, yookassaOrderFromDB(order));
+      if (checked.ok) {
+        await store.settleVerified(checked.capture);
+        json(res,200,{state:'PAID'});return;
+      }
+      json(res,200,{state:order.state});
+    } catch {
+      json(res,502,{code:'PAYMENT_PROVIDER_UNAVAILABLE'});
+    }
+    return;
+  }
   if (req.method === 'POST' && (url.pathname === '/api/checkout' || url.pathname === '/api/renew')) {
     if (!csrfAllowed(req,auth.raw)) { json(res,403,{code:'FORBIDDEN'});return; }
-    if (!checkoutEnabled || !payform) {
+    if (!checkoutEnabled || (!yookassa && !payform)) {
       json(res,503,{code:'PAYMENT_NOT_AVAILABLE'});return;
     }
     const body = await bodyJson(req);
@@ -1160,13 +1281,28 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       json(res,400,{code:'INVALID_CHECKOUT'});return;
     }
     try {
-      const purchase = await prepareWebsiteProdamusCheckout({
+      const checkoutInput = {
         accountId: auth.accountId, email:auth.email, planId: body.planId,
         requestId: 'web:' + body.requestId,
         inviteToken: body.inviteToken as string|undefined,
         renewalTargetId: isRenewal ? body.renewalTargetId as string : undefined,
-      },store,payform,new MerchantTransport());
-      json(res,200,{orderId:purchase.orderId,paymentUrl:purchase.paymentUrl});
+      };
+      if (yookassaWebhookEnabled && yookassa) {
+        const testHost = offline && process.env.YOOKASSA_API_ORIGIN
+          ? new URL(process.env.YOOKASSA_API_ORIGIN).hostname
+          : undefined;
+        const purchase = await prepareWebsiteYookassaCheckout(
+          checkoutInput, store, yookassa, new HttpYookassaTransport(yookassa), testHost,
+        );
+        json(res,200,{orderId:purchase.orderId,paymentUrl:purchase.paymentUrl});
+      } else if (webhookEnabled && payform) {
+        const purchase = await prepareWebsiteProdamusCheckout(
+          checkoutInput, store, payform, new MerchantTransport(),
+        );
+        json(res,200,{orderId:purchase.orderId,paymentUrl:purchase.paymentUrl});
+      } else {
+        json(res,503,{code:'PAYMENT_NOT_AVAILABLE'});
+      }
     } catch (error) {
       const reason=error instanceof Error?error.message:'';
       // Only stable, safe codes go to the browser. Never expose DB details,
@@ -1179,8 +1315,8 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
         json(res,502,{code:'PAYMENT_PROVIDER_UNAVAILABLE'});return;
       }
       if (reason==='PAYMENT_PROVIDER_INVALID_LINK' ||
-          reason==='Unsafe Prodamus payment link' ||
-          reason==='Invalid Prodamus response' ||
+          reason==='Unsafe YooKassa confirmation URL' ||
+          reason==='Invalid YooKassa confirmation URL' ||
           reason==='Invalid URL') {
         console.warn('MNEBYVPN_CHECKOUT_PROVIDER_INVALID_LINK');
         json(res,502,{code:'PAYMENT_PROVIDER_INVALID_LINK'});return;

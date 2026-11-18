@@ -8,7 +8,7 @@ const index=file('apps/web/public/index.html');
 const journey=file('apps/web/public/journey.js');
 const css=file('apps/web/public/journey.css');
 const server=file('apps/web/src/server.ts');
-const prodamus=file('packages/billing/src/prodamus.ts');
+const yookassa=file('packages/billing/src/yookassa.ts');
 
 test('journey assets are valid JavaScript and served by the same-origin website',()=>{
   const check=spawnSync(process.execPath,['--check',fileURLToPath(new URL('../apps/web/public/journey.js',import.meta.url))],{encoding:'utf8'});
@@ -32,12 +32,11 @@ test('public HTML bootstrap and in-place retry preserve live DB authority',()=>{
   assert.match(journey,/if\(msg\.type==='refresh'\)\{void loadCatalog\(\);return;\}/);
   assert.doesNotMatch(server,/staticVpnPrices|mockVpnPrices/);
 });
-test('main storefront preserves four tariffs, idempotent VPN selection and cabinet fallback',()=>{
+test('main storefront preserves 3-in-1 products, idempotent selection and cabinet fallback',()=>{
   const art=file('apps/web/public/landing-art.html');
   assert.match(art,/href="\/#account" target="_top"/);
   assert.match(art,/if\(ready\)\{e\.preventDefault\(\);send\('account'\);\}/);
-  assert.match(art,/vpnSelected=true;\s+vpnDays=day;\s+send\('select'/);
-  assert.doesNotMatch(art,/vpnSelected=false/);
+  assert.match(art,/send\('select',\{product,days\}\)/);
   assert.match(server,/url\.pathname === '\/api\/auth\/options'/);
   assert.match(file('apps/web/public/app.js'),/Promise\.all\(\[loadLoginOptions\(\),loadCatalog\(\),refresh\(\)\]\)/);
 });
@@ -66,7 +65,7 @@ test('free trial chooser replaces the existing strip without changing page heigh
   assert.match(art,/class="trial-slot" id="trial-slot"/);
   assert.match(art,/class="trial-options" id="trial-options"/);
   assert.match(art,/class="trial-close" id="trial-close"/);
-  assert.match(art,/\.trial-slot \.trial-options\{/);
+  assert.match(art,/\.trial-options\{/);
   assert.match(art,/position:absolute;inset:0;z-index:3/);
   assert.match(art,/setTrialChooser\(trialOptions\.hidden\)/);
   assert.doesNotMatch(art,/trialOptions\.hidden=!trialOptions\.hidden/);
@@ -79,12 +78,12 @@ test('trial authorization matches main header and does not reserve room for disa
   assert.match(journey,/method\.hidden=!enabled/);
   assert.match(journey,/pointer:coarse/);
 });
-test('illustrated storefront keeps lock clear and payment fine print in a dialog',()=>{
+test('illustrated storefront keeps responsive geometry and payment fine print in a dialog',()=>{
   const art=file('apps/web/public/landing-art.html');
   assert.match(art,/id="payment-info-open"/);
   assert.match(art,/id="payment-info-dialog"/);
-  assert.match(art,/\.hero\{min-height:clamp\(177px,calc\(63vw - 25px\),280px\)!important\}/);
-  assert.match(art,/\.app>footer\{margin-top:auto!important/);
+  assert.match(art,/\.hero\{position:relative;min-height:clamp\(/);
+  assert.match(art,/footer\{margin-top:auto/);
   assert.doesNotMatch(art,/<p class="note"/);
   assert.doesNotMatch(art,/<p class="note2"/);
 });
@@ -93,7 +92,6 @@ test('payment helper stays non-modal and video has no manual replay button',()=>
   assert.match(art,/id="payment-info-dialog" class="payment-popover" role="dialog" aria-modal="false"/);
   assert.match(art,/\.payment-popover\[hidden\]/);
   assert.match(art,/autoplayAllowed=!R&&!navigator\.connection\?\.saveData/);
-  assert.match(art,/attempt\?\.catch\?\.\(showStaticArtwork\)/);
   assert.doesNotMatch(art,/video-retry|Включить фон|optedIn/);
   assert.doesNotMatch(art,/paymentInfoDialog\.showModal/);
 });
@@ -173,12 +171,14 @@ test('browser return is only an order hint and never proof of payment',()=>{
   assert.match(journey,/Untrusted navigation is only a lookup hint/);
   assert.match(journey,/\/api\/me owns the actual order/);
   assert.match(server,/url\.pathname === '\/payment\/success'/);
-  assert.match(prodamus,/success\.searchParams\.set\('order',order\.id\)/);
+  assert.match(server,/url\.pathname === '\/api\/orders\/verify'/);
+  assert.match(yookassa,/returnUrl\.searchParams\.set\('order', order\.id\)/);
 });
 test('checkout email comes only from authenticated session',()=>{
   assert.match(server,/email:auth\.email/);
   assert.match(server,/VERIFIED_EMAIL_REQUIRED/);
-  assert.match(prodamus,/customer_email: customerEmail/);
+  assert.match(yookassa,/body\.receipt = receipt;/);
+  assert.match(yookassa,/customer: \{ email: customerEmail \}/);
   assert.doesNotMatch(server,/customerEmail:\s*body\./);
 });
 
@@ -239,21 +239,22 @@ test('real-world neon halo is visible without replacing the original globe',()=>
 });
 
 
-test('original background videos are bundled and served only by the public web route',()=>{
+test('mobile and desktop background videos are bundled and served only by the public web route',()=>{
   const art=file('apps/web/public/landing-art.html');
   assert.match(art,/id="bgv"/);
+  assert.match(art,/id="bgv-desktop"/);
   assert.match(art,/\['\/bg3\.webm\?v=6e816d6e','video\/webm/);
   assert.match(art,/\['\/bg3\.mp4\?v=30d2f12d','video\/mp4/);
+  assert.match(art,/\['\/bg-desktop\.webm\?v=1','video\/webm/);
+  assert.match(art,/\['\/bg-desktop\.mp4\?v=1','video\/mp4/);
+  assert.match(art,/\/bg-desktop-poster\.webp/);
   assert.match(art,/connection\?\.saveData/);
   assert.match(art,/autoplayAllowed=!R&&!navigator\.connection\?\.saveData/);
-  assert.match(art,/if\(!scene\|\|!video\)return/);
   assert.doesNotMatch(art,/video-retry/);
   assert.doesNotMatch(art,/\/_blob\//);
   assert.match(server,/media-src 'self'/);
   assert.match(art,/class="legal-links"/);
-  assert.match(art,/\.pill\{flex:0 0 auto;white-space:nowrap/);
-  assert.match(art,/\.hero\{min-height:clamp\(165px,23svh,210px\)/);
-  assert.match(art,/video\.playbackRate=\.85;/);
+  assert.match(art,/playbackRate=\.85/);
 
   for (const [name,signature,mime] of [
     ['bg3.webm','1a45dfa3','video/webm'],
@@ -265,33 +266,37 @@ test('original background videos are bundled and served only by the public web r
     assert.ok(server.includes("'/" + name + "'"));
     assert.ok(server.includes("'"+mime+"'"));
   }
+  const deskMp4=readFileSync(new URL('../apps/web/public/bg-desktop.mp4',import.meta.url));
+  const deskWebm=readFileSync(new URL('../apps/web/public/bg-desktop.webm',import.meta.url));
+  const deskPoster=readFileSync(new URL('../apps/web/public/bg-desktop-poster.webp',import.meta.url));
+  assert.ok(deskMp4.byteLength>200_000 && deskMp4.byteLength<1_500_000);
+  assert.ok(deskWebm.byteLength>200_000 && deskWebm.byteLength<2_000_000);
+  assert.equal(deskWebm.subarray(0,4).toString('hex'),'1a45dfa3');
+  assert.equal(deskPoster.subarray(0,4).toString('ascii'),'RIFF');
+  assert.equal(deskPoster.subarray(8,12).toString('ascii'),'WEBP');
+  assert.ok(server.includes("'/bg-desktop.mp4'") && server.includes("'/bg-desktop.webm'") && server.includes("'/bg-desktop-poster.webp'"));
 });
 
 
-test('Smart DNS is preview-only while VPN checkout and trial remain server-authoritative',()=>{
+test('desktop and mobile storefront present all 3 RUB products without Stars or Prodamus',()=>{
   const art=file('apps/web/public/landing-art.html');
-  assert.match(art,/class="plans plans-vpn"/);
-  assert.match(art,/class="plans plans-dns"/);
+  assert.match(art,/class="desk-grid"/);
+  assert.match(art,/data-card-product="vpn"/);
+  assert.match(art,/data-card-product="bundle"/);
+  assert.match(art,/data-card-product="smart_dns"/);
+  assert.match(art,/class="mob-products"/);
   assert.match(art,/id="dns-info-dialog"/);
   assert.match(art,/id="trial-options"/);
   assert.match(art,/id="trial-dns"/);
-  for(const [days,price] of [[14,100],[30,200],[60,400],[90,500]]){
-    assert.ok(art.includes('data-d="'+days+'" data-p="'+price+' ⭐"'),
-      'Missing proposed DNS tariff '+days+'d');
-  }
   for(const service of ['YouTube','ChatGPT','Gemini','Claude','Antigravity','Grok','TikTok']){
     assert.ok(art.includes(service));
   }
-  assert.match(art,/let vpnDays=15,vpnSelected=true,dnsDays=null/);
-  assert.match(art,/setPressed\(el,vpnSelected&&days===vpnDays\)/);
-  assert.match(art,/setPressed\(el,Number\(el\.dataset\.d\)===dnsDays\)/);
-  assert.match(art,/dnsDays=dnsDays===day\?null:day/);
-  assert.match(art,/if\(vpnSelected&&!button\.disabled\)send\('buy'\)/);
-  assert.match(art,/Оформить только VPN/);
-  assert.match(art,/trialDnsStatus\.hidden=false/);
+  assert.doesNotMatch(art,/⭐|Prodamus|payform/i);
+  assert.match(art,/499 ₽/);
+  assert.match(art,/133 ₽\/устройство/);
   assert.match(art,/send\('trial'\)/);
   assert.doesNotMatch(art,/send\('trial-dns'\)/);
-  assert.match(art,/выдача индивидуальной ссылки Smart DNS ещё разрабатывается/i);
+  assert.match(art,/выдаются только после подтверждённой оплаты/i);
 });
 
 
@@ -322,17 +327,15 @@ test('storefront caches original 130KB Earth image separately and restores mobil
   assert.match(server,/landingEarth/);
   assert.match(server,/url\.pathname === '\/landing-earth\.webp'/);
   assert.match(art,/id="bgv"[^>]*autoplay muted loop playsinline/);
-  assert.match(art,/video\.addEventListener\('playing'/);
-  assert.match(art,/document\.addEventListener\('DOMContentLoaded',play/);
+  assert.match(art,/mobVideo\.addEventListener\('playing'/);
+  assert.match(art,/document\.addEventListener\('DOMContentLoaded',syncPlayback/);
   assert.doesNotMatch(art,/id="video-retry"|Включить фон/);
   assert.match(art,/retry\.addEventListener\('click'/);
   assert.match(art,/type!=='visual'/);
   assert.doesNotMatch(art,/hardwareConcurrency/);
   assert.doesNotMatch(art,/effectiveType/);
-  assert.match(art,/\.bg::before\{animation:none!important;opacity:\.3\}/);
-  assert.match(art,/\.bg>i\{display:none!important\}/);
+  assert.match(art,/\.bg::before\{[^}]*opacity:\.28\}/);
   assert.match(art,/\.scene\.vid #fx/);
-  assert.match(art,/@keyframes solar-breath/);
 });
 test('cabinet uses the same branded styling and pauses hidden landing video',()=>{
   const html=file('apps/web/public/index.html');

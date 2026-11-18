@@ -41,7 +41,21 @@ test('two configured payment providers retain independent currencies', () => {
   assert.deepEqual(selectPaymentChannel('external_web', 'prodamus'), {
     allowed: true, provider: 'prodamus', currency: 'RUB',
   });
+  assert.deepEqual(selectPaymentChannel('external_web', 'yookassa'), {
+    allowed: true, provider: 'yookassa', currency: 'RUB',
+  });
   validatePricedPlan(plan);
+  validatePricedPlan({
+    planId: 'bundle_30d_3device',
+    product: 'bundle',
+    title: 'Экосистема «3 в 1» · 30 дней',
+    rubMinor: 39900,
+    stars: null,
+    durationSeconds: 30 * 86400,
+    deviceLimit: 3,
+    dnsQuotaBytes: null,
+    dnsQuotaQueriesPer30d: 1000000n,
+  });
   assert.throws(() => validatePricedPlan({ ...plan, stars: 0 }));
 });
 

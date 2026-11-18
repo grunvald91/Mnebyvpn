@@ -120,7 +120,7 @@ test('checkout is a separate MNEBYVPN review, no provider request before confirm
   b.map.get('journey-buy').handlers.get('click')?.();
   assert.equal(b.map.get('journey-order').hidden,false);
   assert.equal(b.map.get('journey-landing').hidden,true);
-  assert.equal(b.map.get('journey-order-period').textContent,'VPN · 30 дней');
+  assert.equal(b.map.get('journey-order-period').textContent,'VPN Лайт · 30 дней');
   assert.equal(b.map.get('journey-order-email').textContent,'verified@example.com');
   assert.equal(b.actions.purchase,0);
   b.map.get('journey-order-pay').handlers.get('click')?.();

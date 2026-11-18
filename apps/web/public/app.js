@@ -2,15 +2,15 @@
 const byId = id => document.getElementById(id);
 const text = (id, value) => { byId(id).textContent = String(value); };
 const state = {
-  product: 'vpn', days: 15, plans: [], checkoutEnabled: false, loginEnabled:false,
+  product: 'bundle', days: 30, plans: [], checkoutEnabled: false, loginEnabled:false,
   loggedIn: false, csrf: '', busy: false, requestId: null, trialOffers: [],
   inviteToken: null, refreshing: false, renewalTargetId: null,
   telegramLoginEnabled:false,emailLoginEnabled:false,emailLinkMode:false,
   trialStatus:'NONE',guestSubscriptionUrl:null,setupLoading:false,
   purchaseIntent:null,telegramProxyBonusEnabled:false,appleDnsProfileEnabled:false,
-  dnsPreviewOffers:[],
+  personalDnsEnabled:false,paymentProvider:'yookassa',
 };
-const productNames = { vpn:'VPN', smart_dns:'Smart DNS', bundle:'VPN + Smart DNS' };
+const productNames = { vpn:'VPN Лайт', smart_dns:'Smart Доступ', bundle:'Экосистема «3 в 1»' };
 const stateNames = {
   ACTIVE:'Активен', PAID_PENDING_PROVISIONING:'Подключается',
   PENDING_PAYMENT:'Ожидает оплаты', PROVISIONING_FAILED:'Ошибка подключения',
@@ -73,12 +73,11 @@ async function api(url, options) {
   return data;
 }
 function validOfferDays(product,days){
-  if(product==='smart_dns')return [14,30,60,90].includes(days);
-  return ['vpn','bundle'].includes(product)&&[15,30,60,90].includes(days);
+  return ['vpn','smart_dns','bundle'].includes(product)&&[15,30,60,90].includes(days);
 }
 function setSelection(product, days) {
   if (!Object.hasOwn(productNames,product))return;
-  if(!validOfferDays(product,days))days=product==='vpn'?15:30;
+  if(!validOfferDays(product,days))days=30;
   if (product !== state.product || days !== state.days) {
     state.requestId = null;showPaymentLink(null);checkoutError('');
   }
@@ -94,46 +93,52 @@ function setSelection(product, days) {
   });
   renderPlan();
 }
+function formatDnsQuota(plan) {
+  const queries = Number(plan?.dnsQuotaQueriesPer30d || 1000000);
+  return 'до ' + queries.toLocaleString('ru-RU') + ' DNS-запросов / 30 д';
+}
 function renderPlan() {
   const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
-  const preview=state.product==='smart_dns'?
-    state.dnsPreviewOffers.find(p=>p.days===state.days):null;
   const webCheckout=Boolean(plan&&state.checkoutEnabled);
-  const telegramChannel=state.product!=='vpn'&&!webCheckout;
   text('selected-plan-name',plan?.title||productNames[state.product]+' · '+state.days+' дней');
   text('selected-duration',state.days+' дней');
-  text('selected-quota',state.product==='vpn'?'1 устройство':
-    state.product==='smart_dns'?'1 000 000 DNS-запросов / 30 дней':
-    plan?.dnsQuotaBytes?fmtBytes(plan.dnsQuotaBytes):'Уточняется');
-  text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):
-    preview?preview.stars+' ⭐':'—');
-  text('price-unit',plan?.rubMinor?'₽ за период':preview?'Telegram Stars':'Цена не опубликована');
+  const devices=plan?.deviceLimit||(state.product==='bundle'?3:1);
+  text('selected-quota',state.product==='vpn'
+    ? 'VPN (' + devices + ' устройство)'
+    : state.product==='smart_dns'
+      ? 'Smart DNS (' + formatDnsQuota(plan) + ') + Telegram-прокси'
+      : 'Smart DNS + Telegram-прокси + VPN (до ' + devices + ' устройств)');
+  text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):'—');
+  text('price-unit',plan?.rubMinor?'₽ за период':'Цена не опубликована');
   document.querySelectorAll('[data-days]').forEach(button=>{
     button.hidden=!validOfferDays(state.product,Number(button.dataset.days));
   });
   byId('cancel-renewal-button').classList.toggle('hidden',!state.renewalTargetId);
   text('price-description',plan?(state.renewalTargetId?
     'Срок прибавится к выбранному доступу после подтверждения оплаты.':
-    'Новая покупка создаёт отдельный доступ. Для продления используйте кнопку в кабинете.'):
-    preview?'Подготовленный тариф Telegram Stars; наличие оплаты проверяется в боте.':
+    state.product==='bundle'
+      ? '90% времени сайты работают через Smart DNS и Telegram-прокси; VPN до 3 устройств не конфликтует с ними.'
+      : state.product==='smart_dns'
+        ? 'Умная маршрутизация сайтов + автоматическая выдача Telegram-прокси и профиля Apple/Android.'
+        : 'Базовый защищённый VPN-туннель на 1 устройство.'):
     'Цена пока не опубликована.');
   const buy=byId('buy-button');
-  buy.disabled=state.busy||(!telegramChannel&&!webCheckout);
+  buy.disabled=state.busy||!webCheckout;
   buy.textContent=state.busy?'Создаём заказ…':
-    telegramChannel?(state.product==='smart_dns'?'Открыть тарифы DNS в Telegram':'Уточнить комплект в Telegram'):
+    !plan?'Тариф недоступен':
+    !state.checkoutEnabled?'Оплата подключается':
     !state.loggedIn?'Войти для оплаты':state.renewalTargetId?'К оплате продления':'Перейти к оплате';
   const trial=byId('trial-button');
-  const trialAvailable=state.product==='vpn'&&state.trialOffers.includes('vpn')&&state.loginEnabled;
+  const trialAvailable=state.trialOffers.includes('vpn')&&state.loginEnabled;
   trial.disabled=!trialAvailable||state.busy;
   trial.textContent=state.busy?'Проверяем заявку…':
     !state.loginEnabled?'Бесплатный доступ временно недоступен':
-    trialAvailable?(state.loggedIn?'🎁 Получить 24 часа бесплатно':'Войти и получить 24 часа бесплатно'):
+    trialAvailable?(state.loggedIn?'🎁 Получить 24 часа VPN бесплатно':'Войти и получить 24 часа VPN бесплатно'):
     'Бесплатный доступ временно недоступен';
-  text('checkout-hint',telegramChannel?
-    'Ссылка открывает Telegram-бот. На сайте пока нет рублёвых DNS-тарифов; способы оплаты проверяются ботом.':
+  text('checkout-hint',
     !plan?'Неопубликованные тарифы не продаются.':
-    !state.checkoutEnabled?'Онлайн-оплата временно недоступна.':
-    'Доступ выдаётся только после проверки оплаты сервером.');
+    !state.checkoutEnabled?'Онлайн-оплата (ЮKassa) подключается. Платёжные ключи ещё не добавлены.':
+    'Разовая оплата через ЮKassa без автосписаний. Доступ выдаётся после подтверждения сервером.');
 }
 function node(tag, cls, content) {
   const el=document.createElement(tag);
@@ -146,7 +151,61 @@ function statusLabel(access) {
   return stateNames[access.state] || access.state;
 }
 
-async function downloadAppleDnsProfile(entitlementId, button){
+function triggerMobileconfigDownload(xml){
+  const blob=new Blob([xml],{type:'application/x-apple-aspen-config'});
+  if(blob.size<200||blob.size>32768)throw Error('DNS_PROFILE_UNAVAILABLE');
+  const url=URL.createObjectURL(blob);
+  const link=node('a');
+  link.href=url;
+  link.download='MNEBYDNS-Apple.mobileconfig';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+  return url;
+}
+function renderPersonalDnsBox(item,hostname,xml){
+  const previous=item.querySelector('.dns-personal-credentials');
+  if(previous)previous.remove();
+  const box=node('section','dns-personal-credentials');
+  box.append(node('h4','','Персональный Smart DNS готов'));
+  if(xml){
+    const dl=node('a','button button-primary setup-button','Скачать профиль Apple (.mobileconfig)');
+    const blob=new Blob([xml],{type:'application/x-apple-aspen-config'});
+    const url=URL.createObjectURL(blob);
+    dl.href=url;
+    dl.download='MNEBYDNS-Apple.mobileconfig';
+    box.append(dl);
+    box.append(node('p','',
+      'Apple (iPhone, iPad, Mac): скачайте файл и откройте Настройки → Профиль загружен (или на Mac — Системные настройки → Основные → Управление устройством).'));
+  }
+  if(hostname){
+    const row=node('div','journey-copy-field');
+    const input=node('input');
+    input.type='text';
+    input.readOnly=true;
+    input.value=hostname;
+    input.setAttribute('aria-label','Личный адрес Private DNS (DoT)');
+    const copyBtn=node('button','','Копировать DoT');
+    copyBtn.type='button';
+    copyBtn.addEventListener('click',async()=>{
+      try{
+        await navigator.clipboard.writeText(hostname);
+        toast('Персональный DoT-адрес скопирован.');
+      }catch{
+        input.focus();input.select();
+        toast('Скопируйте выделенный DoT-адрес.');
+      }
+    });
+    row.append(input,copyBtn);
+    box.append(node('h4','','Android и роутер (Private DNS / DoT)'));
+    box.append(row);
+    box.append(node('p','',
+      'Android 9+: Настройки → Сеть и интернет → Персональный DNS-сервер → Имя хоста провайдера → вставьте адрес выше. Включать VPN постоянно не нужно.'));
+  }
+  item.append(box);
+}
+async function downloadAppleDnsProfile(entitlementId, button, item){
   if(!state.loggedIn||button.disabled)return;
   button.disabled=true;
   try{
@@ -158,33 +217,41 @@ async function downloadAppleDnsProfile(entitlementId, button){
         throw Error('DNS_PROFILE_UNAVAILABLE');
       const confirmed=window.confirm(
         'Персональный DNS-профиль уже выдавался. В целях безопасности прежний адрес не хранится. '+
-        'Для скачивания нового файла придётся заменить DNS-адрес: старый профиль перестанет работать '+
+        'Для выпуска нового профиля и DoT-адреса придётся заменить прежний: старая конфигурация перестанет работать '+
         'на всех устройствах. Продолжить?');
       if(!confirmed)return;
       action='rotate';
     }
-    const response=await fetch('/api/dns/apple/profile',{
+    const payload=JSON.stringify({action,entitlementId,
+      ...(action==='rotate'?{expectedRevision:status.revision}:{})});
+    const reqInit={
       method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
       headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
-      body:JSON.stringify({action,entitlementId,
-        ...(action==='rotate'?{expectedRevision:status.revision}:{})}),
-    });
+      body:payload,
+    };
+    const combined=await fetch('/api/dns/personal/credentials',reqInit);
+    if(combined.ok){
+      const creds=await combined.json();
+      if(creds?.mobileconfig)triggerMobileconfigDownload(creds.mobileconfig);
+      if(item&&(creds?.hostname||creds?.mobileconfig))
+        renderPersonalDnsBox(item,creds.hostname||'',creds.mobileconfig||'');
+      toast('Smart DNS создан: профиль .mobileconfig загружен, адрес DoT показан в карточке.');
+      return;
+    }
+    if(combined.status!==404){
+      const problem=await combined.json().catch(()=>({code:'DNS_PROFILE_UNAVAILABLE'}));
+      throw Error(problem.code||'DNS_PROFILE_UNAVAILABLE');
+    }
+    const response=await fetch('/api/dns/apple/profile',reqInit);
     if(!response.ok){
       const problem=await response.json().catch(()=>({code:'DNS_PROFILE_UNAVAILABLE'}));
       throw Error(problem.code||'DNS_PROFILE_UNAVAILABLE');
     }
     if(!(response.headers.get('content-type')||'').includes('application/x-apple-aspen-config'))
       throw Error('DNS_PROFILE_UNAVAILABLE');
-    const data=await response.blob();
-    if(data.size<200||data.size>32768)throw Error('DNS_PROFILE_UNAVAILABLE');
-    const url=URL.createObjectURL(data);
-    const link=node('a');
-    link.href=url;
-    link.download='MNEBYDNS-Apple.mobileconfig';
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),60000);
+    const xml=await response.text();
+    triggerMobileconfigDownload(xml);
+    if(item)renderPersonalDnsBox(item,'',xml);
     toast('Профиль создан. Сохраните файл. На iPhone/iPad откройте Настройки → Профиль загружен; на Mac — Системные настройки → Основные → Управление устройством.');
   }catch(error){
     const messages={
@@ -192,9 +259,9 @@ async function downloadAppleDnsProfile(entitlementId, button){
       DNS_PROFILE_REVISION_CHANGED:'DNS-адрес уже изменён на другом устройстве. Обновите страницу.',
       DNS_ACCESS_NOT_ACTIVE:'DNS-подписка неактивна или оплата не подтверждена.',
       DNS_ACCESS_REVOKED:'Этот DNS-доступ отозван.',
-      APPLE_DNS_PROFILE_NOT_READY:'Выдача Apple-профилей пока не включена.',
+      APPLE_DNS_PROFILE_NOT_READY:'Выдача профилей Smart DNS пока не включена.',
     };
-    toast(messages[error.message]||'Не удалось скачать профиль DNS. Повторите попытку или обратитесь в поддержку.');
+    toast(messages[error.message]||'Не удалось получить профиль Smart DNS. Повторите попытку или обратитесь в поддержку.');
   }finally{button.disabled=false;}
 }
 
@@ -282,8 +349,12 @@ function renderAccess(accesses) {
           : 'Срок начнётся после подтверждённой активации.';
     item.append(top,node('p','',accessDetail));
     if (a.product==='smart_dns') {
-      item.append(node('p','',a.quotaLimitBytes?
-        'Пакет DNS: '+fmtBytes(a.quotaLimitBytes):'DNS-квота пока не установлена'));
+      const dnsCap=a.dnsQueryQuotaPer30d
+        ? 'Пакет Smart DNS: до ' + Number(a.dnsQueryQuotaPer30d).toLocaleString('ru-RU') + ' запросов / 30 дн'
+        : a.quotaLimitBytes
+          ? 'Пакет DNS: ' + fmtBytes(a.quotaLimitBytes)
+          : 'DNS-квота пока не установлена';
+      item.append(node('p','',dnsCap));
       if (a.meteringVerified && a.quotaUsedBytes!==null && a.quotaRemainingBytes!==null) {
         const used=safeBigInt(a.quotaUsedBytes),limit=safeBigInt(a.quotaLimitBytes);
         const pct=(used!==null && limit!==null && limit>0n)?
@@ -299,15 +370,16 @@ function renderAccess(accesses) {
         box.append(track,totals);item.append(box);
       } else {
         item.append(node('div','usage-unavailable',
-          'Учёт расхода DNS пока не подтверждён. Использовано / осталось: нет достоверных данных.'));
+          'Личный учёт расхода DNS-запросов включается сервером после подключения.'));
       }
     }
     if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
-       a.secondsRemaining!==null&&a.secondsRemaining>0&&state.appleDnsProfileEnabled){
-      const apple=node('button','button button-secondary setup-button','Скачать профиль iPhone / iPad / Mac');
+       a.secondsRemaining!==null&&a.secondsRemaining>0&&
+       (state.personalDnsEnabled||state.appleDnsProfileEnabled)){
+      const apple=node('button','button button-secondary setup-button','Скачать профиль Apple (.mobileconfig) и DoT');
       apple.type='button';
-      apple.addEventListener('click',()=>downloadAppleDnsProfile(a.id,apple));
-      item.append(apple,node('p','','Личный файл .mobileconfig. После загрузки сохраните его в безопасном месте. Повторный выпуск заменит адрес на всех устройствах.'));
+      apple.addEventListener('click',()=>downloadAppleDnsProfile(a.id,apple,item));
+      item.append(apple,node('p','','Персональный конфиг для iPhone / iPad / macOS и DoT-адрес для Android и роутера. Повторный выпуск заменит прежний адрес на всех устройствах.'));
     }
     if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
        a.secondsRemaining!==null&&a.secondsRemaining>0&&state.telegramProxyBonusEnabled){
@@ -374,37 +446,75 @@ function renderPurchaseResult(payload) {
     notice.classList.add('hidden');
     return;
   }
-  const access=(payload.access||[]).find(a=>
-    a.product===order.product &&
+  const accesses=(payload.access||[]).filter(a=>
+    (order.product==='bundle'?(a.product==='vpn'||a.product==='smart_dns'):a.product===order.product) &&
     (a.sourceOrderId===order.id ||
       (intent.renewalTargetId && a.id===intent.renewalTargetId)));
+  const vpnAccess=accesses.find(a=>a.product==='vpn'&&a.state==='ACTIVE'&&a.secondsRemaining>0);
+  const dnsAccess=accesses.find(a=>a.product==='smart_dns'&&a.state==='ACTIVE'&&a.secondsRemaining>0);
   const verified=order.state==='PAID';
-  const ready=verified&&access?.state==='ACTIVE'&&access.secondsRemaining>0&&
-    (order.product==='vpn'||(order.product==='smart_dns'&&state.appleDnsProfileEnabled));
+  const dnsReady=Boolean(dnsAccess&&(state.personalDnsEnabled||state.appleDnsProfileEnabled));
+  const ready=verified && (
+    order.product==='vpn'?Boolean(vpnAccess):
+    order.product==='smart_dns'?dnsReady:
+    Boolean(vpnAccess||dnsReady)
+  );
   notice.classList.remove('hidden');
   text('purchase-result-title',!verified?
     (order.state==='PENDING'?'⏳ Проверяем оплату':
       'Состояние заказа: '+(stateNames[order.state]||order.state)):
-    ready?(order.product==='smart_dns'?'✅ Ваш Smart DNS активен!':'✅ Ваш VPN готов!'):'✅ Оплата подтверждена');
+    ready?(order.product==='smart_dns'?'✅ Ваш Smart Доступ активен!':
+      order.product==='bundle'?'✅ Экосистема «3 в 1» активна!':'✅ Ваш VPN готов!'):'✅ Оплата подтверждена');
   text('purchase-result-text',!verified?
     'Пока нет подтверждения оплаты. Если деньги списаны, не оплачивайте повторно — проверьте статус или напишите в поддержку.':
-    ready?(order.product==='smart_dns'?'Скачайте персональный профиль для iPhone, iPad или Mac. Telegram-прокси также доступен в разделе подписки после проверки его выдачи.':
+    ready?(order.product==='smart_dns'?'Скачайте профиль Apple (.mobileconfig), скопируйте DoT-адрес для Android/роутера и подключите Telegram-прокси в карточке подписки ниже.':
+      order.product==='bundle'?'Подключите VPN (до 3 устройств) и откройте Smart DNS + Telegram-прокси в карточках доступа ниже.':
       'Подключите VPN в несколько нажатий. Выберите приложение для своего устройства.'):
     'Деньги получены. Доступ появится после подтверждения серверной активации.');
   text('purchase-result-details',
     (order.title||productNames[order.product]||'VPN')+
     ' · '+(order.currency==='RUB'?formatMoney(order.amountMinor):String(order.amountMinor)+' ⭐'));
   const connect=byId('purchase-connect');
-  connect.classList.toggle('hidden',!ready);
-  connect.dataset.entitlementId=ready?access.id:'';
-  connect.dataset.product=ready?order.product:'';
-  connect.textContent=ready&&order.product==='smart_dns'?'Скачать профиль Apple':'🔌 Подключить VPN';
+  const primaryEntitlement=vpnAccess||dnsAccess;
+  connect.classList.toggle('hidden',!ready||!primaryEntitlement);
+  connect.dataset.entitlementId=ready&&primaryEntitlement?primaryEntitlement.id:'';
+  connect.dataset.product=ready&&primaryEntitlement?primaryEntitlement.product:'';
+  connect.textContent=ready&&primaryEntitlement?.product==='smart_dns'
+    ? 'Скачать профиль Smart DNS'
+    : '🔌 Подключить VPN';
   byId('purchase-refresh').classList.toggle('hidden',ready);
+}
+let lastVerifyAt=0;
+let verifyInFlight=false;
+async function verifyPendingOrderIfNeeded(payload){
+  if(!state.loggedIn||!state.csrf||verifyInFlight)return;
+  const intent=state.purchaseIntent||readPurchaseIntent();
+  const url=new URL(location.href);
+  const returned=['returned','return'].includes(url.searchParams.get('payment')||'') ||
+    url.pathname==='/payment/success' || url.pathname==='/payment/return';
+  const candidate=(payload.orders||[]).find(o=>
+    o.state==='PENDING'&&o.provider==='yookassa'&&(!intent||o.id===intent.orderId)) ||
+    (returned?(payload.orders||[]).find(o=>o.state==='PENDING'&&o.provider==='yookassa'):null);
+  if(!candidate)return;
+  const now=Date.now();
+  if(now-lastVerifyAt<4500)return;
+  lastVerifyAt=now;
+  verifyInFlight=true;
+  try{
+    const res=await api('/api/orders/verify',{method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
+      body:JSON.stringify({orderId:candidate.id})});
+    if(res?.orderState==='PAID'||res?.status==='PAID'){
+      void refresh();
+    }
+  }catch{ /* Webhook or polling refresh will continue normally. */ }
+  finally{verifyInFlight=false;}
 }
 function renderAccount(payload) {
   state.loggedIn=true;state.csrf=payload.csrf;
   state.telegramProxyBonusEnabled=payload.telegramProxyBonusEnabled===true;
   state.appleDnsProfileEnabled=payload.appleDnsProfileEnabled===true;
+  state.personalDnsEnabled=payload.personalDnsEnabled===true||payload.appleDnsProfileEnabled===true;
   byId('login-prompt').classList.add('hidden');
   byId('account-content').classList.remove('hidden');
   byId('logout-button').classList.remove('hidden');
@@ -467,6 +577,7 @@ function renderLoggedOut() {
   state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;
   state.telegramProxyBonusEnabled=false;
   state.appleDnsProfileEnabled=false;
+  state.personalDnsEnabled=false;
   byId('guest-trial-card').classList.add('hidden');
   byId('purchase-result').classList.add('hidden');
   byId('link-email').classList.add('hidden');
@@ -486,6 +597,7 @@ async function refresh() {
   try {
     const data=await api('/api/me');
     renderAccount(data);
+    void verifyPendingOrderIfNeeded(data);
   } catch(error) {
     if(error.status===401) {
       renderLoggedOut();return;
@@ -516,9 +628,7 @@ function applyPublicCatalog(data){
   state.telegramLoginEnabled=data.telegramLoginEnabled===true;
   state.emailLoginEnabled=data.emailLoginEnabled===true;
   state.trialOffers=Array.isArray(data.trialOffers)?data.trialOffers:[];
-  state.dnsPreviewOffers=Array.isArray(data.dnsPreviewOffers)?
-    data.dnsPreviewOffers.filter(p=>Number.isSafeInteger(p.days)&&
-      [14,30,60,90].includes(p.days)&&Number.isSafeInteger(p.stars)&&p.stars>0):[];
+  state.paymentProvider=data.paymentProvider==='prodamus'?'prodamus':'yookassa';
   if(!state.loggedIn)syncLoginLinks();
   renderPlan();
 }
@@ -612,10 +722,6 @@ function applyLinkOptions() {
 async function purchase() {
   const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
   if(state.busy)return;
-  if((state.product==='smart_dns'||state.product==='bundle')&&
-     (!plan||!state.checkoutEnabled)){
-    location.assign('https://t.me/MNEBYVPN_bot');return;
-  }
   if(!plan||!state.checkoutEnabled){
     checkoutError('Оплата этого тарифа пока недоступна.');return;
   }
@@ -638,8 +744,14 @@ async function purchase() {
       body:JSON.stringify(payload),
     });
     const target=new URL(result.paymentUrl);
-    if(target.protocol!=='https:' || !(target.hostname==='payform.ru' ||
-      target.hostname.endsWith('.payform.ru')))throw new Error('UNSAFE_PAYMENT_LINK');
+    const host=target.hostname;
+    const isYookassa=host==='yookassa.ru'||host.endsWith('.yookassa.ru')||
+      host==='yoomoney.ru'||host.endsWith('.yoomoney.ru');
+    const isFallbackPay=state.paymentProvider==='prodamus' &&
+      (host==='payform.ru'||host.endsWith('.payform.ru'));
+    const isLocalTest=location.hostname==='127.0.0.1'&&host==='127.0.0.1';
+    const safeScheme=target.protocol==='https:'||(isLocalTest&&target.protocol==='http:');
+    if(!safeScheme||!(isYookassa||isFallbackPay||isLocalTest))throw new Error('UNSAFE_PAYMENT_LINK');
     // A visible, user-clickable fallback matters for WebViews that refuse
     // programmatic navigation after an asynchronous request.
     showPaymentLink(target.toString());
@@ -666,7 +778,7 @@ async function purchase() {
 }
 async function claimTrial(){
   if(state.busy)return;
-  if(state.product!=='vpn'||!state.trialOffers.includes('vpn')){
+  if(!state.trialOffers.includes('vpn')){
     toast('Бесплатный доступ сейчас недоступен.');return;
   }
   if(!state.loggedIn){
@@ -915,11 +1027,14 @@ refreshSupportTicket();
 setInterval(()=>{if(document.visibilityState==='visible')refreshSupportTicket();},15000);
 byId('buy-button').addEventListener('click',purchase);
 byId('trial-button').addEventListener('click',claimTrial);
-byId('purchase-refresh').addEventListener('click',refresh);
+byId('purchase-refresh').addEventListener('click',()=>{
+  lastVerifyAt=0;
+  void refresh();
+});
 byId('purchase-connect').addEventListener('click',()=>{
   const id=byId('purchase-connect').dataset.entitlementId;
   if(id&&byId('purchase-connect').dataset.product==='smart_dns')
-    downloadAppleDnsProfile(id,byId('purchase-connect'));
+    downloadAppleDnsProfile(id,byId('purchase-connect'),byId('access-list'));
   else if(id)loadSubscription(id);
 });
 byId('guest-copy-subscription').addEventListener('click',copyGuestSubscription);

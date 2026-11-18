@@ -13,7 +13,12 @@ import {
 } from './prodamus.ts';
 import {
   PgBillingStore, prodamusOrderFromDB, starsOrderFromDB, starsPaymentHash, pricedPlanForOrder,
+  yookassaOrderFromDB,
 } from './store.ts';
+import {
+  parseYookassaNotification, verifyYookassaPaymentObject, verifyYookassaRefundObject,
+  type YookassaTransport,
+} from './yookassa.ts';
 
 export interface TelegramApi {
   call(method: string, params: Record<string, unknown>): Promise<unknown>;
@@ -345,4 +350,57 @@ export async function handleProdamusDelivery(
     return {statusCode:200,text:'ALREADY_PROCESSED'};
   // Never acknowledge a provider capture that wasn't durably credited.
   return {statusCode:503,text:'SETTLEMENT_NOT_CONFIRMED'};
+}
+
+/**
+ * Verifies every incoming YooKassa notification against YooKassa's API
+ * before crediting or refunding access. Never trusts unauthenticated JSON alone.
+ */
+export async function handleYookassaDelivery(
+  rawBody: unknown,
+  db: Pick<PgBillingStore, 'order' | 'findOrderByYookassaPaymentId' | 'settleVerified' | 'applyVerifiedRefund'>,
+  transport: YookassaTransport,
+): Promise<{ statusCode: number; text: string }> {
+  const parsed = parseYookassaNotification(rawBody);
+  if (!parsed) return { statusCode: 400, text: 'INVALID_NOTIFICATION' };
+
+  if (parsed.event === 'refund.succeeded') {
+    const refundObj = await transport.getRefund(parsed.objectId);
+    const paymentId = typeof refundObj.payment_id === 'string' ? refundObj.payment_id : '';
+    const order = (parsed.metadataOrderId ? await db.order(parsed.metadataOrderId) : null)
+      ?? (paymentId ? await db.findOrderByYookassaPaymentId(paymentId) : null);
+    const verified = verifyYookassaRefundObject(
+      refundObj,
+      order?.provider === 'yookassa' ? yookassaOrderFromDB(order) : null,
+    );
+    if (!verified.ok) {
+      return { statusCode: verified.reason === 'ORDER_MISMATCH' ? 409 : 400, text: verified.reason };
+    }
+    const outcome = await db.applyVerifiedRefund(verified.refund);
+    if (outcome === 'APPLIED') return { statusCode: 200, text: 'REFUND_PROCESSED' };
+    if (outcome === 'DUPLICATE_EVENT' || outcome === 'DUPLICATE_REFUND') {
+      return { statusCode: 200, text: 'REFUND_ALREADY_PROCESSED' };
+    }
+    return { statusCode: 503, text: 'REFUND_NOT_CONFIRMED' };
+  }
+
+  const paymentObj = await transport.getPayment(parsed.objectId);
+  if (parsed.event !== 'payment.succeeded') {
+    return { statusCode: 200, text: 'EVENT_ACCEPTED_NO_PAYMENT' };
+  }
+  const metaOrderId = (paymentObj.metadata as Record<string, unknown> | undefined)?.order_id;
+  const resolvedOrderId = typeof metaOrderId === 'string' ? metaOrderId : parsed.metadataOrderId;
+  const order = (resolvedOrderId ? await db.order(resolvedOrderId) : null)
+    ?? await db.findOrderByYookassaPaymentId(parsed.objectId);
+  const checked = verifyYookassaPaymentObject(
+    paymentObj,
+    order?.provider === 'yookassa' ? yookassaOrderFromDB(order) : null,
+  );
+  if (!checked.ok) return { statusCode: 400, text: checked.reason };
+  const outcome = await db.settleVerified(checked.capture);
+  if (outcome === 'APPLIED') return { statusCode: 200, text: 'OK' };
+  if (outcome === 'DUPLICATE_EVENT' || outcome === 'DUPLICATE_CAPTURE') {
+    return { statusCode: 200, text: 'ALREADY_PROCESSED' };
+  }
+  return { statusCode: 503, text: 'SETTLEMENT_NOT_CONFIRMED' };
 }

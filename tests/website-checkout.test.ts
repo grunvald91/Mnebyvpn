@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  validateProdamusShortLink,prepareWebsiteProdamusCheckout
+  validateProdamusShortLink,prepareWebsiteProdamusCheckout,prepareWebsiteYookassaCheckout
 } from '../packages/billing/src/website-checkout.ts';
 import type {PgBillingStore,OrderRecord} from '../packages/billing/src/store.ts';
 import {buildProdamusLinkRequest} from '../packages/billing/src/prodamus.ts';
@@ -74,4 +74,43 @@ test('merchant and notification endpoints remain fragment-free',()=>{
      /HTTPS URL required/);
  }
  assert.doesNotThrow(()=>buildProdamusLinkRequest(order,'VPN 15 days',pd));
+});
+
+test('website YooKassa checkout prepares payment with verified email and binds paymentId to order', async () => {
+  const order: OrderRecord = {
+    id, accountId: aid, product: 'bundle', provider: 'yookassa', currency: 'RUB',
+    amount: 39900, planId: 'bundle_30d_3device', planTitle: 'Экосистема «3 в 1» · 30 дней',
+    durationSeconds: 30 * 86400, dnsQuotaBytes: null, dnsQuotaQueriesPer30d: 1000000n,
+    state: 'PENDING', expiresAt: new Date('2026-12-01'), telegramUserId: null,
+  };
+  let recorded: [string, string] | null = null;
+  const db = {
+    createWebsiteOrder: async () => order,
+    recordYookassaPayment: async (oId: string, pId: string) => { recorded = [oId, pId]; },
+    yookassaPaymentIdForOrder: async () => null,
+  };
+  const paymentId = '2d8a1f00-000f-5000-8000-999999999999';
+  const res = await prepareWebsiteYookassaCheckout(
+    { accountId: aid, email: 'buyer@example.com', planId: 'bundle_30d_3device', requestId: 'req-yk-1' },
+    db,
+    { shopId: '123456', secretKey: 'secret_key_for_test_yookassa', returnUrl: 'https://mnebyvpn.site/payment/return' },
+    {
+      createPayment: async (_idem, body) => {
+        assert.deepEqual(body.amount, { value: '399.00', currency: 'RUB' });
+        return {
+          id: paymentId,
+          status: 'pending',
+          paid: false,
+          amount: { value: '399.00', currency: 'RUB' },
+          confirmation: { type: 'redirect', confirmation_url: 'https://yoomoney.ru/checkout/payments/v2/contract?orderId=1' },
+          metadata: { order_id: id },
+        };
+      },
+      getPayment: async () => ({}),
+      getRefund: async () => ({}),
+    },
+  );
+  assert.equal(res.paymentId, paymentId);
+  assert.deepEqual(recorded, [id, paymentId]);
+  assert.match(res.paymentUrl, /^https:\/\/yoomoney\.ru\//);
 });

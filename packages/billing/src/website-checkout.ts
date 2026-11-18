@@ -1,12 +1,16 @@
 /**
- * Separate WEBSITE-only Prodamus checkout, not a payment link from Telegram.
+ * Separate WEBSITE-only checkout, not a payment link from Telegram.
  * Telegram Bot Platform 6.2 requires Stars for digital services inside bots.
  *
  * Do not add an unauthenticated public HTTP route accepting accountId. The
  * verified website session resolves accountId BEFORE calling this module.
  */
-import { PgBillingStore,prodamusOrderFromDB } from './store.ts';
-import {buildProdamusLinkRequest,type ProdamusConfig} from './prodamus.ts';
+import { PgBillingStore, prodamusOrderFromDB, yookassaOrderFromDB } from './store.ts';
+import { buildProdamusLinkRequest, type ProdamusConfig } from './prodamus.ts';
+import {
+  buildYookassaPaymentRequest, validateYookassaConfirmationUrl,
+  type YookassaConfig, type YookassaTransport,
+} from './yookassa.ts';
 
 export interface TrustedWebsiteCheckout {
   /** Resolved by an actual authenticated website session, not an HTTP body. */
@@ -40,7 +44,7 @@ export class OfflinePayformLinkTransport implements PayformLinkTransport {
     throw new Error('Live Prodamus is disabled; inject merchant-verified website transport');
   }
 }
-/** For a standalone authenticated HTTPS website checkout ONLY. */
+/** Legacy Prodamus checkout helper retained for offline contract coverage. */
 export async function prepareWebsiteProdamusCheckout(
   authenticated:TrustedWebsiteCheckout,
   db:PgBillingStore,
@@ -49,10 +53,68 @@ export async function prepareWebsiteProdamusCheckout(
 ):Promise<{orderId:string;paymentUrl:string;amountMinor:number}> {
   const order=await db.createWebsiteOrder(
     authenticated.accountId,authenticated.planId,authenticated.requestId,
-    authenticated.inviteToken,authenticated.renewalTargetId);
+    authenticated.inviteToken,authenticated.renewalTargetId,'prodamus');
   const url=buildProdamusLinkRequest(prodamusOrderFromDB(order),order.planTitle,config,authenticated.email);
   const payform=new URL(url);
   if(!approvedHost(payform.hostname))throw new Error('Unapproved configured Prodamus host');
   const result=await transport.getLink(url);
   return {orderId:order.id,paymentUrl:validateProdamusShortLink(result),amountMinor:order.amount};
+}
+
+/** Primary standalone HTTPS website checkout via YooKassa API v3. */
+export async function prepareWebsiteYookassaCheckout(
+  authenticated: TrustedWebsiteCheckout,
+  db: Pick<PgBillingStore, 'createWebsiteOrder' | 'recordYookassaPayment' | 'yookassaPaymentIdForOrder'>,
+  config: YookassaConfig,
+  transport: YookassaTransport,
+  allowTestHost?: string,
+): Promise<{ orderId: string; paymentId: string; paymentUrl: string; amountMinor: number }> {
+  if (!authenticated.email) throw new Error('VERIFIED_EMAIL_REQUIRED');
+  const order = await db.createWebsiteOrder(
+    authenticated.accountId,
+    authenticated.planId,
+    authenticated.requestId,
+    authenticated.inviteToken,
+    authenticated.renewalTargetId,
+    'yookassa',
+  );
+  if (order.state !== 'PENDING') {
+    throw new Error('Order is no longer pending');
+  }
+  const existingId = typeof db.yookassaPaymentIdForOrder === 'function'
+    ? await db.yookassaPaymentIdForOrder(order.id)
+    : null;
+  if (existingId) {
+    const existing = await transport.getPayment(existingId);
+    const confirmation = existing.confirmation as Record<string, unknown> | undefined;
+    if (existing.status === 'pending' && confirmation?.confirmation_url) {
+      return {
+        orderId: order.id,
+        paymentId: existingId,
+        paymentUrl: validateYookassaConfirmationUrl(confirmation.confirmation_url, allowTestHost),
+        amountMinor: order.amount,
+      };
+    }
+  }
+  const payload = buildYookassaPaymentRequest(
+    yookassaOrderFromDB(order),
+    order.planTitle,
+    config,
+    authenticated.email,
+  );
+  const created = await transport.createPayment(order.id, payload);
+  if (typeof created.id !== 'string' || !/^[A-Za-z0-9_-]{10,80}$/.test(created.id)) {
+    throw new Error('PAYMENT_PROVIDER_INVALID_LINK');
+  }
+  const confirmation = created.confirmation as Record<string, unknown> | undefined;
+  const paymentUrl = validateYookassaConfirmationUrl(confirmation?.confirmation_url, allowTestHost);
+  if (typeof db.recordYookassaPayment === 'function') {
+    await db.recordYookassaPayment(order.id, created.id);
+  }
+  return {
+    orderId: order.id,
+    paymentId: created.id,
+    paymentUrl,
+    amountMinor: order.amount,
+  };
 }

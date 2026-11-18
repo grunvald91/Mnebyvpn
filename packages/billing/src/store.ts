@@ -4,6 +4,7 @@ import { planWidgetKey } from '../../telegram-ui/src/widget-104.ts';
 import type { PaymentProvider, PricedPlan } from './channels.ts';
 import type { StarsOrder } from './stars.ts';
 import type { ProdamusOrder } from './prodamus.ts';
+import type { YookassaOrder } from './yookassa.ts';
 
 export type Product = 'vpn' | 'smart_dns' | 'bundle';
 export interface OrderRecord {
@@ -103,11 +104,12 @@ export class PgBillingStore {
    * Do not publish a route that accepts arbitrary accountId as proof of login.
    */
   async createWebsiteOrder(accountId: string, planId: string, requestId: string,
-    inviteToken?:string, renewalTargetId?:string): Promise<OrderRecord> {
+    inviteToken?:string, renewalTargetId?:string,
+    provider:'prodamus'|'yookassa'='prodamus'): Promise<OrderRecord> {
     if (!uuid.test(accountId)) throw new Error('Invalid authenticated account');
     // This MUST be called only by a website backend after its session check.
     // An arbitrary accountId supplied by a browser is NOT authentication.
-    return this.createOrder('prodamus', { accountId }, planId, requestId,inviteToken,undefined,renewalTargetId);
+    return this.createOrder(provider, { accountId }, planId, requestId,inviteToken,undefined,renewalTargetId);
   }
   private async createOrder(
     provider: PaymentProvider,
@@ -177,7 +179,7 @@ export class PgBillingStore {
       if(cap.rows[0].total>=3)throw new Error('PENDING_CHECKOUT_RATE_LIMIT');
       let referralOwner: string | null=null;
       if(inviteToken!==undefined){
-        if(provider!=='telegram_stars' && !(provider==='prodamus' && 'accountId' in who))
+        if(provider!=='telegram_stars' && !((provider==='prodamus'||provider==='yookassa') && 'accountId' in who))
           throw new Error('Referral requires authenticated checkout');
         const invite=await c.query(
           'SELECT referrer_account_id FROM referral_invites WHERE token=$1 AND plan_id=$2',
@@ -192,7 +194,7 @@ export class PgBillingStore {
       if(expectedKey!==undefined && planWidgetKey(mapPlan(p))!==expectedKey)
         throw new Error('OFFER_CHANGED');
       if (renewalTargetId!==undefined) {
-        if (provider!=='prodamus' || !('accountId' in who) || p.product==='bundle')
+        if (!['prodamus','yookassa'].includes(provider) || !('accountId' in who) || p.product==='bundle')
           throw new Error('Unsupported renewal offer');
         // Bind to this authenticated account and matching product. Pending
         // trial reservations without a real activation deadline cannot renew.
@@ -215,9 +217,9 @@ export class PgBillingStore {
       );
       await c.query(
         `INSERT INTO order_terms(order_id,plan_id,plan_title,duration_seconds,
-          dns_quota_bytes,dns_quota_queries_per_30d,expires_at)
-         VALUES($1,$2,$3,$4,$5,$6,clock_timestamp()+interval '1 hour')`,
-        [id, p.id, p.title, p.duration_seconds, p.dns_quota_bytes,p.dns_quota_queries_per_30d]
+          dns_quota_bytes,dns_quota_queries_per_30d,device_limit,expires_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp()+interval '1 hour')`,
+        [id, p.id, p.title, p.duration_seconds, p.dns_quota_bytes,p.dns_quota_queries_per_30d,p.device_limit??1]
       );
       await c.query(
         'INSERT INTO checkout_requests(channel,request_id,order_id) VALUES($1,$2,$3)',
@@ -580,6 +582,35 @@ export class PgBillingStore {
     return rows.map(r=>r.product as Product);
   }
 
+  async recordYookassaPayment(orderId:string,paymentId:string):Promise<void> {
+    if(!uuid.test(orderId)||!/^[A-Za-z0-9_-]{10,80}$/.test(paymentId))
+      throw new Error('Invalid YooKassa payment reference');
+    await this.pool.query(
+      `INSERT INTO yookassa_payments(order_id,payment_id) VALUES($1,$2)
+       ON CONFLICT(order_id) DO NOTHING`,
+      [orderId,paymentId]);
+  }
+  async yookassaPaymentIdForOrder(orderId:string):Promise<string|null> {
+    if(!uuid.test(orderId))return null;
+    const {rows}=await this.pool.query(
+      'SELECT payment_id FROM yookassa_payments WHERE order_id=$1 LIMIT 1',[orderId]);
+    return rows[0]?.payment_id?String(rows[0].payment_id):null;
+  }
+  async findOrderByYookassaPaymentId(paymentId:string):Promise<OrderRecord|null> {
+    if(!/^[A-Za-z0-9_-]{10,80}$/.test(paymentId))return null;
+    const {rows}=await this.pool.query(
+      `SELECT o.id,o.account_id,o.provider,o.currency,o.amount_minor,
+              o.product,o.state,t.plan_id,t.plan_title,t.duration_seconds,
+              t.dns_quota_bytes,t.dns_quota_queries_per_30d,t.expires_at,a.telegram_user_id
+         FROM yookassa_payments y
+         JOIN orders o ON o.id=y.order_id
+         JOIN order_terms t ON t.order_id=o.id
+         JOIN accounts a ON a.id=o.account_id
+        WHERE y.payment_id=$1
+        LIMIT 1`,[paymentId]);
+    return rows.length?mapOrder(rows[0]):null;
+  }
+
   async pendingOutboxForOrder(orderId: string): Promise<number> {
     const {rows} = await this.pool.query(
       `SELECT count(*)::int AS count FROM reconcile_outbox b
@@ -593,7 +624,7 @@ export class PgBillingStore {
 export function pricedPlanForOrder(record:OrderRecord):PricedPlan {
  return {planId:record.planId,title:record.planTitle,product:record.product,
    stars:record.provider==='telegram_stars'?record.amount:null,
-   rubMinor:record.provider==='prodamus'?record.amount:null,
+   rubMinor:(record.provider==='prodamus'||record.provider==='yookassa')?record.amount:null,
    durationSeconds:record.durationSeconds,dnsQuotaBytes:record.dnsQuotaBytes,
    dnsQuotaQueriesPer30d:record.dnsQuotaQueriesPer30d??null};
 }
@@ -607,6 +638,11 @@ export function starsOrderFromDB(record: OrderRecord): StarsOrder {
 export function prodamusOrderFromDB(record: OrderRecord): ProdamusOrder {
   if (record.provider !== 'prodamus' || record.currency !== 'RUB') throw new Error('Not a Prodamus order');
   return {id:record.id,provider:'prodamus',currency:'RUB',
+    amountMinor:record.amount,state:record.state};
+}
+export function yookassaOrderFromDB(record: OrderRecord): YookassaOrder {
+  if (record.provider !== 'yookassa' || record.currency !== 'RUB') throw new Error('Not a YooKassa order');
+  return {id:record.id,provider:'yookassa',currency:'RUB',
     amountMinor:record.amount,state:record.state};
 }
 export function starsPaymentHash(value: unknown): string {

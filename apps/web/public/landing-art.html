@@ -3,916 +3,701 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>MNEBYVPN — VPN без лишних шагов</title>
+<title>MNEBYVPN — Экосистема 3 в 1: Smart DNS, Telegram-прокси и VPN</title>
 <link rel="icon" type="image/webp" href="/brand-avatar.webp">
 <style>
 @property --a{syntax:'<angle>';initial-value:0deg;inherits:false}
-:root{--bg:#04071a;--cy:#19e6ff;--bl:#3b7bff;--vi:#a64dff;--mg:#ff3fd2;--mut:#b9c3e8;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-html{scroll-padding-top:env(safe-area-inset-top,0px);background:var(--bg)}
+:root{
+  --bg:#04071a;--cy:#19e6ff;--bl:#3b7bff;--vi:#a64dff;--mg:#ff3fd2;--mut:#b9c3e8;
+  color-scheme:dark;box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+html,body{height:100%;min-height:100%}
+html{overflow-x:clip;scroll-padding-top:env(safe-area-inset-top,0px);background:var(--bg)}
 *,*::before,*::after{box-sizing:inherit}
-body{margin:0;min-height:100vh;background:var(--bg);color:#fff;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:hidden;-webkit-font-smoothing:antialiased}
-button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0}
+body{margin:0;min-height:100dvh;background:var(--bg);color:#fff;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 a{color:inherit;text-decoration:none}
-/* living background */
-.bg{position:fixed;inset:0;z-index:-2;overflow:hidden;background:radial-gradient(120% 80% at 50% 0,#0a1240,var(--bg) 70%);transform:translate3d(calc(var(--px,0)*-22px),calc(var(--py,0)*-22px),0);transition:transform .6s cubic-bezier(.2,.8,.2,1)}
-.bg::before{content:"";position:absolute;inset:-50%;background:conic-gradient(from 0deg at 50% 40%,transparent,rgba(59,123,255,.22),transparent 28%,rgba(190,70,255,.2),transparent 58%,rgba(25,230,255,.18),transparent 82%);animation:rot 48s linear infinite}
-.bg i{position:absolute;border-radius:50%;filter:blur(72px);mix-blend-mode:screen;opacity:.6;will-change:transform}
-.bg i:nth-child(1){width:62vmax;height:62vmax;left:-18vmax;top:-14vmax;background:radial-gradient(#1a5cff,transparent 66%);animation:d1 21s ease-in-out infinite alternate}
-.bg i:nth-child(2){width:48vmax;height:48vmax;right:-14vmax;top:8vh;background:radial-gradient(#a64dff,transparent 66%);animation:d2 26s ease-in-out infinite alternate}
-.bg i:nth-child(3){width:44vmax;height:44vmax;left:10vw;bottom:-18vmax;background:radial-gradient(#19e6ff,transparent 66%);opacity:.42;animation:d3 24s ease-in-out infinite alternate}
-.bg i:nth-child(4){width:38vmax;height:38vmax;right:6vw;bottom:-12vmax;background:radial-gradient(#ff3fd2,transparent 66%);opacity:.34;animation:d4 29s ease-in-out infinite alternate}
-.bg i:nth-child(5){width:30vmax;height:30vmax;left:38vw;top:30vh;background:radial-gradient(#2a3dff,transparent 66%);opacity:.4;animation:d5 19s ease-in-out infinite alternate}
-@keyframes rot{to{transform:rotate(360deg)}}
-@keyframes d1{to{transform:translate(34vw,20vh) scale(1.3)}}
-@keyframes d2{to{transform:translate(-30vw,26vh) scale(.8)}}
-@keyframes d3{to{transform:translate(26vw,-24vh) scale(1.25)}}
-@keyframes d4{to{transform:translate(-34vw,-18vh) scale(1.2)}}
-@keyframes d5{to{transform:translate(-22vw,-16vh) scale(1.4)}}
-#st{position:fixed;inset:0;z-index:-1;pointer-events:none}
-/* layout */
-.app{position:relative;max-width:480px;margin:0 auto}
-.top{display:flex;align-items:center;justify-content:space-between;gap:8px;height:56px;padding:0 16px;position:relative;z-index:5}
-.logo{display:flex;align-items:center;gap:10px}
-.mark{width:40px;height:40px;border-radius:50%;border:2px solid rgba(120,160,255,.6);background:radial-gradient(circle at 50% 70%,#ffb347 0,#ff6a2e 8%,transparent 20%),radial-gradient(circle at 50% 120%,#2a6bff,#0a1450 60%);box-shadow:0 0 18px rgba(80,140,255,.6);display:grid;place-items:center;font:italic 800 6.5px/1 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:.02em;animation:glow 4s ease-in-out infinite}
-.brand{font:italic 800 21px/1 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:-.01em}
-.brand b{background:linear-gradient(100deg,var(--cy),var(--vi));-webkit-background-clip:text;background-clip:text;color:transparent}
-.pill{padding:8px 18px;border-radius:99px;border:1px solid rgba(140,150,255,.5);background:rgba(15,20,62,.6);font:italic 700 14px/1 Inter,system-ui,Roboto,Arial,sans-serif;transition:transform .3s,box-shadow .3s}
-.pill:hover{transform:translateY(-1px);box-shadow:0 0 18px rgba(120,120,255,.5)}
-.pill.g{border-color:rgba(60,230,255,.9);background:linear-gradient(100deg,rgba(25,230,255,.22),rgba(166,77,255,.3));box-shadow:0 0 16px rgba(60,200,255,.4),inset 0 0 14px rgba(120,100,255,.3)}
-.hero{position:relative;min-height:262px;padding-top:30px;text-align:center}
-.scene{position:absolute;left:0;right:0;top:0;aspect-ratio:941/1672;z-index:0;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,transparent,#000 9%,#000 91%,transparent),linear-gradient(#000 76%,transparent);-webkit-mask-composite:source-in;mask-image:linear-gradient(90deg,transparent,#000 9%,#000 91%,transparent),linear-gradient(#000 76%,transparent);mask-composite:intersect}
-@media(max-width:520px){.scene{-webkit-mask-image:linear-gradient(#000 76%,transparent);mask-image:linear-gradient(#000 76%,transparent)}}
-.pz,.kb,.fg,.fx{position:absolute;inset:0}
+:focus-visible{outline:2px solid var(--cy);outline-offset:3px}
 
-.kb{background:url(/landing-earth.webp) center/100% 100% no-repeat;}
+/* Background layers */
+.bg{position:fixed;inset:0;z-index:-2;overflow:hidden;background:radial-gradient(120% 80% at 50% 0,#0a1240,var(--bg) 70%)}
+.bg::before{content:"";position:absolute;inset:-50%;background:conic-gradient(from 0deg at 50% 40%,transparent,rgba(59,123,255,.22),transparent 28%,rgba(190,70,255,.2),transparent 58%,rgba(25,230,255,.18),transparent 82%);opacity:.28}
+.desk-scene{display:none}
+.desk-poster,.bgv-desktop{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 28%}
+.bgv-desktop{opacity:0;transition:opacity .7s ease}
+.desk-scene.vid .bgv-desktop{opacity:1}
+.desk-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,7,26,.24) 0%,rgba(4,7,26,.12) 34%,rgba(4,7,26,.48) 76%,rgba(4,7,26,.78) 100%),radial-gradient(ellipse 84% 60% at 50% 42%,rgba(4,8,28,.04),rgba(4,7,26,.45) 92%)}
+
+/* Mobile portrait Earth scene */
+.app{position:relative;max-width:480px;min-height:100%;margin:0 auto;display:flex;flex-direction:column;overflow-x:clip;background:radial-gradient(ellipse 95% 54% at 50% 56%,rgba(20,42,109,.34),transparent 80%),linear-gradient(#04071a,#07112e 84%,#04071a)}
+.scene{position:absolute;left:0;right:0;top:0;aspect-ratio:941/1672;z-index:0;pointer-events:none;overflow:hidden;-webkit-mask-image:linear-gradient(#000 0%,#000 90%,transparent 100%);mask-image:linear-gradient(#000 0%,#000 90%,transparent 100%)}
+.pz,.kb,.fg,.fx{position:absolute;inset:0}
+.kb{background:url(/landing-earth.webp) center/100% 100% no-repeat}
 .fx{width:100%;height:100%;overflow:visible}
-.fg{transform:translate3d(calc(var(--px,0)*24px),calc(var(--py,0)*16px),0);transition:transform .6s cubic-bezier(.2,.8,.2,1);filter:drop-shadow(0 0 5px rgba(255,150,50,.85))}
-.sun{position:absolute;left:34%;top:30.2%;width:46%;aspect-ratio:1;margin:-23% 0 0 -23%;mix-blend-mode:screen;background:radial-gradient(circle,rgba(255,238,200,.95) 0,rgba(255,170,60,.55) 8%,rgba(255,110,30,.18) 26%,transparent 52%);animation:pulse 5s ease-in-out infinite}
-.sun::before{content:"";position:absolute;inset:6%;background:conic-gradient(transparent,rgba(255,210,140,.5),transparent 9%,rgba(255,190,100,.35),transparent 24%,rgba(255,210,140,.45),transparent 46%,rgba(255,190,100,.35),transparent 70%,rgba(255,210,140,.4),transparent 88%);-webkit-mask-image:radial-gradient(circle,#000 6%,transparent 60%);mask-image:radial-gradient(circle,#000 6%,transparent 60%);animation:rot 40s linear infinite}
-.hz{position:absolute;left:20%;top:31%;width:44%;height:5%;mix-blend-mode:screen;background:radial-gradient(ellipse,rgba(255,150,60,.5),transparent 68%);animation:hz 9s ease-in-out infinite alternate}
-.gold{position:absolute;left:66%;top:32.6%;width:30%;aspect-ratio:3.5;margin:-4.3% 0 0 -15%;mix-blend-mode:screen;background:radial-gradient(ellipse,rgba(255,190,80,.4),transparent 70%);animation:hz 5s ease-in-out infinite alternate}
-.gh{position:absolute;border-radius:50%;mix-blend-mode:screen;background:radial-gradient(circle,rgba(255,190,110,.5),rgba(255,120,60,.1) 55%,transparent 70%);animation:tw 6s ease-in-out infinite}
 .pl,.rim{fill:none;stroke-linecap:round;stroke-dashoffset:0;animation:run var(--t,3s) linear infinite}
 .pl{stroke:#b6f6ff;stroke-width:3.4;stroke-dasharray:8 92;filter:drop-shadow(0 0 5px #19e6ff)}
 .rim{stroke-width:5;stroke-dasharray:20 80;filter:drop-shadow(0 0 9px currentColor);opacity:.9}
-.n{fill:#d6fbff;filter:drop-shadow(0 0 6px #19e6ff);transform-box:fill-box;transform-origin:center;animation:pulse 2.6s ease-in-out infinite}
-.rg{fill:none;stroke:#7ff0ff;stroke-width:2;transform-box:fill-box;transform-origin:center;animation:ring 3.2s ease-out infinite}
-.c{fill:#ffd68a;animation:tw var(--t,3s) ease-in-out infinite}
-.fl{fill:none;stroke:#8ff0ff;stroke-width:2.6;stroke-dasharray:100;stroke-linecap:round;filter:drop-shadow(0 0 5px #19e6ff)}
-.rk{position:absolute;width:var(--s);aspect-ratio:1;background:linear-gradient(135deg,#f0d5ae,#9a7655 55%,#4b3b33);clip-path:polygon(50% 0,100% 32%,82% 100%,18% 88%,0 30%);animation:rkf var(--t) ease-in-out infinite alternate}
-.ss{position:absolute;left:28%;top:9%;width:15%;height:2px;background:linear-gradient(90deg,transparent,#fff);opacity:0;animation:shoot 12s linear 3s infinite}
-.lock{position:absolute;left:1.6%;top:24.5%;width:14.5%;aspect-ratio:68/88;filter:drop-shadow(0 0 10px rgba(120,170,255,.5));animation:fl 6s ease-in-out infinite alternate}
-.bgv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 1.4s ease}
+.bgv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s ease}
 .vid .bgv{opacity:1}
-.fg{transition:transform .6s cubic-bezier(.2,.8,.2,1),opacity 1.4s ease}
-.vid .fg{opacity:0}
-.txt::before{content:"";position:absolute;inset:-8px -6px -18px;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at 50% 55%,rgba(3,7,32,.55),rgba(3,7,32,.3) 55%,transparent 75%)}
-.sub{text-shadow:0 1px 10px rgba(2,6,30,.9)}
-.done .sun,.done .hz,.done .gold,.done .gh,.done .ss,.done .fx{display:none}
+.vid .fg{visibility:hidden}
+.scene.vid #fx{visibility:hidden}
+.lock{position:absolute;left:1.8%;top:17%;width:10.5%;aspect-ratio:68/88;filter:drop-shadow(0 0 4px rgba(98,162,255,.35))}
+.rk{position:absolute;width:var(--s);aspect-ratio:1;background:linear-gradient(135deg,#f0d5ae,#9a7655 55%,#4b3b33);clip-path:polygon(50% 0,100% 32%,82% 100%,18% 88%,0 30%)}
 @keyframes run{to{stroke-dashoffset:-100}}
-@keyframes ring{0%{transform:scale(.5);opacity:.9}100%{transform:scale(3.4);opacity:0}}
-@keyframes hz{from{opacity:.25;transform:translateX(-4%)}to{opacity:.9;transform:translateX(6%)}}
-@keyframes rkf{to{transform:translate(var(--dx),var(--dy)) rotate(var(--r))}}
-@keyframes shoot{0%{opacity:0;transform:translate(0,0) rotate(28deg)}2%{opacity:1}9%{opacity:0;transform:translate(190px,100px) rotate(28deg)}100%{opacity:0}}
-.txt{position:relative;z-index:2;padding:0 20px}
-.eb{margin:0;font:italic 800 12px/1 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:.14em;background:linear-gradient(90deg,var(--cy),#7a7bff 60%,#c25cff);-webkit-background-clip:text;background-clip:text;color:transparent}
-h1{margin:9px 0 0;font:italic 800 clamp(34px,9.2vw,44px)/1.02 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:-.02em}
-h1 span{display:block}
-.l1{background:linear-gradient(180deg,#fff,#c9cde4);-webkit-background-clip:text;background-clip:text;color:transparent}
-.l2{background:linear-gradient(95deg,#19e6ff 5%,#4aa0ff 45%,#b261ff 95%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 16px rgba(60,160,255,.55));animation:shine 7s ease-in-out infinite alternate}
-.ul{width:252px;max-width:70%;height:3px;margin:6px auto 12px;border-radius:50%;background:linear-gradient(90deg,transparent,var(--cy),var(--vi),var(--mg),transparent);box-shadow:0 0 12px rgba(100,120,255,.7)}
-.sub{margin:0 auto;max-width:310px;font:italic 500 13.5px/1.4 Inter,system-ui,Roboto,Arial,sans-serif;color:#e3e8ff}
-/* card */
-.card{position:relative;margin:2px 22px 0;padding:18px 16px 14px;border-radius:24px;background:linear-gradient(160deg,rgba(14,22,70,.72),rgba(14,10,52,.78));-webkit-backdrop-filter:blur(20px) saturate(140%);backdrop-filter:blur(20px) saturate(140%);box-shadow:0 0 34px rgba(80,120,255,.35),0 24px 60px rgba(0,0,10,.5),inset 0 0 40px rgba(90,80,255,.12);z-index:3}
-.card::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.6px;background:conic-gradient(from var(--a),var(--cy),#4a5cff,var(--vi),var(--mg),var(--vi),#4a5cff,var(--cy));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:spin 9s linear infinite;pointer-events:none}
-.ch{display:flex;align-items:center;justify-content:space-between;margin:0 4px 12px}
-.ch h2{margin:0;display:flex;align-items:center;gap:8px;font:italic 800 20px/1 Inter,system-ui,Roboto,Arial,sans-serif}
-.ch h2::before{content:"";width:8px;height:19px;transform:skewX(-18deg);border-radius:2px;background:linear-gradient(180deg,var(--cy),var(--vi));box-shadow:0 0 12px rgba(80,160,255,.8)}
-.ch em{font:italic 300 22px/1 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:-.06em;color:#8f7dff;opacity:.85}
-.plans{display:grid;grid-template-columns:1fr 1fr;gap:9px}
-.plan{height:66px;border-radius:15px;border:1px solid rgba(150,120,255,.45);background:rgba(14,20,66,.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;transition:transform .35s cubic-bezier(.2,.8,.2,1),box-shadow .35s,border-color .35s,background .35s}
-.plan b{font:italic 700 16px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#eef1ff}
-.plan strong{font:italic 800 21px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#4df0ff;text-shadow:0 0 14px rgba(40,220,255,.55)}
-.plan:hover{transform:translateY(-2px);border-color:rgba(120,230,255,.8);box-shadow:0 0 18px rgba(80,160,255,.35)}
-.plan:active{transform:scale(.96)}
-.plan[aria-pressed=true]{border-color:rgba(190,250,255,.9);background:linear-gradient(120deg,#1fd8e8,#3b7bff 62%,#8a4dff);box-shadow:0 0 26px rgba(40,200,255,.55),inset 0 0 14px rgba(255,255,255,.3);transform:scale(1.02)}
-.plan[aria-pressed=true] strong{color:#d6fcff}
-.sum{display:flex;align-items:center;gap:12px;margin:14px 0 12px;font:500 15px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#e8ecff}
-.sum::before,.sum::after{content:"";flex:1;height:1.5px;background:linear-gradient(90deg,transparent,var(--cy));box-shadow:0 0 8px var(--cy)}
-.sum::after{background:linear-gradient(270deg,transparent,var(--cy))}
-.sum span.pop{animation:pop .5s cubic-bezier(.2,.8,.2,1)}
-.cta{position:relative;overflow:hidden;display:block;width:100%;height:54px;border-radius:99px;font:italic 800 22px/1 Inter,system-ui,Roboto,Arial,sans-serif;background:linear-gradient(100deg,#19e6ff,#3b7bff 50%,#a64dff 100%);background-size:160% 100%;border:1.5px solid rgba(200,250,255,.7);box-shadow:0 0 30px rgba(60,160,255,.6),inset 0 0 18px rgba(255,255,255,.28);text-shadow:0 2px 10px rgba(0,20,80,.45);transition:transform .35s cubic-bezier(.2,.8,.2,1),box-shadow .35s;animation:shine 6s ease-in-out infinite alternate}
-.cta::before{content:"";position:absolute;inset:0;background:radial-gradient(130px at var(--mx,50%) var(--my,50%),rgba(255,255,255,.38),transparent);opacity:0;transition:opacity .3s}
-.cta::after{content:"";position:absolute;top:0;bottom:0;width:60px;left:-80px;background:linear-gradient(100deg,transparent,rgba(255,255,255,.5),transparent);transform:skewX(-20deg);animation:sweep 4.5s ease-in-out infinite}
-.cta:hover{transform:translateY(-2px) scale(1.01);box-shadow:0 0 44px rgba(90,170,255,.8),inset 0 0 18px rgba(255,255,255,.35)}
-.cta:hover::before{opacity:1}
-.cta:active{transform:scale(.97)}
-.note{margin:14px 6px 0;text-align:center;font:400 13.5px/1.38 Inter,system-ui,Roboto,Arial,sans-serif;color:#d6dcf6}
-.note2{margin:10px 0 0;text-align:center;font:italic 400 12px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;color:#8e9ad0}
-.free{position:relative;overflow:hidden;display:flex;align-items:center;gap:10px;margin:14px -6px 0;padding:10px 12px;border-radius:19px;border:1px solid rgba(150,130,255,.5);background:rgba(10,16,56,.62)}
-.free::before{content:"";position:absolute;right:-30px;bottom:-70px;width:220px;height:110px;border-radius:50%;background:radial-gradient(ellipse at 50% 0,#1d4fc0,transparent 70%);box-shadow:0 -2px 18px rgba(80,170,255,.45);opacity:.8}
-.free svg{width:26px;height:34px;flex:none;filter:drop-shadow(0 0 8px var(--cy));animation:pulse 2.4s ease-in-out infinite}
-.free b{flex:1;font:italic 800 18px/1 Inter,system-ui,Roboto,Arial,sans-serif;position:relative}
-.free .try{position:relative;padding:11px 16px;border-radius:99px;border:1.5px solid var(--cy);background:rgba(8,26,70,.75);font:italic 700 13.5px/1 Inter,system-ui,Roboto,Arial,sans-serif;box-shadow:0 0 14px rgba(25,230,255,.45),inset 0 0 10px rgba(25,230,255,.2);transition:transform .3s,box-shadow .3s}
-.free .try:hover{transform:translateY(-1px) scale(1.04);box-shadow:0 0 24px rgba(25,230,255,.8)}
-footer{margin-top:22px;padding:14px 12px 22px;text-align:center;font:italic 400 13px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#cfd6f7;position:relative}
-footer::before{content:"";position:absolute;left:0;right:0;top:0;height:1px;background:linear-gradient(90deg,transparent,#3a7cff 30%,#a64dff 70%,transparent);box-shadow:0 0 10px rgba(80,120,255,.7)}
-footer nav{display:flex;flex-wrap:wrap;justify-content:center;gap:12px 0}
-footer a{padding:0 14px;border-left:1px solid rgba(150,150,255,.35);transition:color .3s,text-shadow .3s}
-footer a:first-child{border:0}
-footer a:hover{color:#fff;text-shadow:0 0 12px var(--cy)}
-/* motion */
-.rv{opacity:0;transform:translateY(22px) scale(.98);filter:blur(8px);animation:in .9s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:var(--d,0s)}
-@keyframes in{to{opacity:1;transform:none;filter:none}}
-@keyframes glow{50%{filter:brightness(1.35)}}
-@keyframes pulse{50%{opacity:.7;transform:scale(1.14)}}
-@keyframes tw{50%{opacity:.25}}
-@keyframes flow{to{stroke-dashoffset:-36}}
-@keyframes fl{to{transform:translateY(-9px) rotate(5deg)}}
 @keyframes spin{to{--a:360deg}}
 @keyframes shine{to{background-position:100% 0}}
-@keyframes sweep{0%,55%{left:-80px}100%{left:120%}}
-@keyframes pop{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:none}}
-:focus-visible{outline:2px solid var(--cy);outline-offset:3px}
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.rv{opacity:1;transform:none;filter:none}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 
-/* Live-site bridge: server-authoritative plan prices and purchase state. */
-/* Original SVG neon arcs deliberately extend beyond their 941-unit canvas.
-   Clip them inside the scene to prevent mobile iframe horizontal scrolling. */
-html{overflow-x:clip}
-.app{overflow-x:clip}
-.scene{overflow:hidden}
-
-.mark{display:block;object-fit:cover;flex:none}
-.cta:disabled,.try:disabled{cursor:not-allowed;opacity:.72;animation:none;filter:saturate(.58)}
-.cta:disabled:hover,.try:disabled:hover{transform:none;box-shadow:0 0 12px rgba(60,160,255,.2)}
-.plan:disabled{cursor:not-allowed;opacity:.48}
-.plan:disabled:hover{transform:none;box-shadow:none}
-.free[hidden]{display:none!important}
-.front-retry{display:block;margin:8px auto;color:#b8faff;font-size:12px;text-decoration:underline;text-align:center}
-.front-retry[hidden]{display:none!important}
-.front-error{font-size:12px;line-height:1.4;color:#ffc1d1;text-align:center;margin:10px 0 0}
-
-/* The old 76% fade hid the restored lower quarter of the original video.
-   Keep the portrait composition through 90%, then soften the very edge. */
-.scene{-webkit-mask-image:linear-gradient(#000 0%,#000 90%,transparent 100%);
-  mask-image:linear-gradient(#000 0%,#000 90%,transparent 100%)}
-
-/* Full-height standalone viewport: don't crop the 9:16 scene.  On tall
-   phones move the footer down instead of exposing an empty parent canvas. */
-html,body{height:100%;min-height:100%}
-.app{min-height:100%;display:flex;flex-direction:column}
-.app>.top,.app>.hero,.app>.card,.app>footer{flex-shrink:0}
-.app>.card{margin-bottom:11px}
-.app>footer{margin-top:auto}
-/* Extend the surrounding cosmic gradient without stretching the Earth/video.
-   The source scene keeps its original 941:1672 aspect ratio. */
-.app{background:radial-gradient(ellipse 95% 54% at 50% 56%,rgba(20,42,109,.34),transparent 80%),linear-gradient(#04071a,#07112e 84%,#04071a)}
-
-/* Compact checkout: designed to fit on a 360–390px phone without scrolling.
-   Legal links and header controls intentionally stay on one line. */
-.top{height:48px;padding:0 10px;gap:6px}
-.logo{gap:6px;white-space:nowrap;min-width:0}
-.mark{width:30px;height:30px;border-width:1px;flex-shrink:0}
-.brand{font-size:clamp(12px,3.6vw,17px);letter-spacing:-.04em;white-space:nowrap}
-.pill{flex:0 0 auto;white-space:nowrap;padding:8px 10px;font-size:12px;text-align:center}
-.hero{min-height:clamp(165px,23svh,210px);padding-top:13px}
-.eb{font-size:10px;letter-spacing:.1em}
-h1{font-size:clamp(28px,8vw,39px);margin-top:8px}
-.ul{margin:5px auto 8px}
-.sub{font-size:12px;line-height:1.25;max-width:310px}
-.card{margin:-10px 15px 0;padding:11px 12px 10px;border-radius:20px;-webkit-backdrop-filter:blur(10px) saturate(115%);backdrop-filter:blur(10px) saturate(115%);box-shadow:0 0 22px rgba(80,120,255,.28),0 14px 28px rgba(0,0,10,.4)}
-.ch{margin:0 2px 7px}
-.ch h2{font-size:17px}
-.ch h2::before{height:15px;width:5px}
-.ch em{font-size:17px}
-.plans{gap:6px}
-.plan{height:48px;gap:2px;border-radius:12px}
-.plan b{font-size:13px}
-.plan strong{font-size:17px}
-.sum{margin:8px 0 7px;gap:6px;font-size:12px}
-.cta{height:44px;font-size:17px}
-.note{margin:8px 2px 0;font-size:11.5px;line-height:1.26}
-.note2{margin:6px 0 0;font-size:10px;line-height:1.2}
-.free{gap:6px;margin:8px -3px 0;padding:6px 8px;border-radius:13px}
-.free svg{width:18px;height:24px}
-.free b{font-size:14px;line-height:1.05}
-.free .try{font-size:11px;padding:8px 10px}
-footer{margin-top:11px;padding:9px 8px 9px;font-size:11px}
-footer nav{display:flex;flex-wrap:nowrap;gap:0;justify-content:center}
-footer nav a{padding:0 11px;white-space:nowrap}
-.legal-links{display:flex;justify-content:center;align-items:center;gap:16px;margin-top:9px}
-.legal-links a{font-size:11px;line-height:1.3;white-space:nowrap;border:0;padding:0}
-@media(max-width:360px){
-  .top{padding:0 7px;gap:4px}
-  .pill{padding:7px 8px;font-size:11px}
-  .brand{font-size:12px}
-  .logo{gap:4px}
-  .mark{width:28px;height:28px}
-  .card{margin-inline:11px}
-  .free b{font-size:13px}
-  footer nav a{padding:0 9px}
-}
-@media(max-height:715px){
-  .hero{min-height:160px}
-  .note{font-size:10.5px}
-  .note2{font-size:9.5px}
-  .free{padding-block:5px}
-  footer{margin-top:8px}
-}
-
-
- .dns-preview-note[hidden]{display:none!important}
- .dns-preview-note{font:400 10px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;color:#98cdea;text-align:center;margin:-2px 0 7px}
-/* Two compact products in one card.  DNS offers are an explicit preview: the
-   backend still controls checkout, trials and all issued subscriptions. */
-.hero{min-height:clamp(207px,28svh,253px)}
-.card{margin:2px 15px 0;padding:12px 12px 10px}
-.ch{margin-bottom:7px}
-.ch h2{font-size:16px;gap:6px}
-.plan-heading-product,.dns-heading h2 span{color:#51e6ff;text-shadow:0 0 12px rgba(22,212,250,.3)}
-.plans{gap:5px}
-.plan{height:38px;gap:2px;border-radius:10px;min-width:0}
-.plan b{font-size:11px}
-.plan strong{font-size:15px}
-.dns-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:11px 3px 7px}
-.dns-heading h2{margin:0;display:flex;align-items:center;gap:4px;font:italic 800 16px/1.15 Inter,system-ui,Roboto,Arial,sans-serif}
-.dns-heading h2::before{content:'';width:5px;height:15px;margin-right:3px;transform:skewX(-18deg);border-radius:2px;background:linear-gradient(var(--cy),var(--vi))}
-.dns-plan{background:rgba(9,22,63,.6);border-color:rgba(80,183,245,.4)}
-.dns-plan strong{color:#9bd4ff}
-.plan[aria-pressed="true"]{background:linear-gradient(105deg,rgba(15,213,243,.85),rgba(86,73,238,.89));border-color:#97edff;box-shadow:0 0 13px rgba(65,182,248,.35)}
-.plan[aria-pressed="true"] strong{color:#fff}
-.info-circle{display:grid;place-items:center;width:26px;height:26px;min-width:26px;border:1.4px solid #51e6ff;border-radius:50%;color:#bbfaff;font:italic 800 16px Inter,system-ui,Roboto,Arial,sans-serif;background:rgba(17,48,91,.75);box-shadow:0 0 13px rgba(34,202,244,.22)}
-.info-circle:focus-visible,.trial-choice:focus-visible{outline:2px solid #d5faff;outline-offset:3px}
-.sum{margin:9px 0 8px;font-size:11.5px}
-.cta{height:43px;font-size:16px}
-.cta:disabled{opacity:.65}
-.note{margin-top:8px;font-size:11px}
-.note2{font-size:9.5px}
-.free{margin-top:9px}
-.trial-options[hidden],.trial-dns-status[hidden]{display:none!important}
-.trial-options{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:8px 0 0;padding:0 2px}
-.trial-choice{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:51px;padding:6px 4px;border:1px solid rgba(74,213,245,.6);border-radius:12px;background:rgba(10,32,78,.94);font:italic 800 13px/1.1 Inter,system-ui,Roboto,Arial,sans-serif}
-.trial-choice small{font:500 9.5px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;color:#c5ddfa}
-.trial-choice:disabled{opacity:.55;cursor:not-allowed}
-.trial-dns-status{grid-column:1/-1;font:400 11px/1.4 Inter,system-ui,Roboto,Arial,sans-serif;text-align:center;color:#b9d4f3;margin:0 2px 4px}
-@media(max-width:360px){.hero{min-height:205px}.dns-heading h2{font-size:14px}.ch h2{font-size:15px}.card{margin-inline:11px}}
-
-/* 2026-11 mobile responsiveness + performance: keep the original premium
-   artwork, but stop broad animated blurs, repaints and tap-shifts. */
-.hero{min-height:clamp(183px,24svh,217px)}
-.card{margin:-5px 15px 0!important;background:linear-gradient(145deg,rgba(14,25,66,.94),rgba(11,17,46,.96))!important;
-  -webkit-backdrop-filter:none!important;backdrop-filter:none!important}
-.lock{top:27%;left:1.8%;width:11.6%;animation:none!important;
-  filter:drop-shadow(0 0 4px rgba(98,162,255,.35))}
-.rv{opacity:1!important;transform:none!important;filter:none!important;animation:none!important}
-.plan,.plan:hover,.plan:active,.plan[aria-pressed="true"]{
-  transform:none!important;transition:border-color .12s ease, background-color .12s ease!important;
-  box-shadow:none!important}
-.plan[aria-pressed="true"]{border-color:#a8faff;box-shadow:inset 0 0 0 1px rgba(192,252,255,.5)!important}
-.plan{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-.sum{line-height:1.28;min-height:20px;justify-content:center;text-align:center}
-.sum #sum{overflow-wrap:normal}
-.dns-preview-note{margin:2px auto 5px}
-.bg i,.sun,.hz,.gold,.gh,.ss,.fg .rk,.fx .c,.fx .rg,.fx .n{animation:none!important}
-.info-circle,.trial-choice,.cta,.try{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-@media(prefers-reduced-motion:reduce){.plan,.card,.cta{transition:none!important}}
-
-/* Both selections may be active. No shimmer, scale, or full-page redraw
-   when pressing a tariff; only a small border/background color changes. */
-.plans-vpn .plan[aria-pressed=true],.plans-dns .plan[aria-pressed=true]{
-  background:linear-gradient(105deg,#13b6dc,#5658d9)!important;
-  border-color:rgba(186,247,255,.9)!important}
-.plans-dns .plan[aria-pressed=true] strong{color:#fff}
-
-/* One compact navigation group, not two distant floating buttons. */
-.top{display:flex;justify-content:space-between;gap:8px}
-.top .logo{flex:0 0 auto}
+/* Shared Header */
+.top{display:flex;align-items:center;justify-content:space-between;gap:6px;height:48px;padding:0 10px;position:relative;z-index:5;flex-shrink:0}
+.logo{display:flex;align-items:center;gap:6px;white-space:nowrap;min-width:0;flex:0 0 auto}
+.mark{width:30px;height:30px;border-radius:50%;border:1px solid rgba(120,160,255,.6);display:block;object-fit:cover;flex:none;box-shadow:0 0 14px rgba(80,140,255,.5)}
+.brand{font:italic 800 clamp(13px,3.6vw,17px)/1 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:-.04em;white-space:nowrap}
+.brand b{background:linear-gradient(100deg,var(--cy),var(--vi));-webkit-background-clip:text;background-clip:text;color:transparent}
 .top-links{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-left:auto;min-width:0}
-.top-links .pill{padding:8px 12px;white-space:nowrap;flex:0 0 auto}
-@media(max-width:365px){
-  .top{padding:0 7px;gap:4px}
-  .top .logo{gap:3px}
-  .top .brand{font-size:12px}
-  .top-links{gap:4px}
-  .top-links .pill{padding:8px 7px;font-size:11px}
-}
-/* A single gently pulsing solar corona instead of a global canvas repaint. */
-.scene::after{content:"";position:absolute;z-index:2;pointer-events:none;
-  left:37%;top:11%;width:36%;aspect-ratio:1;border-radius:50%;
-  background:radial-gradient(circle,rgba(255,231,175,.25),rgba(255,155,65,.10) 26%,transparent 66%);
-  opacity:.6;animation:solar-breath 7s ease-in-out infinite alternate}
-@keyframes solar-breath{from{opacity:.36}to{opacity:.78}}
-/* Do not rotate a full-screen conic gradient or blur five giant layers
-   while playing a hardware-decoded video. Keep atmospheric static colors. */
-.bg::before{animation:none!important;opacity:.3}
-.bg>i{display:none!important}
-.scene.vid #fx,.scene.vid .sun,.scene.vid .hz,
-.scene.vid .gold,.scene.vid .gh,.scene.vid .ss{visibility:hidden}
-.bgv{transition:opacity .35s ease}
-.vid .fg{transition:opacity .35s ease;visibility:hidden}
-@media(prefers-reduced-motion:reduce){.scene::after{animation:none}}
+.pill{flex:0 0 auto;white-space:nowrap;padding:8px 12px;border-radius:99px;border:1px solid rgba(140,150,255,.5);background:rgba(15,20,62,.68);font:italic 700 12px/1 Inter,system-ui,Roboto,Arial,sans-serif;transition:border-color .2s,box-shadow .2s}
+.pill:hover{border-color:rgba(120,230,255,.85);box-shadow:0 0 16px rgba(80,160,255,.4)}
+.pill.g{border-color:rgba(60,230,255,.9);background:linear-gradient(100deg,rgba(25,230,255,.22),rgba(166,77,255,.3));box-shadow:0 0 14px rgba(60,200,255,.35),inset 0 0 12px rgba(120,100,255,.25)}
+.desk-only-link{display:none}
+@media(max-width:365px){.top{padding:0 7px;gap:4px}.brand{font-size:12px}.pill{padding:8px 7px;font-size:11px}}
 
-/* In-place 24h choice: pressing Try never adds another row below the card.
-   The existing trial strip owns the height in both states. */
-.trial-slot{position:relative;isolation:isolate;margin-top:9px;min-width:0}
-.trial-slot .free{margin:0;min-height:42px;display:flex;align-items:center}
+/* Hero */
+.hero{position:relative;min-height:clamp(160px,22svh,192px);padding-top:8px;text-align:center;flex-shrink:0;z-index:2}
+.txt{position:relative;z-index:2;padding:0 16px}
+.txt::before{content:"";position:absolute;inset:-8px -6px -14px;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at 50% 55%,rgba(3,7,32,.62),rgba(3,7,32,.28) 55%,transparent 75%)}
+.eb{margin:0;font:italic 800 10px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:.12em;background:linear-gradient(90deg,var(--cy),#7a7bff 60%,#c25cff);-webkit-background-clip:text;background-clip:text;color:transparent}
+h1{margin:5px 0 0;font:italic 800 clamp(25px,7.4vw,35px)/1.03 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:-.02em}
+h1 span{display:block}
+.l1{background:linear-gradient(180deg,#fff,#d2d7ef);-webkit-background-clip:text;background-clip:text;color:transparent}
+.l2{background:linear-gradient(95deg,#19e6ff 5%,#4aa0ff 45%,#b261ff 95%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 14px rgba(60,160,255,.45))}
+.ul{width:220px;max-width:65%;height:3px;margin:5px auto 7px;border-radius:50%;background:linear-gradient(90deg,transparent,var(--cy),var(--vi),var(--mg),transparent);box-shadow:0 0 10px rgba(100,120,255,.65)}
+.sub{margin:0 auto;max-width:340px;font:italic 500 11.5px/1.28 Inter,system-ui,Roboto,Arial,sans-serif;color:#e3e8ff;text-shadow:0 1px 10px rgba(2,6,30,.9)}
+.pillars{display:none}
+
+/* Storefront Card & Controls */
+.card{position:relative;margin:-2px 14px 6px;padding:10px 11px 9px;border-radius:20px;background:linear-gradient(155deg,rgba(12,22,64,.95),rgba(10,16,46,.96));-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:0 0 26px rgba(80,120,255,.32),0 18px 40px rgba(0,0,10,.55);z-index:3;flex-shrink:0}
+.card::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.5px;background:conic-gradient(from var(--a),var(--cy),#4a5cff,var(--vi),var(--mg),var(--vi),#4a5cff,var(--cy));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+.mob-store{display:block}
+.desk-store{display:none}
+
+.ch{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 2px 6px}
+.ch h2{margin:0;display:flex;align-items:center;gap:6px;font:italic 800 15px/1.15 Inter,system-ui,Roboto,Arial,sans-serif}
+.ch h2::before{content:"";width:5px;height:14px;transform:skewX(-18deg);border-radius:2px;background:linear-gradient(180deg,var(--cy),var(--vi))}
+.plan-heading-product{color:#51e6ff;text-shadow:0 0 12px rgba(22,212,250,.3)}
+
+.mob-products{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-bottom:6px}
+.prod-tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:38px;padding:4px;border-radius:10px;border:1px solid rgba(130,150,245,.38);background:rgba(9,20,58,.75);color:#d8e6ff;text-align:center}
+.prod-tab b{font:italic 800 11px/1.05 Inter,system-ui,Roboto,Arial,sans-serif}
+.prod-tab small{font:600 9px/1.05 Inter,system-ui,Roboto,Arial,sans-serif;color:#93d7f7}
+.prod-tab[aria-pressed="true"]{background:linear-gradient(110deg,rgba(15,213,243,.86),rgba(90,74,238,.9));border-color:#9ef2ff;color:#fff;box-shadow:inset 0 0 0 1px rgba(210,252,255,.45)}
+.prod-tab[aria-pressed="true"] small{color:#eafbff}
+
+.plans{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.plan{min-height:38px;padding:4px 6px;border-radius:10px;border:1px solid rgba(150,120,255,.42);background:rgba(14,20,66,.62);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;transition:border-color .14s ease,background-color .14s ease}
+.plan b{font:italic 700 11.5px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#eef1ff}
+.plan strong{font:italic 800 15px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#4df0ff}
+.plan small{font:700 9px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#ffb4ec}
+.plan:disabled{cursor:not-allowed;opacity:.5}
+.plan[aria-pressed="true"]{background:linear-gradient(105deg,#13b6dc,#5658d9);border-color:rgba(190,250,255,.92);box-shadow:inset 0 0 0 1px rgba(192,252,255,.5)}
+.plan[aria-pressed="true"] strong,.plan[aria-pressed="true"] small{color:#fff}
+
+.mob-perks{margin:6px 2px 2px;padding:5px 8px;border-radius:10px;border:1px solid rgba(90,175,245,.28);background:rgba(8,19,52,.72);font:500 10px/1.26 Inter,system-ui,Roboto,Arial,sans-serif;color:#cfe2fb;text-align:center}
+
+/* Dialog / Info popovers */
+.info-circle,.payment-info{display:grid;place-items:center;width:24px;height:24px;min-width:24px;border:1.4px solid #51e6ff;border-radius:50%;color:#bbfaff;font:italic 800 14px/1 Inter,system-ui,Roboto,Arial,sans-serif;background:rgba(17,48,91,.8)}
+.payment-info{width:21px;height:21px;min-width:21px;font-size:13px;background:rgba(20,58,108,.85)}
+.dns-popover,.payment-popover{position:fixed;inset:auto 14px auto 14px;top:50%;transform:translateY(-50%);max-width:440px;margin:0 auto;z-index:40;border-radius:16px;border:1px solid rgba(92,226,255,.78);background:rgba(8,18,52,.98);box-shadow:0 16px 46px rgba(0,0,15,.85),0 0 24px rgba(34,202,244,.28);padding:14px;color:#edf5ff;font:400 12px/1.45 Inter,system-ui,Roboto,Arial,sans-serif}
+.dns-popover[hidden],.payment-popover[hidden]{display:none!important}
+.dns-popover-head,.payment-popover-head{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#fff}
+.dns-popover-head strong,.payment-popover-head strong{font:italic 800 13.5px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
+.dns-popover-head button,.payment-popover-head button{display:grid;place-items:center;flex:0 0 26px;width:26px;height:26px;border-radius:50%;background:rgba(77,110,175,.35);font:500 18px/1 Inter,system-ui,Roboto,Arial,sans-serif}
+.dns-popover p,.payment-popover p{margin:8px 0 0;color:#d2dff2}
+.dns-popover-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.dns-popover-tags span{border-radius:99px;padding:3px 7px;border:1px solid rgba(95,164,245,.45);background:rgba(46,82,151,.28);font:500 10.5px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
+.dns-popover-caution{color:#b9cdec;font-size:11px}
+.dns-request{display:block;width:100%;min-height:34px;margin-top:10px;padding:6px 10px;border-radius:99px;border:1px solid rgba(145,244,255,.7);background:linear-gradient(110deg,#14b7e9,#5f6be8);color:#fff;font:italic 800 12px/1.15 Inter,system-ui,Roboto,Arial,sans-serif}
+
+/* Summary, CTA, Error, Trial strip */
+.sum{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;margin:6px 0;font:600 11.5px/1.22 Inter,system-ui,Roboto,Arial,sans-serif;color:#e8ecff;text-align:center}
+.sum::before,.sum::after{content:"";flex:1;height:1.5px;background:linear-gradient(90deg,transparent,var(--cy))}
+.sum::after{background:linear-gradient(270deg,transparent,var(--cy))}
+.cta{position:relative;overflow:hidden;display:block;width:100%;min-height:41px;padding:8px 16px;border-radius:99px;font:italic 800 15.5px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;background:linear-gradient(100deg,#19e6ff,#3b7bff 50%,#a64dff 100%);background-size:160% 100%;border:1.5px solid rgba(200,250,255,.75);box-shadow:0 0 24px rgba(60,160,255,.5),inset 0 0 14px rgba(255,255,255,.25);text-shadow:0 2px 8px rgba(0,20,80,.45)}
+.cta:disabled{cursor:not-allowed;opacity:.65;filter:saturate(.6)}
+.action-note{margin:5px 2px 0;text-align:center;font:400 9.5px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;color:#afc3e3}
+.trial-hint{display:none}
+.front-error{font-size:11px;line-height:1.3;color:#ffc1d1;text-align:center;margin:6px 0 0}
+.front-error[hidden],.front-retry[hidden],.trial-options[hidden],.trial-dns-status[hidden]{display:none!important}
+.front-retry{display:block;margin:6px auto 0;color:#b8faff;font-size:11px;text-decoration:underline;text-align:center}
+
+.trial-slot{position:relative;isolation:isolate;margin-top:6px;min-width:0}
+.free{display:flex;align-items:center;gap:8px;min-height:36px;padding:4px 9px;border-radius:13px;border:1px solid rgba(150,130,255,.5);background:rgba(10,16,56,.7)}
 .trial-slot.is-choosing .free{visibility:hidden}
-.trial-slot .trial-options[hidden]{display:none!important}
-.trial-slot .trial-options{
-  position:absolute;inset:0;z-index:3;
-  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 27px;
-  align-items:stretch;gap:5px;margin:0;padding:0;
-  min-height:0;background:transparent;
-}
-.trial-slot .trial-choice{
-  min-height:0;height:100%;padding:3px;
-  border-radius:12px;font-size:12px;line-height:1.05;
-  background:linear-gradient(110deg,rgba(10,53,96,.97),rgba(39,25,99,.97));
-}
-.trial-slot .trial-choice small{font-size:9px;line-height:1.1}
-.trial-slot .trial-close{
-  display:grid;place-items:center;min-height:0;border-radius:11px;
-  border:1px solid rgba(111,175,251,.4);
-  background:rgba(12,24,60,.95);font-size:22px;color:#cfe9ff;
-}
-.trial-slot .trial-dns-status{
-  position:absolute;left:0;right:0;bottom:calc(100% + 5px);z-index:2;
-  display:flex;align-items:center;justify-content:center;
-  padding:7px 9px;margin:0;border-radius:12px;
-  background:#0c1b46;border:1px solid rgba(72,197,253,.68);
-  box-shadow:0 5px 20px rgba(0,0,18,.4);
-  font:500 10px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;
-  text-align:center;color:#d6ecff;pointer-events:none;
-}
-.trial-slot .trial-close{z-index:4}
-.trial-slot .trial-dns-status[hidden]{display:none!important}
-@media(max-width:360px){
-  .trial-slot .trial-options{gap:4px;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 24px}
-  .trial-slot .trial-choice{font-size:11px}
-  .trial-slot .trial-dns-status{font-size:9px}
-}
+.free svg{width:19px;height:25px;flex:none;filter:drop-shadow(0 0 7px var(--cy))}
+.free b{flex:1;font:italic 800 12.5px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
+.free .try{padding:8px 12px;border-radius:99px;border:1.5px solid var(--cy);background:rgba(8,26,70,.8);font:italic 700 11.5px/1 Inter,system-ui,Roboto,Arial,sans-serif;box-shadow:0 0 12px rgba(25,230,255,.4)}
+.trial-options{position:absolute;inset:0;z-index:3;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 28px;align-items:stretch;gap:5px}
+.trial-choice{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:3px;border:1px solid rgba(74,213,245,.65);border-radius:12px;background:linear-gradient(110deg,rgba(10,53,96,.97),rgba(39,25,99,.97));font:italic 800 12px/1.05 Inter,system-ui,Roboto,Arial,sans-serif}
+.trial-choice small{font:500 9.5px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;color:#c5ddfa}
+.trial-choice:disabled{opacity:.55;cursor:not-allowed}
+.trial-close{display:grid;place-items:center;border-radius:11px;border:1px solid rgba(111,175,251,.45);background:rgba(12,24,60,.96);font-size:20px;color:#cfe9ff}
+.trial-dns-status{position:absolute;left:0;right:0;bottom:calc(100% + 5px);z-index:4;padding:8px 10px;margin:0;border-radius:12px;background:#0c1b46;border:1px solid rgba(72,197,253,.72);box-shadow:0 5px 20px rgba(0,0,18,.5);font:500 10.5px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;text-align:center;color:#d6ecff}
 
-/* Legal details: same disclosed seller as ServGo, kept compact on phone. */
-footer .legal-links{display:flex;flex-wrap:nowrap;justify-content:center;align-items:center;gap:clamp(7px,2.1vw,13px);margin-top:7px}
-footer .legal-links a{padding:0;border:0;font:italic 700 clamp(9px,2.7vw,11px)/1.15 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
-footer .seller-details{margin:6px 0 0;color:#b2c8e3;font:500 clamp(9px,2.6vw,10.5px)/1.2 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
-@media(max-width:350px){footer .legal-links{gap:7px}footer .seller-details{font-size:9px}}
+/* Desktop Comparison + Onboarding hidden on phone inside iframe */
+.desk-compare{display:none}
 
-/* Short mobile viewports: seller details and three legal links remain visible
-   without forcing a scroll below the main tariff actions. */
-@media(max-width:420px) and (max-height:740px){
-  .hero{min-height:clamp(140px,20svh,160px)!important}
-  .card{margin-top:-8px!important;margin-bottom:6px!important}
-  .top{height:52px}
-  footer{padding:5px 7px!important;margin-top:5px!important}
-  footer .legal-links{margin-top:5px!important;gap:8px}
-  footer .seller-details{margin-top:4px!important}
-}
+/* Footer */
+footer{margin-top:auto;padding:8px 8px 9px;text-align:center;font:italic 400 10.5px/1.15 Inter,system-ui,Roboto,Arial,sans-serif;color:#cfd6f7;position:relative;flex-shrink:0}
+footer::before{content:"";position:absolute;left:0;right:0;top:0;height:1px;background:linear-gradient(90deg,transparent,#3a7cff 30%,#a64dff 70%,transparent)}
+footer nav{display:flex;justify-content:center;gap:0}
+footer nav a{padding:0 10px;border-left:1px solid rgba(150,150,255,.35);white-space:nowrap}
+footer nav a:first-child{border:0}
+.legal-links{display:flex;flex-wrap:nowrap;justify-content:center;align-items:center;gap:clamp(7px,2.1vw,14px);margin-top:5px}
+.legal-links a{font:italic 700 clamp(9.5px,2.6vw,10.5px)/1.15 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
+.seller-details{margin:4px 0 0;color:#b2c8e3;font:500 clamp(9px,2.4vw,10px)/1.15 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
 
-@media(max-width:350px) and (max-height:740px){
-  .hero{min-height:135px!important}
-  .card{margin-top:-12px!important;margin-bottom:3px!important}
-  footer{padding-bottom:3px!important}
-  footer .seller-details{margin-top:2px!important}
-}
+/* ==========================================================================
+   DESKTOP FULL-WIDTH VERSION (>= 900px) with horizontal video & 3-in-1 cards
+   ========================================================================== */
+@media(min-width:900px){
+  .scene{display:none!important}
+  .desk-scene{display:block;position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;background:#04071a}
+  .app{max-width:1180px;width:min(1180px,calc(100vw - 48px));background:none;overflow:visible}
+  .top{height:68px;padding:0 6px}
+  .mark{width:38px;height:38px}
+  .brand{font-size:20px}
+  .top-links{gap:10px}
+  .pill{padding:10px 18px;font-size:13.5px}
+  .desk-only-link{display:inline-flex;align-items:center}
 
-/* 2026-11-13 viewport composition: keep the lock and light-arc artwork clear.
-   Lock ends at ~63vw in the unscaled portrait scene; the tariff card starts
-   13-18px below that edge rather than covering the upper animation. */
-@media(max-width:520px){
-  .top{height:48px!important}
-  .hero{min-height:clamp(177px,calc(63vw - 25px),280px)!important}
-  .card{margin-top:0!important;margin-bottom:0!important;padding:10px 12px 9px!important}
-  .ch{margin-bottom:6px}
-  .plans{gap:5px}
-  .plan{height:36px}
-  .dns-heading{margin:8px 3px 6px}
-  .sum{margin:7px 0 7px}
-  .cta{height:43px}
-  .trial-slot{margin-top:8px}
-  .app>footer{margin-top:auto!important;padding:7px 6px 9px!important}
-}
-@media(max-width:420px) and (max-height:760px){
-  .card{padding:8px 10px 7px!important}
-  .plan{height:34px}
-  .dns-heading{margin:6px 3px 5px}
-  .sum{margin:5px 0 5px}
-  .cta{height:41px}
-  .trial-slot{margin-top:6px}
-  .app>footer{padding:5px 6px 7px!important}
-}
-@media(max-width:350px) and (max-height:760px){
-  .plan{height:32px}
-  .plans{gap:4px}
-  .ch{margin-bottom:4px}
-  .dns-heading{margin:5px 2px 4px}
-  .app>footer{padding:4px 5px 6px!important}
-}
-.sum{position:relative;padding-right:28px;min-height:25px}
-.sum .payment-info{
-  position:absolute;right:1px;top:50%;transform:translateY(-50%);
-  width:24px;height:24px;display:grid;place-items:center;
-  border:1.4px solid #51e6ff;border-radius:50%;
-  color:#b9faff;background:rgba(17,48,91,.77);
-  box-shadow:0 0 9px rgba(34,202,244,.19);
-  font:italic 800 14px Inter,system-ui,Roboto,Arial,sans-serif;
-}
-.payment-info:focus-visible{outline:2px solid #d5faff;outline-offset:3px}
-.payment-popover[hidden]{display:none!important}
-.payment-popover{
-  position:absolute;z-index:16;right:0;bottom:calc(100% + 7px);
-  box-sizing:border-box;width:min(280px,calc(100vw - 46px));
-  max-height:min(180px,38dvh);overflow:auto;
-  padding:10px 11px;border:1px solid rgba(74,226,255,.82);
-  border-radius:13px;
-  background:linear-gradient(145deg,rgba(10,30,73,.98),rgba(17,12,58,.98));
-  box-shadow:0 8px 25px rgba(0,0,20,.55),0 0 15px rgba(57,181,255,.22);
-  color:#edfaff;font:500 11px/1.32 Inter,system-ui,Roboto,Arial,sans-serif;
-  text-align:left;
-}
-.payment-popover-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.payment-popover-head strong{font:italic 800 12px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
-.payment-popover-head button{
-  flex:0 0 auto;width:23px;height:23px;border-radius:50%;
-  background:rgba(77,110,175,.3);font-size:18px;line-height:1;
-}
-.payment-popover p{margin:5px 0 0;color:#cbdcf4}
-.payment-popover p:last-child{margin-bottom:0}
-.payment-popover-head button:focus-visible{
-  outline:2px solid #c4f9ff;outline-offset:2px;
-}
-/* Matching native 24h sign-in footer: same two rows of links and seller.
-   Margin auto anchors legal links to the viewport bottom, never mid-screen. */
-.app>footer{margin-top:auto!important;text-align:center;font:italic 500 10px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
-.app>footer nav{display:flex;gap:12px;flex-wrap:nowrap;justify-content:center}
-.app>footer nav a{padding:0;border:0;white-space:nowrap}
-.app>footer .legal-links{gap:12px;margin-top:3px}
-.app>footer .legal-links a{font:italic 500 10px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
-.app>footer .seller-details{font:500 10px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;margin-top:5px;white-space:normal}
-.app>footer::before{opacity:.38;box-shadow:none}
-@media(max-width:350px){
-  .app>footer nav{gap:9px}
-  .app>footer .legal-links{gap:9px}
-  .app>footer .legal-links a,.app>footer .seller-details{font-size:9px}
-}
+  .hero{min-height:0;padding:18px 0 18px}
+  .txt{padding:0}
+  .txt::before{display:none}
+  .eb{font-size:12px;letter-spacing:.16em}
+  h1{font-size:clamp(38px,4.2vw,54px);margin:8px 0 0;letter-spacing:-.025em}
+  h1 span{display:inline}
+  h1 .l2{margin-left:10px}
+  .ul{width:360px;margin:10px auto 12px}
+  .sub{max-width:700px;font:500 16px/1.45 Inter,system-ui,Roboto,Arial,sans-serif;color:#e6edff}
+  .pillars{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:980px;margin:16px auto 0;text-align:left}
+  .pillar{padding:11px 14px;border-radius:16px;border:1px solid rgba(110,175,255,.32);background:rgba(7,16,46,.76);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+  .pillar strong{display:block;font:italic 800 13.5px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;color:#7bf2ff}
+  .pillar span{display:block;margin-top:4px;font:400 12.5px/1.4 Inter,system-ui,Roboto,Arial,sans-serif;color:#d6e3f8}
 
-/* DNS information behaves like the small payment tip, not a full-screen modal. */
-.dns-heading{position:relative;isolation:isolate}
-.dns-popover[hidden]{display:none!important}
-.dns-popover{
-  position:absolute;z-index:20;right:0;bottom:calc(100% + 7px);
-  width:min(296px,calc(100vw - 42px));max-height:min(252px,45dvh);
-  overflow-y:auto;overscroll-behavior:contain;
-  padding:10px 11px;border-radius:13px;
-  background:linear-gradient(145deg,rgba(10,30,73,.985),rgba(17,12,58,.985));
-  border:1px solid rgba(74,226,255,.82);
-  box-shadow:0 8px 25px rgba(0,0,20,.55),0 0 15px rgba(57,181,255,.22);
-  color:#edfaff;text-align:left;
-  font:500 10.5px/1.32 Inter,system-ui,Roboto,Arial,sans-serif;
-}
-.dns-popover-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.dns-popover-head strong{font:italic 800 12px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
-.dns-popover-head button{
-  display:grid;place-items:center;flex:0 0 23px;width:23px;height:23px;
-  border-radius:50%;background:rgba(77,110,175,.3);
-  font:500 18px/1 Inter,system-ui,Roboto,Arial,sans-serif;
-}
-.dns-popover p{margin:6px 0 0;color:#d2dff2}
-.dns-popover-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
-.dns-popover-tags span{
-  border-radius:99px;padding:2px 6px;
-  border:1px solid rgba(95,164,245,.43);
-  background:rgba(46,82,151,.25);
-  font:500 9.5px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;
-  white-space:nowrap;
-}
-.dns-popover p.dns-popover-caution{color:#b9cdec;font-size:10px}
-.dns-popover .dns-request{
-  display:block;width:100%;min-height:30px;margin-top:8px;padding:5px 9px;
-  border-radius:99px;border:1px solid rgba(145,244,255,.7);
-  background:linear-gradient(110deg,#14b7e9,#5f6be8);
-  color:#fff;font:italic 800 11px/1.15 Inter,system-ui,Roboto,Arial,sans-serif;
-}
-.dns-popover-head button:focus-visible,.dns-popover .dns-request:focus-visible{
-  outline:2px solid #d5faff;outline-offset:2px;
+  .card{margin:0;padding:22px 22px 18px;border-radius:26px;background:linear-gradient(155deg,rgba(7,15,44,.84),rgba(11,12,42,.88));-webkit-backdrop-filter:blur(18px) saturate(130%)!important;backdrop-filter:blur(18px) saturate(130%)!important}
+  .mob-store{display:none}
+  .desk-store{display:block}
+
+  .desk-durations-wrap{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+  .desk-durations-title h2{margin:0;font:italic 800 21px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
+  .desk-durations-title p{margin:4px 0 0;font:400 13px/1.4 Inter,system-ui,Roboto,Arial,sans-serif;color:#c3d4ef}
+  .desk-durations{display:inline-flex;flex-wrap:wrap;gap:6px;padding:5px;border-radius:16px;border:1px solid rgba(120,165,245,.34);background:rgba(5,12,38,.78)}
+  .dur-pill{padding:9px 15px;border-radius:12px;font:italic 700 13px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;color:#d4e4ff;transition:background .18s,border-color .18s}
+  .dur-pill em{font-style:normal;font-size:11px;color:#5cf2ff;margin-left:4px}
+  .dur-pill:hover{color:#fff;background:rgba(32,74,142,.45)}
+  .dur-pill[aria-pressed="true"]{background:linear-gradient(110deg,#12b9de,#5d56df);color:#fff;box-shadow:0 0 16px rgba(25,215,245,.38)}
+  .dur-pill[aria-pressed="true"] em{color:#fff}
+
+  .desk-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.12fr) minmax(0,1fr);gap:16px;align-items:stretch}
+  .tier{position:relative;display:flex;flex-direction:column;padding:18px 18px 16px;border-radius:20px;border:1px solid rgba(122,158,245,.34);background:rgba(7,16,48,.78);transition:border-color .2s,box-shadow .2s,transform .2s}
+  .tier:hover{border-color:rgba(108,215,255,.7);transform:translateY(-2px)}
+  .tier.is-selected{border-color:#53edff;box-shadow:0 0 28px rgba(34,210,248,.28),inset 0 0 0 1px rgba(145,245,255,.45);background:linear-gradient(155deg,rgba(10,34,76,.9),rgba(19,20,66,.92))}
+  .tier.featured{border-color:rgba(92,226,255,.72);background:linear-gradient(155deg,rgba(12,34,82,.9),rgba(34,18,76,.9));box-shadow:0 0 34px rgba(80,140,255,.28)}
+  .tier-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+  .tier-badge{display:inline-block;padding:4px 9px;border-radius:99px;font:italic 800 10.5px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#a8f6ff;border:1px solid rgba(82,216,255,.45);background:rgba(14,52,96,.7)}
+  .tier.featured .tier-badge{background:linear-gradient(95deg,#19e6ff,#8b5cff);color:#04081d;border-color:transparent}
+  .tier h3{margin:10px 0 4px;font:italic 800 22px/1.15 Inter,system-ui,Roboto,Arial,sans-serif}
+  .tier-sub{margin:0;font:400 12.5px/1.4 Inter,system-ui,Roboto,Arial,sans-serif;color:#c2d4ef}
+  .tier-price-row{display:flex;align-items:baseline;gap:10px;margin:14px 0 4px}
+  .tier-price{font:italic 900 32px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#54f2ff}
+  .tier.featured .tier-price{color:#fff;text-shadow:0 0 18px rgba(64,225,255,.45)}
+  .tier-old{font:italic 700 16px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#99a8cb;text-decoration:line-through}
+  .tier-old[hidden]{display:none}
+  .tier-meta{margin:0 0 12px;font:600 12px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;color:#92e6ff}
+  .tier-list{list-style:none;margin:0 0 16px;padding:0;display:flex;flex-direction:column;gap:7px;font:400 13px/1.35 Inter,system-ui,Roboto,Arial,sans-serif;color:#dde8fb;flex:1}
+  .tier-list li.no{color:#8fa1c4}
+  .tier-pick{width:100%;min-height:42px;border-radius:99px;border:1px solid rgba(110,190,255,.55);background:rgba(16,42,92,.78);font:italic 800 13.5px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#e8f7ff;transition:background .18s,border-color .18s}
+  .tier.is-selected .tier-pick,.tier.featured .tier-pick{background:linear-gradient(100deg,#19e6ff,#3b7bff 55%,#a64dff);border-color:rgba(205,252,255,.8);color:#fff}
+
+  .action-strip{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,.95fr);gap:14px;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid rgba(110,165,245,.25)}
+  .action-left{display:flex;flex-direction:column;gap:8px}
+  .action-left .sum{margin:0;justify-content:flex-start;text-align:left;font-size:14px}
+  .action-left .sum::before{display:none}
+  .action-left .sum::after{max-width:90px}
+  .action-left .cta{max-width:420px;min-height:48px;font-size:17px}
+  .action-note{margin:0;text-align:left;font:400 11.5px/1.35 Inter,system-ui,Roboto,Arial,sans-serif;color:#afc3e3}
+  .trial-slot{margin-top:0}
+  .free{padding:11px 14px;min-height:54px;border-radius:16px}
+  .free b{font-size:15px}
+  .free small.trial-hint{display:block;font:400 11px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;color:#b8d2f2;margin-top:2px}
+
+  .desk-compare{display:block;margin:18px 0 8px;padding:20px 22px;border-radius:22px;border:1px solid rgba(110,165,245,.26);background:rgba(7,15,44,.78);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+  .desk-compare h2{margin:0 0 12px;font:italic 800 19px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
+  .cmp-table{width:100%;border-collapse:collapse;font:400 13px/1.4 Inter,system-ui,Roboto,Arial,sans-serif}
+  .cmp-table th,.cmp-table td{padding:9px 10px;border-bottom:1px solid rgba(115,155,225,.18);text-align:left}
+  .cmp-table th{color:#8aefff;font:italic 700 12.5px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
+  .cmp-table td:not(:first-child){text-align:center;font-weight:600}
+  .cmp-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
+  .cmp-step{padding:12px 14px;border-radius:14px;border:1px solid rgba(115,165,245,.24);background:rgba(10,24,62,.62)}
+  .cmp-step strong{display:block;font:italic 800 13px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;color:#5ef0ff}
+  .cmp-step p{margin:5px 0 0;font:400 12px/1.4 Inter,system-ui,Roboto,Arial,sans-serif;color:#d0def5}
+
+  footer{padding:16px 8px 18px;font-size:12px}
+  .legal-links a,.seller-details{font-size:11.5px}
 }
 </style>
 </head>
 <body>
-<div class="bg" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-<!-- Canvas particle loop removed: background video already provides the motion. -->
+<div class="bg" aria-hidden="true"></div>
+
+<div class="desk-scene" id="desk-scene" aria-hidden="true">
+  <img class="desk-poster" src="/bg-desktop-poster.webp" alt="" decoding="async" fetchpriority="high">
+  <video id="bgv-desktop" class="bgv-desktop" autoplay muted loop playsinline preload="none" poster="/bg-desktop-poster.webp" disablepictureinpicture aria-hidden="true" tabindex="-1"></video>
+  <div class="desk-scrim"></div>
+</div>
 
 <div class="app">
-  <div class="scene" aria-hidden="true">
+  <div class="scene" id="mob-scene" aria-hidden="true">
     <div class="pz"><div class="kb">
-      <div class="sun"></div><div class="hz"></div><div class="gold"></div>
-      <i class="gh" style="left:36.5%;top:35.5%;width:4%;aspect-ratio:1;opacity:.5"></i>
-      <i class="gh" style="left:43%;top:41.5%;width:7%;aspect-ratio:1;animation-delay:2s"></i>
-      <div class="ss"></div>
       <svg id="fx" class="fx" viewBox="0 0 941 1672" preserveAspectRatio="none">
         <path class="rim" pathLength="100" d="M215 535C330 497 470 470 600 467S830 462 941 488" style="color:#6fcfff;stroke:#6fcfff;--t:9s"/>
         <path class="rim" pathLength="100" d="M0 1062C160 960 330 890 520 845S800 770 941 735" style="color:#b98bff;stroke:#b98bff;--t:13s;animation-delay:2s"/>
-        <path class="pl" pathLength="100" d="M432 563C470 520 510 500 543 497" style="--t:2.4s;animation-delay:0s"/><path class="pl" pathLength="100" d="M543 497Q630 395 717 491" style="--t:3s;animation-delay:0.4s"/><path class="pl" pathLength="100" d="M717 491C740 420 850 380 920 540" style="--t:3.6s;animation-delay:1s"/><path class="pl" pathLength="100" d="M712 550Q800 480 920 540" style="--t:3.2s;animation-delay:0.8s"/><path class="pl" pathLength="100" d="M432 563Q380 530 300 545" style="--t:2.6s;animation-delay:1.4s"/><path class="pl" pathLength="100" d="M861 611Q880 560 920 540" style="--t:2.2s;animation-delay:0.2s"/>
+        <path class="pl" pathLength="100" d="M432 563C470 520 510 500 543 497" style="--t:2.4s"/><path class="pl" pathLength="100" d="M543 497Q630 395 717 491" style="--t:3s;animation-delay:.4s"/>
       </svg>
-      
       <video id="bgv" class="bgv" autoplay muted loop playsinline webkit-playsinline preload="metadata" disablepictureinpicture aria-hidden="true" tabindex="-1"></video>
-      <svg class="lock" viewBox="0 0 68 88">
-        <defs><linearGradient id="st1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d9dbe3"/><stop offset="1" stop-color="#6a6d7a"/></linearGradient></defs>
-        <path d="M16 40V26a18 18 0 0 1 36 0v14" fill="none" stroke="url(#st1)" stroke-width="9"/>
-        <rect x="4" y="38" width="60" height="48" rx="7" fill="url(#st1)"/>
-        <circle cx="34" cy="56" r="6" fill="#23252e"/><path d="M31 58h6l2 14H29z" fill="#23252e"/>
-        <g transform="rotate(-38 34 56)"><rect x="-8" y="50" width="84" height="11" fill="#e5242e"/><rect x="-8" y="54" width="84" height="2" fill="#ff8d93" opacity=".7"/></g>
-      </svg>
+      <svg class="lock" viewBox="0 0 68 88"><defs><linearGradient id="st1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d9dbe3"/><stop offset="1" stop-color="#6a6d7a"/></linearGradient></defs><path d="M16 40V26a18 18 0 0 1 36 0v14" fill="none" stroke="url(#st1)" stroke-width="9"/><rect x="4" y="38" width="60" height="48" rx="7" fill="url(#st1)"/><circle cx="34" cy="56" r="6" fill="#23252e"/><path d="M31 58h6l2 14H29z" fill="#23252e"/><g transform="rotate(-38 34 56)"><rect x="-8" y="50" width="84" height="11" fill="#e5242e"/></g></svg>
     </div></div>
-    <div class="fg"><i class="rk" style="--s:3.4%;left:12%;top:19%;--dx:10px;--dy:-14px;--r:40deg;--t:7s"></i><i class="rk" style="--s:2.4%;left:26%;top:29%;--dx:-8px;--dy:-10px;--r:-60deg;--t:6s"></i><i class="rk" style="--s:2.8%;left:9%;top:34%;--dx:12px;--dy:8px;--r:70deg;--t:8s"></i><i class="rk" style="--s:3.2%;left:86%;top:17%;--dx:-10px;--dy:-12px;--r:-50deg;--t:7.5s"></i><i class="rk" style="--s:2.2%;left:93%;top:25%;--dx:-6px;--dy:10px;--r:80deg;--t:6.5s"></i><i class="rk" style="--s:2.6%;left:78%;top:22%;--dx:8px;--dy:-14px;--r:45deg;--t:9s"></i><i class="rk" style="--s:2.4%;left:52%;top:40%;--dx:-10px;--dy:-8px;--r:-70deg;--t:8.5s"></i><i class="rk" style="--s:1.8%;left:34%;top:38%;--dx:8px;--dy:-12px;--r:55deg;--t:5.5s"></i></div>
+    <div class="fg"><i class="rk" style="--s:3.4%;left:12%;top:19%"></i><i class="rk" style="--s:2.6%;left:78%;top:22%"></i></div>
   </div>
-  <header class="top rv">
+
+  <header class="top">
     <a class="logo" href="/" aria-label="MNEBY VPN">
       <img class="mark" src="/brand-avatar.webp" alt="">
       <span class="brand">MNEBY <b>VPN</b></span>
     </a>
     <nav class="top-links" aria-label="Разделы сайта">
       <a class="pill" href="#about">О проекте</a>
+      <a class="pill desk-only-link" href="#compare">Сравнение 3 в 1</a>
+      <a class="pill desk-only-link" href="#support">Поддержка</a>
       <a class="pill g" href="/#account" target="_top">Мой VPN</a>
     </nav>
   </header>
 
   <section class="hero">
     <div class="txt">
-      <p class="eb rv" style="--d:.15s">MNEBYVPN · ПОДКЛЮЧИЛ И НЕ ПАРИШЬСЯ</p>
-      <h1 class="rv" style="--d:.25s"><span class="l1">VPN без</span><span class="l2">ЛИШНИХ ШАГОВ</span></h1>
-      <div class="ul rv" style="--d:.35s"></div>
-      <p class="sub rv" style="--d:.45s">Выберите срок доступа. Подключение покажем сразу после оплаты.</p>
+      <p class="eb">MNEBYVPN · ПОДКЛЮЧИЛ И НЕ ПАРИШЬСЯ</p>
+      <h1><span class="l1">Один доступ —</span><span class="l2">3 технологии</span></h1>
+      <div class="ul"></div>
+      <p class="sub">Настроил один раз — 90% времени YouTube, ChatGPT, Claude, Gemini и Telegram работают без постоянно включённого VPN.</p>
+      <div class="pillars" aria-label="Как работает экосистема 3 в 1">
+        <div class="pillar"><strong>◎ Smart DNS</strong><span>Выборочный доступ к нужному без замедления обычных сайтов. Личный конфиг Apple + DoT Android.</span></div>
+        <div class="pillar"><strong>✈ Telegram-прокси</strong><span>Автоматическая выдача маршрутов direct и ru с инструкцией прямо в кабинете после оплаты.</span></div>
+        <div class="pillar"><strong>◈ VPN до 3 устройств</strong><span>Не конфликтует с Smart DNS и Прокси: включайте по кнопке, когда нужен полный туннель.</span></div>
+      </div>
     </div>
   </section>
 
-  <main class="card rv" style="--d:.55s">
-    <div class="ch"><h2>Выберите тариф <span class="plan-heading-product">VPN</span></h2><em aria-hidden="true">///</em></div>
-    <div class="plans plans-vpn" role="group" aria-label="Тарифы VPN">
-      <button class="plan" data-d="15" data-p="—" aria-pressed="true"><b>15 дней</b><strong>—</strong></button>
-      <button class="plan" data-d="30" data-p="—" aria-pressed="false"><b>30 дней</b><strong>—</strong></button>
-      <button class="plan" data-d="60" data-p="—" aria-pressed="false"><b>60 дней</b><strong>—</strong></button>
-      <button class="plan" data-d="90" data-p="—" aria-pressed="false"><b>90 дней</b><strong>—</strong></button>
+  <main class="card" aria-label="Выбор тарифа">
+    <!-- Mobile compact 3-product + 4-duration layout -->
+    <div class="mob-store">
+      <div class="ch">
+        <h2>Тариф <span class="plan-heading-product" id="mob-product-title">«3 в 1»</span></h2>
+        <button class="info-circle" id="dns-info-open" type="button" aria-label="Что такое Smart DNS и Экосистема 3 в 1" aria-haspopup="dialog" aria-expanded="false" aria-controls="dns-info-dialog">i</button>
+      </div>
+      <div class="mob-products" role="group" aria-label="Выбор варианта подписки">
+        <button class="prod-tab" type="button" data-prod="vpn" aria-pressed="false"><b>VPN Лайт</b><small>1 устройство</small></button>
+        <button class="prod-tab" type="button" data-prod="bundle" aria-pressed="true"><b>★ 3 в 1</b><small>до 3 устр.</small></button>
+        <button class="prod-tab" type="button" data-prod="smart_dns" aria-pressed="false"><b>Smart Доступ</b><small>DNS + TG</small></button>
+      </div>
+      <div class="plans plans-mob" role="group" aria-label="Выбор срока подписки">
+        <button class="plan" type="button" data-d="15" aria-pressed="false"><b>15 дней</b><strong>—</strong></button>
+        <button class="plan" type="button" data-d="30" aria-pressed="true"><b>30 дней</b><strong>—</strong><small class="plan-tag" hidden></small></button>
+        <button class="plan" type="button" data-d="60" aria-pressed="false"><b>60 дней</b><strong>—</strong><small>−12%</small></button>
+        <button class="plan" type="button" data-d="90" aria-pressed="false"><b>90 дней</b><strong>—</strong><small>−21%</small></button>
+      </div>
+      <p class="mob-perks" id="mob-perks">Smart DNS + Telegram-прокси + VPN до 3 устройств. Не конфликтуют друг с другом.</p>
     </div>
-    <div class="dns-heading">
-      <h2>Выберите тариф <span>Smart DNS</span></h2>
-      <button class="info-circle" id="dns-info-open" type="button" aria-label="Что такое Smart DNS" aria-haspopup="dialog" aria-expanded="false" aria-controls="dns-info-dialog">i</button>
-      <div id="dns-info-dialog" class="dns-popover" role="dialog" aria-modal="false" aria-labelledby="dns-modal-title" hidden>
-        <div class="dns-popover-head">
-          <strong id="dns-modal-title">Как работает Smart DNS</strong>
-          <button id="dns-info-close" type="button" aria-label="Закрыть информацию о Smart DNS">×</button>
+
+    <!-- Desktop 3-card comparison storefront -->
+    <div class="desk-store">
+      <div class="desk-durations-wrap">
+        <div class="desk-durations-title">
+          <h2>Выберите срок и вариант доступа</h2>
+          <p>Разовая оплата через ЮKassa без автосписаний. После оплаты профиль Apple, DoT-адрес и Telegram-прокси выдаются автоматически.</p>
         </div>
-        <p>Доступ к поддерживаемым сервисам без постоянного VPN. Остальные сайты — напрямую.</p>
-        <div class="dns-popover-tags" aria-label="Примеры сервисов">
-          <span>YouTube</span><span>ChatGPT</span><span>Gemini</span><span>Claude</span>
-          <span>Google Antigravity</span><span>Grok</span><span>TikTok</span><span>X</span>
+        <div class="desk-durations" role="group" aria-label="Срок подписки для всех тарифов">
+          <button class="dur-pill" type="button" data-d="15" aria-pressed="false">15 дней</button>
+          <button class="dur-pill" type="button" data-d="30" aria-pressed="true">30 дней<em>хит</em></button>
+          <button class="dur-pill" type="button" data-d="60" aria-pressed="false">60 дней<em>−12%</em></button>
+          <button class="dur-pill" type="button" data-d="90" aria-pressed="false">90 дней<em>−21%</em></button>
         </div>
-        <p class="dns-popover-caution">Smart DNS не шифрует весь трафик и не заменяет VPN. Доступность зависит от сети.</p>
-        <button class="dns-request" type="button" id="dns-request-domain">Добавить домен</button>
+      </div>
+
+      <div class="desk-grid" role="group" aria-label="Сравнение тарифов">
+        <article class="tier" data-card-product="vpn">
+          <div class="tier-head"><span class="tier-badge">Базовый</span></div>
+          <h3>VPN Лайт</h3>
+          <p class="tier-sub">Чистый защищённый туннель для одного устройства.</p>
+          <div class="tier-price-row"><strong class="tier-price" id="price-vpn">—</strong></div>
+          <p class="tier-meta" id="meta-vpn">1 устройство</p>
+          <ul class="tier-list">
+            <li>✓ Весь трафик через VPN</li>
+            <li>✓ 1 устройство</li>
+            <li class="no">✕ Без Smart DNS</li>
+            <li class="no">✕ Без Telegram-прокси</li>
+          </ul>
+          <button class="tier-pick" type="button" data-pick="vpn" aria-pressed="false">Выбрать VPN Лайт</button>
+        </article>
+
+        <article class="tier featured is-selected" data-card-product="bundle">
+          <div class="tier-head">
+            <span class="tier-badge">★ Самый популярный · 3 в 1</span>
+            <button class="info-circle" id="dns-info-open-desk" type="button" aria-label="Что входит в Smart DNS" aria-haspopup="dialog" aria-expanded="false" aria-controls="dns-info-dialog">i</button>
+          </div>
+          <h3>Экосистема «3 в 1»</h3>
+          <p class="tier-sub">Smart DNS + Telegram-прокси работают 90% времени сами; VPN всегда под рукой.</p>
+          <div class="tier-price-row">
+            <s class="tier-old" id="old-bundle" hidden>499 ₽</s>
+            <strong class="tier-price" id="price-bundle">—</strong>
+          </div>
+          <p class="tier-meta" id="meta-bundle">133 ₽/устройство · до 3 устройств</p>
+          <ul class="tier-list">
+            <li>✓ Smart DNS (до 1 000 000 запросов / 30 д)</li>
+            <li>✓ Telegram-прокси (маршруты direct и ru)</li>
+            <li>✓ VPN до 3 устройств (без конфликтов)</li>
+            <li>✓ Профиль Apple (.mobileconfig) + DoT Android</li>
+          </ul>
+          <button class="tier-pick" type="button" data-pick="bundle" aria-pressed="true">Выбрано: «3 в 1»</button>
+        </article>
+
+        <article class="tier" data-card-product="smart_dns">
+          <div class="tier-head"><span class="tier-badge">Без постоянного VPN</span></div>
+          <h3>Smart Доступ</h3>
+          <p class="tier-sub">Умный DNS + встроенный Telegram-прокси с автонастройкой.</p>
+          <div class="tier-price-row"><strong class="tier-price" id="price-smart_dns">—</strong></div>
+          <p class="tier-meta" id="meta-smart_dns">1 000 000 DNS-запросов / 30 д</p>
+          <ul class="tier-list">
+            <li>✓ Smart DNS (YouTube, AI-сервисы и др.)</li>
+            <li>✓ Telegram-прокси (direct и ru)</li>
+            <li>✓ Профиль Apple (.mobileconfig) + DoT Android</li>
+            <li class="no">✕ Без VPN-туннеля</li>
+          </ul>
+          <button class="tier-pick" type="button" data-pick="smart_dns" aria-pressed="false">Выбрать Smart Доступ</button>
+        </article>
       </div>
     </div>
-    <div class="plans plans-dns" role="group" aria-label="Тарифы Smart DNS — предварительный просмотр">
-      <button class="plan dns-plan" type="button" data-d="14" data-p="100 ⭐" aria-pressed="false"><b>14 дней</b><strong>100 ⭐</strong></button>
-      <button class="plan dns-plan" type="button" data-d="30" data-p="200 ⭐" aria-pressed="false"><b>30 дней</b><strong>200 ⭐</strong></button>
-      <button class="plan dns-plan" type="button" data-d="60" data-p="400 ⭐" aria-pressed="false"><b>60 дней</b><strong>400 ⭐</strong></button>
-      <button class="plan dns-plan" type="button" data-d="90" data-p="500 ⭐" aria-pressed="false"><b>90 дней</b><strong>500 ⭐</strong></button>
-    </div>
-    <div class="sum" aria-live="polite"><span id="sum" class="pop">Загрузка тарифов…</span><button class="payment-info" type="button" id="payment-info-open" aria-label="Условия оплаты и напоминания" aria-haspopup="dialog" aria-controls="payment-info-dialog" aria-expanded="false">i</button>
-      <div id="payment-info-dialog" class="payment-popover" role="dialog" aria-modal="false" aria-labelledby="payment-info-title" hidden>
-        <div class="payment-popover-head"><strong id="payment-info-title">Оплата и напоминания</strong><button id="payment-info-close" type="button" aria-label="Закрыть информацию">×</button></div>
-        <p>Без автосписаний. Защищённая оплата.</p>
-        <p>Окончание срока доступа напомним заранее.</p>
-        <p>Telegram-напоминания — после привязки бота.</p>
+
+    <div class="action-strip">
+      <div class="action-left">
+        <div class="sum" aria-live="polite">
+          <span id="sum">Загрузка тарифов…</span>
+          <button class="payment-info" type="button" id="payment-info-open" aria-label="Условия оплаты ЮKassa и напоминания" aria-haspopup="dialog" aria-controls="payment-info-dialog" aria-expanded="false">i</button>
+        </div>
+        <button class="cta" type="button" disabled>Загрузка тарифов…</button>
+        <p class="action-note">Разовая оплата через ЮKassa. Автоматическое создание профиля Apple (.mobileconfig), DoT-адреса для Android и ссылок Telegram-прокси сразу в личном кабинете.</p>
+        <p class="front-error" id="front-error" role="alert" aria-live="assertive" hidden></p>
+        <a class="front-retry" id="front-retry" href="/" target="_top" hidden>Не удалось загрузить тарифы. Повторить</a>
       </div>
-    </div>
-    <p class="dns-preview-note" id="dns-preview-note" hidden>Подготовленные тарифы в Stars · откройте Telegram-бот; доступность оплаты проверяет бот</p>
-    <button class="cta" type="button" disabled>Загрузка тарифов…</button><p class="front-error" id="front-error" role="alert" aria-live="assertive" hidden></p><a class="front-retry" id="front-retry" href="/" target="_top" hidden>Не удалось получить тарифы. Повторить загрузку</a>
-    
-    <div class="trial-slot" id="trial-slot">
-      <div class="free">
-        <svg viewBox="0 0 26 34" aria-hidden="true"><path d="M16 0 2 19h9l-3 15L24 13h-9z" fill="#19e6ff"/></svg>
-        <b>Бесплатные 24 часа</b>
-        <button class="try" type="button" disabled aria-expanded="false" aria-controls="trial-options">Попробовать</button>
-      </div>
-      <div class="trial-options" id="trial-options" role="group" aria-label="Выберите пробный продукт" hidden>
-        <button type="button" class="trial-choice" id="trial-vpn">VPN <small>24 часа</small></button>
-        <button type="button" class="trial-choice" id="trial-dns">Smart DNS <small>Скоро</small></button>
-        <button type="button" class="trial-close" id="trial-close" aria-label="Закрыть выбор пробного доступа">×</button>
-        <p class="trial-dns-status" id="trial-dns-status" role="status" hidden>Выдача индивидуальной ссылки Smart DNS ещё разрабатывается. Пробный VPN доступен отдельно.</p>
+
+      <div class="trial-slot" id="trial-slot">
+        <div class="free">
+          <svg viewBox="0 0 26 34" aria-hidden="true"><path d="M16 0 2 19h9l-3 15L24 13h-9z" fill="#19e6ff"/></svg>
+          <div>
+            <b>Бесплатные 24 часа</b>
+            <small class="trial-hint">Пробный VPN на 24 часа · Telegram-прокси и Smart DNS открываются после оплаты</small>
+          </div>
+          <button class="try" type="button" disabled aria-expanded="false" aria-controls="trial-options">Попробовать</button>
+        </div>
+        <div class="trial-options" id="trial-options" role="group" aria-label="Выберите пробный продукт" hidden>
+          <button type="button" class="trial-choice" id="trial-vpn">VPN <small>24 часа</small></button>
+          <button type="button" class="trial-choice" id="trial-dns">DNS + Прокси <small>После оплаты</small></button>
+          <button type="button" class="trial-close" id="trial-close" aria-label="Закрыть выбор пробного доступа">×</button>
+          <p class="trial-dns-status" id="trial-dns-status" role="status" hidden>Telegram-прокси и личный профиль Smart DNS выдаются только после подтверждённой оплаты «Smart Доступ» или «3 в 1». Сейчас доступен бесплатный VPN на 24 часа.</p>
+        </div>
       </div>
     </div>
   </main>
 
-  <footer class="rv" style="--d:.7s">
+  <section class="desk-compare" id="compare" aria-label="Подробное сравнение и запуск за 3 шага">
+    <h2>Почему «3 в 1» удобнее обычного VPN</h2>
+    <table class="cmp-table">
+      <thead><tr><th>Возможность</th><th>VPN Лайт</th><th>Smart Доступ</th><th>Экосистема «3 в 1» ★</th></tr></thead>
+      <tbody>
+        <tr><td>Smart DNS (до 1 000 000 запросов / 30 д)</td><td>—</td><td>✓</td><td>✓</td></tr>
+        <tr><td>Профиль Apple (.mobileconfig) + DoT для Android/роутера</td><td>—</td><td>✓</td><td>✓</td></tr>
+        <tr><td>Telegram-прокси (direct + ru + инструкция)</td><td>—</td><td>✓</td><td>✓</td></tr>
+        <tr><td>Полноценный VPN-туннель</td><td>1 устройство</td><td>—</td><td>до 3 устройств</td></tr>
+        <tr><td>90% времени без постоянного включения VPN</td><td>—</td><td>✓</td><td>✓</td></tr>
+      </tbody>
+    </table>
+    <div class="cmp-steps">
+      <div class="cmp-step"><strong>01. Оплатите в 1 клик (ЮKassa)</strong><p>Выберите тариф без привязки карты и скрытых автосписаний.</p></div>
+      <div class="cmp-step"><strong>02. Скачайте профиль Apple / DoT</strong><p>В личном кабинете сразу появятся файл .mobileconfig для iPhone/Mac, адрес DoT для Android и ссылки VPN.</p></div>
+      <div class="cmp-step"><strong>03. Подключите Telegram-прокси</strong><p>Нажмите на готовую ссылку маршрута direct или ru и пользуйтесь Telegram без конфликтов с VPN.</p></div>
+    </div>
+  </section>
+
+  <footer>
     <nav><a href="https://t.me/MNEBYVPN_bot" target="_blank" rel="noopener noreferrer">@MNEBYVPN_bot</a><a href="#roadmap">Roadmap</a><a href="#support">Поддержка</a></nav>
     <div class="legal-links"><a href="/terms" target="_top">Оферта</a><a href="/agreement" target="_top">Соглашение</a><a href="/privacy" target="_top">Обработка данных</a></div>
     <p class="seller-details">Кунавина Анна Александровна · ИНН 745214444705</p>
   </footer>
 </div>
 
+<div id="dns-info-dialog" class="dns-popover" role="dialog" aria-modal="false" aria-labelledby="dns-modal-title" hidden>
+  <div class="dns-popover-head">
+    <strong id="dns-modal-title">Как работает Smart DNS + Telegram-прокси</strong>
+    <button id="dns-info-close" type="button" aria-label="Закрыть информацию о Smart DNS">×</button>
+  </div>
+  <p>Доступ к поддерживаемым сервисам без постоянного VPN. Остальные сайты открываются напрямую на скорости провайдера.</p>
+  <div class="dns-popover-tags" aria-label="Примеры сервисов">
+    <span>YouTube</span><span>ChatGPT</span><span>Gemini</span><span>Claude</span>
+    <span>Google Antigravity</span><span>Grok</span><span>TikTok</span><span>Telegram</span>
+  </div>
+  <p class="dns-popover-caution">После оплаты в личном кабинете выдаются готовый профиль Apple (.mobileconfig), DoT-адрес для Android/роутера и ссылки MTProto-прокси для Telegram. Smart DNS не шифрует весь трафик: для полного туннеля выберите «3 в 1».</p>
+  <button class="dns-request" type="button" id="dns-request-domain">Добавить свой домен через поддержку</button>
+</div>
+
+<div id="payment-info-dialog" class="payment-popover" role="dialog" aria-modal="false" aria-labelledby="payment-info-title" hidden>
+  <div class="payment-popover-head"><strong id="payment-info-title">Оплата и напоминания</strong><button id="payment-info-close" type="button" aria-label="Закрыть информацию">×</button></div>
+  <p>Защищённая разовая оплата через ЮKassa. Без автосписаний.</p>
+  <p>Окончание срока напомним заранее, если к аккаунту привязан Telegram-бот.</p>
+  <p>Активация, выдача VPN, профилей Apple/Android Smart DNS и Telegram-прокси происходят автоматически только после подтверждения оплаты сервером.</p>
+</div>
+
 <script>
 const $=s=>document.querySelector(s),R=matchMedia('(prefers-reduced-motion:reduce)').matches;
-const sum=$('#sum');
-// All tariff interaction lives in the same-origin bridge below. No fake DNS checkout.
 document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e=>e.preventDefault()));
-const cta=$('.cta');
-// No pointermove gradient: touching a tariff must not repaint the entire card.
-// Video and CSS scene provide the only background animation. No gyroscope,
-// per-pointer CSS invalidations, 110 animated circles or SVG intervals.
-// The original lightweight H.264 MP4 (~166 KB) is the only continuously
-// moving background. Autoplay is muted and inline; no WebGL or canvas loops.
-// Reduced-motion / user-requested data saving preserve the static artwork.
+
+// Dual-orientation video controller: never download both desktop and mobile videos.
 (()=>{
-  const scene=$('.scene'),video=$('#bgv');
-  if(!scene||!video)return;
+  const mobScene=$('#mob-scene'),mobVideo=$('#bgv');
+  const deskScene=$('#desk-scene'),deskVideo=$('#bgv-desktop');
+  const mqlDesk=matchMedia('(min-width: 900px)');
   const autoplayAllowed=!R&&!navigator.connection?.saveData;
-  let hostActive=true,inView=true,started=false;
-  video.defaultMuted=true;
-  video.muted=true;
-  video.autoplay=true;
-  video.playsInline=true;
-  const playable=()=>hostActive&&inView&&!document.hidden;
-  const showStaticArtwork=()=>scene.classList.remove('vid');
-  const ensureSource=()=>{
-    if(started)return;
-    started=true;
-    for(const [src,type] of [
-      ['/bg3.mp4?v=30d2f12d','video/mp4'],
-      ['/bg3.webm?v=6e816d6e','video/webm; codecs="vp9"']
-    ]){
-      const source=document.createElement('source');
-      source.src=src;source.type=type;video.append(source);
+  let hostActive=true,mobStarted=false,deskStarted=false;
+  const playable=()=>hostActive&&!document.hidden;
+
+  const ensureMob=()=>{
+    if(mobStarted||!mobVideo)return;
+    mobStarted=true;
+    for(const [src,type] of [['/bg3.mp4?v=30d2f12d','video/mp4'],['/bg3.webm?v=6e816d6e','video/webm; codecs="vp9"']]){
+      const s=document.createElement('source');s.src=src;s.type=type;mobVideo.append(s);
     }
-    video.playbackRate=.85;
-    video.load();
+    mobVideo.playbackRate=.85;mobVideo.load();
   };
-  const play=()=>{
-    if(!autoplayAllowed||!playable())return;
-    ensureSource();
-    const attempt=video.play();
-    attempt?.catch?.(showStaticArtwork);
+  const ensureDesk=()=>{
+    if(deskStarted||!deskVideo)return;
+    deskStarted=true;
+    for(const [src,type] of [['/bg-desktop.mp4?v=1','video/mp4'],['/bg-desktop.webm?v=1','video/webm; codecs="vp9"']]){
+      const s=document.createElement('source');s.src=src;s.type=type;deskVideo.append(s);
+    }
+    deskVideo.playbackRate=.85;deskVideo.load();
   };
-  video.addEventListener('playing',()=>scene.classList.add('vid'));
-  video.addEventListener('canplay',play);
-  video.addEventListener('pause',showStaticArtwork);
-  video.addEventListener('waiting',showStaticArtwork);
-  video.addEventListener('error',showStaticArtwork);
-  if('IntersectionObserver' in window){
-    new IntersectionObserver(([entry])=>{
-      inView=Boolean(entry?.isIntersecting);
-      if(inView)play();
-      else video.pause();
-    },{threshold:0}).observe(scene);
+
+  const syncPlayback=()=>{
+    const isDesk=mqlDesk.matches;
+    if(!autoplayAllowed||!playable()){
+      mobVideo?.pause();deskVideo?.pause();
+      mobScene?.classList.remove('vid');deskScene?.classList.remove('vid');
+      return;
+    }
+    if(isDesk){
+      mobVideo?.pause();mobScene?.classList.remove('vid');
+      ensureDesk();
+      deskVideo?.play()?.catch?.(()=>deskScene?.classList.remove('vid'));
+    }else{
+      deskVideo?.pause();deskScene?.classList.remove('vid');
+      ensureMob();
+      mobVideo?.play()?.catch?.(()=>mobScene?.classList.remove('vid'));
+    }
+  };
+  if(mobVideo){
+    mobVideo.defaultMuted=true;mobVideo.muted=true;mobVideo.playsInline=true;
+    mobVideo.addEventListener('playing',()=>mobScene?.classList.add('vid'));
+    mobVideo.addEventListener('canplay',syncPlayback);
+    mobVideo.addEventListener('pause',()=>mobScene?.classList.remove('vid'));
+    mobVideo.addEventListener('error',()=>mobScene?.classList.remove('vid'));
   }
-  document.addEventListener('visibilitychange',()=>playable()?play():video.pause());
-  window.addEventListener('pageshow',play);
+  if(deskVideo){
+    deskVideo.defaultMuted=true;deskVideo.muted=true;deskVideo.playsInline=true;
+    deskVideo.addEventListener('playing',()=>deskScene?.classList.add('vid'));
+    deskVideo.addEventListener('canplay',syncPlayback);
+    deskVideo.addEventListener('pause',()=>deskScene?.classList.remove('vid'));
+    deskVideo.addEventListener('error',()=>deskScene?.classList.remove('vid'));
+  }
+  mqlDesk.addEventListener?.('change',syncPlayback);
+  document.addEventListener('visibilitychange',syncPlayback);
+  window.addEventListener('pageshow',syncPlayback);
   window.addEventListener('message',event=>{
     if(event.source!==window.parent||event.origin!==location.origin||
        event.data?.channel!=='mnebyvpn-front-v1'||event.data?.type!=='visual')return;
-    hostActive=event.data.active===true;
-    if(hostActive)play();
-    else video.pause();
+    hostActive=event.data.active===true;syncPlayback();
   });
-  // If a mobile browser denies autoplay, the next ordinary page interaction
-  // may unlock muted playback; no dedicated playback controls are displayed.
-  window.addEventListener('pointerdown',()=>{
-    if(autoplayAllowed&&video.paused)play();
-  },{passive:true});
-  if(document.readyState==='loading')
-    document.addEventListener('DOMContentLoaded',play,{once:true});
-  else play();
+  window.addEventListener('pointerdown',()=>{if(autoplayAllowed)syncPlayback();},{passive:true});
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',syncPlayback,{once:true});
+  else syncPlayback();
 })();
-// Continuous canvas rendering is intentionally disabled to keep taps responsive.
 
 ;(()=>{
   'use strict';
-  // The parent page handles all authentication, billing and provisioning.
-  // This standalone frame only mirrors public catalog fields and user actions.
   const channel='mnebyvpn-front-v1';
   const send=(type,extra={})=>window.parent.postMessage({channel,type,...extra},location.origin);
-  const button=document.querySelector('.cta');
-  const trial=document.querySelector('.try');
-  const summary=document.getElementById('sum');
-  const error=document.getElementById('front-error');
-  const retry=document.getElementById('front-retry');
-  retry.addEventListener('click',event=>{
-    // Prefer a fresh API attempt without destroying the selected product,
-    // account session, or the unfinished checkout intent.
-    if(ready){event.preventDefault();retry.hidden=true;send('refresh');}
-  });
-  const selections=[...document.querySelectorAll('.plans-vpn .plan[data-d]')];
-  const dnsSelections=[...document.querySelectorAll('.plans-dns .plan[data-d]')];
-  const dnsPreview=document.getElementById('dns-preview-note');
-  const infoButton=document.getElementById('dns-info-open');
-  const infoDialog=document.getElementById('dns-info-dialog');
-  const trialOptions=document.getElementById('trial-options');
-  const trialSlot=document.getElementById('trial-slot');
-  const trialClose=document.getElementById('trial-close');
-  const setTrialChooser=(open)=>{
-    trialOptions.hidden=!open;
-    trialSlot.classList.toggle('is-choosing',open);
-    trial.setAttribute('aria-expanded',String(open));
-    trialDnsStatus.hidden=true;
-    if(open)trialVpn.focus();
-    else if(trialSlot.contains(document.activeElement))trial.focus();
+  const button=$('.cta'),trial=$('.try'),summary=$('#sum'),error=$('#front-error'),retry=$('#front-retry');
+  const mobProdButtons=[...document.querySelectorAll('.prod-tab[data-prod]')];
+  const mobDurButtons=[...document.querySelectorAll('.plans-mob .plan[data-d]')];
+  const deskDurButtons=[...document.querySelectorAll('.desk-durations .dur-pill[data-d]')];
+  const deskCards=[...document.querySelectorAll('.tier[data-card-product]')];
+  const deskPicks=[...document.querySelectorAll('.tier-pick[data-pick]')];
+  const trialOptions=$('#trial-options'),trialSlot=$('#trial-slot'),trialClose=$('#trial-close');
+  const trialDnsStatus=$('#trial-dns-status'),trialVpn=$('#trial-vpn'),trialDns=$('#trial-dns');
+  const titles={vpn:'VPN Лайт',bundle:'Экосистема «3 в 1»',smart_dns:'Smart Доступ'};
+  const perks={
+    vpn:'Защищённый VPN-туннель на 1 устройство. Без Smart DNS и Telegram-прокси.',
+    bundle:'Smart DNS (до 1 млн запросов) + Telegram-прокси + VPN до 3 устройств. Профиль Apple (.mobileconfig) и DoT Android сразу после оплаты.',
+    smart_dns:'Smart DNS (до 1 млн запросов) + Telegram-прокси (direct и ru) + профиль Apple (.mobileconfig) и DoT для Android.'
   };
-  const trialDnsStatus=document.getElementById('trial-dns-status');
-  const trialVpn=document.getElementById('trial-vpn');
-  const trialDns=document.getElementById('trial-dns');
-  // Independent choices: DNS no longer deselects VPN or vice versa.
-  // Only the VPN plan is currently purchasable in the server checkout.
-  let vpnDays=15,vpnSelected=true,dnsDays=null,ready=false,serverData=null;
-  let resizeQueued=false,lastHeight=0;
-  const setText=(el,value)=>{if(el&&el.textContent!==value)el.textContent=value;};
-  const setPressed=(el,pressed)=>{
-    const value=String(pressed);
-    if(el.getAttribute('aria-pressed')!==value)el.setAttribute('aria-pressed',value);
-  };
+
+  let selectedProduct='bundle',selectedDays=30,ready=false,serverData=null,resizeQueued=false,lastHeight=0;
+  const setText=(el,v)=>{if(el&&el.textContent!==v)el.textContent=v;};
+  const setPressed=(el,on)=>{if(el)el.setAttribute('aria-pressed',String(on));};
+  const findOffer=(product,days)=>(serverData?.offers||[]).find(o=>o.product===product&&o.days===days);
+
   const resize=()=>{
     if(resizeQueued)return;
     resizeQueued=true;
     requestAnimationFrame(()=>{
       resizeQueued=false;
       const app=document.querySelector('.app');
-      const header=app.querySelector('.top');
-      const hero=app.querySelector('.hero');
-      const card=app.querySelector('.card');
-      const footer=app.querySelector('footer');
-      const style=getComputedStyle(card);
-      const mt=parseFloat(style.marginTop)||0;
-      const mb=parseFloat(style.marginBottom)||0;
-      const height=Math.ceil(header.offsetHeight+hero.offsetHeight+
-        card.offsetHeight+footer.offsetHeight+mt+mb+2);
-      if(Math.abs(height-lastHeight)>2){
-        lastHeight=height;
-        send('height',{height});
-      }
+      const h=Math.ceil(app.scrollHeight+2);
+      if(Math.abs(h-lastHeight)>2){lastHeight=h;send('height',{height:h});}
     });
   };
+
   const updateView=()=>{
-    let selectedVpn=null;
-    selections.forEach(el=>{
-      const days=Number(el.dataset.d);
-      const offer=(serverData?.offers||[]).find(o=>o.days===days);
-      const available=Boolean(offer?.available);
-      if(el.disabled===available)el.disabled=!available;
-      const price=available&&typeof offer.price==='string'?offer.price:'—';
-      if(el.dataset.p!==price)el.dataset.p=price;
-      setText(el.querySelector('strong'),price);
-      setPressed(el,vpnSelected&&days===vpnDays);
-      if(vpnSelected&&days===vpnDays&&available)selectedVpn=el;
+    mobProdButtons.forEach(b=>setPressed(b,b.dataset.prod===selectedProduct));
+    setText($('#mob-product-title'),selectedProduct==='bundle'?'«3 в 1»':titles[selectedProduct]);
+    setText($('#mob-perks'),perks[selectedProduct]);
+
+    mobDurButtons.forEach(b=>{
+      const d=Number(b.dataset.d),offer=findOffer(selectedProduct,d);
+      const ok=Boolean(offer?.available);
+      b.disabled=!ok;
+      setText(b.querySelector('strong'),ok?offer.price:'—');
+      setPressed(b,d===selectedDays);
     });
-    dnsSelections.forEach(el=>setPressed(el,Number(el.dataset.d)===dnsDays));
-    const selectedDns=dnsSelections.find(el=>Number(el.dataset.d)===dnsDays);
-    const vpnPart=selectedVpn?'VPN · '+vpnDays+' д · '+selectedVpn.dataset.p:null;
-    const dnsPart=selectedDns?'Smart DNS · '+dnsDays+' д · '+selectedDns.dataset.p:null;
-    setText(summary,vpnPart&&dnsPart?vpnPart+' + '+dnsPart:
-      vpnPart||dnsPart||(vpnSelected?'Выбранный VPN пока недоступен':'Выберите тариф'));
-    const dnsChosen=Boolean(selectedDns);
-    dnsPreview.hidden=!dnsChosen;
-    if(!vpnPart){
-      setText(button,dnsChosen?'Тарифы Smart DNS — в Telegram-боте':
-        vpnSelected?'Тариф пока недоступен':'Выберите тариф VPN');
-      button.disabled=true;
-    }else if(dnsChosen){
-      setText(button,'Оформить только VPN');
-      button.disabled=Boolean(serverData?.buyDisabled);
-    }else{
-      setText(button,serverData?.buyText||'Загрузка тарифов…');
-      button.disabled=!serverData||Boolean(serverData.buyDisabled);
+    deskDurButtons.forEach(b=>setPressed(b,Number(b.dataset.d)===selectedDays));
+
+    for(const prod of ['vpn','bundle','smart_dns']){
+      const offer=findOffer(prod,selectedDays);
+      setText($('#price-'+prod),offer?.available?offer.price:'—');
     }
-    const hasOffers=Array.isArray(serverData?.offers)&&
-      serverData.offers.some(offer=>offer.available);
-    retry.hidden=hasOffers||dnsChosen||!serverData;
+    const oldBundle=$('#old-bundle');
+    if(oldBundle)oldBundle.hidden=selectedDays!==30;
+    deskCards.forEach(c=>c.classList.toggle('is-selected',c.dataset.cardProduct===selectedProduct));
+    deskPicks.forEach(b=>{
+      const active=b.dataset.pick===selectedProduct;
+      setPressed(b,active);
+      setText(b,active?'Выбрано: '+(b.dataset.pick==='bundle'?'«3 в 1»':titles[b.dataset.pick]):'Выбрать '+titles[b.dataset.pick]);
+    });
+
+    const activeOffer=findOffer(selectedProduct,selectedDays);
+    setText(summary,activeOffer?.available?titles[selectedProduct]+' · '+selectedDays+' д · '+activeOffer.price:'Выберите доступный тариф');
+    setText(button,serverData?.buyText||'Загрузка тарифов…');
+    button.disabled=!serverData||Boolean(serverData.buyDisabled)||!activeOffer?.available;
+    const hasAny=(serverData?.offers||[]).some(o=>o.available);
+    retry.hidden=hasAny||!serverData;
     setText(error,typeof serverData?.error==='string'?serverData.error:'');
-    error.hidden=!error.textContent||(!vpnSelected&&dnsChosen);
+    error.hidden=!error.textContent;
+
     trial.disabled=false;
     trialVpn.disabled=!serverData?.trialAvailable||Boolean(serverData?.trialDisabled);
-    setText(trialVpn.querySelector('small'),trialVpn.disabled?
-      'Пока недоступно':'Получить 24 часа');
+    setText(trialVpn.querySelector('small'),trialVpn.disabled?'Пока недоступно':'24 часа');
     resize();
   };
+
   window.addEventListener('message',ev=>{
     if(ev.source!==window.parent||ev.origin!==location.origin||
        ev.data?.channel!==channel||ev.data?.type!=='sync')return;
-    serverData=ev.data;
-    ready=true;
-    if([15,30,60,90].includes(serverData.days))vpnDays=serverData.days;
+    serverData=ev.data;ready=true;
+    if(['vpn','smart_dns','bundle'].includes(serverData.product))selectedProduct=serverData.product;
+    if([15,30,60,90].includes(serverData.days))selectedDays=serverData.days;
     updateView();
   });
-  selections.forEach(el=>el.addEventListener('click',()=>{
-    if(el.disabled)return;
-    const day=Number(el.dataset.d);
-    // The chosen VPN duration is a radio selection, never a toggle-off.
-    // Tapping the highlighted tariff again must not disable checkout.
-    vpnSelected=true;
-    vpnDays=day;
-    send('select',{days:day});
+
+  const choose=(product,days,autoBuy=false)=>{
+    selectedProduct=product;selectedDays=days;
+    send('select',{product,days});
     updateView();
-  }));
-  dnsSelections.forEach(el=>el.addEventListener('click',()=>{
-    const day=Number(el.dataset.d);
-    dnsDays=dnsDays===day?null:day; // Independent on/off selection.
-    updateView();
-  }));
-  button.addEventListener('click',()=>{
-    // Never include DNS in a purchase unless the backend supports its own plan.
-    if(vpnSelected&&!button.disabled)send('buy');
-  });
+    if(autoBuy&&!button.disabled)send('buy');
+  };
+
+  mobProdButtons.forEach(b=>b.addEventListener('click',()=>choose(b.dataset.prod,selectedDays)));
+  mobDurButtons.forEach(b=>b.addEventListener('click',()=>{if(!b.disabled)choose(selectedProduct,Number(b.dataset.d));}));
+  deskDurButtons.forEach(b=>b.addEventListener('click',()=>choose(selectedProduct,Number(b.dataset.d))));
+  deskPicks.forEach(b=>b.addEventListener('click',()=>choose(b.dataset.pick,selectedDays,b.dataset.pick===selectedProduct)));
+  button.addEventListener('click',()=>{if(!button.disabled)send('buy');});
+  retry.addEventListener('click',e=>{if(ready){e.preventDefault();retry.hidden=true;send('refresh');}});
+
+  const setTrialChooser=(open)=>{
+    trialOptions.hidden=!open;trialSlot.classList.toggle('is-choosing',open);
+    trial.setAttribute('aria-expanded',String(open));trialDnsStatus.hidden=true;
+    if(open)trialVpn.focus();else if(trialSlot.contains(document.activeElement))trial.focus();
+  };
   trial.addEventListener('click',()=>setTrialChooser(trialOptions.hidden));
   trialClose.addEventListener('click',()=>setTrialChooser(false));
-  document.addEventListener('keydown',event=>{
-    if(event.key==='Escape'&&!trialOptions.hidden){
-      event.preventDefault();
-      setTrialChooser(false);
-    }
-  });
-  trialVpn.addEventListener('click',()=>{
-    if(trialVpn.disabled)return;
-    setTrialChooser(false);
-    send('trial');
-  });
-  trialDns.addEventListener('click',()=>{
-    trialDnsStatus.hidden=false; // Individual DNS trial URL is not ready.
-  });
-  const paymentInfoDialog=document.getElementById('payment-info-dialog');
-  const paymentInfoOpen=document.getElementById('payment-info-open');
-  const setPaymentInfo=(visible,restoreFocus=false)=>{
-    paymentInfoDialog.hidden=!visible;
-    paymentInfoOpen.setAttribute('aria-expanded',String(visible));
-    if(visible)document.getElementById('payment-info-close').focus();
-    else if(restoreFocus)paymentInfoOpen.focus();
+  trialVpn.addEventListener('click',()=>{if(!trialVpn.disabled){setTrialChooser(false);send('trial');}});
+  trialDns.addEventListener('click',()=>{trialDnsStatus.hidden=false;});
+
+  const paymentDialog=$('#payment-info-dialog'),paymentOpen=$('#payment-info-open');
+  const dnsDialog=$('#dns-info-dialog'),dnsOpens=[$('#dns-info-open'),$('#dns-info-open-desk')].filter(Boolean);
+  let lastDnsOpener=dnsOpens[0];
+  const setPopover=(dialog,opener,visible,restoreFocus=false)=>{
+    if(!dialog)return;
+    dialog.hidden=!visible;
+    opener?.setAttribute('aria-expanded',String(visible));
+    if(visible)dialog.querySelector('button[id$="-close"]')?.focus();
+    else if(restoreFocus)opener?.focus();
   };
-  paymentInfoOpen.addEventListener('click',()=>setPaymentInfo(paymentInfoDialog.hidden));
-  document.getElementById('payment-info-close').addEventListener('click',()=>setPaymentInfo(false,true));
-  document.addEventListener('pointerdown',event=>{
-    if(!paymentInfoDialog.hidden&&!paymentInfoDialog.contains(event.target)&&
-      event.target!==paymentInfoOpen)setPaymentInfo(false);
+  paymentOpen.addEventListener('click',()=>{
+    setPopover(dnsDialog,lastDnsOpener,false);
+    setPopover(paymentDialog,paymentOpen,paymentDialog.hidden);
   });
-  document.addEventListener('keydown',event=>{
-    if(event.key==='Escape'&&!paymentInfoDialog.hidden){
-      event.preventDefault();setPaymentInfo(false,true);
-    }
+  $('#payment-info-close').addEventListener('click',()=>setPopover(paymentDialog,paymentOpen,false,true));
+  dnsOpens.forEach(btn=>btn.addEventListener('click',()=>{
+    lastDnsOpener=btn;
+    setPopover(paymentDialog,paymentOpen,false);
+    setPopover(dnsDialog,btn,dnsDialog.hidden);
+  }));
+  $('#dns-info-close').addEventListener('click',()=>setPopover(dnsDialog,lastDnsOpener,false,true));
+  $('#dns-request-domain').addEventListener('click',()=>{setPopover(dnsDialog,lastDnsOpener,false);send('support');});
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='Escape')return;
+    if(!trialOptions.hidden){e.preventDefault();setTrialChooser(false);}
+    else if(!paymentDialog.hidden){e.preventDefault();setPopover(paymentDialog,paymentOpen,false,true);}
+    else if(!dnsDialog.hidden){e.preventDefault();setPopover(dnsDialog,lastDnsOpener,false,true);}
   });
-  const setDnsInfo=(visible,restoreFocus=false)=>{
-    infoDialog.hidden=!visible;
-    infoButton.setAttribute('aria-expanded',String(visible));
-    if(visible){
-      setPaymentInfo(false);
-      document.getElementById('dns-info-close').focus();
-    }else if(restoreFocus)infoButton.focus();
-  };
-  infoButton.addEventListener('click',()=>setDnsInfo(infoDialog.hidden));
-  document.getElementById('dns-info-close').addEventListener('click',()=>setDnsInfo(false,true));
-  document.addEventListener('pointerdown',event=>{
-    if(!infoDialog.hidden&&!infoDialog.contains(event.target)&&event.target!==infoButton)
-      setDnsInfo(false);
+  document.addEventListener('pointerdown',e=>{
+    if(!paymentDialog.hidden&&!paymentDialog.contains(e.target)&&e.target!==paymentOpen)setPopover(paymentDialog,paymentOpen,false);
+    if(!dnsDialog.hidden&&!dnsDialog.contains(e.target)&&!dnsOpens.includes(e.target))setPopover(dnsDialog,lastDnsOpener,false);
   });
-  document.addEventListener('keydown',event=>{
-    if(event.key==='Escape'&&!infoDialog.hidden){
-      event.preventDefault();setDnsInfo(false,true);
-    }
-  });
-  document.getElementById('dns-request-domain').addEventListener('click',()=>{
-    setDnsInfo(false);
-    send('support');
-  });
-  document.querySelector('.logo')?.addEventListener('click',e=>{e.preventDefault();send('plans')});
-  document.querySelector('a[href="#about"]')?.addEventListener('click',e=>{e.preventDefault();send('about')});
-  document.querySelector('a[href="/#account"]')?.addEventListener('click',e=>{
-    // If the iframe handshake is unavailable, fall back to the real
-    // top-level cabinet URL instead of swallowing the click.
-    if(ready){e.preventDefault();send('account');}
-  });
-  document.querySelector('a[href="#roadmap"]')?.addEventListener('click',e=>{e.preventDefault();send('roadmap')});
-  document.querySelector('a[href="#support"]')?.addEventListener('click',e=>{e.preventDefault();send('support')});
-  if(typeof ResizeObserver!=='undefined'){
-    const observer=new ResizeObserver(()=>resize());
-    for(const selector of ['.top','.hero','.card','footer'])
-      observer.observe(document.querySelector(selector));
-  }
+
+  document.querySelector('.logo')?.addEventListener('click',e=>{e.preventDefault();send('plans');});
+  document.querySelector('a[href="#about"]')?.addEventListener('click',e=>{e.preventDefault();send('about');});
+  document.querySelector('a[href="/#account"]')?.addEventListener('click',e=>{if(ready){e.preventDefault();send('account');}});
+  document.querySelector('a[href="#roadmap"]')?.addEventListener('click',e=>{e.preventDefault();send('roadmap');});
+  document.querySelectorAll('a[href="#support"]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();send('support');}));
+
+  if(typeof ResizeObserver!=='undefined')new ResizeObserver(resize).observe(document.querySelector('.app'));
   window.addEventListener('resize',resize);
-  // A fast iframe can post ready before the deferred parent listener exists.
-  // Retransmit until the first authoritative sync or a bounded timeout.
   let readyAttempts=0;
-  const announceReady=()=>{if(!ready)send('ready')};
-  const readyRetry=setInterval(()=>{
-    if(ready||++readyAttempts>25){
-      clearInterval(readyRetry);
-      if(!ready){
-        retry.hidden=dnsDays!==null;
-        summary.textContent='Не удалось загрузить тарифы';
-        button.textContent='Тарифы недоступны';
-      }
-      return;
-    }
-    announceReady();
+  const announce=()=>!ready&&send('ready');
+  const retryTimer=setInterval(()=>{
+    if(ready||++readyAttempts>25){clearInterval(retryTimer);if(!ready){retry.hidden=false;setText(summary,'Не удалось загрузить тарифы');setText(button,'Тарифы недоступны');}}
+    else announce();
   },400);
-  window.addEventListener('load',()=>{
-    announceReady();resize();document.fonts?.ready.then(resize).catch(()=>{});
-  },{once:true});
-  if(document.readyState==='complete'){announceReady();resize();}
+  window.addEventListener('load',()=>{announce();resize();},{once:true});
+  if(document.readyState==='complete'){announce();resize();}
 })();
 </script>
 </body>
