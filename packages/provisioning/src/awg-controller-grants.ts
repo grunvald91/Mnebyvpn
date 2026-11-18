@@ -13,7 +13,7 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const NODE=/^[a-z0-9][a-z0-9-]{2,39}$/;
 const KEY=/^[A-Za-z0-9+/]{43}=$/;
 const NODE_NETWORK=/^10\.73\.(\d{1,3})\.0\/24$/;
-const MAX_LEASE_MINUTES=60; // fail-closed after one hour without renewed authorization
+const MAX_OFFLINE_GRANT_MS=7*24*60*60_000; // async signed local permission; no handshake callback
 
 export class AwgControllerError extends Error {}
 export interface SignedAwgLease {
@@ -162,7 +162,7 @@ export async function stageAwgGrant(
     if(!Number.isSafeInteger(revision)||revision>1_000_000_000)
       throw new AwgControllerError('AWG grant revision exhausted');
     const end=new Date(Math.min(
-      ent.expires_at.getTime(),now.getTime()+MAX_LEASE_MINUTES*60_000));
+      ent.expires_at.getTime(),now.getTime()+MAX_OFFLINE_GRANT_MS));
     if(end.getTime()<=now.getTime())
       throw new AwgControllerError('No remaining entitlement lease');
     const {randomBytes}=await import('node:crypto');
