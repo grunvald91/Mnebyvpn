@@ -11,7 +11,8 @@ test('delivery loop handles one command at a time and shuts down',async()=>{
     await Promise.resolve();
     inflight--;
     if(calls===3)stop.abort();
-    return {status:calls===1?'acknowledged':'idle',outboxId:'7'};
+    if(calls===1)return {status:'acknowledged',outboxId:'7'};
+    return {status:'idle'};
   },stop.signal,async()=>{},s=>statuses.push(s));
   assert.equal(max,1);
   assert.equal(calls,3);
