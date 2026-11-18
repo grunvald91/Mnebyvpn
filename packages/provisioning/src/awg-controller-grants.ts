@@ -13,8 +13,7 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const NODE=/^[a-z0-9][a-z0-9-]{2,39}$/;
 const KEY=/^[A-Za-z0-9+/]{43}=$/;
 const NODE_NETWORK=/^10\.73\.(\d{1,3})\.0\/24$/;
-const MILLISECONDS_PER_DAY=86400000;
-const MAX_LEASE_DAYS=90;
+const MAX_LEASE_MINUTES=60; // fail-closed after one hour without renewed authorization
 
 export class AwgControllerError extends Error {}
 export interface SignedAwgLease {
@@ -163,7 +162,7 @@ export async function stageAwgGrant(
     if(!Number.isSafeInteger(revision)||revision>1_000_000_000)
       throw new AwgControllerError('AWG grant revision exhausted');
     const end=new Date(Math.min(
-      ent.expires_at.getTime(),now.getTime()+MAX_LEASE_DAYS*MILLISECONDS_PER_DAY));
+      ent.expires_at.getTime(),now.getTime()+MAX_LEASE_MINUTES*60_000));
     if(end.getTime()<=now.getTime())
       throw new AwgControllerError('No remaining entitlement lease');
     const {randomBytes}=await import('node:crypto');
@@ -194,6 +193,17 @@ export async function stageAwgGrant(
          revision,end,now,digest],
       );
     }
+    // A returned signed command is NOT delivery. Persist it atomically
+    // with allocation state, then let a trusted delivery worker claim it
+    // while the controller timestamp is still valid.
+    await tx.query(
+      'INSERT INTO vpn_awg_command_outbox '+
+      '(node_id,entitlement_id,revision,billing_revision,op,'+
+      'signed_command,command_sha256,issued_at,expires_delivery_at) '+
+      "VALUES($1,$2,$3,$4,'grant',$5::jsonb,$6,$7,$8)",
+      [input.nodeId,input.entitlementId,revision,ent.revision,
+       JSON.stringify(signed),digest,now,new Date(now.getTime()+40_000)],
+    );
     await tx.query('COMMIT');
     return {command:signed,staged:true,published:false};
   }catch(e){
@@ -240,6 +250,16 @@ export async function stageAwgRevoke(
       'WHERE node_id=$1 AND entitlement_id=$2',
       [input.nodeId,input.entitlementId,revision,now,
        createHash('sha256').update(awgControllerPayload(command)).digest('hex')],
+    );
+    await tx.query(
+      'INSERT INTO vpn_awg_command_outbox '+
+      '(node_id,entitlement_id,revision,billing_revision,op,'+
+      'signed_command,command_sha256,issued_at,expires_delivery_at) '+
+      "VALUES($1,$2,$3,NULL,'revoke',$4::jsonb,$5,$6,$7)",
+      [input.nodeId,input.entitlementId,revision,
+       JSON.stringify(signed),
+       createHash('sha256').update(awgControllerPayload(command)).digest('hex'),
+       now,new Date(now.getTime()+40_000)],
     );
     await tx.query('COMMIT');
     return {command:signed,staged:true,published:false};
