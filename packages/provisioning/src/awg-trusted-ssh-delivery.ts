@@ -8,7 +8,7 @@
  * Currently FI-only until multi-country IPAM and host-key enrollment.
  */
 import {spawnSync,type SpawnSyncReturns} from 'node:child_process';
-import {statSync} from 'node:fs';
+import {lstatSync} from 'node:fs';
 import type {Pool} from 'pg';
 import type {KeyObject} from 'node:crypto';
 import {
@@ -47,7 +47,7 @@ function safeRootFile(path:string):void {
      path.includes('\u0000')||path.length>1024){
     throw new AwgTransportError('A protected absolute controller file is required');
   }
-  const meta=statSync(path,{throwIfNoEntry:false});
+  const meta=lstatSync(path,{throwIfNoEntry:false});
   if(!meta||!meta.isFile()||meta.isSymbolicLink()||
      meta.uid!==0||(meta.mode&0o077)!==0){
     throw new AwgTransportError('Untrusted controller SSH key or pinned host file');
@@ -80,7 +80,7 @@ function assertEnvelope(command:SignedAwgLease):void{
   }
 }
 
-function parseReceipt(output:string,command:SignedAwgLease):NodeAwgReceipt{
+export function parseAwgNodeReceipt(output:string,command:SignedAwgLease):NodeAwgReceipt{
   if(typeof output!=='string'||output.length>MAX_RESPONSE)
     throw new AwgTransportError('Invalid AWG node response length');
   let parsed:unknown;
@@ -123,13 +123,14 @@ export async function deliverNextAwgCommand(
   now=new Date(),
   runner:Run=spawnSync,
 ):Promise<{status:'idle'}|{status:'acknowledged';outboxId:string}>{
+  // Check root-owned SSH identity and host pin BEFORE claiming one-use work.
+  const args=awgSshArgs(config);
   const record=await claimAwgCommand(db,controllerSigningKey,now);
   if(!record)return {status:'idle'};
   assertEnvelope(record.command);
   const serialized=JSON.stringify(record.command);
   if(Buffer.byteLength(serialized,'utf8')>MAX_COMMAND)
     throw new AwgTransportError('Oversize signed AWG command');
-  const args=awgSshArgs(config);
   let result:ReturnType<Run>;
   try{
     result=runner('/usr/bin/ssh',args,{
@@ -141,7 +142,7 @@ export async function deliverNextAwgCommand(
   }
   if(result.error||result.status!==0)
     throw new AwgTransportError('AWG node refused signed command');
-  const receipt=parseReceipt(result.stdout,record.command);
+  const receipt=parseAwgNodeReceipt(result.stdout,record.command);
   // The receipt is not trusted until the controller verifies its signature
   // against the pinned node identity and the CURRENT entitlement revision.
   await acknowledgeAwgCommand(db,{
