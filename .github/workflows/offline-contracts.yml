@@ -74,6 +74,11 @@ jobs:
           set -euo pipefail
           # Only disposable test identities. Never provision production material in Actions.
           sudo "$(command -v node)" --test tests/trusted-controller-bootstrap.test.mjs
+      - name: Test Python/OpenSSL bootstrap for existing RU188 (disposable runner only)
+        run: |
+          set -euo pipefail
+          python3 -m py_compile ops/controller188-key-bootstrap.py tests/test_controller188_key_bootstrap.py
+          sudo python3 -m unittest discover -s tests -p 'test_controller188_key_bootstrap.py' -v
       - name: Install PostgreSQL client
         run: sudo apt-get update -qq && sudo apt-get install -qq -y postgresql-client
       - name: Run schema and SQL contract tests (rollback fixtures)
