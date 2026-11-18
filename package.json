@@ -15,6 +15,7 @@
     "start:expiry-worker": "node --experimental-strip-types apps/service/src/expiry-worker.ts",
     "start:vpn-worker": "node --experimental-strip-types apps/service/src/vpn-provisioning-worker.ts",
     "start:awg-delivery-worker": "node --experimental-strip-types apps/service/src/awg-controller-delivery-worker.ts",
+    "enroll:fi-controller": "node --experimental-strip-types apps/service/src/fi-enrollment-controller.ts",
     "start:purchase-notices": "node --experimental-strip-types apps/service/src/purchase-notification-worker.ts",
     "start:dns-mtproxy-bonus": "node --experimental-strip-types apps/service/src/dns-mtproxy-bonus-worker.ts",
     "typecheck": "tsc --noEmit"
