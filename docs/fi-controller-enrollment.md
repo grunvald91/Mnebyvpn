@@ -71,3 +71,20 @@ E2E proof does not replace a real signed client grant/revoke test.
 
 See the server-side instructions in
 [Nodekit FI_TRUSTED_ENROLLMENT](https://github.com/grunvald91/telegram-proxy-infra/blob/main/nodekit/FI_TRUSTED_ENROLLMENT.md).
+
+
+## Security review 2026-11-18
+
+The private enrollment library now refuses to operate outside a root-owned
+controller process, rejects controller key paths whose parent directories
+are not root-owned or are group/world-writable, and reads the independently
+pinned FI node public SPKI using a single `O_NOFOLLOW` descriptor with
+`fstat` verification. The signed node response must be compact, sorted-key
+JSON matching the Nodekit output exactly; duplicate keys and noncanonical
+representations are rejected before signature verification.
+
+**Operational constraint:** keep all controller keys and known_hosts under
+root-owned nonwritable ancestry (for example `/root/mnebyvpn-controller/`).
+Never use `/tmp` or writable shared mounts. No live key distribution,
+controlled SSH authorization, database enrollment or subscriber release is
+performed by these code changes.
