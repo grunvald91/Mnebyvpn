@@ -75,6 +75,7 @@ def require_real_188():
 def safe_member(member):
     p=PurePosixPath(member.name)
     if (not member.isfile() or member.issym() or member.islnk() or
+        member.size<0 or member.size>MAX_BYTES or
         not member.name or p.is_absolute() or any(x in (".","..") for x in p.parts) or
         member.name.startswith("-") or "\x00" in member.name):
         raise RuntimeInstallError("Unsafe runtime archive entry")
@@ -112,6 +113,9 @@ def stage(archive:Path,digest:str,commit:str):
     if CURRENT.exists() or CURRENT.is_symlink() or (RELEASES/commit).exists():
         raise RuntimeInstallError("Existing controller runtime cannot be overwritten")
     stagepath=Path(tempfile.mkdtemp(prefix=".stage-",dir=str(RELEASES)))
+    created_units=[]
+    promoted=False
+    success=False
     try:
         names=set()
         size=0
@@ -151,9 +155,11 @@ def stage(archive:Path,digest:str,commit:str):
         stagepath=None
         # The initial deployment never retargets an existing symlink.
         CURRENT.symlink_to(target,target_is_directory=True)
+        promoted=True
         for name in UNITS:
             src=target/"ops/controller188-systemd"/name
             fd=os.open(UNITDIR/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o644)
+            created_units.append(UNITDIR/name)
             with os.fdopen(fd,"wb") as out:out.write(src.read_bytes())
         run("/usr/bin/systemctl","daemon-reload")
         run("/usr/bin/systemctl","start","mnebyvpn-controller-runtime-check.service")
@@ -163,12 +169,25 @@ def stage(archive:Path,digest:str,commit:str):
                                   timeout=8)
             if result.returncode==0:
                 raise RuntimeInstallError("Unexpected active production controller worker")
+        success=True
         return {"controller":"188.120.254.223","runtime":"v22.23.5",
                 "runtime_smoke":"passed","fi_enrollment_enabled":False,
                 "awg_delivery_enabled":False,"existing_services_restarted":False,
                 "subscriber_publication":False}
     finally:
         if stagepath and stagepath.exists():shutil.rmtree(stagepath)
+        if not success and promoted:
+            # Only ever revert objects created by THIS installer. Never
+            # stop/restart/delete an existing MNEBYVPN container or unit.
+            for name in created_units:
+                try:name.unlink()
+                except OSError:pass
+            try:CURRENT.unlink()
+            except OSError:pass
+            try:shutil.rmtree(RELEASES/commit)
+            except OSError:pass
+            try:run("/usr/bin/systemctl","daemon-reload")
+            except (OSError,ValueError,subprocess.SubprocessError):pass
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
