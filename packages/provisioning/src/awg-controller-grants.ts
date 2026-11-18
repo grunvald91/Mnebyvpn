@@ -123,7 +123,7 @@ export async function stageAwgGrant(
       'WHERE node_id=$1 FOR UPDATE',[input.nodeId]);
     const item=enrollment.rows[0];
     const pools=await tx.query<NodePool>(
-      'SELECT node_id,endpoint_host,state,subnet_cidr::text,verified_at,'+
+      'SELECT node_id,endpoint_host,state,subnet_cidr::text AS subnet_cidr,verified_at,'+
       'server_public_key FROM vpn_awg_node_pools WHERE node_id=$1 FOR UPDATE',
       [input.nodeId]);
     const pool=pools.rows[0];
