@@ -116,6 +116,10 @@ export function parseFiEnrollmentProof(
   }
   if(!value||typeof value!=='object'||Array.isArray(value))
     throw new FiEnrollmentError('FI node returned a non-object proof');
+  // Nodekit emits sorted, compact JSON. Requiring exact canonical bytes also
+  // rejects duplicate object keys that JSON.parse would otherwise overwrite.
+  if(output!==JSON.stringify(value,Object.keys(value).sort())+'\n')
+    throw new FiEnrollmentError('Noncanonical or duplicate FI node proof fields');
   const response=value as Record<string,unknown>;
   const fields=['challengeId','nodeId','endpointHost','publicSpki','nonce','signature'];
   if(Object.keys(response).length!==fields.length||
