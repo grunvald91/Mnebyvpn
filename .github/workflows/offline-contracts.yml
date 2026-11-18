@@ -73,7 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           # Only disposable test identities. Never provision production material in Actions.
-          sudo /usr/bin/env node --test tests/trusted-controller-bootstrap.test.mjs
+          sudo "$(command -v node)" --test tests/trusted-controller-bootstrap.test.mjs
       - name: Install PostgreSQL client
         run: sudo apt-get update -qq && sudo apt-get install -qq -y postgresql-client
       - name: Run schema and SQL contract tests (rollback fixtures)
