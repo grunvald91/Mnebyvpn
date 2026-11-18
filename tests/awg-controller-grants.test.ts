@@ -62,7 +62,9 @@ test('live billing + enrolled and verified node produces signed nonpublished gra
   assert(verify(null,awgControllerPayload(result.command),publicKey,
     Buffer.from(result.command.signature,'base64url')));
   assert(queries.some(q=>q.includes("state,last_signed_at,last_command_sha256")));
-  assert(queries.some(q=>q.includes("INSERT INTO vpn_awg_command_outbox")));
+  assert.equal(queries.filter(q=>q.includes("INSERT INTO vpn_awg_command_outbox")).length,1);
+  assert(queries.some(q=>q.includes("'grant'")));
+  assert(!queries.some(q=>q.includes("NULL,'revoke'")));
   assert(!queries.some(q=>q.includes("SET state='enabled'")));
   assert(queries.includes('COMMIT'));
 });
@@ -116,7 +118,8 @@ test('revocation works for expired entitlement and is always a signed tombstone'
   assert(verify(null,awgControllerPayload(result.command),publicKey,
     Buffer.from(result.command.signature,'base64url')));
   assert(queries.some(q=>q.includes("state='revoked'")));
-  assert(queries.some(q=>q.includes("INSERT INTO vpn_awg_command_outbox")));
+  assert.equal(queries.filter(q=>q.includes("INSERT INTO vpn_awg_command_outbox")).length,1);
+  assert(queries.some(q=>q.includes("NULL,'revoke'")));
   assert(queries.includes('COMMIT'));
 });
 
