@@ -1,10 +1,15 @@
 import importlib.util
+import hashlib
 import io
+import os
+import shutil
+import uuid
 from pathlib import Path
 import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
+from contextlib import ExitStack
 
 BASE=Path(__file__).resolve().parents[1]
 SCRIPT=BASE/"ops/controller188-systemd/install-runtime.py"
@@ -84,6 +89,88 @@ class HostSystemdInstaller(unittest.TestCase):
         self.assertIn('"fi_enrollment_enabled":False',content)
         self.assertIn('"awg_delivery_enabled":False',content)
 
+
+
+class HostSystemdRollback(unittest.TestCase):
+    """Disposable root-owned /run tar and /root targets, never the real host."""
+    def setUp(self):
+        if os.geteuid()!=0:
+            self.skipTest("root required for protected production-like fixtures")
+        self.home=Path(tempfile.mkdtemp(prefix="mnebyvpn-install-test-",dir="/root"))
+        self.units=self.home/"systemd"
+        self.units.mkdir(mode=0o700)
+        self.base=self.home/"new-runtime"
+        self.releases=self.base/"releases"
+        self.current=self.base/"current"
+        self.commit="1"*40
+        self.archive=Path("/run/mnebyvpn-controller-release-"+uuid.uuid4().hex+".tar.gz")
+        required=["bin/node","package.json",
+                  "apps/service/src/fi-enrollment-controller.ts",
+                  "apps/service/src/awg-controller-delivery-worker.ts",
+                  "ops/controller188-systemd/runtime-smoke.mjs",
+                  *("ops/controller188-systemd/"+x for x in m.UNITS)]
+        with tarfile.open(self.archive,"w:gz") as out:
+            for name in required:
+                data=b"reviewed test runtime asset"
+                item=tarfile.TarInfo(name)
+                item.size=len(data)
+                with io.BytesIO(data) as source:out.addfile(item,source)
+        os.chmod(self.archive,0o600)
+        self.digest=hashlib.sha256(self.archive.read_bytes()).hexdigest()
+        self.patchers=ExitStack()
+        self.patchers.enter_context(patch.object(m,"BASE",self.base))
+        self.patchers.enter_context(patch.object(m,"RELEASES",self.releases))
+        self.patchers.enter_context(patch.object(m,"CURRENT",self.current))
+        self.patchers.enter_context(patch.object(m,"UNITDIR",self.units))
+        self.patchers.enter_context(patch.object(m,"UNIT_SEARCH_DIRS",(self.units,)))
+        self.addCleanup(self.clean)
+
+    def clean(self):
+        self.patchers.close()
+        self.archive.unlink(missing_ok=True)
+        shutil.rmtree(self.home,ignore_errors=True)
+
+    def fake_run(self,*args):
+        if args[-1]=="-v":return "v22.23.5"
+        if "start" in args:raise m.RuntimeInstallError("injected systemd failure")
+        return ""
+
+    def test_symlink_creation_failure_does_not_leave_orphan_release(self):
+        with patch.object(m,"run",side_effect=self.fake_run), \
+             patch.object(Path,"symlink_to",side_effect=OSError("test symlink failure")):
+            with self.assertRaises(OSError):
+                m.stage(self.archive,self.digest,self.commit)
+        self.assertFalse((self.releases/self.commit).exists())
+        self.assertFalse(self.current.is_symlink())
+        self.assertTrue(all(not (self.units/u).exists() for u in m.UNITS))
+
+    def test_systemd_smoke_failure_removes_only_new_units_and_runtime(self):
+        with patch.object(m,"run",side_effect=self.fake_run):
+            with self.assertRaises(m.RuntimeInstallError):
+                m.stage(self.archive,self.digest,self.commit)
+        self.assertFalse((self.releases/self.commit).exists())
+        self.assertFalse(self.current.is_symlink())
+        self.assertTrue(all(not (self.units/u).exists() for u in m.UNITS))
+
+    def test_existing_drop_in_is_not_overwritten_or_ignored(self):
+        (self.units/(m.UNITS[1]+".d")).mkdir()
+        with patch.object(m,"run",side_effect=self.fake_run):
+            with self.assertRaisesRegex(m.RuntimeInstallError,"drop-in"):
+                m.stage(self.archive,self.digest,self.commit)
+        self.assertTrue((self.units/(m.UNITS[1]+".d")).is_dir())
+        self.assertFalse(self.current.is_symlink())
+        self.assertFalse((self.releases/self.commit).exists())
+
+    def test_runtime_bundle_rejects_extra_parent_or_symlink_path(self):
+        good_digest=self.digest
+        with patch.object(m,"run",side_effect=self.fake_run):
+            with self.assertRaises(m.RuntimeInstallError):
+                m.stage(self.archive.parent/".." / self.archive.name,good_digest,self.commit)
+        link=self.home/"linked-artifact.tar.gz"
+        link.symlink_to(self.archive)
+        with patch.object(m,"run",side_effect=self.fake_run):
+            with self.assertRaises(m.RuntimeInstallError):
+                m.stage(link,good_digest,self.commit)
 
 if __name__=="__main__":
     unittest.main()
