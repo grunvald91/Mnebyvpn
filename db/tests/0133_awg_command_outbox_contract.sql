@@ -17,7 +17,12 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'AWG delivery revision must be unique per peer';
   END IF;
-  IF has_table_privilege('public','vpn_awg_command_outbox','SELECT') THEN
+  IF EXISTS (
+    SELECT 1 FROM pg_class c,
+      LATERAL aclexplode(COALESCE(c.relacl,'{}'::aclitem[])) p
+    WHERE c.oid='vpn_awg_command_outbox'::regclass
+      AND p.grantee=0 AND p.privilege_type='SELECT'
+  ) THEN
     RAISE EXCEPTION 'AWG signed commands leaked to PUBLIC';
   END IF;
   IF NOT EXISTS (
