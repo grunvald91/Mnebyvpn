@@ -87,6 +87,11 @@ jobs:
           # Failure-injection exercises must run with disposable root-owned /run and /root fixtures.
           sudo python3 -m unittest discover -s tests -p 'test_controller188_host_systemd.py' -v
           node --check ops/controller188-systemd/runtime-smoke.mjs
+      - name: Validate operator-gated FI public-key trust stage with disposable root fixtures
+        run: |
+          set -euo pipefail
+          python3 -m py_compile ops/controller188-systemd/stage-fi-public-trust.py tests/test_fi_public_trust_stage.py
+          sudo python3 -m unittest discover -s tests -p 'test_fi_public_trust_stage.py' -v
       - name: Test Python/OpenSSL bootstrap for existing RU188 (disposable runner only)
         run: |
           set -euo pipefail
