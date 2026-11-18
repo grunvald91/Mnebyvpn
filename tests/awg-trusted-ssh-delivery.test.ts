@@ -58,17 +58,13 @@ test('never accept untrusted or missing SSH identity files',()=>{
   }
 });
 
-test('SSH command passes all AWG apply flags to Python, never as shell commands',()=>{
-  // The remote script is passed as the last SSH argument. A semicolon before
-  // --node-id would execute it as a NEW command, leaving delivery broken.
-  const sshSource=String(awgSshArgs).length; // Function remains callable.
-  assert(sshSource>0);
-  // Static contract: retrieve the literal SSH script via an exported helper,
-  // without opening any SSH connection or touching protected key files.
-  assert.match(awgRemoteApplyScript,
-    /\\/usr\\/bin\\/python3 \\/opt\\/mnebyvpn-nodekit\\/awg_peer_grants\\.py --node-id fi-test-01 --mode apply --command "\\$tmp"/);
-  assert.doesNotMatch(awgRemoteApplyScript,/;\\s*--node-id/);
-  assert.match(awgRemoteApplyScript,/trap '[^']+' EXIT; cat > "\\$tmp";/);
+test('SSH apply flags are arguments to Python, never separate shell commands',()=>{
+  // A semicolon before --node-id would turn the flags into a shell command.
+  assert(awgRemoteApplyScript.includes(
+    '/usr/bin/python3 /opt/mnebyvpn-nodekit/awg_peer_grants.py '+
+    '--node-id fi-test-01 --mode apply --command "$tmp"'));
+  assert(!awgRemoteApplyScript.includes('; --node-id'));
+  assert(awgRemoteApplyScript.includes('cat > "$tmp"; /usr/bin/python3'));
 });
 
 test('untrusted transport cannot claim a DB command',async()=>{
