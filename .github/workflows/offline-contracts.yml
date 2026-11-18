@@ -84,7 +84,8 @@ jobs:
           set -euo pipefail
           python3 -m py_compile ops/controller188-systemd/install-runtime.py ops/controller188-systemd/build-bundle.py tests/test_controller188_host_systemd.py
           bash -n ops/controller188-systemd/ship.sh
-          python3 -m unittest discover -s tests -p 'test_controller188_host_systemd.py' -v
+          # Failure-injection exercises must run with disposable root-owned /run and /root fixtures.
+          sudo python3 -m unittest discover -s tests -p 'test_controller188_host_systemd.py' -v
           node --check ops/controller188-systemd/runtime-smoke.mjs
       - name: Test Python/OpenSSL bootstrap for existing RU188 (disposable runner only)
         run: |
