@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {generateKeyPairSync,sign} from 'node:crypto';
+import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {
   parseFiEnrollmentProof,fiEnrollmentSshArgs,FI_NODE_IDENTITY_SHA256,
+  enrollApprovedFiNode,pinnedFiNodePublicSpki,
 } from '../packages/provisioning/src/fi-enrollment-ssh.ts';
 import {enrollmentChallengeMessage,type NodeEnrollmentChallenge}
   from '../packages/provisioning/src/node-enrollment.ts';
@@ -68,4 +72,36 @@ test('FI enrollment SSH uses a forced-command identity, no password or TOFU',()=
   assert(joined.endsWith('root@fi.mnebyvpn.site false'));
   assert(!joined.includes('accept-new'));
   assert.equal(FI_NODE_IDENTITY_SHA256.length,64);
+});
+
+test('FI node public key pin refuses untrusted ancestry and path traversal',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'fi-enrollment-untrusted-'));
+  try{
+    const file=join(dir,'node.spki');
+    writeFileSync(file,node.publicKey.export({format:'der',type:'spki'}));
+    assert.throws(()=>pinnedFiNodePublicSpki(file),
+      /Unsafe controller trust directory|Untrusted controller identity/);
+    assert.throws(()=>pinnedFiNodePublicSpki('/tmp/../etc/hosts'),
+      /Canonical absolute protected controller file/);
+  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('non-root enrollment cannot create any database challenge',async()=>{
+  if(typeof process.getuid!=='function'||process.getuid()===0)return;
+  let databaseTouched=false,sshStarted=false;
+  const database={
+    async connect(){
+      databaseTouched=true;
+      throw Error('Unexpected enrollment database use');
+    },
+  };
+  await assert.rejects(enrollApprovedFiNode(
+    database as never,generateKeyPairSync('ed25519').privateKey,{
+      sshIdentityFile:'/tmp/untrusted-enroll-key',
+      pinnedKnownHostsFile:'/tmp/untrusted-known-hosts',
+      approvedNodePublicSpkiFile:'/tmp/untrusted-node-spki',
+    },()=>{sshStarted=true;throw Error('Unexpected SSH start');},
+  ),/Enrollment must execute as root/);
+  assert.equal(databaseTouched,false);
+  assert.equal(sshStarted,false);
 });
