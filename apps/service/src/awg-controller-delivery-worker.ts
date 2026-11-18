@@ -7,7 +7,8 @@
  */
 import {createHash,createPrivateKey,createPublicKey,timingSafeEqual,
   type KeyObject} from 'node:crypto';
-import {lstatSync,readFileSync} from 'node:fs';
+import {closeSync,constants,fstatSync,lstatSync,openSync,readSync} from 'node:fs';
+import {dirname,resolve} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {pathToFileURL} from 'node:url';
 import {Pool} from 'pg';
@@ -17,25 +18,49 @@ type DeliveryResult={status:'idle'}|{status:'acknowledged';outboxId:string};
 type Deliver=()=>Promise<DeliveryResult>;
 type Wait=(ms:number,signal:AbortSignal)=>Promise<void>;
 
+/**
+ * Read the trusted RU188 controller signer from the SAME verified file
+ * descriptor. This avoids the previous lstat -> readFile path-swap gap.
+ * Neither a parent directory nor the private key may be caller writable.
+ */
 export function trustedControllerKey(path:string,pinnedSha256:string):KeyObject {
   if(typeof process.getuid!=='function'||process.getuid()!==0)
     throw Error('AWG controller key access requires root');
   if(typeof path!=='string'||!path.startsWith('/')||path.length>1024||
-     path.includes('\u0000')||
+     path.includes('\u0000')||resolve(path)!==path||
      !/^[a-f0-9]{64}$/.test(pinnedSha256))
     throw Error('Protected controller signing key and independent pin required');
-  const stat=lstatSync(path,{throwIfNoEntry:false});
-  if(!stat||!stat.isFile()||stat.isSymbolicLink()||
-     stat.uid!==0||(stat.mode&0o077)!==0)
-    throw Error('Controller signing key is not a root-only regular file');
-  const key=createPrivateKey(readFileSync(path));
-  if(key.type!=='private'||key.asymmetricKeyType!=='ed25519')
-    throw Error('Only Ed25519 controller signing key is accepted');
-  const pub=createPublicKey(key).export({format:'der',type:'spki'});
-  const fingerprint=createHash('sha256').update(pub).digest();
-  if(!timingSafeEqual(fingerprint,Buffer.from(pinnedSha256,'hex')))
-    throw Error('Controller signing key does not match independently approved pin');
-  return key;
+  let parent=dirname(path);
+  for(;;){
+    const dir=lstatSync(parent,{throwIfNoEntry:false});
+    if(!dir||!dir.isDirectory()||dir.isSymbolicLink()||
+       dir.uid!==0||(dir.mode&0o022)!==0)
+      throw Error('Untrusted controller signing-key ancestry');
+    if(parent==='/')break;
+    parent=dirname(parent);
+  }
+  const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+  let raw:Buffer;
+  try{
+    const meta=fstatSync(fd);
+    if(!meta.isFile()||meta.uid!==0||(meta.mode&0o077)!==0||
+       meta.size<1||meta.size>8192)
+      throw Error('Controller signing key is not a bounded root-only file');
+    const data=Buffer.alloc(meta.size+1);
+    if(readSync(fd,data,0,data.length,0)!==meta.size)
+      throw Error('Controller signing key changed while reading');
+    raw=data.subarray(0,meta.size);
+  }finally{closeSync(fd);}
+  try{
+    const key=createPrivateKey(raw);
+    if(key.type!=='private'||key.asymmetricKeyType!=='ed25519')
+      throw Error('Only Ed25519 controller signing key is accepted');
+    const pub=createPublicKey(key).export({format:'der',type:'spki'});
+    const fingerprint=createHash('sha256').update(pub).digest();
+    if(!timingSafeEqual(fingerprint,Buffer.from(pinnedSha256,'hex')))
+      throw Error('Controller signing key does not match independently approved pin');
+    return key;
+  }finally{raw.fill(0);}
 }
 
 export async function runAwgDeliveryLoop(
