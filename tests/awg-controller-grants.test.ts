@@ -13,6 +13,7 @@ const {privateKey,publicKey}=generateKeyPairSync('ed25519');
 function fakeDb(options:{
   entitled?:boolean;enrolled?:boolean;verified?:boolean;
   released?:boolean;existing?:boolean;expired?:boolean;
+  expiresDays?:number;
 }={}){
   const queries:string[]=[];
   const client={
@@ -21,7 +22,7 @@ function fakeDb(options:{
       if(sql.startsWith('SELECT id::text,product,state,revision'))
         return {rows:[{id:ENTITLEMENT,product:'vpn',
           state:options.entitled===false?'EXPIRED':'ACTIVE',revision:7,
-          expires_at:new Date(NOW.getTime()+(options.expired? -1000:86400000))}]};
+          expires_at:new Date(NOW.getTime()+(options.expired? -1000:(options.expiresDays??1)*86400000))}]};
       if(sql.startsWith('SELECT endpoint_host,status'))
         return {rows:[{endpoint_host:'fi.mnebyvpn.site',
           status:options.enrolled===false?'approved':'enrolled'}]};
@@ -58,7 +59,7 @@ test('live billing + enrolled and verified node produces signed nonpublished gra
   assert.equal(result.published,false);
   assert.equal(result.command.op,'grant');
   assert.equal(result.command.clientIpv4,'10.73.91.2');
-  assert.equal(result.command.expiresAt,'2026-11-18T05:30:00.000Z');
+  assert.equal(result.command.expiresAt,'2026-11-19T04:30:00.000Z');
   assert(verify(null,awgControllerPayload(result.command),publicKey,
     Buffer.from(result.command.signature,'base64url')));
   assert(queries.some(q=>q.includes("state,last_signed_at,last_command_sha256")));
@@ -130,4 +131,15 @@ test('revocation without allocation cannot mutate state',async()=>{
   },privateKey,NOW));
   assert(queries.includes('ROLLBACK'));
   assert(!queries.includes('COMMIT'));
+});
+
+test('controller signs paid term locally capped at seven days, not an hourly callback',async()=>{
+  const {db}=fakeDb({expiresDays:30});
+  const result=await stageAwgGrant(db as never,{
+    nodeId:'fi-test-01',entitlementId:ENTITLEMENT,peerPublicKey:KEY,
+    expectedBillingRevision:7,
+  },privateKey,NOW);
+  assert.equal(result.command.expiresAt,'2026-11-25T04:30:00.000Z');
+  assert(verify(null,awgControllerPayload(result.command),publicKey,
+    Buffer.from(result.command.signature,'base64url')));
 });

@@ -13,7 +13,7 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const NODE=/^[a-z0-9][a-z0-9-]{2,39}$/;
 const KEY=/^[A-Za-z0-9+/]{43}=$/;
 const NODE_NETWORK=/^10\.73\.(\d{1,3})\.0\/24$/;
-const MAX_LEASE_MINUTES=60; // fail-closed after one hour without renewed authorization
+const MAX_OFFLINE_GRANT_MS=7*24*60*60_000; // async signed local permission; no handshake callback
 
 export class AwgControllerError extends Error {}
 export interface SignedAwgLease {
@@ -82,7 +82,7 @@ type NodePool={
   verified_at:Date|null;server_public_key:string;
 };
 type Allocation={
-  peer_public_key:string;client_ipv4:string;revision:number;
+  peer_public_key:string;client_ipv4:string;revision:number;state:string;
 };
 function assertIdentity(nodeId:string,entitlementId:string,publicKey:string){
   if(typeof nodeId!=='string'||!NODE.test(nodeId)||nodeId.endsWith('-')||
@@ -97,7 +97,9 @@ function assertIdentity(nodeId:string,entitlementId:string,publicKey:string){
  */
 export async function stageAwgGrant(
   db:Db,input:{nodeId:string;entitlementId:string;peerPublicKey:string;
-    expectedBillingRevision:number;},key:KeyObject,now=new Date(),
+    expectedBillingRevision:number;
+    expectedAllocationRevision?:number;
+    expectedAllocationState?:'applied'|'staged'|'revoked';},key:KeyObject,now=new Date(),
 ):Promise<{command:SignedAwgLease;staged:true;published:false}>{
   assertIdentity(input.nodeId,input.entitlementId,input.peerPublicKey);
   assertControllerKey(key);assertNow(now);
@@ -145,10 +147,14 @@ export async function stageAwgGrant(
       throw new AwgControllerError('AWG client release is not enabled');
 
     const existing=await tx.query<Allocation>(
-      'SELECT peer_public_key,host(client_ipv4) AS client_ipv4,revision '+
+      'SELECT peer_public_key,host(client_ipv4) AS client_ipv4,revision,state '+
       'FROM vpn_awg_peer_allocations WHERE node_id=$1 AND entitlement_id=$2 FOR UPDATE',
       [input.nodeId,input.entitlementId]);
     const old=existing.rows[0];
+    if(input.expectedAllocationState!==undefined &&
+       (old?.state!==input.expectedAllocationState||
+        old.revision!==input.expectedAllocationRevision))
+      throw new AwgControllerError('Stale offline renewal candidate');
     if(old&&old.peer_public_key!==input.peerPublicKey)
       throw new AwgControllerError('Key rotation requires separate approval');
     const used=await tx.query<{client_ipv4:string}>(
@@ -162,7 +168,7 @@ export async function stageAwgGrant(
     if(!Number.isSafeInteger(revision)||revision>1_000_000_000)
       throw new AwgControllerError('AWG grant revision exhausted');
     const end=new Date(Math.min(
-      ent.expires_at.getTime(),now.getTime()+MAX_LEASE_MINUTES*60_000));
+      ent.expires_at.getTime(),now.getTime()+MAX_OFFLINE_GRANT_MS));
     if(end.getTime()<=now.getTime())
       throw new AwgControllerError('No remaining entitlement lease');
     const {randomBytes}=await import('node:crypto');
@@ -216,7 +222,9 @@ export async function stageAwgGrant(
  * delivery to reactivate an old revision on Nodekit.
  */
 export async function stageAwgRevoke(
-  db:Db,input:{nodeId:string;entitlementId:string},
+  db:Db,input:{nodeId:string;entitlementId:string;
+    expectedAllocationRevision?:number;
+    expectedAllocationState?:'applied'|'staged'|'revoked';},
   key:KeyObject,now=new Date(),
 ):Promise<{command:SignedAwgLease;staged:true;published:false}>{
   if(!NODE.test(input.nodeId)||!UUID.test(input.entitlementId))
@@ -230,6 +238,10 @@ export async function stageAwgRevoke(
       'FROM vpn_awg_peer_allocations WHERE node_id=$1 AND entitlement_id=$2 FOR UPDATE',
       [input.nodeId,input.entitlementId]);
     const old=found.rows[0];
+    if(input.expectedAllocationState!==undefined &&
+       (old?.state!==input.expectedAllocationState||
+        old.revision!==input.expectedAllocationRevision))
+      throw new AwgControllerError('Stale offline revocation candidate');
     if(!old||!validKey(old.peer_public_key)||
        !/^10\.73\.91\.(?:[2-9]|[1-9]\d|1\d\d|2[0-4]\d|25[0-4])$/.test(old.client_ipv4))
       throw new AwgControllerError('No revocable AWG allocation');
