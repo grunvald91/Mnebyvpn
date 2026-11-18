@@ -30,8 +30,12 @@ function signedProof(ch:NodeEnrollmentChallenge=challenge){
     .toString('base64url');
   return {...raw,signature};
 }
+function canonicalProof(value:Record<string,unknown>){
+  return JSON.stringify(value,Object.keys(value).sort())+'\n';
+}
+
 test('valid FI signed node proof exactly matches one controller challenge',()=>{
-  const proof=parseFiEnrollmentProof(JSON.stringify(signedProof())+'\n',challenge);
+  const proof=parseFiEnrollmentProof(canonicalProof(signedProof()),challenge);
   assert.equal(proof.nodeId,'fi-test-01');
   assert.equal(proof.challengeId,challenge.challengeId);
   assert.equal(proof.signature.length,86);
@@ -48,10 +52,14 @@ test('proof is rejected for wrong country, nonce, signature or unexpected JSON',
     {...valid,publicSpki:'A'.repeat(59)},
   ];
   for(const item of bad)
-    assert.throws(()=>parseFiEnrollmentProof(JSON.stringify(item)+'\n',challenge));
+    assert.throws(()=>parseFiEnrollmentProof(canonicalProof(item),challenge));
+  const duplicate=canonicalProof(valid).replace(
+    '"signature":','"signature":"'+ 'a'.repeat(86)+'","signature":',
+  );
   for(const text of [
     '{}\n','not json\n','\n',JSON.stringify(valid),
-    JSON.stringify(valid)+'\n{}\n','x'.repeat(2100)+'\n',
+    JSON.stringify(valid)+'\n',
+    JSON.stringify(valid)+'\n{}\n','x'.repeat(2100)+'\n',duplicate,
   ])
     assert.throws(()=>parseFiEnrollmentProof(text,challenge));
 });
