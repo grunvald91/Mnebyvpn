@@ -27,7 +27,10 @@ VPN/DNS/proxy services are activated by this workflow.
 
 ## Required manually approved prerequisites
 
-Provision a dedicated **non-public trusted controller host** and a root-only
+Use the **existing MNEBYVPN central controller 188.120.254.223**
+(website, bot, PostgreSQL, entitlement/expiry workers), NOT a second host.
+Provision a dedicated, isolated root-only controller directory on this
+machine and a root-only
 Ed25519 signing private PEM + separately approved DER SPKI SHA256 fingerprint.
 The same public SPKI must be installed on the FI node in
 `controller-access.spki`, mode 0600, after independent fingerprint review.
@@ -42,7 +45,7 @@ following the pre-existing **planned → approved** DB transition and separate
 operator review of node_id, hostname and public SPKI. The program never
 adds or approves this inventory entry itself.
 
-After approval, on the trusted controller only:
+After approval, on the existing RU188 controller only:
 
 ```text
 MNEBYVPN_ENV=production
@@ -88,3 +91,14 @@ root-owned nonwritable ancestry (for example `/root/mnebyvpn-controller/`).
 Never use `/tmp` or writable shared mounts. No live key distribution,
 controlled SSH authorization, database enrollment or subscriber release is
 performed by these code changes.
+
+
+## Corrected production topology
+
+The central DB authority, site and bot are already on **RU188**. Run the
+one-shot enrollment on 188 only, with its root-only signing key segregated
+from website and bot processes; do not repoint the database, move the
+worker to FI or commission a second controller. The Telegram customer proxy
+is **Telemt MTProto**, not the SmartDNS SNI forwarder. FI Telegram proxy
+requires an independent installation and E2E/expiry proof, not the SNI
+route candidate. Existing 188/89 endpoints and subscriptions are unchanged.
