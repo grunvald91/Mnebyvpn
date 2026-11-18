@@ -204,16 +204,6 @@ export async function stageAwgGrant(
       [input.nodeId,input.entitlementId,revision,ent.revision,
        JSON.stringify(signed),digest,now,new Date(now.getTime()+40_000)],
     );
-    await tx.query(
-      'INSERT INTO vpn_awg_command_outbox '+
-      '(node_id,entitlement_id,revision,billing_revision,op,'+
-      'signed_command,command_sha256,issued_at,expires_delivery_at) '+
-      "VALUES($1,$2,$3,NULL,'revoke',$4::jsonb,$5,$6,$7)",
-      [input.nodeId,input.entitlementId,revision,
-       JSON.stringify(signed),
-       createHash('sha256').update(awgControllerPayload(command)).digest('hex'),
-       now,new Date(now.getTime()+40_000)],
-    );
     await tx.query('COMMIT');
     return {command:signed,staged:true,published:false};
   }catch(e){
@@ -260,6 +250,16 @@ export async function stageAwgRevoke(
       'WHERE node_id=$1 AND entitlement_id=$2',
       [input.nodeId,input.entitlementId,revision,now,
        createHash('sha256').update(awgControllerPayload(command)).digest('hex')],
+    );
+    await tx.query(
+      'INSERT INTO vpn_awg_command_outbox '+
+      '(node_id,entitlement_id,revision,billing_revision,op,'+
+      'signed_command,command_sha256,issued_at,expires_delivery_at) '+
+      "VALUES($1,$2,$3,NULL,'revoke',$4::jsonb,$5,$6,$7)",
+      [input.nodeId,input.entitlementId,revision,
+       JSON.stringify(signed),
+       createHash('sha256').update(awgControllerPayload(command)).digest('hex'),
+       now,new Date(now.getTime()+40_000)],
     );
     await tx.query('COMMIT');
     return {command:signed,staged:true,published:false};
