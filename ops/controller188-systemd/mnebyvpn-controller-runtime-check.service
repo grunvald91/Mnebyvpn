@@ -1,0 +1,32 @@
+[Unit]
+Description=MNEBYVPN controller188 isolated Node.js runtime offline smoke
+Documentation=https://github.com/grunvald91/Mnebyvpn
+ConditionPathExists=/root/mnebyvpn-controller/bootstrap-manifest.json
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/mnebyvpn-controller/current
+ExecStart=/opt/mnebyvpn-controller/current/bin/node --experimental-strip-types /opt/mnebyvpn-controller/current/ops/controller188-systemd/runtime-smoke.mjs
+PrivateNetwork=yes
+ProtectHome=read-only
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+UMask=0077
+TasksMax=64
+MemoryMax=256M
+TimeoutStartSec=20s
