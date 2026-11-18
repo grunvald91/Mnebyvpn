@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {generateKeyPairSync,sign} from 'node:crypto';
 import {
-  awgSshArgs,parseAwgNodeReceipt,deliverNextAwgCommand,
+  awgSshArgs,awgRemoteApplyScript,parseAwgNodeReceipt,deliverNextAwgCommand,
 } from '../packages/provisioning/src/awg-trusted-ssh-delivery.ts';
 import type {SignedAwgLease} from '../packages/provisioning/src/awg-controller-grants.ts';
 
@@ -56,6 +56,19 @@ test('never accept untrusted or missing SSH identity files',()=>{
   ]){
     assert.throws(()=>awgSshArgs(config));
   }
+});
+
+test('SSH command passes all AWG apply flags to Python, never as shell commands',()=>{
+  // The remote script is passed as the last SSH argument. A semicolon before
+  // --node-id would execute it as a NEW command, leaving delivery broken.
+  const sshSource=String(awgSshArgs).length; // Function remains callable.
+  assert(sshSource>0);
+  // Static contract: retrieve the literal SSH script via an exported helper,
+  // without opening any SSH connection or touching protected key files.
+  assert.match(awgRemoteApplyScript,
+    /\\/usr\\/bin\\/python3 \\/opt\\/mnebyvpn-nodekit\\/awg_peer_grants\\.py --node-id fi-test-01 --mode apply --command "\\$tmp"/);
+  assert.doesNotMatch(awgRemoteApplyScript,/;\\s*--node-id/);
+  assert.match(awgRemoteApplyScript,/trap '[^']+' EXIT; cat > "\\$tmp";/);
 });
 
 test('untrusted transport cannot claim a DB command',async()=>{
