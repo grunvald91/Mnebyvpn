@@ -1,0 +1,41 @@
+[Unit]
+Description=MNEBYVPN signed AWG grants delivery on existing controller188
+Documentation=https://github.com/grunvald91/Mnebyvpn
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/root/mnebyvpn-controller/approvals/awg-delivery.enable
+ConditionPathExists=/root/mnebyvpn-controller/config/awg-delivery.env
+ConditionPathExists=/root/mnebyvpn-controller/controller-signing-key.pem
+ConditionPathExists=/root/mnebyvpn-controller/fi-known_hosts
+
+[Service]
+Type=exec
+User=root
+Group=root
+WorkingDirectory=/opt/mnebyvpn-controller/current
+EnvironmentFile=/root/mnebyvpn-controller/config/awg-delivery.env
+ExecStart=/opt/mnebyvpn-controller/current/bin/node --experimental-strip-types /opt/mnebyvpn-controller/current/apps/service/src/awg-controller-delivery-worker.ts
+Restart=no
+ProtectHome=read-only
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=127.0.0.0/8
+IPAddressAllow=::1/128
+IPAddressAllow=217.11.167.91/32
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+UMask=0077
+TasksMax=64
+MemoryMax=256M
+TimeoutStopSec=15s
