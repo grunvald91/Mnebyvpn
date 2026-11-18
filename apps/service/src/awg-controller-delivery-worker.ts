@@ -13,6 +13,7 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {pathToFileURL} from 'node:url';
 import {Pool} from 'pg';
 import {deliverNextAwgCommand} from '../../../packages/provisioning/src/awg-trusted-ssh-delivery.ts';
+import {stageDueOfflineAwgMaintenance} from '../../../packages/provisioning/src/awg-offline-maintenance.ts';
 
 type DeliveryResult={status:'idle'}|{status:'acknowledged';outboxId:string};
 type Deliver=()=>Promise<DeliveryResult>;
@@ -114,8 +115,24 @@ async function main():Promise<void>{
     );
     if(!checked.rows[0]?.outbox||!checked.rows[0]?.inventory)
       throw Error('AWG outbox and enrolled-node schema are not ready');
+    // Autonomous grant refresh/revoke is independent of client connections.
+    // Keep deliveries moving even if a maintenance cycle fails; the next
+    // cycle retries while the FI node keeps honoring its local signed ledger.
+    let nextMaintenanceAt=0;
     await runAwgDeliveryLoop(
-      ()=>deliverNextAwgCommand(db,signing,config),
+      async()=>{
+        const current=Date.now();
+        if(current>=nextMaintenanceAt){
+          nextMaintenanceAt=current+60_000;
+          try{
+            const result=await stageDueOfflineAwgMaintenance(db,signing,new Date(current));
+            if(result.failed>0)process.stderr.write('AWG_OFFLINE_MAINTENANCE_PARTIAL\n');
+          }catch{
+            process.stderr.write('AWG_OFFLINE_MAINTENANCE_RETRY\n');
+          }
+        }
+        return deliverNextAwgCommand(db,signing,config);
+      },
       abort.signal,undefined,(status)=>{
         if(status==='acknowledged')process.stdout.write('AWG_DELIVERY_ACKNOWLEDGED\n');
         if(status==='error')process.stderr.write('AWG_DELIVERY_FAILED\n');
