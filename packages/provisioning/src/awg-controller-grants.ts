@@ -193,6 +193,27 @@ export async function stageAwgGrant(
          revision,end,now,digest],
       );
     }
+    // A returned signed command is NOT delivery. Persist it atomically
+    // with allocation state, then let a trusted delivery worker claim it
+    // while the controller timestamp is still valid.
+    await tx.query(
+      'INSERT INTO vpn_awg_command_outbox '+
+      '(node_id,entitlement_id,revision,billing_revision,op,'+
+      'signed_command,command_sha256,issued_at,expires_delivery_at) '+
+      "VALUES($1,$2,$3,$4,'grant',$5::jsonb,$6,$7,$8)",
+      [input.nodeId,input.entitlementId,revision,ent.revision,
+       JSON.stringify(signed),digest,now,new Date(now.getTime()+40_000)],
+    );
+    await tx.query(
+      'INSERT INTO vpn_awg_command_outbox '+
+      '(node_id,entitlement_id,revision,billing_revision,op,'+
+      'signed_command,command_sha256,issued_at,expires_delivery_at) '+
+      "VALUES($1,$2,$3,NULL,'revoke',$4::jsonb,$5,$6,$7)",
+      [input.nodeId,input.entitlementId,revision,
+       JSON.stringify(signed),
+       createHash('sha256').update(awgControllerPayload(command)).digest('hex'),
+       now,new Date(now.getTime()+40_000)],
+    );
     await tx.query('COMMIT');
     return {command:signed,staged:true,published:false};
   }catch(e){
