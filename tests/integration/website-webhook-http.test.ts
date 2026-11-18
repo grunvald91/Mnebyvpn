@@ -219,3 +219,30 @@ test('SEO endpoints: canonical public pages, robot map and protected API indexin
   assert.equal(privateMe.status,401);
   assert.match(privateMe.headers.get('x-robots-tag')??'',/noindex/);
 });
+
+test('informational SEO guides answer on canonical routes without changing checkout',async()=>{
+  const origin='http://127.0.0.1:'+port;
+  const get=(p:string)=>fetch(origin+p,{redirect:'manual'});
+  const paths=['/vpn','/smart-dns','/vpn-android','/vpn-iphone','/private-dns-android',
+    '/youtube','/instagram','/telegram','/google-gemini','/ai-services'];
+  for(const path of paths){
+    const response=await get(path);
+    assert.equal(response.status,200,path);
+    assert.match(response.headers.get('content-type')??'',/text\/html/);
+    assert.match(response.headers.get('content-security-policy')??'',/sha256-/);
+    assert.doesNotMatch(response.headers.get('content-security-policy')??'',/unsafe-inline/);
+    const html=await response.text();
+    assert.ok(html.includes('rel="canonical" href="'+origin+path+'"'),path);
+    assert.ok(html.includes('application/ld+json'),path);
+    assert.ok(html.includes('Первоисточники'),path);
+  }
+  const css=await get('/seo.css');
+  assert.equal(css.status,200);
+  assert.match(css.headers.get('content-type')??'',/text\/css/);
+  const alias=await get('/vpn/');
+  assert.equal(alias.status,301);
+  assert.equal(alias.headers.get('location'),'/vpn');
+  const missing=await get('/unknown-guide-path');
+  assert.equal(missing.status,404);
+  assert.match(missing.headers.get('x-robots-tag')??'',/noindex/);
+});

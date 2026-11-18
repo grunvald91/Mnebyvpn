@@ -1,8 +1,9 @@
+import {seoPaths} from './seo-pages.ts';
 /**
  * Anonymous SEO discovery contract for the active website.
  * Never enumerate customer-specific, checkout, login or subscription URLs.
  */
-export const PUBLIC_SEO_PATHS = ['/', '/terms', '/agreement', '/privacy'] as const;
+export const PUBLIC_SEO_PATHS = ['/', '/terms', '/agreement', '/privacy', ...seoPaths()] as const;
 
 const aliasTargets: Readonly<Record<string,string>> = Object.freeze({
   '/index.html': '/',
@@ -12,6 +13,8 @@ const aliasTargets: Readonly<Record<string,string>> = Object.freeze({
 });
 
 export function canonicalAlias(path: string): string | null {
+  if (path.length>1 && path.endsWith('/') && seoPaths().includes(path.slice(0,-1)))
+    return path.slice(0,-1);
   return aliasTargets[path] ?? null;
 }
 
