@@ -263,17 +263,55 @@ def initialize(root: Path = ROOT) -> dict:
         os.umask(old_umask)
 
 
-def audit(root: Path = ROOT, approved_controller_sha256: str = "") -> dict:
+def approved_fi_ssh_host(root: Path, approved_fingerprint: str = "") -> bool:
+    path = root / "fi-known_hosts"
+    if not path.exists() and not path.is_symlink():
+        return False
+    lines = [line for line in protected_read(path, 4096).decode().splitlines()
+             if line.strip() and not line.strip().startswith("#")]
+    if len(lines) != 1:
+        raise BootstrapError("FI host pin must have one reviewed Ed25519 key")
+    parts = lines[0].split()
+    if len(parts) != 3 or parts[0] != "fi.mnebyvpn.site":
+        raise BootstrapError("Unexpected FI host key alias")
+    blob = ssh_key_blob(" ".join(parts[1:]))
+    if not approved_fingerprint:
+        return False
+    if not FINGERPRINT.fullmatch(approved_fingerprint):
+        raise BootstrapError("Noncanonical approved host fingerprint")
+    actual = "SHA256:" + base64.b64encode(
+        hashlib.sha256(blob).digest()).decode().rstrip("=")
+    if actual != approved_fingerprint:
+        raise BootstrapError("FI host key differs from independent SSH pin")
+    return True
+
+
+def fi_node_identity(root: Path) -> bool:
+    path = root / "fi-node-public.spki"
+    if not path.exists() and not path.is_symlink():
+        return False
+    data = protected_read(path, 100)
+    if (len(data) != 44 or not data.startswith(ED25519_SPKI_HEADER) or
+            sha(data) != NODE_PIN):
+        raise BootstrapError("FI Ed25519 SPKI differs from approved identity")
+    return True
+
+
+def audit(root: Path = ROOT, approved_controller_sha256: str = "",
+          approved_fi_host_fingerprint: str = "") -> dict:
     actual = inspect_keys(root)
     if approved_controller_sha256:
         if not SHA.fullmatch(approved_controller_sha256) or actual != approved_controller_sha256:
             raise BootstrapError("Controller key differs from independently approved SPKI hash")
+    fi_host = approved_fi_ssh_host(root, approved_fi_host_fingerprint)
+    fi_identity = fi_node_identity(root)
     return {
         "controller_host": CONTROLLER_IP,
         "signer_consistent": True,
         "controller_key_independently_approved": bool(approved_controller_sha256),
-        "fi_host_key_pinned": (root / "fi-known_hosts").is_file(),
-        "fi_node_identity_pinned": (root / "fi-node-public.spki").is_file(),
+        "fi_host_key_independently_pinned": fi_host,
+        "fi_node_identity_matches_inventory": fi_identity,
+        "enrollment_material_ready": bool(approved_controller_sha256) and fi_host and fi_identity,
         "db_enrollment_verified": False,
         "subscriber_publication": False,
     }
@@ -283,15 +321,17 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("operation", choices=("init", "audit"))
     p.add_argument("--approved-controller-sha256", default="")
+    p.add_argument("--approved-fi-host-sha256", default="")
     args = p.parse_args()
     try:
         verify_existing_controller()
         if args.operation == "init":
-            if args.approved_controller_sha256:
-                raise BootstrapError("Cannot approve a signing identity during generation")
+            if args.approved_controller_sha256 or args.approved_fi_host_sha256:
+                raise BootstrapError("Cannot approve signing identities during generation")
             result = initialize()
         else:
-            result = audit(approved_controller_sha256=args.approved_controller_sha256)
+            result = audit(approved_controller_sha256=args.approved_controller_sha256,
+                           approved_fi_host_fingerprint=args.approved_fi_host_sha256)
         print(json.dumps(result, sort_keys=True, separators=(",", ":")))
         return 0
     except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
