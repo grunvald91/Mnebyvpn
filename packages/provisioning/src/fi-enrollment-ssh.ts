@@ -6,7 +6,8 @@
  * enrollment is only a DB transition to 'enrolled', never a release.
  */
 import {createHash,createPublicKey,type KeyObject} from 'node:crypto';
-import {lstatSync,readFileSync} from 'node:fs';
+import {closeSync,constants,fstatSync,lstatSync,openSync,readSync} from 'node:fs';
+import {dirname,resolve} from 'node:path';
 import {spawnSync,type SpawnSyncReturns} from 'node:child_process';
 import type {Pool} from 'pg';
 import {
@@ -39,8 +40,20 @@ export type FiEnrollmentRunner=(
 
 function rootFile(path:string):void{
   if(typeof path!=='string'||!path.startsWith('/')||path.length>1024||
-     path.includes('\u0000')||path.includes('\r')||path.includes('\n'))
-    throw new FiEnrollmentError('Absolute protected controller file required');
+     path.includes('\u0000')||path.includes('\r')||path.includes('\n')||
+     resolve(path)!==path)
+    throw new FiEnrollmentError('Canonical absolute protected controller file required');
+  // File-mode checks are insufficient if an ancestor directory can be replaced
+  // by an untrusted user. Reject non-root-owned or group/world-writable paths.
+  let current=dirname(path);
+  for(;;){
+    const dir=lstatSync(current,{throwIfNoEntry:false});
+    if(!dir||!dir.isDirectory()||dir.isSymbolicLink()||
+       dir.uid!==0||(dir.mode&0o022)!==0)
+      throw new FiEnrollmentError('Unsafe controller trust directory');
+    if(current==='/')break;
+    current=dirname(current);
+  }
   const st=lstatSync(path,{throwIfNoEntry:false});
   if(!st||!st.isFile()||st.isSymbolicLink()||st.uid!==0||
      (st.mode&0o077)!==0)
@@ -49,7 +62,19 @@ function rootFile(path:string):void{
 
 export function pinnedFiNodePublicSpki(path:string):string {
   rootFile(path);
-  const bytes=readFileSync(path);
+  // Open once with O_NOFOLLOW; the inode verified below is also the inode
+  // read, even if a leaf path is concurrently changed.
+  const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+  let bytes:Buffer;
+  try{
+    const st=fstatSync(fd);
+    if(!st.isFile()||st.uid!==0||(st.mode&0o077)!==0||st.size!==44)
+      throw new FiEnrollmentError('Unsafe FI node public SPKI file');
+    const data=Buffer.alloc(45);
+    if(readSync(fd,data,0,data.length,0)!==44)
+      throw new FiEnrollmentError('FI node public SPKI file changed while reading');
+    bytes=data.subarray(0,44);
+  }finally{closeSync(fd);}
   if(bytes.length!==44||!bytes.subarray(0,12).equals(NODE_SPki_PREFIX)||
      createHash('sha256').update(bytes).digest('hex')!==FI_NODE_IDENTITY_SHA256)
     throw new FiEnrollmentError('FI node public identity differs from approved inventory');
@@ -117,6 +142,8 @@ export async function enrollApprovedFiNode(
   config:FiEnrollmentSshConfig,
   runner:FiEnrollmentRunner=spawnSync,
 ):Promise<{nodeId:'fi-test-01';state:'testing';published:false}>{
+  if(typeof process.getuid!=='function'||process.getuid()!==0)
+    throw new FiEnrollmentError('Enrollment must execute as root on the trusted controller');
   if(signingKey?.type!=='private'||signingKey.asymmetricKeyType!=='ed25519')
     throw new FiEnrollmentError('Root-protected Ed25519 controller signer required');
   // All protected local files are checked BEFORE creating a one-use challenge.
