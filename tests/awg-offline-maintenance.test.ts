@@ -8,11 +8,12 @@ const ENTITLEMENT='11111111-2222-4333-8444-555555555555';
 const KEY=Buffer.from(Array.from({length:32},(_,i)=>i)).toString('base64');
 const {privateKey}=generateKeyPairSync('ed25519');
 
-function pretendController(mode:'empty'|'renew'|'revoke'|'denied'){
+function pretendController(mode:'empty'|'renew'|'revoke'|'denied'|'retryRenew'|'retryRevoke'){
   const queries:string[]=[];
   let staged=0;
   const row={node_id:'fi-test-01',entitlement_id:ENTITLEMENT,
-    allocation_revision:3,billing_revision:7,peer_public_key:KEY};
+    allocation_revision:3,billing_revision:7,peer_public_key:KEY,
+    allocation_state:mode==='retryRevoke'?'revoked':mode==='retryRenew'?'staged':'applied'};
   const client={
     async query(sql:string,args:unknown[]=[]){
       queries.push(sql);
@@ -29,7 +30,7 @@ function pretendController(mode:'empty'|'renew'|'revoke'|'denied'){
         return {rows:[{enabled:mode!=='denied'}]};
       if(sql.startsWith('SELECT peer_public_key,host(client_ipv4)'))
         return {rows:[{peer_public_key:KEY,client_ipv4:'10.73.91.2',
-          revision:3,state:'applied'}]};
+          revision:3,state:mode==='retryRevoke'?'revoked':mode==='retryRenew'?'staged':'applied'}]};
       if(sql.startsWith('SELECT host(client_ipv4) AS client_ipv4 FROM '))
         return {rows:[{client_ipv4:'10.73.91.2'}]};
       if(sql.startsWith('INSERT INTO vpn_awg_command_outbox'))staged++;
@@ -41,9 +42,9 @@ function pretendController(mode:'empty'|'renew'|'revoke'|'denied'){
     async query(sql:string,args:unknown[]=[]){
       queries.push(sql);
       if(sql.includes("e.state<>'ACTIVE'"))
-        return {rows:mode==='revoke'?[row]:[]};
+        return {rows:mode==='revoke'||mode==='retryRevoke'?[row]:[]};
       if(sql.includes("e.state='ACTIVE'"))
-        return {rows:mode==='renew'||mode==='denied'?[row]:[]};
+        return {rows:mode==='renew'||mode==='denied'||mode==='retryRenew'?[row]:[]};
       throw Error('Unexpected background selection');
     },
     async connect(){return client;},
@@ -89,4 +90,16 @@ test('maintenance rejects untrusted signer and unbounded batch',async()=>{
   await assert.rejects(stageDueOfflineAwgMaintenance(controller.db as never,wrong,NOW));
   await assert.rejects(stageDueOfflineAwgMaintenance(controller.db as never,privateKey,NOW,200));
   assert.equal(controller.queries.length,0);
+});
+
+test('a missed 40-second ACK is retried asynchronously with a higher revision',async()=>{
+  for(const [mode,expected] of [
+    ['retryRenew','stagedRenewals'],['retryRevoke','stagedRevocations'],
+  ] as const){
+    const controller=pretendController(mode);
+    const result=await stageDueOfflineAwgMaintenance(controller.db as never,privateKey,NOW);
+    assert.equal(result[expected],1);
+    assert.equal(controller.staged,1);
+    assert.equal(result.failed,0);
+  }
 });
