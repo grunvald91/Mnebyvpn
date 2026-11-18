@@ -33,6 +33,17 @@ test('DNS purchase buttons come ONLY from approved published tariff entries',asy
     .filter(x=>x.callback_data?.startsWith('buy:'));
   assert.deepEqual(buy.map(x=>x.callback_data),
     published.map(x=>'buy:stars:'+x.planId));
+  const withYookassa=await personalDnsTelegramMenu(db,2222,published,[
+    {days:15,rubMinor:14900},{days:30,rubMinor:24900},
+    {days:60,rubMinor:44900},{days:90,rubMinor:59900},
+  ]);
+  const yookassaUrls=withYookassa.reply_markup.inline_keyboard.flat().map(x=>x.url).filter(Boolean);
+  assert.deepEqual(yookassaUrls,[
+    'https://mnebyvpn.site/?product=smart_dns&days=15',
+    'https://mnebyvpn.site/?product=smart_dns&days=30',
+    'https://mnebyvpn.site/?product=smart_dns&days=60',
+    'https://mnebyvpn.site/?product=smart_dns&days=90',
+  ]);
   assert.match(view.text,/купить тариф заново/);
   const blocked=await personalDnsTelegramMenu(db,2222,
     published.map(p=>({...p,dnsQuotaQueriesPer30d:42n})));

@@ -2579,6 +2579,7 @@ body.journey-active[data-journey-view="account"] .metric-card{
 
 /* Full-width Desktop version (>= 900px): horizontal backdrop + spacious cabinet & checkout */
 @media(min-width:900px){
+  body.journey-active .journey-landing,
   body.journey-active[data-journey-view="plans"] .journey-landing{
     max-width:none;width:100%;margin:0;padding:0;
   }

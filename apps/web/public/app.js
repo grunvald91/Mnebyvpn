@@ -138,7 +138,7 @@ function renderPlan() {
   text('checkout-hint',
     !plan?'Неопубликованные тарифы не продаются.':
     !state.checkoutEnabled?'Онлайн-оплата (ЮKassa) подключается. Платёжные ключи ещё не добавлены.':
-    'Разовая оплата через ЮKassa без автосписаний. Доступ выдаётся после подтверждения сервером.');
+    'Разовая оплата через ЮKassa (карта, СБП) без автосписаний. Доступ выдаётся после подтверждения сервером.');
 }
 function node(tag, cls, content) {
   const el=document.createElement(tag);
@@ -504,7 +504,7 @@ async function verifyPendingOrderIfNeeded(payload){
     const res=await api('/api/orders/verify',{method:'POST',
       headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
       body:JSON.stringify({orderId:candidate.id})});
-    if(res?.orderState==='PAID'||res?.status==='PAID'){
+    if(res?.state==='PAID'||res?.orderState==='PAID'||res?.status==='PAID'){
       void refresh();
     }
   }catch{ /* Webhook or polling refresh will continue normally. */ }
@@ -1047,6 +1047,17 @@ byId('logout-button').addEventListener('click',logout);
 byId('email-start-form').addEventListener('submit',beginEmail);
 byId('email-verify-form').addEventListener('submit',finishEmail);
 byId('link-email').addEventListener('click',openEmailLink);
+function applyInitialSelectionFromUrl(){
+  try{
+    const params=new URLSearchParams(location.search);
+    const p=params.get('product');
+    const d=Number(params.get('days'));
+    const nextProduct=p&&Object.hasOwn(productNames,p)?p:state.product;
+    const nextDays=validOfferDays(nextProduct,d)?d:state.days;
+    if(nextProduct!==state.product||nextDays!==state.days)setSelection(nextProduct,nextDays);
+  }catch{}
+}
+applyInitialSelectionFromUrl();
 applyLinkOptions();
 async function consumePendingTrial(){
   if(state.loggedIn && state.trialOffers.includes('vpn')){

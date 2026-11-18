@@ -7,7 +7,8 @@ import {issueTelegramPersonalDns,rotateTelegramPersonalDns,
 import {approvedPersonalDnsOffer,PERSONAL_DNS_STARS_OFFERS,
   type DnsPublishedPlan} from '../../../packages/dns-policy/src/smart-dns-offers.ts';
 
-type Button={text:string;callback_data?:string;copy_text?:{text:string}};
+type Button={text:string;callback_data?:string;url?:string;copy_text?:{text:string}};
+export type DnsRubPlan={days:number;rubMinor:number};
 export type PersonalDnsBotMessage={
   text:string;
   reply_markup:{inline_keyboard:Button[][]};
@@ -68,15 +69,30 @@ export function personalDnsGuide(kind:string):PersonalDnsBotMessage{
 }
 export async function personalDnsTelegramMenu(
   db:Pool,telegramUserId:number,publishedPlans:ReadonlyArray<DnsPublishedPlan>=[],
+  rubPlans:ReadonlyArray<DnsRubPlan>=[],
 ):Promise<PersonalDnsBotMessage>{
   const status=await telegramPersonalDnsSummary(db,telegramUserId);
   const buy:Button[][]=[];
+  const seenDays=new Set<number>();
   for(const o of PERSONAL_DNS_STARS_OFFERS){
-    const plan=publishedPlans.find(p=>approvedPersonalDnsOffer(p)?.planId===o.planId);
-    if(plan&&plan.planId.length<=53){
-      buy.push([{text:'⭐ '+o.days+' дней — '+o.stars+' Stars',
-        callback_data:'buy:stars:'+plan.planId}]);
+    const plan=publishedPlans.find(p=>approvedPersonalDnsOffer(p)?.planId===o.planId)
+      ?? publishedPlans.find(p=>p.product==='smart_dns'&&p.stars!==null&&p.stars>0&&
+        p.dnsQuotaBytes===null&&p.dnsQuotaQueriesPer30d===1_000_000n&&
+        Math.round(p.durationSeconds/86400)===(o.days===14?15:o.days));
+    const webDays=o.days===14?15:o.days;
+    const rub=rubPlans.find(r=>r.days===webDays);
+    const row:Button[]=[];
+    if(plan&&plan.planId.length<=53&&plan.stars){
+      seenDays.add(webDays);
+      row.push({text:'⭐ '+Math.round(plan.durationSeconds/86400)+' дн · '+plan.stars+' Stars',
+        callback_data:'buy:stars:'+plan.planId});
     }
+    if(rub&&rub.rubMinor>0){
+      seenDays.add(webDays);
+      row.push({text:'💳 ЮKassa · '+Math.round(rub.rubMinor/100)+' ₽',
+        url:'https://mnebyvpn.site/?product=smart_dns&days='+webDays});
+    }
+    if(row.length)buy.push(row);
   }
   const headline='🧭 Персональный Smart DNS\n\n'+tariffs+
     '\n\n'+quotaText+'\n'+renewText;

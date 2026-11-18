@@ -460,7 +460,7 @@ footer nav a:first-child{border:0}
 
 <div id="payment-info-dialog" class="payment-popover" role="dialog" aria-modal="false" aria-labelledby="payment-info-title" hidden>
   <div class="payment-popover-head"><strong id="payment-info-title">Оплата и напоминания</strong><button id="payment-info-close" type="button" aria-label="Закрыть информацию">×</button></div>
-  <p>Защищённая разовая оплата через ЮKassa. Без автосписаний.</p>
+  <p>Защищённая разовая оплата через ЮKassa (карта, СБП). Без автосписаний.</p>
   <p>Окончание срока напомним заранее, если к аккаунту привязан Telegram-бот.</p>
   <p>Активация, выдача VPN, профилей Apple/Android Smart DNS и Telegram-прокси происходят автоматически только после подтверждения оплаты сервером.</p>
 </div>
@@ -474,6 +474,13 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
   const mobScene=$('#mob-scene'),mobVideo=$('#bgv');
   const deskScene=$('#desk-scene'),deskVideo=$('#bgv-desktop');
   const mqlDesk=matchMedia('(min-width: 900px)');
+  const isDesktopViewport=()=>{
+    if(mqlDesk.matches)return true;
+    try{
+      if(window.parent!==window&&window.parent.innerWidth>=900)return true;
+    }catch{}
+    return false;
+  };
   const autoplayAllowed=!R&&!navigator.connection?.saveData;
   let hostActive=true,mobStarted=false,deskStarted=false;
   const playable=()=>hostActive&&!document.hidden;
@@ -496,7 +503,7 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
   };
 
   const syncPlayback=()=>{
-    const isDesk=mqlDesk.matches;
+    const isDesk=isDesktopViewport();
     if(!autoplayAllowed||!playable()){
       mobVideo?.pause();deskVideo?.pause();
       mobScene?.classList.remove('vid');deskScene?.classList.remove('vid');

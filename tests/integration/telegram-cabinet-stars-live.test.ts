@@ -100,6 +100,28 @@ test('production cabinet: Stars invoice, checked payment, durable settlement and
     assert.ok(JSON.parse(oldList.data).reply_markup.inline_keyboard.flat()
       .some((b:any)=>b.url==='https://mnebyvpn.site/?product=vpn&days=30'));
 
+    // 3-in-1 bundle and Smart Access menus expose both integer Stars and YooKassa checkout links.
+    const bundleMenu=await post(button(81012,'nav:bundle'));
+    assert.equal(bundleMenu.resp.status,200);
+    const bundleShown=JSON.parse(bundleMenu.data);
+    assert.ok(bundleShown.reply_markup.inline_keyboard.flat()
+      .some((b:any)=>b.callback_data==='buy:stars:bundle_30d_3device'));
+    assert.ok(bundleShown.reply_markup.inline_keyboard.flat()
+      .some((b:any)=>b.url==='https://mnebyvpn.site/?product=bundle&days=30'));
+    const dnsMenu=await post(button(81013,'nav:dns'));
+    assert.equal(dnsMenu.resp.status,200);
+    const dnsShown=JSON.parse(dnsMenu.data);
+    assert.ok(dnsShown.reply_markup.inline_keyboard.flat()
+      .some((b:any)=>b.callback_data==='buy:stars:smart_dns_30d_rub'));
+    assert.ok(dnsShown.reply_markup.inline_keyboard.flat()
+      .some((b:any)=>b.url==='https://mnebyvpn.site/?product=smart_dns&days=30'));
+    const bundleInvoice=await post(button(81014,'buy:stars:bundle_30d_3device'));
+    assert.equal(bundleInvoice.resp.status,200);
+    const bundleInvData=JSON.parse(bundleInvoice.data);
+    assert.equal(bundleInvData.method,'sendInvoice');
+    assert.equal(bundleInvData.currency,'XTR');
+    assert.equal(bundleInvData.prices[0].amount,280);
+
     // Fresh direct invoice link: viewing four tariffs creates NO orders.
     // Telegram pre-checkout creates exactly one order with the signed UUID.
     const personalPlan=visible[0];

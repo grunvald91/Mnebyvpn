@@ -76,16 +76,17 @@ const supportPrompt='✉️ MNEBYVPN — напишите вопрос в под
 type Button={text:string;callback_data?:string;url?:string;copy_text?:{text:string}};
 const homeButton:Button={text:'🏠 Главное',callback_data:'nav:home'};
 const siteButton:Button={text:'🌍 Сайт (резервный)',url:'https://mnebyvpn.site'};
-const label=(p:string)=>p==='vpn'?'🌐 VPN':p==='smart_dns'?'🧭 Smart DNS':'🔐 VPN + DNS';
+const label=(p:string)=>p==='vpn'?'🌐 VPN':p==='smart_dns'?'🧭 Smart Доступ':'✨ Экосистема «3 в 1»';
 const validId=(n:unknown):n is number=>typeof n==='number'&&Number.isSafeInteger(n)&&n>0;
 const msg=(text:string,keyboard:Button[][])=>{
   return {text,reply_markup:{inline_keyboard:keyboard}};
 };
 const main=(id:number)=>msg(
-  '🌐 MNEBYVPN\n\nМы только начинаем. Наша цель — простое подключение, понятное управление и оперативная помощь без технической путаницы. Со временем хотим объединить больше возможностей в одном сервисе.\n\nVPN и персональный Smart DNS. Выберите подключение ниже.\n\n🎁 Пробные 24 часа зависят от готовности выдачи VPN; отсчёт начинается после активации.\n\n💙 Поддержите проект: расскажите о нём друзьям. Выберите действие ниже.',
+  '🌐 MNEBYVPN\n\nМы строим понятный сервис «3 в 1» без технической путаницы: Smart DNS (YouTube, ChatGPT, Claude, Gemini), Telegram-прокси и VPN.\n\nВыберите тариф ниже — оплата доступна через ⭐ Telegram Stars или 💳 ЮKassa (карта, СБП).\n\n🎁 Пробные 24 часа VPN — без оплаты; отсчёт начинается после активации.\n\n💙 Поддержите проект: расскажите о нём друзьям.',
   [
-    [{text:'🌐 Купить VPN',callback_data:'nav:vpn'},
-     {text:'🧭 Купить Smart DNS',callback_data:'nav:dns'}],
+    [{text:'✨ Экосистема «3 в 1»',callback_data:'nav:bundle'}],
+    [{text:'🌐 VPN Лайт',callback_data:'nav:vpn'},
+     {text:'🧭 Smart Доступ',callback_data:'nav:dns'}],
     [{text:'🎁 Бесплатные 24 часа',callback_data:'nav:trial'}],
     [{text:'🔐 Мои подключения',callback_data:'nav:status'},
      {text:'🔌 Подключить',callback_data:'nav:connect'}],
@@ -253,49 +254,87 @@ async function vpnBubble(id:number) {
   }));
   return {method:'sendWidget',...vpnPurchaseWidgetPayload(id,selected,links)};
 }
-async function vpnPlans(){
-  if(!pool)throw new Error('DB unavailable');
+async function catalogPlansView(
+  product:'vpn'|'bundle'|'smart_dns',
+  heading:string,
+  extraButtons:Button[][]=[],
+){
+  if(!pool||!store)throw new Error('DB unavailable');
   const {rows}=await pool.query(
     `SELECT product,title,duration_seconds,rub_minor,stars,enabled
-       FROM billing_plans WHERE product='vpn' AND enabled=true
+       FROM billing_plans WHERE product=$1 AND enabled=true
        UNION ALL
        SELECT p.product,p.title,p.duration_seconds,p.rub_minor,p.stars,false AS enabled
        FROM pricing_drafts p
-       WHERE p.product='vpn' AND NOT EXISTS(
+       WHERE p.product=$1 AND NOT EXISTS(
          SELECT 1 FROM billing_plans b WHERE b.enabled=true
            AND b.product=p.product AND b.duration_seconds=p.duration_seconds)
-       ORDER BY duration_seconds LIMIT 16`);
-  const list=rows.map(x=>formatDuration(Number(x.duration_seconds))+' — '+
-    (x.rub_minor!==null?formatRoubles(Number(x.rub_minor)):'цена уточняется')+
-    (x.stars!==null?' / '+Number(x.stars)+' ⭐':''));
-  // Only published server-side prices can initiate a purchase. Draft prices
-  // remain informational and never create a payment order.
-  if(!store)throw new Error('DB unavailable');
-  const stars=await store.plans('telegram_stars');
-  const rub=await store.plans('prodamus');
+       ORDER BY duration_seconds LIMIT 16`,
+    [product],
+  );
+  const list=rows
+    .filter(x=>!(product==='smart_dns'&&Number(x.duration_seconds)===14*86400&&x.rub_minor===null))
+    .map(x=>formatDuration(Number(x.duration_seconds))+' — '+
+      (x.rub_minor!==null?formatRoubles(Number(x.rub_minor)):'цена уточняется')+
+      (x.stars!==null?' / '+Number(x.stars)+' ⭐':''));
+  const stars=(await store.plans('telegram_stars'))
+    .filter(p=>p.product===product&&p.stars!==null)
+    .sort((a,b)=>a.durationSeconds-b.durationSeconds);
+  const rub=(await store.plans('yookassa'))
+    .filter(p=>p.product===product&&p.rubMinor!==null)
+    .sort((a,b)=>a.durationSeconds-b.durationSeconds);
   const options:Button[][]=[];
-  for(const p of stars.filter(p=>p.product==='vpn'&&p.stars!==null)){
-    if(p.planId.length>53)continue; // Telegram callback_data <= 64 bytes
-    const days=p.durationSeconds/86400;
-    const pair:Button[]=[{text:'⭐ '+formatDuration(p.durationSeconds)+' · '+p.stars+' Stars',
-      callback_data:'buy:stars:'+p.planId}];
-    // Independent website checkout. The bot never processes RUB transactions.
-    if([15,30,60,90].includes(days)&&rub.some(r=>r.product==='vpn'&&r.durationSeconds===p.durationSeconds))
-      pair.push({text:'💳 Prodamus (сайт)',url:'https://mnebyvpn.site/?product=vpn&days='+days});
+  for(const p of stars){
+    if(p.planId.length>53)continue;
+    const days=Math.round(p.durationSeconds/86400);
+    const pair:Button[]=[{
+      text:'⭐ '+days+' дн · '+p.stars+' Stars',
+      callback_data:'buy:stars:'+p.planId,
+    }];
+    const matchingRub=rub.find(r=>r.durationSeconds===p.durationSeconds);
+    if([15,30,60,90].includes(days)&&matchingRub?.rubMinor){
+      pair.push({
+        text:'💳 ЮKassa · '+Math.round(matchingRub.rubMinor/100)+' ₽',
+        url:'https://mnebyvpn.site/?product='+product+'&days='+days,
+      });
+    }
     options.push(pair);
   }
-  for(const p of rub.filter(p=>p.product==='vpn'&&
-    !stars.some(q=>q.product==='vpn'&&q.durationSeconds===p.durationSeconds))){
-    const days=p.durationSeconds/86400;
-    if([15,30,60,90].includes(days))
-      options.push([{text:'💳 '+formatDuration(p.durationSeconds)+' · Prodamus (сайт)',
-        url:'https://mnebyvpn.site/?product=vpn&days='+days}]);
+  for(const p of rub.filter(r=>!stars.some(s=>s.durationSeconds===r.durationSeconds))){
+    const days=Math.round(p.durationSeconds/86400);
+    if([15,30,60,90].includes(days)&&p.rubMinor){
+      options.push([{
+        text:'💳 '+days+' дн · ЮKassa '+Math.round(p.rubMinor/100)+' ₽',
+        url:'https://mnebyvpn.site/?product='+product+'&days='+days,
+      }]);
+    }
   }
-  return msg('🌐 VPN\n\n'+(list.length?list.join('\n'):'Тарифы готовятся к публикации.')+
-    '\n\n⭐ Stars — оплата внутри Telegram. 💳 Prodamus — на независимом сайте.'+
-    '\nПробные 24 часа — без оплаты.',
-    [...options,[{text:'🎁 Получить 24 часа бесплатно',callback_data:'trial:vpn'}],
-     [{text:'🔐 Мои подключения',callback_data:'nav:status'}],[homeButton]]);
+  return msg(
+    heading+'\n\n'+(list.length?list.join('\n'):'Тарифы готовятся к публикации.')+
+      '\n\n⭐ Stars — оплата внутри Telegram.\n💳 ЮKassa (карта, СБП) — оплата на сайте без автосписаний.',
+    [...options,...extraButtons,
+     ...(product==='vpn'?[[{text:'🎁 Получить 24 часа бесплатно',callback_data:'trial:vpn'}]]:[]),
+     [{text:'🔐 Мои подключения',callback_data:'nav:status'}],[homeButton]],
+  );
+}
+async function vpnPlans(){
+  return catalogPlansView('vpn','🌐 VPN Лайт · 1 устройство');
+}
+async function bundlePlans(){
+  return catalogPlansView(
+    'bundle',
+    '✨ Экосистема «3 в 1»\nSmart DNS + Telegram-прокси + VPN до 3 устройств. Не конфликтуют друг с другом.',
+  );
+}
+async function dnsStorefrontMenu(){
+  return catalogPlansView(
+    'smart_dns',
+    '🧭 Smart Доступ · DNS + Telegram-прокси\nYouTube, ChatGPT, Claude, Gemini без постоянного VPN + автовыдача Apple (.mobileconfig), DoT для Android и Telegram-прокси.',
+    [[{text:'📱 iPhone / iPad',callback_data:'dns:guide:ios'},
+      {text:'🤖 Android',callback_data:'dns:guide:android'}],
+     [{text:'📡 Роутер / ТВ',callback_data:'dns:guide:router'},
+      {text:'🌐 Сервисы',callback_data:'dns:guide:services'}]],
+  );
 }
 async function widgetStarsInvoice(id:number,key:string,queryId:string):Promise<string>{
   if(!store)return 'UNAVAILABLE';
@@ -345,9 +384,10 @@ async function widgetStarsInvoice(id:number,key:string,queryId:string):Promise<s
 async function issueStars(id:number,planId:string,updateId:number){
   if(!store)throw new Error('DB unavailable');
   const plan=await store.plan(planId);
+  const dnsAllowed=plan?.product==='smart_dns' &&
+    (plan.rubMinor!==null || (personalDnsReady&&approvedPersonalDnsOffer(plan)!==null));
   if(!plan||plan.stars===null||
-     (plan.product!=='vpn'&&
-       !(personalDnsReady&&approvedPersonalDnsOffer(plan)!==null)))
+     (plan.product!=='vpn'&&plan.product!=='bundle'&&!dnsAllowed))
     throw new Error('PLAN_NOT_OFFERED');
   const order=await store.createTelegramOrder(id,planId,'cabinet-stars:'+updateId);
   const invoice=buildStarsInvoice(starsOrderFromDB(order),
@@ -435,10 +475,12 @@ async function receiveStars(update:any){
     if(status==='APPLIED')
       return {method:'sendMessage',chat_id:m.from.id,
         text:record?.product==='smart_dns'
-          ?'✅ Оплата '+record.amount+' ⭐ подтверждена. Заказ записан. После активации в «Мой Smart DNS» можно получить персональный адрес и файл iPhone/iPad.'
-          :'✅ Оплата Stars подтверждена. Заказ записан, проверяем выдачу VPN. Статус — в «Мои подключения».',
+          ?'✅ Оплата '+record.amount+' ⭐ подтверждена. Заказ записан. После активации в «Мой Smart DNS» (или на сайте) можно получить персональный адрес и файл iPhone/iPad.'
+          :record?.product==='bundle'
+            ?'✅ Оплата '+record.amount+' ⭐ подтверждена. Экосистема «3 в 1» активируется: VPN (до 3 устройств), Smart DNS и Telegram-прокси.'
+            :'✅ Оплата Stars подтверждена. Заказ записан, проверяем выдачу VPN. Статус — в «Мои подключения».',
         reply_markup:{inline_keyboard:[[{text:'🔐 Мои подключения',callback_data:'nav:status'}],
-          ...(record?.product==='smart_dns'?
+          ...(record?.product==='smart_dns'||record?.product==='bundle'?
             [[{text:'🧭 Мой DNS',callback_data:'nav:dns'}]]:[]) ]}};
     if(status==='DUPLICATE_EVENT'||status==='DUPLICATE_CAPTURE')return null;
     throw new Error('Stars settlement rejected: '+status);
@@ -503,11 +545,21 @@ async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
   if(data==='nav:home'||data==='home')return main(id);
   if(data==='nav:vpn'||data==='info:vpn'||data==='nav:plans:vpn'||
     data==='nav:catalog'||data==='nav:plans')return vpnPlans();
+  if(data==='nav:bundle'||data==='info:bundle'||data==='nav:plans:bundle')
+    return bundlePlans();
   if(data==='nav:status'||data==='nav:renew'||data==='nav:manage')return packages(id);
-  if((data==='nav:dns'||data==='info:dns')&&personalDnsReady&&pool){
-    const plans=store?await store.plans('telegram_stars'):[];
-    const offers=plans.filter(p=>approvedPersonalDnsOffer(p)!==null);
-    return personalDnsTelegramMenu(pool,id,offers);
+  if((data==='nav:dns'||data==='info:dns')&&pool&&store){
+    const starPlans=(await store.plans('telegram_stars')).filter(p=>p.product==='smart_dns');
+    const rubPlans=(await store.plans('yookassa'))
+      .filter(p=>p.product==='smart_dns'&&p.rubMinor!==null)
+      .map(p=>({days:Math.round(p.durationSeconds/86400),rubMinor:p.rubMinor!}));
+    if(personalDnsReady){
+      const offers=starPlans.filter(p=>
+        approvedPersonalDnsOffer(p)!==null||
+        (p.rubMinor!==null&&p.stars!==null&&p.dnsQuotaBytes===null&&p.dnsQuotaQueriesPer30d===1_000_000n));
+      return personalDnsTelegramMenu(pool,id,offers,rubPlans);
+    }
+    return dnsStorefrontMenu();
   }
   if(data==='nav:trial'||data==='trial:vpn')return trial(id);
   if(data==='nav:connect')return pool?await activationView(pool,id)??dbUnavailable():dbUnavailable();
@@ -800,6 +852,8 @@ async function processUpdate(update:any){
       return oneAction(actor,main(actor.id));
     if(['nav:vpn','info:vpn','nav:plans:vpn','nav:catalog','nav:plans'].includes(action))
       return oneAction(actor,await vpnPlans());
+    if(['nav:bundle','info:bundle','nav:plans:bundle'].includes(action))
+      return oneAction(actor,await bundlePlans());
     if(action==='nav:vpn:list')return oneAction(actor,await vpnPlans());
     if(/^dns:guide:(ios|android|router|services)$/.test(action))
       return oneAction(actor,personalDnsGuide(action.slice('dns:guide:'.length)));

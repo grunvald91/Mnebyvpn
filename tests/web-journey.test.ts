@@ -288,6 +288,10 @@ test('desktop and mobile storefront present all 3 RUB products without Stars or 
   assert.match(art,/id="dns-info-dialog"/);
   assert.match(art,/id="trial-options"/);
   assert.match(art,/id="trial-dns"/);
+  assert.match(art,/isDesktopViewport/);
+  const appJs=file('apps/web/public/app.js');
+  assert.match(appJs,/res\?\.state==='PAID'/);
+  assert.match(appJs,/applyInitialSelectionFromUrl/);
   for(const service of ['YouTube','ChatGPT','Gemini','Claude','Antigravity','Grok','TikTok']){
     assert.ok(art.includes(service));
   }
