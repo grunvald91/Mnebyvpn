@@ -1,0 +1,71 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {generateKeyPairSync,sign} from 'node:crypto';
+import {
+  parseFiEnrollmentProof,fiEnrollmentSshArgs,FI_NODE_IDENTITY_SHA256,
+} from '../packages/provisioning/src/fi-enrollment-ssh.ts';
+import {enrollmentChallengeMessage,type NodeEnrollmentChallenge}
+  from '../packages/provisioning/src/node-enrollment.ts';
+
+const node=generateKeyPairSync('ed25519');
+const publicSpki=node.publicKey.export({format:'der',type:'spki'})
+  .toString('base64url');
+const challenge:NodeEnrollmentChallenge={
+  nodeId:'fi-test-01',endpointHost:'fi.mnebyvpn.site',publicSpki,
+  challengeId:'11111111-2222-4333-8444-555555555555',
+  nonce:'A'.repeat(43),expiresAt:new Date('2026-11-18T12:00:00.000Z'),
+  controllerSignature:'b'.repeat(86),
+};
+
+function signedProof(ch:NodeEnrollmentChallenge=challenge){
+  const raw={
+    nodeId:ch.nodeId,endpointHost:ch.endpointHost,publicSpki:ch.publicSpki,
+    challengeId:ch.challengeId,nonce:ch.nonce,
+  };
+  const signature=sign(null,enrollmentChallengeMessage(raw),node.privateKey)
+    .toString('base64url');
+  return {...raw,signature};
+}
+test('valid FI signed node proof exactly matches one controller challenge',()=>{
+  const proof=parseFiEnrollmentProof(JSON.stringify(signedProof())+'\n',challenge);
+  assert.equal(proof.nodeId,'fi-test-01');
+  assert.equal(proof.challengeId,challenge.challengeId);
+  assert.equal(proof.signature.length,86);
+});
+
+test('proof is rejected for wrong country, nonce, signature or unexpected JSON',()=>{
+  const valid=signedProof();
+  const bad=[
+    {...valid,nodeId:'de-test-01'},
+    {...valid,nonce:'B'.repeat(43)},
+    {...valid,signature:'a'.repeat(86)},
+    {...valid,challengeId:'11111111-2222-4333-8444-555555555556'},
+    {...valid,extra:'true'},
+    {...valid,publicSpki:'A'.repeat(59)},
+  ];
+  for(const item of bad)
+    assert.throws(()=>parseFiEnrollmentProof(JSON.stringify(item)+'\n',challenge));
+  for(const text of [
+    '{}\n','not json\n','\n',JSON.stringify(valid),
+    JSON.stringify(valid)+'\n{}\n','x'.repeat(2100)+'\n',
+  ])
+    assert.throws(()=>parseFiEnrollmentProof(text,challenge));
+});
+
+test('FI enrollment SSH uses a forced-command identity, no password or TOFU',()=>{
+  const args=fiEnrollmentSshArgs({
+    sshIdentityFile:'/root/.ssh/mnebyvpn-fi-enroll',
+    pinnedKnownHostsFile:'/root/mnebyvpn/known_hosts',
+    approvedNodePublicSpkiFile:'/root/mnebyvpn/fi-node-public.spki',
+  });
+  const joined=args.join(' ');
+  assert(joined.includes('StrictHostKeyChecking=yes'));
+  assert(joined.includes('BatchMode=yes'));
+  assert(joined.includes('PasswordAuthentication=no'));
+  assert(joined.includes('HostKeyAlias=fi.mnebyvpn.site'));
+  assert(joined.includes('HostName=217.11.167.91'));
+  assert(joined.includes('ProxyCommand=none'));
+  assert(joined.endsWith('root@fi.mnebyvpn.site false'));
+  assert(!joined.includes('accept-new'));
+  assert.equal(FI_NODE_IDENTITY_SHA256.length,64);
+});
