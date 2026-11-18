@@ -15,3 +15,40 @@ A server-side trusted worker can call deliverNextAwgCommand after connecting to 
 - Strict current limitation: only FI test node and 10.73.91.0/24; multi-country IPAM, separate controller service account, hardening and canary release are still required.
 
 Next: deploy this library inside a trusted central-controller process with dedicated database roles, sign/verify keys, finite queue worker interval, delivery receipt audit, E2E service monitoring, and explicit release authorization. No secrets are created here.
+
+
+## Prepared private worker (not deployed)
+
+`apps/service/src/awg-controller-delivery-worker.ts` is a separate trusted
+worker entrypoint. `npm run start:awg-delivery-worker` does not deploy,
+enable systemd, publish users or change any release flag.
+
+Deploy it ONLY on an independently secured central controller after
+node enrollment, E2E evidence and explicit owner approval.
+Startup fails unless run as root with `MNEBYVPN_ENV=production` and
+`MNEBYVPN_AWG_DELIVERY_WORKER=enabled`. Required on that private host:
+
+- `DATABASE_URL`: canonical PostgreSQL with a restricted role.
+- `AWG_CONTROLLER_SIGNING_KEY_FILE`: root-owned Ed25519 private PEM file, mode 0600.
+- `AWG_CONTROLLER_PUBLIC_SHA256`: independently approved lowercase hex
+  SHA-256 of its public DER SPKI, never derived automatically as an approval.
+- `AWG_CONTROLLER_SSH_IDENTITY_FILE`: root-owned controller-only SSH key.
+- `AWG_CONTROLLER_SSH_KNOWN_HOSTS_FILE`: root-owned known_hosts entry with
+  independently pinned `fi.mnebyvpn.site` HostKeyAlias. No TOFU.
+
+The worker requires already-applied outbox/enrollment migrations, processes
+one command at a time in 5-second polling, validates signed receipt through
+the existing transactional controller code, logs only aggregate statuses and
+stops after three consecutive delivery errors. No HTTP listener or client
+private key generator exists. Stale grants must be reissued after billing
+verification; outbox retries alone cannot resurrect expired commands.
+
+The reviewed FI SSH command now passes `--node-id`, `--mode apply` and
+`--command` to the SAME Python invocation. A regression test guards
+against the previous accidental shell-semicolon command split.
+
+Still required before enabling: deployment of the trusted controller,
+least-privilege database role, independent signing/SSH key provisioning,
+enrollment challenge, periodic short-lease renewal scheduler, external
+client E2E, monitoring/alerts and separate customer-profile release gate.
+Merely merging this worker does not complete any of these prerequisites.

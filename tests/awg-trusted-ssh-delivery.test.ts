@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {generateKeyPairSync,sign} from 'node:crypto';
 import {
-  awgSshArgs,parseAwgNodeReceipt,deliverNextAwgCommand,
+  awgSshArgs,awgRemoteApplyScript,parseAwgNodeReceipt,deliverNextAwgCommand,
 } from '../packages/provisioning/src/awg-trusted-ssh-delivery.ts';
 import type {SignedAwgLease} from '../packages/provisioning/src/awg-controller-grants.ts';
 
@@ -56,6 +56,15 @@ test('never accept untrusted or missing SSH identity files',()=>{
   ]){
     assert.throws(()=>awgSshArgs(config));
   }
+});
+
+test('SSH apply flags are arguments to Python, never separate shell commands',()=>{
+  // A semicolon before --node-id would turn the flags into a shell command.
+  assert(awgRemoteApplyScript.includes(
+    '/usr/bin/python3 /opt/mnebyvpn-nodekit/awg_peer_grants.py '+
+    '--node-id fi-test-01 --mode apply --command "$tmp"'));
+  assert(!awgRemoteApplyScript.includes('; --node-id'));
+  assert(awgRemoteApplyScript.includes('cat > "$tmp"; /usr/bin/python3'));
 });
 
 test('untrusted transport cannot claim a DB command',async()=>{
