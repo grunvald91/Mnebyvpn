@@ -79,6 +79,12 @@ jobs:
           set -euo pipefail
           # Only disposable test identities. Never provision production material in Actions.
           sudo "$(command -v node)" --experimental-strip-types --test tests/trusted-controller-bootstrap.test.mjs
+      - name: Validate controller188 native systemd staging and inactive production gates
+        run: |
+          set -euo pipefail
+          python3 -m py_compile ops/controller188-systemd/install-runtime.py tests/test_controller188_host_systemd.py
+          python3 -m unittest discover -s tests -p 'test_controller188_host_systemd.py' -v
+          node --check ops/controller188-systemd/runtime-smoke.mjs
       - name: Test Python/OpenSSL bootstrap for existing RU188 (disposable runner only)
         run: |
           set -euo pipefail
