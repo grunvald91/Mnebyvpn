@@ -47,6 +47,11 @@ test('RU188 canary launcher is no-network, no-signing-key and non-mutating',()=>
   assert.match(shell,/--pids-limit 64/);
   assert.match(shell,/--pull=never/);
   assert.match(shell,/docker build --pull=false/);
+  assert.match(shell,/docker tag "\$base" "\$base_tag"/);
+  assert.match(shell,/docker image rm "\$base_tag"/);
+  assert.match(shell,/test "\$\(docker image inspect --format '\{\{\.Id\}\}' "\$base_tag"\)" = "\$base"/);
+  assert.match(shell,/--build-arg "BASE_IMAGE=\$base_tag"/);
+
   assert.match(shell,/^base="\$\(docker inspect --format /m);
   assert.match(shell,/^image="mnebyvpn-controller188-canary:/m);
   assert.doesNotMatch(shell,/--network host|--privileged|--mount\s+type=bind|docker stop|docker rm|docker restart|docker exec/);
