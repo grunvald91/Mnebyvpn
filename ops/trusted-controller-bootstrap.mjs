@@ -2,7 +2,7 @@
 /**
  * Trusted-controller cryptographic bootstrap (local only, no network).
  *
- * Run as root on a dedicated operator-controlled host. Creates separate
+ * Run as root on the EXISTING controller 188.120.254.223. Creates separate
  * Ed25519 controller signer and SSH enrollment identities under a private
  * root-only directory. NEVER approves a key, connects to FI, accesses DB,
  * installs a service, changes a release flag, or provisions a subscriber.
@@ -16,12 +16,15 @@ import {
   writeFileSync,
 } from 'node:fs';
 import {dirname,join,resolve} from 'node:path';
+import {networkInterfaces} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 const FI_SHA='c3689b687e8888d15e3ece8e45cf7d01672b9dadb77b1963a7871ffd8e967ed9';
 const PREFIX=Buffer.from('302a300506032b6570032100','hex');
 const DEFAULT_ROOT='/root/mnebyvpn-controller';
+const CONTROLLER188='188.120.254.223';
+const EXISTING_CONTROLLER_ROOT='/opt/mnebyvpn';
 const SHA=/^[a-f0-9]{64}$/;
 const SSH_FINGERPRINT=/^SHA256:[A-Za-z0-9+/]{43}$/;
 const FILES=Object.freeze({
@@ -154,6 +157,26 @@ function verifyController(root){
     throw new ControllerBootstrapError('Unapproved bootstrap manifest mismatch');
   return sha(actual);
 }
+/**
+ * The real CLI must NOT create a second control-plane on FI, DE89, or a CI
+ * runner. Existing 188 deployment + locally assigned 188 IPv4 are hard
+ * prerequisites (not proof that every database/service is healthy).
+ * Tests of the pure bootstrap functions use disposable roots and keys.
+ */
+export function requireExistingController188({
+  addresses=Object.values(networkInterfaces()).flat().filter(Boolean)
+    .filter(x=>x.family==='IPv4').map(x=>x.address),
+  deploymentRoot=EXISTING_CONTROLLER_ROOT,
+}={}){
+  requireRoot();
+  if(!Array.isArray(addresses)||!addresses.includes(CONTROLLER188))
+    throw new ControllerBootstrapError('Only existing RU188 central controller is supported');
+  const st=lstatSync(deploymentRoot,{throwIfNoEntry:false});
+  if(!st||!st.isDirectory()||st.isSymbolicLink()||st.uid!==0)
+    throw new ControllerBootstrapError('Existing MNEBYVPN controller deployment absent');
+  return {controller_host:CONTROLLER188,existing_deployment_verified:true};
+}
+
 export function initializeController(root=DEFAULT_ROOT){
   requireRoot();
   safeRoot(root);
@@ -228,6 +251,7 @@ export function auditController(root=DEFAULT_ROOT,{
 }
 function cli(args){
   if(!['init','audit'].includes(args[0]))throw new ControllerBootstrapError('Use init or audit');
+  requireExistingController188();
   let root=DEFAULT_ROOT,shaPin='',hostPin='';
   const rest=args.slice(1);
   while(rest.length){
