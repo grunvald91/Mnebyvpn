@@ -73,7 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           # Only disposable test identities. Never provision production material in Actions.
-          sudo "$(command -v node)" --test tests/trusted-controller-bootstrap.test.mjs
+          sudo "$(command -v node)" --experimental-strip-types --test tests/trusted-controller-bootstrap.test.mjs
       - name: Test Python/OpenSSL bootstrap for existing RU188 (disposable runner only)
         run: |
           set -euo pipefail

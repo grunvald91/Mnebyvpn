@@ -5,6 +5,7 @@ import {
   chmodSync,lstatSync,readFileSync,rmSync,symlinkSync,writeFileSync,
 } from 'node:fs';
 import {join} from 'node:path';
+import {trustedControllerKey} from '../apps/service/src/awg-controller-delivery-worker.ts';
 import {
   initializeController,auditController,
   ControllerBootstrapError,requireExistingController188,
@@ -142,5 +143,41 @@ test('production CLI trust boundary refuses FI, DE89 and an unknown controller',
     assert.throws(()=>requireExistingController188({
       addresses:['188.120.254.223'],deploymentRoot:root+'/missing',
     }),/Existing MNEBYVPN controller deployment absent/);
+  });
+});
+
+test('RU188 signer loader accepts exactly pinned original root-only Ed25519 PEM',()=>{
+  withController((root,initial)=>{
+    const key=trustedControllerKey(join(root,'controller-signing-key.pem'),
+                                   initial.controller_public_sha256);
+    assert.equal(key.type,'private');
+    assert.equal(key.asymmetricKeyType,'ed25519');
+    assert.throws(()=>trustedControllerKey(
+      join(root,'controller-signing-key.pem'),'f'.repeat(64)),
+      /independently approved pin/);
+    assert.throws(()=>trustedControllerKey(
+      '/root/../root/secret','f'.repeat(64)),
+      /Protected controller signing key/);
+  });
+});
+
+test('RU188 signer loader rejects linked, writable and oversized assets',()=>{
+  withController((root,initial)=>{
+    const keyPath=join(root,'controller-signing-key.pem');
+    const link=join(root,'linked-controller.pem');
+    symlinkSync(keyPath,link);
+    assert.throws(()=>trustedControllerKey(link,initial.controller_public_sha256),
+      /ELOOP|file|link/i);
+    chmodSync(keyPath,0o644);
+    assert.throws(()=>trustedControllerKey(keyPath,initial.controller_public_sha256),
+      /root-only file/);
+    chmodSync(keyPath,0o600);
+    chmodSync(root,0o770);
+    assert.throws(()=>trustedControllerKey(keyPath,initial.controller_public_sha256),
+      /ancestry/);
+    chmodSync(root,0o700);
+    writeFileSync(keyPath,Buffer.alloc(8193,0));
+    assert.throws(()=>trustedControllerKey(keyPath,initial.controller_public_sha256),
+      /bounded root-only file/);
   });
 });
