@@ -33,6 +33,11 @@ UNITDIR=Path("/etc/systemd/system")
 SOURCE=Path("/opt/mnebyvpn")
 MAX_FILES=5000
 MAX_BYTES=300*1024*1024
+# A root-owned drop-in can override ConditionPathExists, IPAddressDeny,
+# ExecStart, or an inactive unit. Refuse any pre-existing unit or override.
+UNIT_SEARCH_DIRS=(Path('/etc/systemd/system'),Path('/run/systemd/system'),
+                  Path('/usr/local/lib/systemd/system'),
+                  Path('/usr/lib/systemd/system'),Path('/lib/systemd/system'))
 
 class RuntimeInstallError(ValueError):
     pass
@@ -69,8 +74,11 @@ def require_real_188():
     if os.uname().machine!="x86_64":
         raise RuntimeInstallError("Unsupported controller architecture")
     for name in UNITS:
-        if (UNITDIR/name).exists() or (UNITDIR/name).is_symlink():
-            raise RuntimeInstallError("Refusing to replace any existing systemd unit")
+        for directory in UNIT_SEARCH_DIRS:
+            for candidate in (directory/name,directory/(name+".d")):
+                # Check symlinks explicitly: a masked unit is a symlink.
+                if candidate.exists() or candidate.is_symlink():
+                    raise RuntimeInstallError("Existing controller systemd unit or override")
 
 def safe_member(member):
     p=PurePosixPath(member.name)
@@ -90,8 +98,9 @@ def stage(archive:Path,digest:str,commit:str):
     if (len(digest)!=64 or any(c not in "0123456789abcdef" for c in digest) or
         len(commit)!=40 or any(c not in "0123456789abcdef" for c in commit)):
         raise RuntimeInstallError("Immutable commit and bundle digest required")
-    if (not str(archive).startswith("/run/mnebyvpn-controller-release-") or
-        archive.suffix!=".gz"):
+    if (archive.parent!=Path("/run") or
+        not archive.name.startswith("mnebyvpn-controller-release-") or
+        archive.suffix!=".gz" or archive.is_symlink()):
         raise RuntimeInstallError("Only protected /run bundle accepted")
     root_dir(archive.parent)
     meta=archive.lstat()
@@ -152,13 +161,21 @@ def stage(archive:Path,digest:str,commit:str):
         if target.exists() or target.is_symlink():
             raise RuntimeInstallError("Runtime commit already present")
         os.rename(stagepath,target)
+        # The release is now live on disk even if symlink_to subsequently
+        # fails. Mark it for rollback BEFORE any fallible symlink operation.
+        promoted=True
         stagepath=None
         # The initial deployment never retargets an existing symlink.
         CURRENT.symlink_to(target,target_is_directory=True)
-        promoted=True
         for name in UNITS:
             src=target/"ops/controller188-systemd"/name
-            fd=os.open(UNITDIR/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o644)
+            # Recheck the target and drop-in directories immediately before
+            # installation, so overrides cannot silently defeat release gates.
+            for directory in UNIT_SEARCH_DIRS:
+                for candidate in (directory/name,directory/(name+".d")):
+                    if candidate.exists() or candidate.is_symlink():
+                        raise RuntimeInstallError("Concurrent controller unit or drop-in")
+            fd=os.open(UNITDIR/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
             created_units.append(UNITDIR/name)
             with os.fdopen(fd,"wb") as out:out.write(src.read_bytes())
         run("/usr/bin/systemctl","daemon-reload")
