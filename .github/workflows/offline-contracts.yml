@@ -69,6 +69,11 @@ jobs:
           npm test
       - name: Validate unprivileged deployment shell
         run: bash -n ops/deploy-user-release.sh
+      - name: Validate RU188 isolated Docker image and offline canary contract
+        run: |
+          set -euo pipefail
+          bash -n ops/controller188-runtime/stage.sh
+          node --test tests/controller188-runtime.test.mjs
       - name: Test isolated controller key bootstrap as root on disposable CI runner
         run: |
           set -euo pipefail
