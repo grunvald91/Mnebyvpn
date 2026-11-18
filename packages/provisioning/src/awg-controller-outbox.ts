@@ -178,8 +178,8 @@ export async function acknowledgeAwgCommand(
   try{
     await tx.query('BEGIN');
     const q=await tx.query<Outbox>(
-      'SELECT id::text,node_id,entitlement_id::text,revision,op,'+
-      'command_sha256,state FROM vpn_awg_command_outbox WHERE id=$1 FOR UPDATE',
+      'SELECT id::text,node_id,entitlement_id::text,revision,op,billing_revision,'+
+      'command_sha256,state,expires_delivery_at FROM vpn_awg_command_outbox WHERE id=$1 FOR UPDATE',
       [entry.outboxId],
     );
     const row=q.rows[0];
@@ -215,14 +215,32 @@ export async function acknowledgeAwgCommand(
        (r.op==='revoke'&&peer.state!=='revoked'))
       throw new AwgDeliveryError('Stale or displaced node receipt');
     if(r.op==='grant'){
-      const ent=await tx.query<{state:string;product:string;expires_at:Date}>(
-        'SELECT state,product,expires_at FROM entitlements WHERE id=$1 FOR UPDATE',
+      const ent=await tx.query<{state:string;product:string;revision:number;expires_at:Date}>(
+        'SELECT state,product,revision,expires_at FROM entitlements WHERE id=$1 FOR UPDATE',
         [r.entitlementId],
       );
       const e=ent.rows[0];
       if(!e||e.product!=='vpn'||e.state!=='ACTIVE'||
+         e.revision!==row.billing_revision||
          !(e.expires_at instanceof Date)||e.expires_at.getTime()<=timestamp)
-        throw new AwgDeliveryError('Billing revoked before receipt acknowledgement');
+        throw new AwgDeliveryError('Billing revision changed before AWG acknowledgement');
+      // A node receipt proves it applied a command, NOT that the command
+      // remains authorized. Never promote its allocation after the owner
+      // disabled AWG or the verified node was quarantined meanwhile.
+      const gate=await tx.query<{enabled:boolean}>(
+        "SELECT enabled FROM vpn_release_flags WHERE feature='vpn_awg_clients'");
+      const nodeState=await tx.query<{state:string;status:string;verified_at:Date}>(
+        'SELECT p.state,i.status,p.verified_at FROM vpn_awg_node_pools p '+
+        'JOIN vpn_node_enrollment_inventory i ON i.node_id=p.node_id '+
+        'WHERE p.node_id=$1 FOR UPDATE',[r.nodeId],
+      );
+      const pool=nodeState.rows[0];
+      if(gate.rows[0]?.enabled!==true||!pool||
+         pool.state!=='verified'||pool.status!=='enrolled'||
+         !(pool.verified_at instanceof Date)||
+         timestamp-pool.verified_at.getTime()>3600_000||
+         pool.verified_at.getTime()>timestamp+30_000)
+        throw new AwgDeliveryError('AWG node or feature no longer approved');
     }
     const result=await tx.query(
       "UPDATE vpn_awg_command_outbox SET state='applied',applied_at=$2,"+
