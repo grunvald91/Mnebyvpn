@@ -10,7 +10,7 @@ export async function smoke({
   exec=spawnSync,
   keyRoot=existsSync('/root/mnebyvpn-controller'),
 }={}){
-  if(version!=='v22.16.0')throw Error('Unexpected Node.js runtime');
+  if(version!=='v22.23.5')throw Error('Unexpected Node.js runtime');
   if(!keyRoot)throw Error('Existing controller188 protected root not found');
   const result=exec('/usr/bin/ssh',['-V'],{timeout:2500,encoding:'utf8',maxBuffer:2048});
   if(result.error||result.status!==0)throw Error('System OpenSSH client missing');
@@ -18,7 +18,7 @@ export async function smoke({
   if(typeof Pool!=='function')throw Error('Local PostgreSQL library unavailable');
   await import('../../apps/service/src/fi-enrollment-controller.ts');
   await import('../../apps/service/src/awg-controller-delivery-worker.ts');
-  return {node:'v22.16.0',ssh_client:true,pg_driver:true,
+  return {node:'v22.23.5',ssh_client:true,pg_driver:true,
           fi_module_imported:true,awg_module_imported:true,
           network_access_used:false,db_queries:0,keys_read:false};
 }
