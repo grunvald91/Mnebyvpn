@@ -34,12 +34,29 @@ if docker image inspect "$image" >/dev/null 2>&1; then
   exit 3
 fi
 
+# Docker BuildKit resolves FROM sha256:<local IMAGE ID> as a registry image,
+# not a local ID. Assign a unique temporary tag to the ALREADY PINNED local
+# image, reject collisions and verify it before and after the build. Never
+# pull that tag or overwrite any existing/production image tag.
+base_tag="mnebyvpn-controller188-build-base:$source_sha"
+if docker image inspect "$base_tag" >/dev/null 2>&1; then
+  echo 'controller188_temporary_base_tag_collision=true'
+  exit 3
+fi
+docker tag "$base" "$base_tag"
+cleanup_base_tag() {
+  docker image rm "$base_tag" >/dev/null 2>&1 || true
+}
+trap cleanup_base_tag EXIT
+test "$(docker image inspect --format '{{.Id}}' "$base_tag")" = "$base"
+
 # Building a NEW image does not modify any existing container. No signing
 # keys, host .env files, volumes, DB or Docker socket are given to the image.
 docker build --pull=false --network=default --no-cache \
-  --build-arg "BASE_IMAGE=$base" \
+  --build-arg "BASE_IMAGE=$base_tag" \
   --file "$source_dir/ops/controller188-runtime/Dockerfile" \
   --tag "$image" "$source_dir" >/dev/null
+test "$(docker image inspect --format '{{.Id}}' "$base_tag")" = "$base"
 
 # Strict no-network, no-private-bind-mount, no-restart one-off smoke canary.
 # No Docker socket inside the container and no container privilege elevation.
