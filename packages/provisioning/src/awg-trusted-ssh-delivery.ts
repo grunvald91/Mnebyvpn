@@ -22,14 +22,14 @@ const SERVER='217.11.167.91';
 const HOST_ALIAS='fi.mnebyvpn.site';
 const MAX_RESPONSE=16*1024;
 const MAX_COMMAND=4096;
-const REMOTE_SCRIPT=[
+export const awgRemoteApplyScript=[
   'set -eu',
   'umask 077',
   'tmp=$(mktemp /run/nodekit-awg-delivery.XXXXXXXX)',
   'trap \'rm -f "$tmp"\' EXIT',
   'cat > "$tmp"',
-  '/usr/bin/python3 /opt/mnebyvpn-nodekit/awg_peer_grants.py',
-  '--node-id fi-test-01 --mode apply --command "$tmp"',
+  '/usr/bin/python3 /opt/mnebyvpn-nodekit/awg_peer_grants.py '+
+    '--node-id fi-test-01 --mode apply --command "$tmp"',
 ].join('; ');
 
 export class AwgTransportError extends Error {}
@@ -68,7 +68,7 @@ export function awgSshArgs(config:TrustedSshConfig):string[]{
     '-o','ClearAllForwardings=yes',
     '-o','ConnectTimeout=8',
     '-i',config.sshIdentityFile,
-    'root@'+SERVER,REMOTE_SCRIPT,
+    'root@'+SERVER,awgRemoteApplyScript,
   ];
 }
 function assertEnvelope(command:SignedAwgLease):void{
