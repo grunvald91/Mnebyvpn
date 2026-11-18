@@ -29,7 +29,7 @@ const signed:SignedAwgLease={
 function deliveryDb(args:{
   active?:boolean;release?:boolean;enrolled?:boolean;
   nodeReceiptValid?:boolean;currentRevision?:number;
-  older?:boolean;revoked?:boolean;
+  older?:boolean;revoked?:boolean;billingRevision?:number;verified?:boolean;
 }={}){
   const statements:string[]=[];
   const client={
@@ -64,7 +64,8 @@ function deliveryDb(args:{
       if(sql.startsWith('SELECT id::text,node_id,entitlement_id::text,revision,op,'))
         return {rows:[{
           id:'7',node_id:nodeId,entitlement_id:id,revision:2,
-          op:'grant',command_sha256:digest,state:'claimed',
+          op:'grant',billing_revision:11,command_sha256:digest,
+          expires_delivery_at:new Date(now.getTime()+40000),state:'claimed',
         }]};
       if(sql.startsWith('SELECT identity_public_spki,status'))
         return {rows:[{
@@ -76,10 +77,17 @@ function deliveryDb(args:{
           revision:args.currentRevision??2,
           state:args.revoked?'revoked':'staged',
         }]};
-      if(sql.startsWith('SELECT state,product,expires_at'))
+      if(sql.startsWith('SELECT state,product,revision,expires_at'))
         return {rows:[{
           state:args.active===false?'REFUNDED':'ACTIVE',
-          product:'vpn',expires_at:new Date(now.getTime()+60000),
+          product:'vpn',revision:args.billingRevision??11,
+          expires_at:new Date(now.getTime()+60000),
+        }]};
+      if(sql.startsWith('SELECT p.state,i.status,p.verified_at'))
+        return {rows:[{
+          state:args.verified===false?'degraded':'verified',
+          status:args.enrolled===false?'disabled':'enrolled',
+          verified_at:new Date(now.getTime()-2000),
         }]};
       return {rows:[],rowCount:1};
     },
@@ -144,6 +152,20 @@ test('tampered node receipt and previously revoked billing cannot acknowledge',a
   await assert.rejects(acknowledgeAwgCommand(corrupted.db as never,{
     outboxId:'7',receipt:{...receipt(),nonce:'d'.repeat(64)},
   },now));
+});
+
+test('node ACK cannot promote access after billing revision or release changes',async()=>{
+  for(const options of [
+    {billingRevision:12},{release:false},{verified:false},{enrolled:false},
+  ]){
+    const {db,statements}=deliveryDb(options);
+    await assert.rejects(
+      acknowledgeAwgCommand(db as never,{outboxId:'7',receipt:receipt()},now),
+    );
+    assert(statements.includes('ROLLBACK'));
+    assert(!statements.includes('COMMIT'));
+    assert(!statements.some(s=>s.includes("UPDATE vpn_awg_peer_allocations SET state='applied'")));
+  }
 });
 
 test('outbox never acknowledges based on untrusted success boolean',async()=>{
