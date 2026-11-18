@@ -18,10 +18,15 @@ test('free trial has branded compact neon back navigation',()=>{
   assert.match(css,/a\.journey-back--neon:focus-visible/);
 });
 
-test('verified seller name and INN appear in real mobile landing and legal documents',()=>{
-  for(const page of [index,art,offer,agreement,privacy]){
+test('verified seller name and INN appear inside legal documents and are removed from site footers',()=>{
+  for(const page of [offer,agreement,privacy]){
     assert.match(page,/Кунавина Анна Александровна/);
     assert.match(page,/745214444705/);
+    const footer=page.slice(page.indexOf('<footer'));
+    assert.doesNotMatch(footer,/Кунавина Анна Александровна|745214444705/);
+  }
+  for(const page of [index,art]){
+    assert.doesNotMatch(page,/Кунавина Анна Александровна|745214444705|footer-seller|seller-details/);
   }
 });
 

@@ -197,8 +197,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       cardTop:Math.round(inner.querySelector('.card').getBoundingClientRect().top),
       clearLockGap:Math.round(inner.querySelector('.card').getBoundingClientRect().top-
         inner.querySelector('.lock').getBoundingClientRect().bottom),
-      sellerVisible:getComputedStyle(inner.querySelector('.seller-details')).display!=='none',
-      sellerText:inner.querySelector('.seller-details').textContent.trim(),
+      sellerRemoved:!inner.querySelector('.seller-details') &&
+        !inner.querySelector('footer').textContent.includes('745214444705'),
       paymentNotesRemoved:!inner.querySelector('.note,.note2'),
       paymentInfoVisible:inner.querySelector('#payment-info-open').getBoundingClientRect().width>=20,
       backdropFilter:getComputedStyle(inner.querySelector('.card')).backdropFilter,
@@ -227,7 +227,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     !metrics.videoPresent||metrics.retryVisible||metrics.cardOpacity<0.99||
     (width<900&&metrics.backdropFilter!=='none')||metrics.canvasPresent||metrics.introFilter!=='none'||
     (width<=390&&(metrics.lockWidth>52||metrics.clearLockGap<20||metrics.cardTop>314))||
-    !metrics.paymentNotesRemoved||!metrics.paymentInfoVisible||!metrics.sellerVisible||
+    !metrics.paymentNotesRemoved||!metrics.paymentInfoVisible||!metrics.sellerRemoved||
     (width<=390&&metrics.height>=700&&metrics.outerScrollHeight>metrics.height+2)||
     !metrics.headerSingleRow||!metrics.headerNavGrouped||!metrics.topButtonsUnwrapped||!metrics.headerFits||
     !metrics.legalSingleRow||metrics.frontTop>12||
@@ -453,8 +453,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       documentHeight:document.documentElement.scrollHeight,
       noVerticalScroll:document.documentElement.scrollHeight<=innerHeight+2,
       footerInsideViewport:document.querySelector('.footer').getBoundingClientRect().bottom<=innerHeight+2,
-      footerSellerVisible:getComputedStyle(document.querySelector('.footer-seller')).display!=='none',
-      footerSellerText:document.querySelector('.footer-seller').textContent.trim(),
+      footerSellerRemoved:!document.querySelector('.footer-seller') &&
+        !document.querySelector('.footer').textContent.includes('745214444705'),
       footerLinkRows:(()=>{
         const a=[...document.querySelectorAll('.footer-links a,.footer-links button')];
         return a.length===6 && a.slice(0,3).every(x=>Math.abs(x.getBoundingClientRect().top-a[0].getBoundingClientRect().top)<2) &&
@@ -513,8 +513,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
      !trial.backArrow||Math.abs(trial.backArrow.controlCenterDelta)>2||
      Math.abs(trial.backArrow.arrowCenterDelta)>1||
      Math.abs(trial.backArrow.arrowVerticalDelta)>1||
-     !trial.footerSellerVisible||!trial.footerLinkRows||
-     trial.footerSellerText!==metrics.sellerText||
+     !trial.footerSellerRemoved||!trial.footerLinkRows||
      (width<=390&&!trial.noVerticalScroll)||
      !trial.emailButton||Math.abs(trial.emailButton.centerDelta)>5||
      trial.emailButton.width<200||trial.emailButton.height>54||
@@ -877,9 +876,18 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     console.log(readFileSync(image).toString('base64'));
     console.log('BRANDED_ORDER_JPEG_END');
   }
+  await page.locator('[data-order-product="smart_dns"]').click();
+  await page.locator('[data-order-days="60"]').click();
+  const switchedOrder=await page.evaluate(()=>({
+    period:document.querySelector('#journey-order-period')?.textContent,
+    total:document.querySelector('#journey-order-price')?.textContent,
+    overflowX:document.documentElement.scrollWidth>innerWidth+1,
+  }));
   if(order.route!=='#checkout'||!order.email?.includes('visual-test@example.com')||
     order.total==='—'||!order.confirmEnabled||order.hasCardFields||
-    order.screenHasProviderBrand||order.hasHorizontalOverflow||checkoutCalls!==0)failed=true;
+    order.screenHasProviderBrand||order.hasHorizontalOverflow||checkoutCalls!==0||
+    !switchedOrder.period?.includes('Smart Доступ')||!switchedOrder.period?.includes('60')||
+    !switchedOrder.total?.includes('449')||switchedOrder.overflowX)failed=true;
   await page.locator('#journey-order-back').click();
   if(await page.locator('#journey-landing').isHidden())failed=true;
   await page.close();
@@ -1058,13 +1066,14 @@ for(const scenario of [
     footer:(()=>{
       const links=[...document.querySelectorAll('.footer-links a,.footer-links button')];
       const rects=links.map(el=>el.getBoundingClientRect());
-      const seller=document.querySelector('.footer-seller')?.getBoundingClientRect();
+      const sellerRemoved=!document.querySelector('.footer-seller')&&
+        !document.querySelector('.footer')?.textContent?.includes('745214444705');
       return {
         linkCount:links.length,
         allVisible:rects.length===6&&rects.every(r=>r.width>0&&r.left>=0&&r.right<=innerWidth+1),
         rows:rects.length===6&&rects.slice(0,3).every(r=>Math.abs(r.top-rects[0].top)<2)&&
           rects.slice(3).every(r=>Math.abs(r.top-rects[3].top)<2),
-        sellerCentered:!!seller&&Math.abs((seller.left+seller.right)/2-innerWidth/2)<5,
+        sellerRemoved,
       };
     })(),
     visibleHeading:[...document.querySelectorAll('h1,h2')].filter(h=>{
@@ -1083,7 +1092,7 @@ for(const scenario of [
   if(result.overflowX||pageErrors.length||result.view!==scenario.expected||
     !result.header.nameVisible||!result.header.logoVisible||
     !result.header.sameRow||!result.header.compact||!result.header.allInside||
-    !result.footer.allVisible||!result.footer.rows||!result.footer.sellerCentered||
+    !result.footer.allVisible||!result.footer.rows||!result.footer.sellerRemoved||
     (scenario.expected==='payment'&&(!result.payment?.accountHidden||
       !result.payment.loginNotDuplicated||!result.payment.buttonVisible||
       !result.payment.buttonText.includes('Войти')||

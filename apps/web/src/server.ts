@@ -29,7 +29,10 @@ import {
   issueAccountSession, readAccountSession, verifyEnvelope, verifyTelegramIdToken, type Jwks,
 } from '../../../packages/web/src/security.ts';
 import { loadDashboard } from '../../../packages/web/src/dashboard.ts';
-import {bonusReleaseReady,loadCustomerProxyBonus,parseBonusRoutes}
+import {
+  bonusReleaseReady,loadCustomerProxyBonus,loadCustomerWsProxy,parseBonusRoutes,
+  parseWsProxyRoutes,wsProxyReleaseReady,
+}
   from '../../../packages/web/src/telegram-proxy-bonus.ts';
 import {websitePersonalDnsStatus,issueWebsitePersonalDnsProfile}
   from '../../../packages/web/src/personal-dns-apple.ts';
@@ -102,6 +105,7 @@ const trialEnabled = loginEnabled && networkVerified &&
 // Deprecated WEB_GUEST_TRIAL_ENABLED is deliberately ignored. No anonymous grant routes.
 const meteringVerified = networkVerified && process.env.WEB_DNS_METERING_VERIFIED === 'yes';
 const proxyBonusEnabled=networkVerified&&bonusReleaseReady(process.env);
+const wsProxyEnabled=networkVerified&&wsProxyReleaseReady(process.env);
 // Apple profile generation is never offered until the real personal DoT ingress is tested.
 const appleDnsProfileEnabled=networkVerified &&
   process.env.WEB_PERSONAL_DNS_APPLE_ENABLED==='yes' &&
@@ -1075,7 +1079,7 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   if (!auth) { json(res, 401, { code: 'LOGIN_REQUIRED' }); return; }
   if (req.method === 'GET' && url.pathname === '/api/me') {
     const dashboard = await loadDashboard(authPool, auth.accountId, meteringVerified);
-    json(res,200,{ ...dashboard, telegramProxyBonusEnabled:proxyBonusEnabled, appleDnsProfileEnabled, personalDnsEnabled:appleDnsProfileEnabled, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
+    json(res,200,{ ...dashboard, telegramProxyBonusEnabled:proxyBonusEnabled||wsProxyEnabled, wsProxyEnabled, appleDnsProfileEnabled, personalDnsEnabled:appleDnsProfileEnabled, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
   }
 
   async function issuePersonalDnsFromRequest(
@@ -1149,11 +1153,10 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   if(req.method==='GET'&&url.pathname==='/api/telegram-proxy-bonus'){
     // Do not expose credential-bearing URLs to an anonymous buyer, a
     // pending order, a trial, another account, or an expired entitlement.
-    // Production is gated until live Telemt creation, routes and revocation
-    // are verified. No account ID is accepted from query arguments.
+    // No account ID is accepted from query arguments.
     res.setHeader('Cache-Control','private, no-store, max-age=0');
     res.setHeader('Referrer-Policy','no-referrer');
-    if(!proxyBonusEnabled){
+    if(!proxyBonusEnabled&&!wsProxyEnabled){
       json(res,503,{code:'PROXY_BONUS_NOT_READY'});return;
     }
     const entitlementId=url.searchParams.get('entitlementId')??'';
@@ -1161,13 +1164,21 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entitlementId)){
       json(res,400,{code:'INVALID_ENTITLEMENT'});return;
     }
-    const routes=parseBonusRoutes(process.env.WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON);
-    if(!routes){json(res,503,{code:'PROXY_BONUS_NOT_READY'});return;}
-    const bonus=await loadCustomerProxyBonus(
-      authPool,auth.accountId,entitlementId,
-      process.env.WEB_DNS_MT_PROXY_BONUS_KEY??'',routes);
-    if(!bonus){json(res,404,{code:'PROXY_BONUS_NOT_ASSIGNED'});return;}
-    json(res,200,bonus);return;
+    const routes=proxyBonusEnabled?parseBonusRoutes(process.env.WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON):null;
+    const wsRoutes=wsProxyEnabled?parseWsProxyRoutes(process.env.WEB_TELEGRAM_WS_PROXY_ROUTES_JSON):null;
+    if((proxyBonusEnabled&&!routes)||(wsProxyEnabled&&!wsRoutes)){
+      json(res,503,{code:'PROXY_BONUS_NOT_READY'});return;
+    }
+    const [mtBonus,wsBonus]=await Promise.all([
+      routes?loadCustomerProxyBonus(authPool,auth.accountId,entitlementId,process.env.WEB_DNS_MT_PROXY_BONUS_KEY??'',routes):Promise.resolve(null),
+      wsRoutes?loadCustomerWsProxy(authPool,auth.accountId,entitlementId,wsRoutes):Promise.resolve(null),
+    ]);
+    if(!mtBonus&&!wsBonus){json(res,404,{code:'PROXY_BONUS_NOT_ASSIGNED'});return;}
+    json(res,200,{
+      expiresAt:wsBonus?.expiresAt??mtBonus!.expiresAt,
+      links:mtBonus?.links??[],
+      wsLinks:wsBonus?.wsLinks??[],
+    });return;
   }
   if(req.method==='POST'&&url.pathname==='/api/referral-link'){
     if(!csrfAllowed(req,auth.raw)){json(res,403,{code:'FORBIDDEN'});return;}

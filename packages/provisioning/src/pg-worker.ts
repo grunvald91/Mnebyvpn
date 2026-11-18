@@ -71,7 +71,7 @@ export class PgReconcileStore implements ReconcileStore {
     const pendingPaid= !pendingTrial &&
       ['PAID_PENDING_PROVISIONING','PROVISIONING_FAILED'].includes(r.state) &&
       r.starts_at===null && r.expires_at===null && r.paid_order_state==='PAID' &&
-      ['prodamus','telegram_stars'].includes(r.paid_order_provider);
+      ['yookassa','prodamus','telegram_stars'].includes(r.paid_order_provider);
     const expiry=pendingTrial||pendingPaid?new Date(Date.now()+5*60*1000):r.expires_at;
     return {entitlementId:r.id,revision:asInt(r.revision),
       enabled:quotaOK && ['ACTIVE','PAID_PENDING_PROVISIONING','PROVISIONING_FAILED'].includes(r.state),

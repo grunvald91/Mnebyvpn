@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   parseBonusRoutes,sealProxySecret,openProxySecret,makeBonusLinks,
   loadCustomerProxyBonus,bonusReleaseReady,
+  parseWsProxyRoutes,wsProxyReleaseReady,makeWsProxyLinks,loadCustomerWsProxy,
 } from '../packages/web/src/telegram-proxy-bonus.ts';
 
 const id='11111111-1111-4111-8111-111111111111';
@@ -93,4 +94,50 @@ test('customer secret delivery is backed by paid, active, owned DNS entitlement 
   assert.equal(none,null);
   assert.equal(await loadCustomerProxyBonus(db as never,id,'not-a-uuid',key,routes),null);
   assert.equal(called,1);
+});
+
+test('WebSocket proxy validates routes, encodes 0x70 marked token and enforces paid smart_dns ownership',async()=>{
+  const wsRoutes=[
+    {route:'ru' as const,server:'bandbook.site/6omdaevzovf3lisy',secret:raw},
+    {route:'direct' as const,server:'cdn.servgo.ru/c3hhpzagkvw7oo3o',secret:'dd'+raw},
+  ];
+  const parsed=parseWsProxyRoutes(JSON.stringify(wsRoutes));
+  assert.equal(parsed?.length,2);
+  assert.equal(parseWsProxyRoutes('[]'),null);
+  assert.equal(parseWsProxyRoutes(JSON.stringify([{route:'ru',server:'127.0.0.1/abc',secret:raw}])),null);
+  assert.equal(parseWsProxyRoutes(JSON.stringify([{route:'ru',server:'bandbook.site/abc',secret:'bad'}])),null);
+
+  const wsEnv={
+    WEB_TELEGRAM_WS_PROXY_ENABLED:'yes',
+    WEB_TELEGRAM_WS_PROXY_ROUTES_JSON:JSON.stringify(wsRoutes),
+  };
+  assert.equal(wsProxyReleaseReady({}),false);
+  assert.equal(wsProxyReleaseReady(wsEnv),true);
+
+  const links=makeWsProxyLinks(wsRoutes);
+  assert.equal(links.length,2);
+  const expectedMarked=Buffer.concat([Buffer.from([0x70]),Buffer.from(raw,'hex')]).toString('base64url');
+  for(const l of links){
+    assert.equal(l.kind,'webproxy');
+    assert.ok(l.url.startsWith('https://t.me/webproxy?'));
+    assert.ok(l.tgUrl.startsWith('tg://webproxy?'));
+    const u=new URL(l.url);
+    assert.equal(u.searchParams.get('server'),l.server);
+    assert.equal(u.searchParams.get('secret'),expectedMarked);
+  }
+
+  let calls=0;
+  const db={async query(sql:string,values:unknown[]){
+    calls++;
+    assert.match(sql,/e\.account_id=\$1 AND e\.id=\$2/);
+    assert.match(sql,/o\.state=\$5/);
+    assert.deepEqual(values,[id,other,'smart_dns','ACTIVE','PAID','bundle']);
+    return {rows:[{expires_at:new Date('2026-12-20T00:00:00Z')}]};
+  }};
+  const res=await loadCustomerWsProxy(db as never,id,other,wsRoutes);
+  assert.equal(calls,1);
+  assert.equal(res?.wsLinks.length,2);
+  assert.equal(res?.expiresAt,'2026-12-20T00:00:00.000Z');
+  assert.equal(await loadCustomerWsProxy(db as never,id,'invalid-uuid',wsRoutes),null);
+  assert.equal(calls,1);
 });

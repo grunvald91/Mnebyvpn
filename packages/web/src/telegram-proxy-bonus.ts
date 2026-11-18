@@ -133,3 +133,81 @@ export function bonusReleaseReady(env:NodeJS.ProcessEnv):boolean{
     hexKey.test(env.WEB_DNS_MT_PROXY_BONUS_KEY??'') &&
     parseBonusRoutes(env.WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON)!==null;
 }
+
+export type ProxyWsRoute={route:'direct'|'ru';server:string;secret:string};
+export type ProxyWsLink={
+  kind:'webproxy';route:'direct'|'ru';label:string;
+  server:string;secret:string;url:string;tgUrl:string;
+};
+const wsServerRegex=/^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?\/[A-Za-z0-9_-]{4,64}$/i;
+const wsSecretRegex=/^(?:dd)?[a-f0-9]{32}$/i;
+
+export function parseWsProxyRoutes(raw:string|undefined):ProxyWsRoute[]|null{
+  if(!raw)return null;
+  try{
+    const input:unknown=JSON.parse(raw);
+    if(!Array.isArray(input)||input.length<1||input.length>2)return null;
+    const routes:ProxyWsRoute[]=[];
+    const seenRoutes=new Set<string>();
+    const seenServers=new Set<string>();
+    for(const entry of input){
+      if(!entry||typeof entry!=='object'||Array.isArray(entry))return null;
+      const e=entry as Record<string,unknown>;
+      if(Object.keys(e).sort().join(',')!=='route,secret,server')return null;
+      if(e.route!=='direct'&&e.route!=='ru')return null;
+      if(typeof e.server!=='string'||!wsServerRegex.test(e.server)||
+         e.server.includes('..')||e.server.startsWith('127.0.0.1/')||
+         e.server.startsWith('localhost/'))return null;
+      if(typeof e.secret!=='string'||!wsSecretRegex.test(e.secret))return null;
+      if(seenRoutes.has(e.route)||seenServers.has(e.server))return null;
+      seenRoutes.add(e.route);seenServers.add(e.server);
+      routes.push({route:e.route,server:e.server,secret:e.secret.toLowerCase()});
+    }
+    return routes.sort((a,b)=>a.route==='ru'?-1:1);
+  }catch{return null;}
+}
+
+export function wsProxyReleaseReady(env:NodeJS.ProcessEnv):boolean{
+  return env.WEB_TELEGRAM_WS_PROXY_ENABLED==='yes' &&
+    parseWsProxyRoutes(env.WEB_TELEGRAM_WS_PROXY_ROUTES_JSON)!==null;
+}
+
+export function makeWsProxyLinks(routes:ProxyWsRoute[]):ProxyWsLink[]{
+  const checked=parseWsProxyRoutes(JSON.stringify(routes));
+  if(!checked)throw new Error('Unverified WebSocket proxy routes');
+  return checked.map(route=>{
+    const rawHex=route.secret.length===34&&route.secret.startsWith('dd')
+      ?route.secret.slice(2):route.secret;
+    const marked=Buffer.concat([Buffer.from([0x70]),Buffer.from(rawHex,'hex')]).toString('base64url');
+    const encodedServer=encodeURIComponent(route.server);
+    const query='server='+encodedServer+'&secret='+encodeURIComponent(marked);
+    return {
+      kind:'webproxy',
+      route:route.route,
+      label:route.route==='ru'
+        ?'Через российский сервер (WebSocket HTTPS :443)'
+        :'Напрямую через зарубежный сервер (WebSocket HTTPS :443)',
+      server:route.server,
+      secret:route.secret,
+      url:'https://t.me/webproxy?'+query,
+      tgUrl:'tg://webproxy?'+query,
+    };
+  });
+}
+
+export async function loadCustomerWsProxy(
+  db:Pick<Pool,'query'>,accountId:string,entitlementId:string,
+  routes:ProxyWsRoute[],
+):Promise<{expiresAt:string;wsLinks:ProxyWsLink[]}|null>{
+  if(!uuid.test(accountId)||!uuid.test(entitlementId))return null;
+  const sql='SELECT e.expires_at FROM entitlements e '+
+    'JOIN orders o ON o.id=e.source_order_id AND o.account_id=e.account_id '+
+    'WHERE e.account_id=$1 AND e.id=$2 AND e.product=$3 '+
+    'AND e.state=$4 AND e.starts_at<=clock_timestamp() '+
+    'AND e.expires_at>clock_timestamp() AND o.state=$5 '+
+    'AND o.product IN ($3,$6) LIMIT 1';
+  const {rows}=await db.query(sql,[accountId,entitlementId,'smart_dns','ACTIVE','PAID','bundle']);
+  const row=(rows as {expires_at:Date}[])[0];
+  if(!row)return null;
+  return {expiresAt:row.expires_at.toISOString(),wsLinks:makeWsProxyLinks(routes)};
+}

@@ -9,7 +9,7 @@ const entitlementId='22222222-2222-4222-8222-222222222222';
 
 function browser(url:string,loggedIn:boolean){
   const map=new Map<string,any>();
-  const actions:{setup:string[];trials:number;purchase:number}={setup:[],trials:0,purchase:0};
+  const actions:{setup:string[];dns?:string[];proxy?:string[];trials:number;purchase:number}={setup:[],trials:0,purchase:0};
   const make=(id:string)=>{
     const handlers=new Map<string,()=>void>();
     let href='';
@@ -28,12 +28,19 @@ function browser(url:string,loggedIn:boolean){
     return map.get(id);
   };
   const days=[15,30,60,90].map(n=>({ ...make('days-'+n),dataset:{journeyDays:String(n)}}));
+  const orderProducts=['vpn','bundle','smart_dns'].map(p=>({...make('order-p-'+p),dataset:{orderProduct:p}}));
+  const orderDays=[15,30,60,90].map(n=>({...make('order-d-'+n),dataset:{orderDays:String(n)}}));
   const platforms=['android','ios','windows','macos','linux'].map(p=>({...make(p),dataset:{journeyPlatform:p}}));
   const landing=el('journey-landing');
   landing.querySelectorAll=(q:string)=>q==='[data-journey-days]'?days:[];
   landing.querySelector=(q:string)=>el(q);
   const setup=el('journey-setup');
   setup.querySelectorAll=(q:string)=>q==='[data-journey-platform]'?platforms:[];
+  const orderView=el('journey-order');
+  orderView.querySelectorAll=(q:string)=>
+    q==='[data-order-product]'?orderProducts:
+    q==='[data-order-days]'?orderDays:[];
+  orderView.querySelector=(q:string)=>el(q);
   const header=make('header');
   const back=make('back');
   const account=el('access-list');
@@ -58,7 +65,7 @@ function browser(url:string,loggedIn:boolean){
   };
   const context=vm.createContext({
     document,window,location,history:{replaceState:()=>{}},navigator:{userAgent:'Android',platform:'Linux',maxTouchPoints:0},
-    URL,Date,Set,Map,Number,Object,String,state,sessionStorage:{
+    URL,Date,Set,Map,Promise,Number,Object,String,state,sessionStorage:{
       store:new Map<string,string>(),
       getItem(k:string){return this.store.get(k)??null;},
       setItem(k:string,v:string){this.store.set(k,v);},
@@ -67,13 +74,15 @@ function browser(url:string,loggedIn:boolean){
     formatMoney:(n:number)=>String(n)+' ₽',
     setSelection:(p:string,d:number)=>{state.product=p;state.days=d;window.renderPlan();},
     saveSelection:()=>{},readPurchaseIntent:()=>null,
+    ensurePersonalDnsCredentials:async(id:string)=>{actions.dns=actions.dns||[];actions.dns.push(id);return null;},
+    ensureProxyCredentials:async(id:string)=>{actions.proxy=actions.proxy||[];actions.proxy.push(id);return null;},
     loadSubscription:async(id:string)=>{actions.setup.push(id);},
     purchase:async()=>{actions.purchase++;},
     claimTrial:async()=>{actions.trials++;return 'PENDING';},
     toast:()=>{},
   });
   vm.runInContext(journey,context,{filename:'journey.js'});
-  return {state,window,map,actions};
+  return {state,window,map,actions,orderProducts,orderDays};
 }
 
 test('returned unpaid order renders verification, never opens a VPN config',()=>{
@@ -123,9 +132,31 @@ test('checkout is a separate MNEBYVPN review, no provider request before confirm
   assert.equal(b.map.get('journey-order-period').textContent,'VPN Лайт · 30 дней');
   assert.equal(b.map.get('journey-order-email').textContent,'verified@example.com');
   assert.equal(b.actions.purchase,0);
+  // Inline tariff switch directly on the checkout confirmation screen
+  b.state.plans.push({product:'bundle',durationDays:60,rubMinor:69900});
+  b.orderProducts[1].handlers.get('click')?.();
+  b.orderDays[2].handlers.get('click')?.();
+  assert.equal(b.state.product,'bundle');
+  assert.equal(b.state.days,60);
+  assert.equal(b.map.get('journey-order-period').textContent,'Экосистема «3 в 1» · 60 дней');
   b.map.get('journey-order-pay').handlers.get('click')?.();
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(b.actions.purchase,1);
+});
+
+test('verified PAID smart_dns order auto-delivers personal DNS and WebSocket proxy',async()=>{
+  const b=browser('https://mnebyvpn.site/payment/success?payment=returned&order='+orderId,true);
+  b.state.personalDnsEnabled=true;
+  b.state.telegramProxyBonusEnabled=true;
+  const dnsId='33333333-3333-4333-8333-333333333333';
+  const data={orders:[{id:orderId,product:'smart_dns',state:'PAID'}],
+    access:[{id:dnsId,sourceOrderId:orderId,product:'smart_dns',state:'ACTIVE',secondsRemaining:86400}],
+    identity:{email:'a@example.com'}};
+  b.window.renderAccount(data);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(b.actions.dns,[dnsId]);
+  assert.deepEqual(b.actions.proxy,[dnsId]);
+  assert.equal(b.map.get('journey-setup').hidden,false);
 });
 
 test('anonymous checkout never calls the payment provider',async()=>{

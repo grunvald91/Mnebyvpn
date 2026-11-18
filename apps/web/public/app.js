@@ -7,8 +7,8 @@ const state = {
   inviteToken: null, refreshing: false, renewalTargetId: null,
   telegramLoginEnabled:false,emailLoginEnabled:false,emailLinkMode:false,
   trialStatus:'NONE',guestSubscriptionUrl:null,setupLoading:false,
-  purchaseIntent:null,telegramProxyBonusEnabled:false,appleDnsProfileEnabled:false,
-  personalDnsEnabled:false,paymentProvider:'yookassa',
+  purchaseIntent:null,telegramProxyBonusEnabled:false,wsProxyEnabled:false,
+  appleDnsProfileEnabled:false,personalDnsEnabled:false,paymentProvider:'yookassa',
 };
 const productNames = { vpn:'VPN Лайт', smart_dns:'Smart Доступ', bundle:'Экосистема «3 в 1»' };
 const stateNames = {
@@ -151,6 +151,39 @@ function statusLabel(access) {
   return stateNames[access.state] || access.state;
 }
 
+function isAppleDevice(){
+  const ua=navigator.userAgent||'';
+  return /iPhone|iPad|iPod/i.test(ua)||
+    (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)||
+    /Mac OS X|Macintosh/i.test(ua);
+}
+function dnsStorageKey(id){return 'mnebyvpn-dns-cred:'+id;}
+function readCachedPersonalDns(id){
+  try{
+    const raw=sessionStorage.getItem(dnsStorageKey(id));
+    if(!raw)return null;
+    const p=JSON.parse(raw);
+    if(p&&typeof p.hostname==='string'&&typeof p.mobileconfig==='string')return p;
+  }catch{}
+  return null;
+}
+function saveCachedPersonalDns(id,creds){
+  try{
+    if(creds?.hostname&&creds?.mobileconfig)
+      sessionStorage.setItem(dnsStorageKey(id),JSON.stringify({
+        hostname:creds.hostname,mobileconfig:creds.mobileconfig,savedAt:Date.now(),
+      }));
+  }catch{}
+}
+function clearCachedCredentials(){
+  try{
+    for(let i=sessionStorage.length-1;i>=0;i--){
+      const k=sessionStorage.key(i);
+      if(k&&(k.startsWith('mnebyvpn-dns-cred:')||k.startsWith('mnebyvpn-proxy-cred:')))
+        sessionStorage.removeItem(k);
+    }
+  }catch{}
+}
 function triggerMobileconfigDownload(xml){
   const blob=new Blob([xml],{type:'application/x-apple-aspen-config'});
   if(blob.size<200||blob.size>32768)throw Error('DNS_PROFILE_UNAVAILABLE');
@@ -164,20 +197,22 @@ function triggerMobileconfigDownload(xml){
   setTimeout(()=>URL.revokeObjectURL(url),60000);
   return url;
 }
-function renderPersonalDnsBox(item,hostname,xml){
+function renderPersonalDnsBox(item,hostname,xml,opts={}){
+  if(!item)return;
   const previous=item.querySelector('.dns-personal-credentials');
   if(previous)previous.remove();
   const box=node('section','dns-personal-credentials');
-  box.append(node('h4','','Персональный Smart DNS готов'));
+  const apple=opts.isApple??isAppleDevice();
+  const hasCreds=Boolean(hostname||xml);
+  box.append(node('h4','',hasCreds?'✅ Персональный Smart DNS готов':'🧭 Персональный Smart DNS'));
   if(xml){
-    const dl=node('a','button button-primary setup-button','Скачать профиль Apple (.mobileconfig)');
-    const blob=new Blob([xml],{type:'application/x-apple-aspen-config'});
-    const url=URL.createObjectURL(blob);
-    dl.href=url;
-    dl.download='MNEBYDNS-Apple.mobileconfig';
+    const dl=node('button','button button-primary setup-button',
+      apple?'⬇️ Скачать профиль Apple (.mobileconfig)':'Скачать профиль для iPhone / Mac (.mobileconfig)');
+    dl.type='button';
+    dl.addEventListener('click',()=>triggerMobileconfigDownload(xml));
     box.append(dl);
     box.append(node('p','',
-      'Apple (iPhone, iPad, Mac): скачайте файл и откройте Настройки → Профиль загружен (или на Mac — Системные настройки → Основные → Управление устройством).'));
+      'Установка на Apple (iPhone, iPad, Mac): откройте страницу в Safari и нажмите кнопку выше → разрешите загрузку профиля → откройте «Настройки» → «Профиль загружен» → «Установить» (или «Основные» → «VPN и управление устройством»). На Mac — «Системные настройки» → «Основные» → «Управление устройством». Неустановленный профиль удаляется системой через 8 минут.'));
   }
   if(hostname){
     const row=node('div','journey-copy-field');
@@ -198,17 +233,69 @@ function renderPersonalDnsBox(item,hostname,xml){
       }
     });
     row.append(input,copyBtn);
-    box.append(node('h4','','Android и роутер (Private DNS / DoT)'));
+    box.append(node('h4','',apple?'Также работает на Android и роутере (DoT)':'Android и роутер (Private DNS / DoT)'));
     box.append(row);
     box.append(node('p','',
-      'Android 9+: Настройки → Сеть и интернет → Персональный DNS-сервер → Имя хоста провайдера → вставьте адрес выше. Включать VPN постоянно не нужно.'));
+      'Android 9+: Настройки → Сеть и интернет (или Подключения) → Персональный DNS-сервер → Имя хоста провайдера → вставьте адрес целиком → Сохранить. Включать VPN постоянно не нужно.'));
+    box.append(node('p','',
+      'Роутер / Smart TV: укажите этот hostname в разделе DNS-over-TLS (DoT). Обычные поля IP DNS1/DNS2 не поддерживают персональное имя.'));
+  }
+  if(!hasCreds&&opts.issued&&opts.entitlementId){
+    box.append(node('p','',
+      'Персональный DoT-адрес и профиль Apple уже выпускались ранее в другой сессии (в базе хранится только хеш). Нажмите ниже, чтобы перевыпустить новый адрес и скачать новый файл .mobileconfig — старый адрес при этом отключится.'));
+    const rotateBtn=node('button','button button-secondary setup-button','🔄 Перевыпустить адрес и профиль (.mobileconfig)');
+    rotateBtn.type='button';
+    rotateBtn.addEventListener('click',()=>void downloadAppleDnsProfile(opts.entitlementId,rotateBtn,item));
+    box.append(rotateBtn);
   }
   item.append(box);
+}
+const dnsCredInFlight=new Map();
+async function ensurePersonalDnsCredentials(entitlementId,opts={}){
+  if(!state.loggedIn||!(state.personalDnsEnabled||state.appleDnsProfileEnabled))return null;
+  const cached=readCachedPersonalDns(entitlementId);
+  const targets=(opts.targets||[]).filter(Boolean);
+  if(cached){
+    for(const t of targets)renderPersonalDnsBox(t,cached.hostname,cached.mobileconfig,{entitlementId,issued:true});
+    return cached;
+  }
+  if(dnsCredInFlight.has(entitlementId))return dnsCredInFlight.get(entitlementId);
+  const job=(async()=>{
+    const status=await api('/api/dns/apple/status?entitlementId='+encodeURIComponent(entitlementId));
+    if(status.revoked)return null;
+    if(!status.issued&&opts.autoIssue){
+      const payload=JSON.stringify({action:'issue',entitlementId});
+      const res=await fetch('/api/dns/personal/credentials',{
+        method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
+        headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
+        body:payload,
+      });
+      if(res.ok){
+        const creds=await res.json();
+        saveCachedPersonalDns(entitlementId,creds);
+        for(const t of targets)renderPersonalDnsBox(t,creds.hostname||'',creds.mobileconfig||'',{entitlementId,issued:true});
+        return creds;
+      }
+    }
+    if(status.issued){
+      for(const t of targets)renderPersonalDnsBox(t,'','',{entitlementId,issued:true});
+    }
+    return {issued:status.issued,revision:status.revision};
+  })().finally(()=>dnsCredInFlight.delete(entitlementId));
+  dnsCredInFlight.set(entitlementId,job);
+  return job;
 }
 async function downloadAppleDnsProfile(entitlementId, button, item){
   if(!state.loggedIn||button.disabled)return;
   button.disabled=true;
   try{
+    const cached=readCachedPersonalDns(entitlementId);
+    if(cached?.mobileconfig){
+      triggerMobileconfigDownload(cached.mobileconfig);
+      if(item)renderPersonalDnsBox(item,cached.hostname,cached.mobileconfig,{entitlementId,issued:true});
+      toast('Профиль Apple (.mobileconfig) загружен.');
+      return;
+    }
     const status=await api('/api/dns/apple/status?entitlementId='+encodeURIComponent(entitlementId));
     if(status.revoked)throw Error('DNS_ACCESS_REVOKED');
     let action='issue';
@@ -232,9 +319,10 @@ async function downloadAppleDnsProfile(entitlementId, button, item){
     const combined=await fetch('/api/dns/personal/credentials',reqInit);
     if(combined.ok){
       const creds=await combined.json();
+      saveCachedPersonalDns(entitlementId,creds);
       if(creds?.mobileconfig)triggerMobileconfigDownload(creds.mobileconfig);
       if(item&&(creds?.hostname||creds?.mobileconfig))
-        renderPersonalDnsBox(item,creds.hostname||'',creds.mobileconfig||'');
+        renderPersonalDnsBox(item,creds.hostname||'',creds.mobileconfig||'',{entitlementId,issued:true});
       toast('Smart DNS создан: профиль .mobileconfig загружен, адрес DoT показан в карточке.');
       return;
     }
@@ -251,7 +339,7 @@ async function downloadAppleDnsProfile(entitlementId, button, item){
       throw Error('DNS_PROFILE_UNAVAILABLE');
     const xml=await response.text();
     triggerMobileconfigDownload(xml);
-    if(item)renderPersonalDnsBox(item,'',xml);
+    if(item)renderPersonalDnsBox(item,'',xml,{entitlementId,issued:true});
     toast('Профиль создан. Сохраните файл. На iPhone/iPad откройте Настройки → Профиль загружен; на Mac — Системные настройки → Основные → Управление устройством.');
   }catch(error){
     const messages={
@@ -265,29 +353,74 @@ async function downloadAppleDnsProfile(entitlementId, button, item){
   }finally{button.disabled=false;}
 }
 
-async function loadTelegramProxyBonus(entitlementId, button, item) {
-  if(!state.loggedIn||button.disabled)return;
-  button.disabled=true;
-  try {
-    const data=await api('/api/telegram-proxy-bonus?entitlementId='+encodeURIComponent(entitlementId));
-    if(!state.loggedIn || !item.isConnected)return;
-    if(!Array.isArray(data.links)||data.links.length!==2)throw Error('PROXY_BONUS_NOT_READY');
-    // Replace old credential-bearing elements if the user reloads the links.
-    const previous=item.querySelector('.dns-proxy-bonus-links');
-    if(previous)previous.remove();
-    const container=node('section','dns-proxy-bonus-links');
-    container.append(node('h4','','Ваш Telegram-прокси · бесплатно с DNS'));
+const proxyCredCache=new Map();
+function renderProxyBonusBox(item,data){
+  if(!item)return;
+  const wsLinks=Array.isArray(data?.wsLinks)?data.wsLinks:[];
+  const mtLinks=Array.isArray(data?.links)?data.links:[];
+  if(!wsLinks.length&&!mtLinks.length)return;
+  const previous=item.querySelector('.dns-proxy-bonus-links');
+  if(previous)previous.remove();
+  const container=node('section','dns-proxy-bonus-links');
+  if(wsLinks.length){
+    container.append(node('h4','','✈️ Telegram-прокси через WebSocket (HTTPS :443)'));
     container.append(node('p','',
-      'Telegram-прокси работает внутри Telegram независимо от системного Smart DNS. Отключать DNS не требуется.'));
-    for(const link of data.links){
+      'Работает поверх защищённого HTTPS/WebSocket параллельно со Smart DNS — отключать DNS не нужно.'));
+    for(const link of wsLinks){
+      let targetUrl=null;
+      try{
+        const u=new URL(String(link.url||''));
+        if(u.protocol==='https:'&&u.hostname==='t.me'&&u.pathname==='/webproxy')targetUrl=u.href;
+      }catch{}
+      let tgTarget=null;
+      try{
+        const t=new URL(String(link.tgUrl||''));
+        if(t.protocol==='tg:'&&t.hostname==='webproxy')tgTarget=t.href;
+      }catch{}
+      if(!targetUrl&&!tgTarget)continue;
+      const row=node('div','dns-proxy-bonus-route');
+      row.append(node('strong','',link.label||'WebSocket-прокси для Telegram'));
+      row.append(node('div','',String(link.server||'')));
+      const anchor=node('a','button button-primary','Подключить в Telegram');
+      anchor.href=tgTarget||targetUrl;
+      if(!tgTarget){anchor.target='_blank';anchor.rel='noopener noreferrer';}
+      anchor.referrerPolicy='no-referrer';
+      row.append(anchor);
+      if(targetUrl&&tgTarget){
+        const webAnchor=node('a','button button-secondary','Ссылка t.me');
+        webAnchor.href=targetUrl;webAnchor.target='_blank';
+        webAnchor.rel='noopener noreferrer';webAnchor.referrerPolicy='no-referrer';
+        row.append(webAnchor);
+      }
+      const manual=node('button','button button-secondary','Скопировать сервер и секрет');
+      manual.type='button';
+      manual.addEventListener('click',async()=>{
+        const txt='Сервер (WEB-прокси / WebSocket): '+String(link.server||'')+
+          '\nСекрет: '+String(link.secret||'')+
+          (tgTarget?'\nСсылка: '+tgTarget:'');
+        try{
+          await navigator.clipboard.writeText(txt);
+          toast('Параметры WebSocket-прокси скопированы.');
+        }catch{toast('Копирование недоступно. Используйте кнопку подключения.');}
+      });
+      row.append(manual);
+      container.append(row);
+    }
+    container.append(node('h4','','Как включить WebSocket-прокси'));
+    container.append(node('p','',
+      '1. Нажмите «Подключить в Telegram» на нужном устройстве и подтвердите добавление прокси. '+
+      '2. Если кнопка не открывает клиент автоматически, скопируйте параметры и в Telegram откройте Настройки → Данные и память → Прокси (в Telegram Desktop: Продвинутые → Тип соединения) → выберите WEB-прокси / WebSocket и вставьте сервер и секрет.'));
+  }
+  if(mtLinks.length){
+    container.append(node('h4','',wsLinks.length?'Резервный MTProto-прокси':'Ваш Telegram-прокси · бесплатно с DNS'));
+    for(const link of mtLinks){
       if(!['direct','ru'].includes(link.route))continue;
       const address=node('div','',link.host+':'+link.port);
       const header=node('strong','',link.route==='direct'?'Напрямую через зарубежный сервер':'Через российский сервер');
-      const anchor=node('a','button button-secondary','Подключить в Telegram');
-      // A Telegram proxy link necessarily contains a bearer secret.
-      // The server returns it only to the authorized paid entitlement owner.
-      const target=new URL(link.url);
-      if(target.protocol!=='https:'||target.hostname!=='t.me'||target.pathname!=='/proxy')continue;
+      const anchor=node('a','button button-secondary','Подключить MTProto');
+      let target=null;
+      try{target=new URL(link.url);}catch{}
+      if(!target||target.protocol!=='https:'||target.hostname!=='t.me'||target.pathname!=='/proxy')continue;
       anchor.href=target.href;
       anchor.target='_blank';
       anchor.rel='noopener noreferrer';
@@ -307,22 +440,34 @@ async function loadTelegramProxyBonus(entitlementId, button, item) {
       row.append(header,address,anchor,manual);
       container.append(row);
     }
-    container.append(node('h4','','Как подключить Telegram'));
-    container.append(node('p','',
-      '1. Оставьте Smart DNS установленным. 2. На этом устройстве нажмите «Подключить в Telegram» и подтвердите включение прокси. '+
-      '3. Если ссылка не открывается, скопируйте параметры: на iPhone/iPad — Telegram → Настройки → Данные и память → Прокси; '+
-      'на Mac — Telegram → Настройки → Данные и память → Использовать прокси; '+
-      'на Android — Настройки → Данные и память → Настройки прокси; в Telegram Desktop — Настройки → Продвинутые → Тип соединения. '+
-      'Добавьте MTProto и вставьте сервер, порт и секрет. 4. При отсутствии связи попробуйте второй маршрут.'));
-    container.append(node('p','',
-      'MTProto-прокси предназначен для переписки и медиа Telegram; звонки через него могут не работать. '+
-      'Доступ персональный, не пересылайте ссылки. После окончания оплаченного DNS-срока прокси должен отключаться сервером.'));
-    item.append(container);
+  }
+  item.append(container);
+}
+async function ensureProxyCredentials(entitlementId,targets=[]){
+  if(!state.loggedIn||!state.telegramProxyBonusEnabled)return null;
+  const cached=proxyCredCache.get(entitlementId);
+  const validTargets=targets.filter(Boolean);
+  if(cached){
+    for(const t of validTargets)renderProxyBonusBox(t,cached);
+    return cached;
+  }
+  const data=await api('/api/telegram-proxy-bonus?entitlementId='+encodeURIComponent(entitlementId));
+  const hasAny=(Array.isArray(data?.wsLinks)&&data.wsLinks.length>0)||(Array.isArray(data?.links)&&data.links.length>0);
+  if(!hasAny)throw Error('PROXY_BONUS_NOT_READY');
+  proxyCredCache.set(entitlementId,data);
+  for(const t of validTargets)renderProxyBonusBox(t,data);
+  return data;
+}
+async function loadTelegramProxyBonus(entitlementId, button, item) {
+  if(!state.loggedIn||button?.disabled)return;
+  if(button)button.disabled=true;
+  try {
+    await ensureProxyCredentials(entitlementId,[item]);
   }catch(error){
     toast(error.message==='PROXY_BONUS_NOT_ASSIGNED'?
       'Прокси ещё не выдан. Обратитесь в поддержку, если DNS уже активен.':
       'Не удалось получить Telegram-прокси. Попробуйте позже.');
-  }finally{button.disabled=false;}
+  }finally{if(button)button.disabled=false;}
 }
 
 function renderAccess(accesses) {
@@ -376,17 +521,21 @@ function renderAccess(accesses) {
     if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
        a.secondsRemaining!==null&&a.secondsRemaining>0&&
        (state.personalDnsEnabled||state.appleDnsProfileEnabled)){
-      const apple=node('button','button button-secondary setup-button','Скачать профиль Apple (.mobileconfig) и DoT');
+      const apple=node('button','button button-secondary setup-button','Получить профиль Apple (.mobileconfig) и DoT');
       apple.type='button';
       apple.addEventListener('click',()=>downloadAppleDnsProfile(a.id,apple,item));
       item.append(apple,node('p','','Персональный конфиг для iPhone / iPad / macOS и DoT-адрес для Android и роутера. Повторный выпуск заменит прежний адрес на всех устройствах.'));
+      const cached=readCachedPersonalDns(a.id);
+      if(cached)renderPersonalDnsBox(item,cached.hostname,cached.mobileconfig,{entitlementId:a.id,issued:true});
     }
     if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
        a.secondsRemaining!==null&&a.secondsRemaining>0&&state.telegramProxyBonusEnabled){
-      const open=node('button','button button-secondary setup-button','Telegram-прокси · бесплатно');
+      const open=node('button','button button-secondary setup-button','Telegram-прокси (WebSocket)');
       open.type='button';
       open.addEventListener('click',()=>loadTelegramProxyBonus(a.id,open,item));
       item.append(open);
+      const cachedProxy=proxyCredCache.get(a.id);
+      if(cachedProxy)renderProxyBonusBox(item,cachedProxy);
     }
     if(a.product==='vpn' &&
        a.state==='ACTIVE' && a.secondsRemaining!==null && a.secondsRemaining>0){
@@ -513,6 +662,7 @@ async function verifyPendingOrderIfNeeded(payload){
 function renderAccount(payload) {
   state.loggedIn=true;state.csrf=payload.csrf;
   state.telegramProxyBonusEnabled=payload.telegramProxyBonusEnabled===true;
+  state.wsProxyEnabled=payload.wsProxyEnabled===true;
   state.appleDnsProfileEnabled=payload.appleDnsProfileEnabled===true;
   state.personalDnsEnabled=payload.personalDnsEnabled===true||payload.appleDnsProfileEnabled===true;
   byId('login-prompt').classList.add('hidden');
@@ -576,8 +726,11 @@ function renderLoggedOut() {
   // a shared browser screen. Keep the public catalog and selected product.
   state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;
   state.telegramProxyBonusEnabled=false;
+  state.wsProxyEnabled=false;
   state.appleDnsProfileEnabled=false;
   state.personalDnsEnabled=false;
+  proxyCredCache.clear();
+  clearCachedCredentials();
   byId('guest-trial-card').classList.add('hidden');
   byId('purchase-result').classList.add('hidden');
   byId('link-email').classList.add('hidden');
@@ -1070,7 +1223,14 @@ async function consumePendingTrial(){
 }
 Promise.all([loadLoginOptions(),loadCatalog(),refresh()]).then(consumePendingTrial);
 // Payment verification and provisioning can complete after the user returns.
-setInterval(()=>{if(document.visibilityState==='visible' && state.loggedIn)refresh();},15000);
+let pollTick=0;
+setInterval(()=>{
+  if(document.visibilityState!=='visible'||!state.loggedIn)return;
+  const view=document.body?.dataset?.journeyView;
+  const fastWait=view==='payment'||(view==='setup'&&!state.guestSubscriptionUrl);
+  pollTick=(pollTick+1)%4;
+  if(fastWait||pollTick===0)refresh();
+},3800);
 window.addEventListener('online',()=>{
   if(!state.plans.length)void loadCatalog();
 });

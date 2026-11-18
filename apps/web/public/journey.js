@@ -254,6 +254,20 @@
     const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
     const verified=state.loggedIn&&lastAccount?.identity?.email;
     const labels={vpn:'VPN Лайт',smart_dns:'Smart Доступ',bundle:'Экосистема «3 в 1»'};
+    if(orderView){
+      for(const btn of orderView.querySelectorAll?.('[data-order-product]')||[]){
+        const active=btn.dataset.orderProduct===state.product;
+        btn.setAttribute('aria-pressed',String(active));
+      }
+      for(const btn of orderView.querySelectorAll?.('[data-order-days]')||[]){
+        const day=Number(btn.dataset.orderDays),valid=validDays(state.product,day);
+        btn.hidden=!valid;
+        btn.setAttribute('aria-pressed',String(day===state.days));
+        const priceEl=orderView.querySelector?.('[data-order-price="'+day+'"]');
+        if(priceEl)priceEl.textContent=priceFor(day);
+        btn.disabled=!valid||!state.plans.some(p=>p.product===state.product&&p.durationDays===day);
+      }
+    }
     el('journey-order-period').textContent=(labels[state.product]||'Экосистема «3 в 1»')+' · '+state.days+' дней';
     el('journey-order-price').textContent=plan?priceFor(state.days):'—';
     el('journey-order-email').textContent=verified?lastAccount.identity.email:'Требуется вход по email';
@@ -313,11 +327,32 @@
     setView('checkout',true);
   }
   const downloads={
-    android:{name:'INCY',url:'https://play.google.com/store/apps/details?id=llc.itdev.incy',client:'incy'},
-    ios:{name:'Karing',url:'https://apps.apple.com/ru/app/karing/id6472431552',client:'karing'},
-    windows:{name:'INCY',url:'https://github.com/INCY-DEV/incy-platforms/releases',client:'incy'},
-    macos:{name:'INCY',url:'https://github.com/INCY-DEV/incy-platforms/releases',client:'incy'},
-    linux:{name:'INCY',url:'https://github.com/INCY-DEV/incy-platforms/releases',client:'incy'},
+    android:{
+      name:'INCY',url:'https://play.google.com/store/apps/details?id=llc.itdev.incy',client:'incy',
+      altUrl:'https://github.com/INCY-DEV/incy-platforms/releases/download/latest/Incy.apk',
+      altText:'📦 Скачать INCY APK напрямую (GitHub)',
+      note:'Для Android нужен клиент INCY (Google Play или прямой APK).'
+    },
+    ios:{
+      name:'Karing',url:'https://apps.apple.com/ru/app/karing/id6472431552',client:'karing',
+      note:'Для iPhone и iPad нужен бесплатный клиент Karing из App Store.'
+    },
+    windows:{
+      name:'INCY',url:'https://github.com/INCY-DEV/incy-platforms/releases/download/latest/incy-windows-setup.exe',client:'incy',
+      altUrl:'https://github.com/INCY-DEV/incy-platforms/releases',
+      altText:'📦 Все сборки INCY на GitHub',
+      note:'Для Windows скачайте установщик INCY Setup (.exe).'
+    },
+    macos:{
+      name:'INCY',url:'https://github.com/INCY-DEV/incy-platforms/releases',client:'incy',
+      altUrl:'https://apps.apple.com/ru/app/karing/id6472431552',
+      altText:'🍏 Альтернатива: Karing в App Store',
+      note:'Для macOS скачайте INCY под ваш процессор (Apple Silicon или Intel) либо Karing.'
+    },
+    linux:{
+      name:'INCY',url:'https://github.com/INCY-DEV/incy-platforms/releases',client:'incy',
+      note:'Для Linux скачайте подходящий пакет INCY с официального GitHub.'
+    },
   };
   const platformNames={android:'Android',ios:'iPhone',windows:'Windows',macos:'macOS',linux:'Linux'};
   function setPlatform(platform){
@@ -334,6 +369,17 @@
     const link=el('journey-download');
     link.href=info.url;
     link.textContent='Скачать '+info.name;
+    const alt=el('journey-download-alt');
+    if(alt){
+      if(info.altUrl){
+        alt.href=info.altUrl;alt.textContent=info.altText||info.altUrl;
+        alt.classList.remove('hidden');
+      }else{
+        alt.removeAttribute('href');alt.classList.add('hidden');
+      }
+    }
+    const note=el('journey-app-note');
+    if(note&&info.note)note.textContent=info.note;
     updateSetup();
   }
   function safeSubscriptionUrl(value){
@@ -351,10 +397,22 @@
     installButton.textContent=installed?'✓ Приложение установлено':'Я установил приложение';
     const value=state.loggedIn?state.guestSubscriptionUrl:null;
     const valid=typeof value==='string'&&safeSubscriptionUrl(value);
+    const activeDns=(lastAccount?.access||[]).some(a=>a.product==='smart_dns'&&a.state==='ACTIVE'&&a.secondsRemaining>0);
+    const dnsSlot=el('journey-dns-setup-slot'),proxySlot=el('journey-proxy-setup-slot');
+    const hasDnsContent=Boolean((dnsSlot?.children?.length||0)>0||(proxySlot?.children?.length||0)>0);
+    const dnsWrap=el('journey-dns-proxy-setup');
+    if(dnsWrap)dnsWrap.hidden=!(activeDns&&hasDnsContent);
     el('journey-setup-controls').hidden=!valid;
+    const title=el('journey-setup-title');
+    if(title){
+      title.textContent=valid&&activeDns?'Подключите «3 в 1»':
+        activeDns&&!valid?'Подключите Smart DNS и Прокси':'Подключите VPN';
+    }
     el('journey-setup-status').textContent=valid?
-      'Ваш VPN готов. Установите приложение и добавьте подписку.':
-      'Проверяем активацию VPN на сервере. Если оплата прошла недавно, подключение может ещё подготавливаться.';
+      (activeDns?'Экосистема «3 в 1» готова: настройте VPN, Smart DNS и Telegram-прокси ниже.':
+        'Ваш VPN готов. Установите приложение, добавьте подписку и включите защиту.'):
+      activeDns?'Ваш Smart Доступ готов! Профиль и WebSocket-прокси для Telegram выданы ниже.':
+      'Проверяем активацию на сервере. Если оплата прошла недавно, подключение подготавливается.';
     if(!valid){
       el('journey-url').value='';
       el('journey-auto').removeAttribute('href');
@@ -391,6 +449,7 @@
   function enhanceAccount(payload){
     lastAccount=payload;
     const active=(payload.access||[]).filter(a=>a.product==='vpn'&&a.state==='ACTIVE'&&a.secondsRemaining>0);
+    const activeDns=(payload.access||[]).filter(a=>a.product==='smart_dns'&&a.state==='ACTIVE'&&a.secondsRemaining>0);
     const history=el('orders-list');
     if(history&&!el('journey-history')){
       const parent=history.parentElement;
@@ -404,7 +463,17 @@
     }
     el('access-list').querySelectorAll('.access-item').forEach((card,index)=>{
       const data=(payload.access||[])[index];
-      if(!data||data.product!=='vpn'||data.state!=='ACTIVE'||data.secondsRemaining<=0)return;
+      if(!data||data.state!=='ACTIVE'||data.secondsRemaining<=0)return;
+      if(data.product==='smart_dns'){
+        if(typeof ensurePersonalDnsCredentials==='function'&&(state.personalDnsEnabled||state.appleDnsProfileEnabled)){
+          void ensurePersonalDnsCredentials(data.id,{autoIssue:true,targets:[card]}).catch(()=>{});
+        }
+        if(typeof ensureProxyCredentials==='function'&&state.telegramProxyBonusEnabled){
+          void ensureProxyCredentials(data.id,[card]).catch(()=>{});
+        }
+        return;
+      }
+      if(data.product!=='vpn')return;
       const existing=card.querySelector('.setup-button');
       if(existing)existing.textContent='Как подключить';
       if(!card.querySelector('.journey-copy-access')){
@@ -424,7 +493,7 @@
     });
     if(paymentLanding){
       setView('payment');
-    }else if(view==='plans'&&!location.hash&&active.length>0){
+    }else if(view==='plans'&&!location.hash&&(active.length>0||activeDns.length>0)){
       setView('account');
     }
     if(view==='payment'){
@@ -444,9 +513,9 @@
         heading.textContent=ready?(order.product==='smart_dns'?'Smart Доступ готов!':
           order.product==='bundle'?'Экосистема «3 в 1» готова!':'VPN готов к подключению'):'Оплата подтверждена';
         description.textContent=ready?(order.product==='smart_dns'?
-          'Откройте «Мой VPN», чтобы скачать профиль Apple (.mobileconfig), DoT-адрес и ссылки Telegram-прокси.':
+          'Готовим профиль Apple (.mobileconfig), DoT-адрес и WebSocket-прокси…':
           order.product==='bundle'?
-            'Ваш VPN, профиль Smart DNS и Telegram-прокси готовы. Откройте «Мой VPN» или установщик ниже.':
+            'Готовим ваш VPN, профиль Smart DNS и WebSocket-прокси…':
             'Подготавливаем инструкцию для вашего устройства…'):
           'Платёж получен. Ожидаем подтверждения активации на сервере.';
       }else if(order.state==='REFUNDED'||order.state==='CANCELLED'){
@@ -457,6 +526,19 @@
         description.textContent='Подтверждения оплаты пока нет. Если деньги списаны, не создавайте повторный платёж.';
       }
     }
+    async function deliverDnsAndProxyForSetup(dnsId,openSetup){
+      const dnsSlot=el('journey-dns-setup-slot'),proxySlot=el('journey-proxy-setup-slot');
+      const tasks=[];
+      if(typeof ensurePersonalDnsCredentials==='function'&&(state.personalDnsEnabled||state.appleDnsProfileEnabled)){
+        tasks.push(ensurePersonalDnsCredentials(dnsId,{autoIssue:true,targets:[dnsSlot]}).catch(()=>{}));
+      }
+      if(typeof ensureProxyCredentials==='function'&&state.telegramProxyBonusEnabled){
+        tasks.push(ensureProxyCredentials(dnsId,[proxySlot]).catch(()=>{}));
+      }
+      await Promise.all(tasks);
+      updateSetup();
+      if(openSetup)setView('setup',true);
+    }
     // Open the installer only after the verified PAID order has an ACTIVE
     // entitlement. A redirect alone can never trigger provisioning.
     if(paymentLanding){
@@ -465,9 +547,30 @@
       const entitlement=order?.state==='PAID'&&(payload.access||[]).find(a=>
         a.product==='vpn'&&a.state==='ACTIVE'&&a.secondsRemaining>0&&
         (a.sourceOrderId===order.id || a.id===intent.renewalTargetId));
+      const dnsEntitlement=order?.state==='PAID'&&(payload.access||[]).find(a=>
+        a.product==='smart_dns'&&a.state==='ACTIVE'&&a.secondsRemaining>0&&
+        (a.sourceOrderId===order.id || a.id===intent.renewalTargetId));
       if(entitlement&&!autoSetupOrders.has(order.id)){
         autoSetupOrders.add(order.id);
         void loadSubscription(entitlement.id);
+      }
+      if(dnsEntitlement&&!autoSetupOrders.has(order.id+':dns')){
+        autoSetupOrders.add(order.id+':dns');
+        lastSetupAttempt.set('dns:'+dnsEntitlement.id,Date.now());
+        void deliverDnsAndProxyForSetup(dnsEntitlement.id,!entitlement);
+      }
+    }
+    if(view==='setup'&&activeDns.length){
+      const dnsTarget=activeDns[0];
+      const dnsSlot=el('journey-dns-setup-slot'),proxySlot=el('journey-proxy-setup-slot');
+      const needsDns=!dnsSlot?.children?.length&&(state.personalDnsEnabled||state.appleDnsProfileEnabled);
+      const needsProxy=!proxySlot?.children?.length&&state.telegramProxyBonusEnabled;
+      const lastDns=lastSetupAttempt.get('dns:'+dnsTarget.id)||0;
+      if((needsDns||needsProxy)&&Date.now()-lastDns>30000){
+        lastSetupAttempt.set('dns:'+dnsTarget.id,Date.now());
+        void deliverDnsAndProxyForSetup(dnsTarget.id,false);
+      }else{
+        updateSetup();
       }
     }
     // Trial activation can finish asynchronously after the initial request.
@@ -534,6 +637,19 @@
     setSelection(state.product,Number(btn.dataset.journeyDays));updatePlan();
   }));
   el('journey-buy').addEventListener('click',beginCheckout);
+  if(orderView){
+    for(const btn of orderView.querySelectorAll?.('[data-order-product]')||[]){
+      btn.addEventListener('click',()=>{
+        setSelection(btn.dataset.orderProduct,state.days);updatePlan();updateOrder();
+      });
+    }
+    for(const btn of orderView.querySelectorAll?.('[data-order-days]')||[]){
+      btn.addEventListener('click',()=>{
+        if(btn.disabled)return;
+        setSelection(state.product,Number(btn.dataset.orderDays));updatePlan();updateOrder();
+      });
+    }
+  }
   el('journey-order-pay').addEventListener('click',()=>{
     updateOrder();
     if(el('journey-order-pay').disabled)return;

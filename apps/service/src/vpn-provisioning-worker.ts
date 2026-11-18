@@ -14,10 +14,12 @@ import {PgBillingStore} from '../../../packages/billing/src/store.ts';
 import {claimGuestVpnTrial,guestVpnState}
   from '../../../packages/provisioning/src/web-guest-trials.ts';
 import {SignedXrayNodeApi} from '../../../packages/provisioning/src/xray-node.ts';
+import {SmartDnsProvisioningAdapter,httpSmartDnsHealthCheck}
+  from '../../../packages/provisioning/src/smart-dns-adapter.ts';
 import {RemnawaveApi} from '../../../packages/provisioning/src/remnawave-api.ts';
 import {RemnawaveProvisioningAdapter}
   from '../../../packages/provisioning/src/remnawave-adapter.ts';
-import {PgOutboxDispatcher,type Product} from '../../../packages/provisioning/src/pg-worker.ts';
+import {PgOutboxDispatcher,type AdapterMap,type Product} from '../../../packages/provisioning/src/pg-worker.ts';
 import {PgVpnExpiryReminderQueue,TelegramBotReminderSender,processVpnExpiryReminders,
   type ReminderSender} from '../../../packages/notifications/src/vpn-expiry.ts';
 import {PgVpnPurchaseNoticeQueue,TelegramBotPurchaseSender,processVpnPurchaseNotices,
@@ -36,15 +38,17 @@ export interface VpnWorkerResult {
 }
 export async function vpnWorkerCycle(
   dispatcher:VpnDispatcher,cycle:number,maxBatch=10,
+  products:Product[]=['vpn'],
 ):Promise<VpnWorkerResult>{
   if(!Number.isSafeInteger(cycle)||cycle<0||
-     !Number.isSafeInteger(maxBatch)||maxBatch<1||maxBatch>100)
+     !Number.isSafeInteger(maxBatch)||maxBatch<1||maxBatch>100||
+     !products.length)
     throw Error('Invalid worker configuration');
   const expired=await dispatcher.expireDue();
-  const driftQueued=cycle%60===0?await dispatcher.scheduleDriftScan(100,['vpn']):0;
+  const driftQueued=cycle%60===0?await dispatcher.scheduleDriftScan(100,products):0;
   let synced=0,retry=0;
   for(let i=0;i<maxBatch;i++){
-    const result=await dispatcher.processOnce(['vpn']);
+    const result=await dispatcher.processOnce(products);
     if(result.status==='empty')break;
     if(result.status==='synced')synced++;
     else retry++;
@@ -56,11 +60,12 @@ export async function runVpnWorker(
   wait:(ms:number,signal:AbortSignal)=>Promise<void>=
     async(ms,s)=>{await sleep(ms,undefined,{signal:s});},
   onCycle?:(result:VpnWorkerResult)=>void,
+  products:Product[]=['vpn'],
 ):Promise<void>{
   let cycle=0;
   while(!signal.aborted){
     try{
-      const result=await vpnWorkerCycle(dispatcher,cycle);
+      const result=await vpnWorkerCycle(dispatcher,cycle,10,products);
       onCycle?.(result);
       if(Object.values(result).some(Boolean))
         process.stdout.write('vpn-worker '+JSON.stringify(result)+'\n');
@@ -287,9 +292,17 @@ async function main():Promise<void>{
         ?new TelegramBotPurchaseSender(notificationBotToken()):null;
       const purchaseLoop=purchaseSender?runVpnPurchaseNoticeLoop(
         new PgVpnPurchaseNoticeQueue(pool),purchaseSender,abort.signal):null;
+      const adapters:AdapterMap={vpn:adapter};
+      const products:Product[]=['vpn'];
+      if(process.env.MNEBYDNS_SMART_DNS_WORKER==='enabled'){
+        const dotHealthUrl=process.env.MNEBYDNS_PERSONAL_DOT_HEALTH_URL?.trim();
+        adapters.smart_dns=new SmartDnsProvisioningAdapter(
+          pool,dotHealthUrl?httpSmartDnsHealthCheck(dotHealthUrl):undefined);
+        products.push('smart_dns');
+      }
       try{
-        await runVpnWorker(new PgOutboxDispatcher(pool,{vpn:adapter}),
-          abort.signal,undefined,()=>{lastCycleSuccess=Date.now();});
+        await runVpnWorker(new PgOutboxDispatcher(pool,adapters),
+          abort.signal,undefined,()=>{lastCycleSuccess=Date.now();},products);
       }finally{
         abort.abort();
         if(notificationLoop)await notificationLoop;

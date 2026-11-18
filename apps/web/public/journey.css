@@ -2024,19 +2024,8 @@ body.journey-active[data-journey-view="trial-auth"] .journey-back-icon{
   border:1px solid rgba(132,228,255,.45);border-radius:50%;
   background:rgba(15,29,79,.65);font-style:normal;font-size:14px;line-height:1;
 }
-body.journey-active .footer-seller{
-  flex:1 0 100%;text-align:center;color:#b2c8e3;
-  font:500 clamp(9px,2.6vw,10.5px)/1.25 Inter,system-ui,sans-serif;
-  white-space:nowrap;margin-top:4px;
-}
-body.journey-active[data-journey-view="plans"] .footer-seller{display:none}
-
-/* Only the public landing and legal pages need the seller line.
-   Keep the free-day sign-in as a compact single-screen flow. */
-body.journey-active[data-journey-view="trial-auth"] .footer-seller{display:none!important}
-
 /* One branded footer shared by trial sign-in and the illustrated storefront.
-   Six links occupy two intentional rows, followed by the same seller line. */
+   Six links occupy two intentional rows. */
 body.journey-active[data-journey-view="trial-auth"] .footer{
   border-top:0!important;
   background:transparent!important;
@@ -2070,17 +2059,10 @@ body.journey-active[data-journey-view="trial-auth"] .footer-links button{
   color:#cfd6f7;
   font:italic 500 10px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;
 }
-body.journey-active[data-journey-view="trial-auth"] .footer-seller{
-  display:block!important;flex:none!important;
-  margin:5px 0 0!important;padding:0;
-  font:500 10px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;
-  color:#b2c8e3;white-space:normal;text-align:center;
-}
 @media(max-width:350px){
   body.journey-active[data-journey-view="trial-auth"] .footer-links{gap:3px 9px}
   body.journey-active[data-journey-view="trial-auth"] .footer-links a,
-  body.journey-active[data-journey-view="trial-auth"] .footer-links button,
-  body.journey-active[data-journey-view="trial-auth"] .footer-seller{font-size:9px}
+  body.journey-active[data-journey-view="trial-auth"] .footer-links button{font-size:9px}
 }
 
 /* On the free-24h sign-in screen center both the navigation control and
@@ -2138,18 +2120,10 @@ body.journey-active:not([data-journey-view="plans"]) .footer-links button{
   color:#cfd6f7!important;
   font:italic 500 10px/1.2 Inter,system-ui,Roboto,Arial,sans-serif!important;
 }
-body.journey-active:not([data-journey-view="plans"]) .footer-seller{
-  display:block!important;flex:none!important;
-  margin:5px auto 0!important;padding:0!important;
-  text-align:center!important;white-space:normal!important;
-  color:#b2c8e3!important;
-  font:500 10px/1.25 Inter,system-ui,Roboto,Arial,sans-serif!important;
-}
 @media(max-width:350px){
   body.journey-active:not([data-journey-view="plans"]) .footer-links{gap:3px 9px!important}
   body.journey-active:not([data-journey-view="plans"]) .footer-links a,
-  body.journey-active:not([data-journey-view="plans"]) .footer-links button,
-  body.journey-active:not([data-journey-view="plans"]) .footer-seller{font-size:9px!important}
+  body.journey-active:not([data-journey-view="plans"]) .footer-links button{font-size:9px!important}
 }
 
 /* Compact payment return: never show a second large cabinet login form.
@@ -2576,6 +2550,32 @@ body.journey-active[data-journey-view="account"] .metric-card{
 }
 .dns-proxy-bonus-route strong{flex:1 1 100%;font-size:12.5px;color:#f1f7ff}
 .dns-proxy-bonus-route div{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;color:#84efff;margin-right:auto}
+
+/* Inline tariff selector on checkout screen + VPN & Smart DNS / WebSocket setup guides */
+body.journey-active .journey-order-switch{display:grid;gap:8px;margin-bottom:14px}
+body.journey-active .journey-order-products{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+body.journey-active .journey-order-products button{min-height:38px;padding:6px 6px;border-radius:11px;border:1px solid rgba(128,164,219,.34);background:rgba(8,23,52,.7);color:#d8ecff;font:700 12px/1.15 Inter,system-ui,sans-serif;cursor:pointer}
+body.journey-active .journey-order-products button[aria-pressed="true"]{border-color:#43e5f0;background:linear-gradient(115deg,rgba(10,130,170,.72),rgba(86,58,195,.72));color:#fff;box-shadow:0 0 12px rgba(20,218,245,.32)}
+body.journey-active .journey-order-days{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+body.journey-active .journey-order-days button{min-height:44px;padding:5px 4px;border-radius:11px;border:1px solid rgba(128,164,219,.32);background:rgba(8,23,52,.64);color:#e4f4ff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer}
+body.journey-active .journey-order-days button span{font-size:11px;font-weight:700}
+body.journey-active .journey-order-days button strong{font-size:12px;color:#78f0ff}
+body.journey-active .journey-order-days button[aria-pressed="true"]{border-color:#43e5f0;background:linear-gradient(115deg,rgba(7,120,162,.78),rgba(68,45,165,.78));color:#fff}
+body.journey-active .journey-order-days button[aria-pressed="true"] strong{color:#fff}
+body.journey-active .journey-order-days button:disabled{opacity:.45;cursor:not-allowed}
+body.journey-active .journey-app-note{margin:0 0 10px;font-size:13px;line-height:1.45;color:#cde0f8}
+body.journey-active .journey-download-alt{margin-top:8px}
+body.journey-active .journey-vpn-guide{margin:12px 0;padding:11px 14px;border-radius:13px;border:1px solid rgba(102,174,242,.28);background:rgba(8,22,56,.62);font-size:12.5px;line-height:1.48;color:#d2e4fa}
+body.journey-active .journey-vpn-guide strong{color:#7af1ff;display:block;margin-bottom:5px}
+body.journey-active .journey-vpn-guide ol{margin:0;padding-left:18px;display:grid;gap:4px}
+body.journey-active .journey-dns-proxy-setup{margin-top:16px;display:grid;gap:12px}
+body.journey-active .journey-dns-proxy-setup[hidden]{display:none!important}
+@media(max-width:460px){
+  body.journey-active .journey-order-days{grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+  body.journey-active .journey-order-days button{min-height:40px;padding:4px 3px}
+  body.journey-active .journey-order-days button strong{font-size:11px}
+  body.journey-active .journey-order-subtitle{margin-bottom:14px}
+}
 
 /* Full-width Desktop version (>= 900px): horizontal backdrop + spacious cabinet & checkout */
 @media(min-width:900px){

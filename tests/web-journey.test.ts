@@ -95,13 +95,14 @@ test('payment helper stays non-modal and video has no manual replay button',()=>
   assert.doesNotMatch(art,/video-retry|Включить фон|optedIn/);
   assert.doesNotMatch(art,/paymentInfoDialog\.showModal/);
 });
-test('trial footer includes all landing links and seller details',()=>{
+test('trial footer includes all landing links without seller INN or full name',()=>{
   const art=file('apps/web/public/landing-art.html');
-  for(const phrase of ['Оферта','Соглашение','Обработка данных','Кунавина Анна Александровна']){
+  for(const phrase of ['Оферта','Соглашение','Обработка данных']){
     assert.match(index,new RegExp(phrase));
     assert.match(art,new RegExp(phrase));
   }
-  assert.match(css,/data-journey-view="trial-auth"\] \.footer-seller\{/);
+  assert.doesNotMatch(index,/Кунавина Анна Александровна|745214444705|footer-seller/);
+  assert.doesNotMatch(art,/Кунавина Анна Александровна|745214444705|seller-details/);
 });
 test('trial back arrow is an SVG centered within a centered control',()=>{
   const html=file('apps/web/public/index.html');
@@ -221,16 +222,30 @@ test('real Earth backdrop is explicitly served by the production HTTP router',()
 });
 
 
-test('native checkout preview requires confirmed account and never captures card details',()=>{
-  for(const id of ['journey-order','journey-order-pay','journey-order-price','journey-order-period',
-    'journey-order-email','journey-order-link','journey-order-error'])
+test('native checkout preview supports inline tariff changes and never captures card details',()=>{
+  for(const id of ['journey-order','journey-order-switch','journey-order-pay','journey-order-price',
+    'journey-order-period','journey-order-email','journey-order-link','journey-order-error'])
     assert.match(index,new RegExp('id="'+id+'"'));
+  for(const p of ['vpn','bundle','smart_dns'])
+    assert.match(index,new RegExp('data-order-product="'+p+'"'));
+  for(const d of [15,30,60,90])
+    assert.match(index,new RegExp('data-order-days="'+d+'"'));
   assert.match(journey,/setView\('checkout',true\)/);
   assert.match(journey,/if\(el\('journey-order-pay'\)\.disabled\)return;/);
   assert.match(journey,/const verified=state\.loggedIn&&lastAccount\?\.identity\?\.email/);
   assert.doesNotMatch(index,/type="(?:password|tel)"[^>]*name="card/);
   assert.doesNotMatch(index,/Prodamus/i);
   assert.doesNotMatch(journey,/Prodamus/i);
+});
+test('post-purchase setup includes VPN app guides, Smart DNS Apple/DoT and WebSocket proxy',()=>{
+  const appJs=file('apps/web/public/app.js');
+  for(const id of ['journey-app-note','journey-download-alt','journey-vpn-guide',
+    'journey-dns-proxy-setup','journey-dns-setup-slot','journey-proxy-setup-slot'])
+    assert.match(index,new RegExp('id="'+id+'"'));
+  assert.match(appJs,/ensurePersonalDnsCredentials/);
+  assert.match(appJs,/ensureProxyCredentials/);
+  assert.match(appJs,/tg:.*webproxy/);
+  assert.match(appJs,/MNEBYDNS-Apple\.mobileconfig/);
 });
 test('real-world neon halo is visible without replacing the original globe',()=>{
   assert.match(index,/class="journey-world-halo"/);
