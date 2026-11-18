@@ -23,7 +23,8 @@ Next: deploy this library inside a trusted central-controller process with dedic
 worker entrypoint. `npm run start:awg-delivery-worker` does not deploy,
 enable systemd, publish users or change any release flag.
 
-Deploy it ONLY on an independently secured central controller after
+Deploy it ONLY in a segregated root-only component on the existing RU188
+controller after
 node enrollment, E2E evidence and explicit owner approval.
 Startup fails unless run as root with `MNEBYVPN_ENV=production` and
 `MNEBYVPN_AWG_DELIVERY_WORKER=enabled`. Required on that private host:
@@ -52,3 +53,14 @@ least-privilege database role, independent signing/SSH key provisioning,
 enrollment challenge, periodic short-lease renewal scheduler, external
 client E2E, monitoring/alerts and separate customer-profile release gate.
 Merely merging this worker does not complete any of these prerequisites.
+
+
+## Existing production authority
+
+RU188 `188.120.254.223` already hosts the MNEBYVPN site, Telegram bot,
+PostgreSQL and provisioning workers. The AWG signing worker is a separate
+**root-only process on RU188**, NOT a new controller server and NOT an
+extension loaded by the public web container. Current code is not proof
+that any root-only signing key or FI enrollment exists there. Telegram
+proxy is a distinct Telemt/MTProto component on DE89 and needs its own
+per-customer lifecycle, not this AWG outbox worker.

@@ -38,3 +38,14 @@
 - Подписанная команда принимается узлом в пределах 45 секунд от `issuedAt`. Контроллер допускает claim очереди только в первые 35 секунд; просроченные команды становятся `stale` и должны **переиздаваться после новой проверки прав**, а не повторно отправляться.
 - После успешного `awg syncconf` Nodekit подписывает расписку `MNEBYVPN_AWG_APPLIED_V1` уникальным локальным ключом узла. `acknowledgeAwgCommand` сверяет её только с заранее зарегистрированным публичным Ed25519 SPKI узла и текущей ревизией allocation. `state=applied` нельзя установить по неподписанному сообщению «успешно».
 - **Остаётся**: отдельный доверенный controller worker доставки через защищённый SSH / приватный RPC и планировщик обновления lease. Миграция не применяется к production только за счёт merge в Git; проверьте реальное состояние схемы прежде чем включать новую функцию. Флаг `vpn_awg_clients` остаётся false.
+
+
+## Production deployment clarification 2026-11-18
+
+The central controller already exists on **188.120.254.223**. Keep the
+central DB, bot, entitlement and expiry workers there. A new FI node is an
+egress/provider-only node; a second production controller must not be
+created. The **Telegram proxy** is Telemt/MTProto, separate from both AWG
+and the SmartDNS SNI stream. The existing Telemt owner contract lives in
+`packages/web/src/telegram-proxy-provisioning.ts`; reuse that contract
+for per-user activation/revoke rather than treating SNI as a Telegram proxy.

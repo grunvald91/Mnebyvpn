@@ -7,7 +7,7 @@ import {
 import {join} from 'node:path';
 import {
   initializeController,auditController,
-  ControllerBootstrapError,
+  ControllerBootstrapError,requireExistingController188,
 } from '../ops/trusted-controller-bootstrap.mjs';
 
 function testRoot(){
@@ -125,4 +125,22 @@ test('review refuses symlinks and unsafe ancestry',()=>{
 
 test('bootstrap test itself runs only as root on disposable CI host',()=>{
   assert.equal(process.getuid(),0);
+});
+
+test('production CLI trust boundary refuses FI, DE89 and an unknown controller',()=>{
+  withController(root=>{
+    for(const address of [['217.11.167.91'],['89.125.90.101'],['127.0.0.1']]){
+      assert.throws(()=>requireExistingController188({
+        addresses:address,deploymentRoot:root,
+      }),/Only existing RU188 central controller/);
+    }
+    const valid=requireExistingController188({
+      addresses:['127.0.0.1','188.120.254.223'],deploymentRoot:root,
+    });
+    assert.equal(valid.controller_host,'188.120.254.223');
+    assert.equal(valid.existing_deployment_verified,true);
+    assert.throws(()=>requireExistingController188({
+      addresses:['188.120.254.223'],deploymentRoot:root+'/missing',
+    }),/Existing MNEBYVPN controller deployment absent/);
+  });
 });
