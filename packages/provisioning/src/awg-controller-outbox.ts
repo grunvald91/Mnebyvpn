@@ -109,14 +109,14 @@ export async function claimAwgCommand(
     if(row.op==='grant'){
       const e=await tx.query<{product:string;state:string;revision:number;expires_at:Date}>(
         'SELECT product,state,revision,expires_at FROM entitlements '+
-        'WHERE id=$1 FOR UPDATE',[row.entitlement_id]);
+        'WHERE id=$1 FOR SHARE',[row.entitlement_id]);
       const r=e.rows[0];
       const poolCheck=await tx.query<{
         state:string;verified_at:Date;endpoint_host:string;status:string;
       }>(
         'SELECT p.state,p.verified_at,p.endpoint_host,i.status '+
         'FROM vpn_awg_node_pools p JOIN vpn_node_enrollment_inventory i '+
-        'ON i.node_id=p.node_id WHERE p.node_id=$1 FOR UPDATE',
+        'ON i.node_id=p.node_id WHERE p.node_id=$1 FOR SHARE',
         [row.node_id],
       );
       const node=poolCheck.rows[0];
@@ -190,7 +190,7 @@ export async function acknowledgeAwgCommand(
 
     const n=await tx.query<{identity_public_spki:string;status:string}>(
       'SELECT identity_public_spki,status FROM vpn_node_enrollment_inventory '+
-      'WHERE node_id=$1 FOR UPDATE',[r.nodeId],
+      'WHERE node_id=$1 FOR SHARE',[r.nodeId],
     );
     const node=n.rows[0];
     if(!node||node.status!=='enrolled'||!/^[-_a-zA-Z0-9]{59}$/.test(
@@ -216,7 +216,7 @@ export async function acknowledgeAwgCommand(
       throw new AwgDeliveryError('Stale or displaced node receipt');
     if(r.op==='grant'){
       const ent=await tx.query<{state:string;product:string;revision:number;expires_at:Date}>(
-        'SELECT state,product,revision,expires_at FROM entitlements WHERE id=$1 FOR UPDATE',
+        'SELECT state,product,revision,expires_at FROM entitlements WHERE id=$1 FOR SHARE',
         [r.entitlementId],
       );
       const e=ent.rows[0];
@@ -232,7 +232,7 @@ export async function acknowledgeAwgCommand(
       const nodeState=await tx.query<{state:string;status:string;verified_at:Date}>(
         'SELECT p.state,i.status,p.verified_at FROM vpn_awg_node_pools p '+
         'JOIN vpn_node_enrollment_inventory i ON i.node_id=p.node_id '+
-        'WHERE p.node_id=$1 FOR UPDATE',[r.nodeId],
+        'WHERE p.node_id=$1 FOR SHARE',[r.nodeId],
       );
       const pool=nodeState.rows[0];
       if(gate.rows[0]?.enabled!==true||!pool||
