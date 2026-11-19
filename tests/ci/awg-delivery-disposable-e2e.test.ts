@@ -34,11 +34,10 @@ test('disposable FI217 controller outbox -> verified node receipt -> CAS revoke'
   assert.equal(process.getuid?.(),0,'Must run as root only on disposable CI');
   assert.equal(process.env.PGDATABASE??'mnebyvpn_test','mnebyvpn_test',
     'Never run AWG integration on a live controller database');
+  // Hardcoded loopback disposable CI database. Never consume a potentially
+  // inherited PGHOST/DATABASE_URL targeting a production controller.
   const db=new Pool({
-    host:process.env.PGHOST??'localhost',
-    port:Number(process.env.PGPORT??5432),
-    user:process.env.PGUSER??'test',
-    password:process.env.PGPASSWORD??'test',
+    host:'127.0.0.1',port:5432,user:'test',password:'test',
     database:'mnebyvpn_test',max:2,connectionTimeoutMillis:2500,
   });
   const root=mkdtempSync(join(tmpdir(),'mnebyvpn-awg-e2e-'));
