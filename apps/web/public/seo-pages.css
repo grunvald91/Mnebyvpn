@@ -1,0 +1,44 @@
+
+/* Public informational pages match the existing dark MNEBYVPN visual system. */
+.seo-header{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:78px}
+.seo-header nav{display:flex;gap:25px;align-items:center;font-size:14px;color:#c6d5e7}
+.seo-header nav a:hover{color:#76f2e2}
+.seo-page{padding-top:28px;padding-bottom:75px}
+.seo-crumbs{display:flex;gap:12px;align-items:center;color:#a9bdd4;font-size:13px;margin-bottom:35px}
+.seo-crumbs a{color:#74e8dc}
+.seo-top{padding:40px clamp(22px,5vw,65px);border:1px solid rgba(139,200,232,.19);border-radius:26px;background:radial-gradient(circle at 100% 0%,rgba(39,145,170,.17),transparent 55%),linear-gradient(140deg,#0f2237,#0d1627)}
+.seo-kicker{font-size:12px;letter-spacing:.11em;font-weight:800;color:#65e1d2}
+.seo-top h1{max-width:880px;font-size:clamp(28px,4.8vw,49px);line-height:1.16;letter-spacing:-1.1px;margin:16px 0 20px}
+.seo-lead{max-width:790px;font-size:17px;line-height:1.7;color:#d0ddeb;margin-bottom:28px}
+.seo-article{display:grid;grid-template-columns:minmax(0,1fr);max-width:830px;margin:36px auto 20px}
+.seo-section{border-bottom:1px solid rgba(185,213,236,.13);padding:12px 0 25px;margin-bottom:15px}
+.seo-section h2,.seo-faq h2,.seo-next h2{font-size:clamp(22px,2.8vw,28px);line-height:1.26;letter-spacing:-.5px;margin:10px 0 18px}
+.seo-section p,.seo-section li{color:#cedbeb;font-size:16px;line-height:1.78}
+.seo-section p{margin:0 0 16px}
+.seo-section ul{padding-left:24px}
+.seo-section li+li{margin-top:10px}
+.seo-faq{max-width:830px;margin:15px auto 45px}
+.seo-answer{border:1px solid rgba(185,213,236,.15);border-radius:14px;background:rgba(24,42,66,.5);padding:17px 22px;margin:12px 0}
+.seo-answer summary{cursor:pointer;font-weight:740;font-size:16px}
+.seo-answer[open] summary{color:#94f1df}
+.seo-answer p{margin-bottom:0;color:#c5d4e4;line-height:1.65}
+.seo-next{max-width:830px;margin:0 auto;padding:27px;border:1px solid rgba(185,213,236,.18);background:#101f33;border-radius:20px}
+.seo-next p{color:#b5c7da;line-height:1.6}
+.seo-chips{display:flex;flex-wrap:wrap;gap:11px;margin:16px 0 22px}
+.seo-chip{display:inline-flex;border-radius:100px;padding:10px 15px;border:1px solid #2a5464;color:#c7f6f4;background:#102b3b;font-size:14px}
+.seo-chip:hover{border-color:#69e5da}
+.seo-support-link{color:#89ecdc;text-decoration:underline;text-underline-offset:4px}
+.seo-footer{border-top:1px solid rgba(185,213,236,.12);padding:25px 0;color:#a1b1c5;font-size:13px}
+.seo-footer .shell{display:flex;flex-wrap:wrap;gap:16px 32px;align-items:center}
+.seo-footer a:hover{color:#76f2e2}
+@media(max-width:620px){
+ .seo-header{min-height:66px}.seo-header nav{gap:12px;font-size:12px}
+ .seo-header .brand-text{font-size:16px}
+ .seo-page{padding-top:17px;padding-bottom:38px}
+ .seo-crumbs{margin-bottom:15px}
+ .seo-top{padding:27px 21px;border-radius:18px}
+ .seo-lead{font-size:15px}
+ .seo-section p,.seo-section li{font-size:15px}
+ .seo-faq{margin-bottom:26px}
+ .seo-next{padding:20px}
+}
