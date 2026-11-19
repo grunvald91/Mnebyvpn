@@ -109,12 +109,23 @@ async function main():Promise<void>{
   process.once('SIGTERM',stop);process.once('SIGINT',stop);
   try{
     // A merged migration is NOT proof that the production schema was applied.
+    // PostgreSQL requires UPDATE on at least one column even for SELECT
+    // FOR SHARE. Do not grant any such rights on billing or node inventory.
+    // A reviewed SECURITY DEFINER row-lock gateway must be deployed and the
+    // query callers migrated to it before enabling this worker.
     const checked=await db.query(
       "SELECT to_regclass('public.vpn_awg_command_outbox')::text AS outbox, "+
-      "to_regclass('public.vpn_node_enrollment_inventory')::text AS inventory",
+      "to_regclass('public.vpn_node_enrollment_inventory')::text AS inventory, "+
+      "to_regprocedure('public.mnebyvpn_awg_lock_entitlement(uuid)')::text AS billing_lock, "+
+      "to_regprocedure('public.mnebyvpn_awg_lock_node(text)')::text AS node_lock, "+
+      "to_regprocedure('public.mnebyvpn_awg_lock_node_pool(text)')::text AS pool_lock",
     );
     if(!checked.rows[0]?.outbox||!checked.rows[0]?.inventory)
       throw Error('AWG outbox and enrolled-node schema are not ready');
+    if(!checked.rows[0]?.billing_lock||!checked.rows[0]?.node_lock||
+       !checked.rows[0]?.pool_lock||
+       process.env.MNEBYVPN_AWG_ROW_LOCK_GATEWAY!=='reviewed')
+      throw Error('AWG signed authorization row-lock gateway is not deployed');
     // Autonomous grant refresh/revoke is independent of client connections.
     // Keep deliveries moving even if a maintenance cycle fails; the next
     // cycle retries while the FI node keeps honoring its local signed ledger.
