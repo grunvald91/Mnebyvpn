@@ -474,7 +474,12 @@ function renderAccess(accesses) {
   const list=byId('access-list');
   list.replaceChildren();
   if(!accesses.length) {
-    list.append(node('div','empty','Пока нет подписок. Выберите тариф выше, когда он станет доступен.'));
+    const empty=node('div','empty');
+    empty.append(node('p','','Пока нет активных подписок. Выберите тариф на главной странице — доступ, профиль Apple / DoT и Telegram-прокси выдадутся автоматически.'));
+    const goPlans=node('a','button button-primary','Выбрать тариф');
+    goPlans.href='/#plans';
+    empty.append(goPlans);
+    list.append(empty);
     return;
   }
   for(const a of accesses) {
@@ -513,9 +518,6 @@ function renderAccess(accesses) {
         totals.append(node('span','','Израсходовано: '+fmtBytes(a.quotaUsedBytes)),
           node('span','','Осталось: '+fmtBytes(a.quotaRemainingBytes)));
         box.append(track,totals);item.append(box);
-      } else {
-        item.append(node('div','usage-unavailable',
-          'Личный учёт расхода DNS-запросов включается сервером после подключения.'));
       }
     }
     if(a.product==='smart_dns'&&a.state==='ACTIVE'&&

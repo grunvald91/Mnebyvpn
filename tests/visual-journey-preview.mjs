@@ -254,7 +254,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   const info=page.frameLocator('#journey-front-frame').locator('#dns-info-dialog');
   if(!await info.isVisible())failed=true;
   const infoContent=await info.textContent();
-  if(!['YouTube','ChatGPT','Gemini','Claude','Antigravity','Grok','TikTok','Telegram'].every(x=>infoContent.includes(x))||
+  if(infoContent.includes('YouTube')||
+    !['ChatGPT','Gemini','Claude','Antigravity','Grok','TikTok','Telegram','и другие'].every(x=>infoContent.includes(x))||
     !infoContent.includes('домен')||!infoContent.includes('VPN'))failed=true;
   const dnsMetrics=await page.evaluate((sel)=>{
     const doc=document.querySelector('#journey-front-frame').contentDocument;
@@ -710,7 +711,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       configurable:true,get:()=>({saveData:true,effectiveType:'4g'})
     });
   });
-  await dataSave.goto(base,{waitUntil:'domcontentloaded'});
+  await dataSave.goto(base,{waitUntil:'load'});
+  await dataSave.locator('#journey-front-frame').waitFor({state:'visible'});
   const state=await dataSave.evaluate(()=>{
     const inner=document.querySelector('#journey-front-frame').contentDocument;
     const video=inner.querySelector('#bgv');

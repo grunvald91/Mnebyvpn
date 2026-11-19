@@ -1,6 +1,13 @@
 /* Lightweight brand treatment for static legal pages; no heavyweight video or filter layer. */
 html{color-scheme:dark}
-body{min-height:100vh;background:radial-gradient(ellipse 95% 50% at 50% -12%,#17245b 0%,#080d2c 56%,#040719 100%);color:#ecf8ff}
+body{margin:0;min-height:100vh;background:radial-gradient(ellipse 95% 50% at 50% -12%,#17245b 0%,#080d2c 56%,#040719 100%);color:#ecf8ff;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.header{border-bottom:1px solid rgba(92,148,238,.22);background:rgba(5,10,34,.72)}
+.shell{width:min(100% - 24px,920px);margin:0 auto}
+.header-inner{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:58px}
+.brand{display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:#fff;white-space:nowrap}
+.brand-avatar{width:34px;height:34px;border-radius:50%;border:1px solid rgba(120,160,255,.55);object-fit:cover;display:block}
+.brand-text{font:italic 800 17px/1 Inter,system-ui,sans-serif;letter-spacing:-.04em}
+.brand-text span{background:linear-gradient(100deg,#19e6ff,#a64dff);-webkit-background-clip:text;background-clip:text;color:transparent}
 .legal-shell{width:min(100% - 24px,790px);margin:0 auto;padding:24px 0 30px}
 .legal-panel{padding:clamp(19px,4vw,34px);border-radius:23px;border:1px solid rgba(65,202,253,.63);
 background:linear-gradient(134deg,rgba(9,29,73,.95),rgba(15,18,59,.96) 55%,rgba(38,19,69,.95));
@@ -11,7 +18,8 @@ box-shadow:0 0 22px rgba(51,181,236,.1);max-width:none}
 .legal-panel strong{color:#e3fbff}
 .legal-panel a{color:#80e9ff;text-decoration:underline;text-underline-offset:3px}
 .legal-kicker{font-style:italic!important;font-weight:800!important;font-size:11px!important;letter-spacing:.1em;color:#67deff!important}
-.legal-back{font-style:italic!important;border-radius:99px!important;font-weight:760!important;font-size:12px!important}
+.legal-back{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:7px 14px;border:1px solid rgba(92,226,255,.6);background:rgba(12,26,64,.75);color:#e9f8ff;text-decoration:none;font:italic 760 12px/1 Inter,system-ui,sans-serif!important;border-radius:99px!important;white-space:nowrap}
+.legal-back:hover{border-color:#69eaff;box-shadow:0 0 14px rgba(32,202,245,.32)}
 .legal-panel .legal-updated{font-size:11px;color:#8ea7cb;margin-top:24px}
 .legal-doc-nav,.legal-footer nav{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:9px 17px}
 .legal-doc-nav{border-top:1px solid rgba(110,181,239,.23);padding-top:14px;margin-top:18px}

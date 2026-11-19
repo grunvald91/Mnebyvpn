@@ -18,11 +18,13 @@
   // this leaves the full background visible on tall Android devices.
   const sizeFront=()=>{
     if(!frontFrame)return;
-    const target=Math.max(frontNaturalHeight,Math.ceil(window.innerHeight));
+    const vh=Math.ceil(document.documentElement?.clientHeight||window.innerHeight);
+    const target=Math.max(frontNaturalHeight,vh);
     const value=target+'px';
     if(frontFrame.style.height!==value)frontFrame.style.height=value;
   };
   window.addEventListener('resize',sizeFront);
+  window.addEventListener('load',sizeFront);
   sizeFront();
   // The hidden storefront must not keep decoding video while the user
   // navigates the native, much faster personal cabinet.
@@ -175,7 +177,28 @@
     }
     const heading=el('journey-payment-heading');
     if(heading)heading.hidden=next!=='payment';
-    if(next==='setup')updateSetup();
+    if(next==='setup'){
+      updateSetup();
+      const activeDns=(lastAccount?.access||[]).filter(a=>a.product==='smart_dns'&&a.state==='ACTIVE'&&a.secondsRemaining>0);
+      if(activeDns.length){
+        const dnsTarget=activeDns[0];
+        const dnsSlot=el('journey-dns-setup-slot'),proxySlot=el('journey-proxy-setup-slot');
+        const needsDns=!dnsSlot?.children?.length&&(state.personalDnsEnabled||state.appleDnsProfileEnabled);
+        const needsProxy=!proxySlot?.children?.length&&state.telegramProxyBonusEnabled;
+        const lastDns=lastSetupAttempt.get('dns:'+dnsTarget.id)||0;
+        if((needsDns||needsProxy)&&Date.now()-lastDns>30000){
+          lastSetupAttempt.set('dns:'+dnsTarget.id,Date.now());
+          const tasks=[];
+          if(needsDns&&typeof ensurePersonalDnsCredentials==='function'){
+            tasks.push(ensurePersonalDnsCredentials(dnsTarget.id,{autoIssue:true,targets:[dnsSlot]}).catch(()=>{}));
+          }
+          if(needsProxy&&typeof ensureProxyCredentials==='function'){
+            tasks.push(ensureProxyCredentials(dnsTarget.id,[proxySlot]).catch(()=>{}));
+          }
+          void Promise.all(tasks).then(()=>updateSetup());
+        }
+      }
+    }
     if(next==='plans')syncFront();
     syncVisual();
     window.scrollTo?.({top:0,behavior:'instant'});

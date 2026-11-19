@@ -21,16 +21,16 @@ a{color:inherit;text-decoration:none}
 :focus-visible{outline:2px solid var(--cy);outline-offset:3px}
 
 /* Background layers */
-.bg{position:fixed;inset:0;z-index:-2;overflow:hidden;background:radial-gradient(120% 80% at 50% 0,#0a1240,var(--bg) 70%)}
+.bg{position:fixed;inset:0;z-index:-1;overflow:hidden;background:radial-gradient(120% 80% at 50% 0,#0a1240,var(--bg) 70%)}
 .bg::before{content:"";position:absolute;inset:-50%;background:conic-gradient(from 0deg at 50% 40%,transparent,rgba(59,123,255,.22),transparent 28%,rgba(190,70,255,.2),transparent 58%,rgba(25,230,255,.18),transparent 82%);opacity:.28}
 .desk-scene{display:none}
-.desk-poster,.bgv-desktop{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 28%}
+.desk-poster,.bgv-desktop{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 40%;transform:translateY(-4%) scale(1.08)}
 .bgv-desktop{opacity:0;transition:opacity .7s ease}
 .desk-scene.vid .bgv-desktop{opacity:1}
-.desk-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,7,26,.24) 0%,rgba(4,7,26,.12) 34%,rgba(4,7,26,.48) 76%,rgba(4,7,26,.78) 100%),radial-gradient(ellipse 84% 60% at 50% 42%,rgba(4,8,28,.04),rgba(4,7,26,.45) 92%)}
+.desk-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,7,26,.44) 0%,rgba(4,7,26,.08) 14%,rgba(4,7,26,0) 32%,rgba(4,7,26,.02) 50%,rgba(4,7,26,.38) 74%,rgba(4,7,26,.72) 100%)}
 
 /* Mobile portrait Earth scene */
-.app{position:relative;max-width:480px;min-height:100%;margin:0 auto;display:flex;flex-direction:column;overflow-x:clip;background:radial-gradient(ellipse 95% 54% at 50% 56%,rgba(20,42,109,.34),transparent 80%),linear-gradient(#04071a,#07112e 84%,#04071a)}
+.app{position:relative;z-index:1;max-width:480px;min-height:100%;margin:0 auto;display:flex;flex-direction:column;overflow-x:clip;background:radial-gradient(ellipse 95% 54% at 50% 56%,rgba(20,42,109,.34),transparent 80%),linear-gradient(#04071a,#07112e 84%,#04071a)}
 .scene{position:absolute;left:0;right:0;top:0;aspect-ratio:941/1672;z-index:0;pointer-events:none;overflow:hidden;-webkit-mask-image:linear-gradient(#000 0%,#000 90%,transparent 100%);mask-image:linear-gradient(#000 0%,#000 90%,transparent 100%)}
 .pz,.kb,.fg,.fx{position:absolute;inset:0}
 .kb{background:url(/landing-earth.webp) center/100% 100% no-repeat}
@@ -42,7 +42,7 @@ a{color:inherit;text-decoration:none}
 .vid .bgv{opacity:1}
 .vid .fg{visibility:hidden}
 .scene.vid #fx{visibility:hidden}
-.lock{position:absolute;left:1.8%;top:17%;width:10.5%;aspect-ratio:68/88;filter:drop-shadow(0 0 4px rgba(98,162,255,.35))}
+.lock{position:absolute;left:2%;top:22%;width:9%;aspect-ratio:68/88;filter:drop-shadow(0 0 4px rgba(98,162,255,.35))}
 .rk{position:absolute;width:var(--s);aspect-ratio:1;background:linear-gradient(135deg,#f0d5ae,#9a7655 55%,#4b3b33);clip-path:polygon(50% 0,100% 32%,82% 100%,18% 88%,0 30%)}
 @keyframes run{to{stroke-dashoffset:-100}}
 @keyframes spin{to{--a:360deg}}
@@ -50,33 +50,33 @@ a{color:inherit;text-decoration:none}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 
 /* Shared Header */
-.top{display:flex;align-items:center;justify-content:space-between;gap:6px;height:48px;padding:0 10px;position:relative;z-index:5;flex-shrink:0}
+.top{display:flex;align-items:center;justify-content:space-between;gap:6px;height:48px;padding:0 10px;position:relative;z-index:5;flex-shrink:0;background:linear-gradient(180deg,rgba(4,7,26,.65),transparent)}
 .logo{display:flex;align-items:center;gap:6px;white-space:nowrap;min-width:0;flex:0 0 auto}
 .mark{width:30px;height:30px;border-radius:50%;border:1px solid rgba(120,160,255,.6);display:block;object-fit:cover;flex:none;box-shadow:0 0 14px rgba(80,140,255,.5)}
 .brand{font:italic 800 clamp(13px,3.6vw,17px)/1 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:-.04em;white-space:nowrap}
 .brand b{background:linear-gradient(100deg,var(--cy),var(--vi));-webkit-background-clip:text;background-clip:text;color:transparent}
 .top-links{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-left:auto;min-width:0}
-.pill{flex:0 0 auto;white-space:nowrap;padding:8px 12px;border-radius:99px;border:1px solid rgba(140,150,255,.5);background:rgba(15,20,62,.68);font:italic 700 12px/1 Inter,system-ui,Roboto,Arial,sans-serif;transition:border-color .2s,box-shadow .2s}
+.pill{flex:0 0 auto;white-space:nowrap;padding:8px 12px;border-radius:99px;border:1px solid rgba(140,150,255,.5);background:rgba(10,16,52,.78);font:italic 700 12px/1 Inter,system-ui,Roboto,Arial,sans-serif;transition:border-color .2s,box-shadow .2s}
 .pill:hover{border-color:rgba(120,230,255,.85);box-shadow:0 0 16px rgba(80,160,255,.4)}
-.pill.g{border-color:rgba(60,230,255,.9);background:linear-gradient(100deg,rgba(25,230,255,.22),rgba(166,77,255,.3));box-shadow:0 0 14px rgba(60,200,255,.35),inset 0 0 12px rgba(120,100,255,.25)}
+.pill.g{border-color:rgba(60,230,255,.9);background:linear-gradient(100deg,rgba(25,230,255,.24),rgba(166,77,255,.34));box-shadow:0 0 14px rgba(60,200,255,.35),inset 0 0 12px rgba(120,100,255,.25)}
 .desk-only-link{display:none}
 @media(max-width:365px){.top{padding:0 7px;gap:4px}.brand{font-size:12px}.pill{padding:8px 7px;font-size:11px}}
 
-/* Hero */
-.hero{position:relative;min-height:clamp(160px,22svh,192px);padding-top:8px;text-align:center;flex-shrink:0;z-index:2}
-.txt{position:relative;z-index:2;padding:0 16px}
-.txt::before{content:"";position:absolute;inset:-8px -6px -14px;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at 50% 55%,rgba(3,7,32,.62),rgba(3,7,32,.28) 55%,transparent 75%)}
-.eb{margin:0;font:italic 800 10px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:.12em;background:linear-gradient(90deg,var(--cy),#7a7bff 60%,#c25cff);-webkit-background-clip:text;background-clip:text;color:transparent}
-h1{margin:5px 0 0;font:italic 800 clamp(25px,7.4vw,35px)/1.03 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:-.02em}
+/* Hero centered inside the dark upper portal opening, above the sunrise & arcs */
+.hero{position:relative;min-height:clamp(146px,20svh,180px);padding:12px 0 6px;text-align:center;flex-shrink:0;z-index:2}
+.txt{position:relative;z-index:2;max-width:336px;margin:0 auto;padding:2px 24px 4px}
+.txt::before{content:"";position:absolute;inset:-6px -2px -8px;z-index:-1;pointer-events:none;border-radius:26px;background:radial-gradient(ellipse at 50% 52%,rgba(3,7,30,.78),rgba(3,7,30,.48) 58%,transparent 78%)}
+.eb{margin:0;font:italic 800 9.5px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:.12em;background:linear-gradient(90deg,var(--cy),#9daeff 60%,#cf7aff);-webkit-background-clip:text;background-clip:text;color:transparent}
+h1{margin:4px 0 0;font:italic 800 clamp(23px,6.8vw,32px)/1.03 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:-.02em}
 h1 span{display:block}
-.l1{background:linear-gradient(180deg,#fff,#d2d7ef);-webkit-background-clip:text;background-clip:text;color:transparent}
-.l2{background:linear-gradient(95deg,#19e6ff 5%,#4aa0ff 45%,#b261ff 95%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 14px rgba(60,160,255,.45))}
-.ul{width:220px;max-width:65%;height:3px;margin:5px auto 7px;border-radius:50%;background:linear-gradient(90deg,transparent,var(--cy),var(--vi),var(--mg),transparent);box-shadow:0 0 10px rgba(100,120,255,.65)}
-.sub{margin:0 auto;max-width:340px;font:italic 500 11.5px/1.28 Inter,system-ui,Roboto,Arial,sans-serif;color:#e3e8ff;text-shadow:0 1px 10px rgba(2,6,30,.9)}
-.pillars{display:none}
+.l1{background:linear-gradient(180deg,#fff,#dce3fb);-webkit-background-clip:text;background-clip:text;color:transparent}
+.l2{background:linear-gradient(95deg,#25e9ff 5%,#5eaaff 45%,#bc72ff 95%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 14px rgba(60,160,255,.45))}
+.ul{width:200px;max-width:60%;height:2.5px;margin:4px auto 6px;border-radius:50%;background:linear-gradient(90deg,transparent,var(--cy),var(--vi),var(--mg),transparent);box-shadow:0 0 10px rgba(100,120,255,.65)}
+.sub{margin:0 auto;max-width:286px;font:italic 500 10.8px/1.28 Inter,system-ui,Roboto,Arial,sans-serif;color:#eef2ff;text-shadow:0 1px 10px rgba(2,6,30,.95)}
+@media(max-width:350px){.txt{padding:2px 32px}.sub{max-width:236px;font-size:9.8px}.lock{width:7.5%;left:1.2%}}
 
-/* Storefront Card & Controls */
-.card{position:relative;margin:-2px 14px 6px;padding:10px 11px 9px;border-radius:20px;background:linear-gradient(155deg,rgba(12,22,64,.95),rgba(10,16,46,.96));-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:0 0 26px rgba(80,120,255,.32),0 18px 40px rgba(0,0,10,.55);z-index:3;flex-shrink:0}
+/* Storefront Card & Controls (placed below sunrise & network arcs) */
+.card{position:relative;margin:clamp(22px,4.5svh,44px) 14px 6px;padding:10px 11px 9px;border-radius:20px;background:linear-gradient(155deg,rgba(10,18,56,.94),rgba(8,14,42,.95));-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:0 0 26px rgba(80,120,255,.32),0 18px 40px rgba(0,0,10,.55);z-index:3;flex-shrink:0}
 .card::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.5px;background:conic-gradient(from var(--a),var(--cy),#4a5cff,var(--vi),var(--mg),var(--vi),#4a5cff,var(--cy));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
 .mob-store{display:block}
 .desk-store{display:none}
@@ -104,19 +104,29 @@ h1 span{display:block}
 
 .mob-perks{margin:6px 2px 2px;padding:5px 8px;border-radius:10px;border:1px solid rgba(90,175,245,.28);background:rgba(8,19,52,.72);font:500 10px/1.26 Inter,system-ui,Roboto,Arial,sans-serif;color:#cfe2fb;text-align:center}
 
-/* Dialog / Info popovers */
+/* Dialog / Info & Comparison popovers */
 .info-circle,.payment-info{display:grid;place-items:center;width:24px;height:24px;min-width:24px;border:1.4px solid #51e6ff;border-radius:50%;color:#bbfaff;font:italic 800 14px/1 Inter,system-ui,Roboto,Arial,sans-serif;background:rgba(17,48,91,.8)}
 .payment-info{width:21px;height:21px;min-width:21px;font-size:13px;background:rgba(20,58,108,.85)}
-.dns-popover,.payment-popover{position:fixed;inset:auto 14px auto 14px;top:50%;transform:translateY(-50%);max-width:440px;margin:0 auto;z-index:40;border-radius:16px;border:1px solid rgba(92,226,255,.78);background:rgba(8,18,52,.98);box-shadow:0 16px 46px rgba(0,0,15,.85),0 0 24px rgba(34,202,244,.28);padding:14px;color:#edf5ff;font:400 12px/1.45 Inter,system-ui,Roboto,Arial,sans-serif}
-.dns-popover[hidden],.payment-popover[hidden]{display:none!important}
+.dns-popover,.payment-popover,.compare-popover{position:fixed;inset:auto 14px auto 14px;top:50%;transform:translateY(-50%);max-width:440px;margin:0 auto;z-index:40;border-radius:16px;border:1px solid rgba(92,226,255,.78);background:rgba(8,18,52,.98);box-shadow:0 16px 46px rgba(0,0,15,.85),0 0 24px rgba(34,202,244,.28);padding:13px 14px;color:#edf5ff;font:400 11.5px/1.4 Inter,system-ui,Roboto,Arial,sans-serif}
+.compare-popover{max-width:740px}
+.dns-popover[hidden],.payment-popover[hidden],.compare-popover[hidden]{display:none!important}
 .dns-popover-head,.payment-popover-head{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#fff}
 .dns-popover-head strong,.payment-popover-head strong{font:italic 800 13.5px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
 .dns-popover-head button,.payment-popover-head button{display:grid;place-items:center;flex:0 0 26px;width:26px;height:26px;border-radius:50%;background:rgba(77,110,175,.35);font:500 18px/1 Inter,system-ui,Roboto,Arial,sans-serif}
-.dns-popover p,.payment-popover p{margin:8px 0 0;color:#d2dff2}
-.dns-popover-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
-.dns-popover-tags span{border-radius:99px;padding:3px 7px;border:1px solid rgba(95,164,245,.45);background:rgba(46,82,151,.28);font:500 10.5px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
-.dns-popover-caution{color:#b9cdec;font-size:11px}
-.dns-request{display:block;width:100%;min-height:34px;margin-top:10px;padding:6px 10px;border-radius:99px;border:1px solid rgba(145,244,255,.7);background:linear-gradient(110deg,#14b7e9,#5f6be8);color:#fff;font:italic 800 12px/1.15 Inter,system-ui,Roboto,Arial,sans-serif}
+.dns-popover p,.payment-popover p{margin:6px 0 0;color:#d6e3f5}
+.dns-popover-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+.dns-popover-tags span{border-radius:99px;padding:3px 7px;border:1px solid rgba(95,164,245,.45);background:rgba(46,82,151,.28);font:500 10px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
+.dns-popover-caution{color:#bdd1ee;font-size:10.8px;line-height:1.36}
+.dns-request{display:block;width:100%;min-height:33px;margin-top:8px;padding:6px 10px;border-radius:99px;border:1px solid rgba(145,244,255,.7);background:linear-gradient(110deg,#14b7e9,#5f6be8);color:#fff;font:italic 800 12px/1.15 Inter,system-ui,Roboto,Arial,sans-serif}
+
+.cmp-table{width:100%;border-collapse:collapse;margin-top:10px;font:400 12.5px/1.38 Inter,system-ui,Roboto,Arial,sans-serif}
+.cmp-table th,.cmp-table td{padding:7px 8px;border-bottom:1px solid rgba(115,155,225,.2);text-align:left}
+.cmp-table th{color:#8aefff;font:italic 700 12px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
+.cmp-table td:not(:first-child){text-align:center;font-weight:600}
+.cmp-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+.cmp-step{padding:10px 12px;border-radius:12px;border:1px solid rgba(115,165,245,.26);background:rgba(10,24,62,.68)}
+.cmp-step strong{display:block;font:italic 800 12px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;color:#5ef0ff}
+.cmp-step p{margin:4px 0 0;font:400 11.5px/1.35 Inter,system-ui,Roboto,Arial,sans-serif;color:#d0def5}
 
 /* Summary, CTA, Error, Trial strip */
 .sum{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;margin:6px 0;font:600 11.5px/1.22 Inter,system-ui,Roboto,Arial,sans-serif;color:#e8ecff;text-align:center}
@@ -143,9 +153,6 @@ h1 span{display:block}
 .trial-close{display:grid;place-items:center;border-radius:11px;border:1px solid rgba(111,175,251,.45);background:rgba(12,24,60,.96);font-size:20px;color:#cfe9ff}
 .trial-dns-status{position:absolute;left:0;right:0;bottom:calc(100% + 5px);z-index:4;padding:8px 10px;margin:0;border-radius:12px;background:#0c1b46;border:1px solid rgba(72,197,253,.72);box-shadow:0 5px 20px rgba(0,0,18,.5);font:500 10.5px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;text-align:center;color:#d6ecff}
 
-/* Desktop Comparison + Onboarding hidden on phone inside iframe */
-.desk-compare{display:none}
-
 /* Footer */
 footer{margin-top:auto;padding:8px 8px 9px;text-align:center;font:italic 400 10.5px/1.15 Inter,system-ui,Roboto,Arial,sans-serif;color:#cfd6f7;position:relative;flex-shrink:0}
 footer::before{content:"";position:absolute;left:0;right:0;top:0;height:1px;background:linear-gradient(90deg,transparent,#3a7cff 30%,#a64dff 70%,transparent)}
@@ -156,93 +163,99 @@ footer nav a:first-child{border:0}
 .legal-links a{font:italic 700 clamp(9.5px,2.6vw,10.5px)/1.15 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
 
 /* ==========================================================================
-   DESKTOP FULL-WIDTH VERSION (>= 900px) with horizontal video & 3-in-1 cards
+   DESKTOP FULL-SCREEN COMPOSITION (>= 900px) — fits 1280x800 & 1440x900
+   Hero sits inside upper dark cosmic opening; Card sits below sunrise & arcs.
    ========================================================================== */
 @media(min-width:900px){
+  html,body{background:transparent}
   .scene{display:none!important}
-  .desk-scene{display:block;position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;background:#04071a}
-  .app{max-width:1180px;width:min(1180px,calc(100vw - 48px));background:none;overflow:visible}
-  .top{height:68px;padding:0 6px}
-  .mark{width:38px;height:38px}
-  .brand{font-size:20px}
-  .top-links{gap:10px}
-  .pill{padding:10px 18px;font-size:13.5px}
+  .desk-scene{display:block;position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;overflow:hidden;background:#04071a}
+  .app{max-width:1180px;width:min(1180px,calc(100vw - 48px));min-height:100dvh;background:none;overflow:visible}
+  .top{height:54px;padding:0 4px;background:none}
+  .mark{width:34px;height:34px}
+  .brand{font-size:18px}
+  .top-links{gap:8px}
+  .pill{padding:8px 16px;font-size:13px}
   .desk-only-link{display:inline-flex;align-items:center}
 
-  .hero{min-height:0;padding:18px 0 18px}
-  .txt{padding:0}
-  .txt::before{display:none}
-  .eb{font-size:12px;letter-spacing:.16em}
-  h1{font-size:clamp(38px,4.2vw,54px);margin:8px 0 0;letter-spacing:-.025em}
+  /* Strictly framed inside the dark cosmic portal hole */
+  .hero{min-height:0;padding:clamp(4px,1vh,10px) 0 0;margin:0 auto;max-width:680px}
+  .txt{max-width:660px;padding:4px 18px 8px}
+  .txt::before{inset:-4px -18px -6px;background:radial-gradient(ellipse at 50% 50%,rgba(4,7,26,.72),rgba(4,7,26,.35) 60%,transparent 80%)}
+  .eb{font-size:11px;letter-spacing:.16em}
+  h1{font-size:clamp(30px,3.2vw,42px);margin:4px 0 0;letter-spacing:-.025em}
   h1 span{display:inline}
   h1 .l2{margin-left:10px}
-  .ul{width:360px;margin:10px auto 12px}
-  .sub{max-width:700px;font:500 16px/1.45 Inter,system-ui,Roboto,Arial,sans-serif;color:#e6edff}
-  .pillars{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:980px;margin:16px auto 0;text-align:left}
-  .pillar{padding:11px 14px;border-radius:16px;border:1px solid rgba(110,175,255,.32);background:rgba(7,16,46,.76);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-  .pillar strong{display:block;font:italic 800 13.5px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;color:#7bf2ff}
-  .pillar span{display:block;margin-top:4px;font:400 12.5px/1.4 Inter,system-ui,Roboto,Arial,sans-serif;color:#d6e3f8}
+  .ul{width:290px;margin:6px auto 7px}
+  .sub{max-width:630px;font:500 clamp(12.5px,1.2vw,14px)/1.35 Inter,system-ui,Roboto,Arial,sans-serif;color:#eaf0ff}
 
-  .card{margin:0;padding:22px 22px 18px;border-radius:26px;background:linear-gradient(155deg,rgba(7,15,44,.84),rgba(11,12,42,.88));-webkit-backdrop-filter:blur(18px) saturate(130%)!important;backdrop-filter:blur(18px) saturate(130%)!important}
+  /* Leave middle band open for glowing horizon arcs and sunrise, card sits below */
+  .card{margin:auto 0 8px;padding:clamp(12px,1.5vh,16px) 18px clamp(10px,1.3vh,14px);border-radius:22px;background:linear-gradient(155deg,rgba(7,15,44,.78),rgba(11,12,42,.84));-webkit-backdrop-filter:blur(16px) saturate(125%)!important;backdrop-filter:blur(16px) saturate(125%)!important}
   .mob-store{display:none}
   .desk-store{display:block}
 
-  .desk-durations-wrap{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
-  .desk-durations-title h2{margin:0;font:italic 800 21px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
-  .desk-durations-title p{margin:4px 0 0;font:400 13px/1.4 Inter,system-ui,Roboto,Arial,sans-serif;color:#c3d4ef}
-  .desk-durations{display:inline-flex;flex-wrap:wrap;gap:6px;padding:5px;border-radius:16px;border:1px solid rgba(120,165,245,.34);background:rgba(5,12,38,.78)}
-  .dur-pill{padding:9px 15px;border-radius:12px;font:italic 700 13px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;color:#d4e4ff;transition:background .18s,border-color .18s}
-  .dur-pill em{font-style:normal;font-size:11px;color:#5cf2ff;margin-left:4px}
+  .desk-durations-wrap{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:clamp(8px,1.1vh,12px)}
+  .desk-durations-title h2{margin:0;font:italic 800 clamp(16px,1.5vw,19px)/1.15 Inter,system-ui,Roboto,Arial,sans-serif}
+  .desk-durations-title p{margin:2px 0 0;font:400 12px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;color:#c3d4ef}
+  .desk-durations{display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;border-radius:14px;border:1px solid rgba(120,165,245,.34);background:rgba(5,12,38,.78)}
+  .dur-pill{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:10px;font:italic 700 12.5px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;color:#d4e4ff;transition:background .18s,border-color .18s}
+  .dur-pill em{font-style:normal;font-size:10px;padding:2px 6px;border-radius:99px;background:rgba(36,216,255,.16);color:#75f3ff}
   .dur-pill:hover{color:#fff;background:rgba(32,74,142,.45)}
-  .dur-pill[aria-pressed="true"]{background:linear-gradient(110deg,#12b9de,#5d56df);color:#fff;box-shadow:0 0 16px rgba(25,215,245,.38)}
-  .dur-pill[aria-pressed="true"] em{color:#fff}
+  .dur-pill[aria-pressed="true"]{background:linear-gradient(110deg,#12b9de,#5d56df);color:#fff;box-shadow:0 0 14px rgba(25,215,245,.35)}
+  .dur-pill[aria-pressed="true"] em{background:rgba(255,255,255,.22);color:#fff}
 
-  .desk-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.12fr) minmax(0,1fr);gap:16px;align-items:stretch}
-  .tier{position:relative;display:flex;flex-direction:column;padding:18px 18px 16px;border-radius:20px;border:1px solid rgba(122,158,245,.34);background:rgba(7,16,48,.78);transition:border-color .2s,box-shadow .2s,transform .2s}
-  .tier:hover{border-color:rgba(108,215,255,.7);transform:translateY(-2px)}
-  .tier.is-selected{border-color:#53edff;box-shadow:0 0 28px rgba(34,210,248,.28),inset 0 0 0 1px rgba(145,245,255,.45);background:linear-gradient(155deg,rgba(10,34,76,.9),rgba(19,20,66,.92))}
-  .tier.featured{border-color:rgba(92,226,255,.72);background:linear-gradient(155deg,rgba(12,34,82,.9),rgba(34,18,76,.9));box-shadow:0 0 34px rgba(80,140,255,.28)}
-  .tier-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
-  .tier-badge{display:inline-block;padding:4px 9px;border-radius:99px;font:italic 800 10.5px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#a8f6ff;border:1px solid rgba(82,216,255,.45);background:rgba(14,52,96,.7)}
+  .desk-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) minmax(0,1fr);gap:12px;align-items:stretch}
+  .tier{position:relative;display:flex;flex-direction:column;padding:12px 14px 11px;border-radius:16px;border:1px solid rgba(122,158,245,.34);background:rgba(7,16,48,.74);transition:border-color .2s,box-shadow .2s,transform .2s}
+  .tier:hover{border-color:rgba(108,215,255,.7);transform:translateY(-1px)}
+  .tier.is-selected{border-color:#53edff;box-shadow:0 0 22px rgba(34,210,248,.24),inset 0 0 0 1px rgba(145,245,255,.45);background:linear-gradient(155deg,rgba(10,34,76,.88),rgba(19,20,66,.9))}
+  .tier.featured{border-color:rgba(92,226,255,.72);background:linear-gradient(155deg,rgba(12,34,82,.88),rgba(34,18,76,.88));box-shadow:0 0 28px rgba(80,140,255,.24)}
+  .tier-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
+  .tier-badge{display:inline-block;padding:3px 8px;border-radius:99px;font:italic 800 10px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#a8f6ff;border:1px solid rgba(82,216,255,.45);background:rgba(14,52,96,.7)}
   .tier.featured .tier-badge{background:linear-gradient(95deg,#19e6ff,#8b5cff);color:#04081d;border-color:transparent}
-  .tier h3{margin:10px 0 4px;font:italic 800 22px/1.15 Inter,system-ui,Roboto,Arial,sans-serif}
-  .tier-sub{margin:0;font:400 12.5px/1.4 Inter,system-ui,Roboto,Arial,sans-serif;color:#c2d4ef}
-  .tier-price-row{display:flex;align-items:baseline;gap:10px;margin:14px 0 4px}
-  .tier-price{font:italic 900 32px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#54f2ff}
-  .tier.featured .tier-price{color:#fff;text-shadow:0 0 18px rgba(64,225,255,.45)}
-  .tier-old{font:italic 700 16px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#99a8cb;text-decoration:line-through}
+  .tier-top-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:6px}
+  .tier h3{margin:0;font:italic 800 clamp(17px,1.5vw,19.5px)/1.12 Inter,system-ui,Roboto,Arial,sans-serif}
+  .tier-sub{margin:3px 0 0;font:400 11.5px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;color:#c2d4ef}
+  .tier-price-row{display:flex;align-items:baseline;gap:8px;margin:7px 0 2px}
+  .tier-price{font:italic 900 clamp(24px,2.2vw,28px)/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#54f2ff}
+  .tier.featured .tier-price{color:#fff;text-shadow:0 0 16px rgba(64,225,255,.45)}
+  .tier-old{font:italic 700 14px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#99a8cb;text-decoration:line-through}
   .tier-old[hidden]{display:none}
-  .tier-meta{margin:0 0 12px;font:600 12px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;color:#92e6ff}
-  .tier-list{list-style:none;margin:0 0 16px;padding:0;display:flex;flex-direction:column;gap:7px;font:400 13px/1.35 Inter,system-ui,Roboto,Arial,sans-serif;color:#dde8fb;flex:1}
+  .tier-meta{margin:0 0 7px;font:600 11px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;color:#92e6ff}
+  .tier-list{list-style:none;margin:0 0 9px;padding:0;display:flex;flex-direction:column;gap:4px;font:400 11.8px/1.28 Inter,system-ui,Roboto,Arial,sans-serif;color:#dde8fb;flex:1}
   .tier-list li.no{color:#8fa1c4}
-  .tier-pick{width:100%;min-height:42px;border-radius:99px;border:1px solid rgba(110,190,255,.55);background:rgba(16,42,92,.78);font:italic 800 13.5px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#e8f7ff;transition:background .18s,border-color .18s}
+  .tier-pick{width:100%;min-height:34px;border-radius:99px;border:1px solid rgba(110,190,255,.55);background:rgba(16,42,92,.78);font:italic 800 12.5px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#e8f7ff;transition:background .18s,border-color .18s}
   .tier.is-selected .tier-pick,.tier.featured .tier-pick{background:linear-gradient(100deg,#19e6ff,#3b7bff 55%,#a64dff);border-color:rgba(205,252,255,.8);color:#fff}
 
-  .action-strip{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,.95fr);gap:14px;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid rgba(110,165,245,.25)}
-  .action-left{display:flex;flex-direction:column;gap:8px}
-  .action-left .sum{margin:0;justify-content:flex-start;text-align:left;font-size:14px}
-  .action-left .sum::before{display:none}
-  .action-left .sum::after{max-width:90px}
-  .action-left .cta{max-width:420px;min-height:48px;font-size:17px}
-  .action-note{margin:0;text-align:left;font:400 11.5px/1.35 Inter,system-ui,Roboto,Arial,sans-serif;color:#afc3e3}
+  .action-strip{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,.95fr);gap:14px;align-items:center;margin-top:clamp(8px,1.1vh,12px);padding-top:clamp(8px,1.1vh,12px);border-top:1px solid rgba(110,165,245,.25)}
+  .action-left{display:flex;flex-direction:column;gap:5px}
+  .action-left .sum{margin:0;justify-content:flex-start;text-align:left;font-size:13px}
+  .action-left .sum::before,.action-left .sum::after{display:none}
+  .action-left .cta{max-width:420px;min-height:42px;font-size:15.5px}
+  .action-note{margin:0;text-align:left;font:400 11px/1.28 Inter,system-ui,Roboto,Arial,sans-serif;color:#afc3e3}
   .trial-slot{margin-top:0}
-  .free{padding:11px 14px;min-height:54px;border-radius:16px}
-  .free b{font-size:15px}
-  .free small.trial-hint{display:block;font:400 11px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;color:#b8d2f2;margin-top:2px}
+  .free{padding:9px 13px;min-height:48px;border-radius:14px}
+  .free b{font-size:14px}
+  .free small.trial-hint{display:block;font:400 10.5px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;color:#b8d2f2;margin-top:1px}
 
-  .desk-compare{display:block;margin:18px 0 8px;padding:20px 22px;border-radius:22px;border:1px solid rgba(110,165,245,.26);background:rgba(7,15,44,.78);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
-  .desk-compare h2{margin:0 0 12px;font:italic 800 19px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
-  .cmp-table{width:100%;border-collapse:collapse;font:400 13px/1.4 Inter,system-ui,Roboto,Arial,sans-serif}
-  .cmp-table th,.cmp-table td{padding:9px 10px;border-bottom:1px solid rgba(115,155,225,.18);text-align:left}
-  .cmp-table th{color:#8aefff;font:italic 700 12.5px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
-  .cmp-table td:not(:first-child){text-align:center;font-weight:600}
-  .cmp-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
-  .cmp-step{padding:12px 14px;border-radius:14px;border:1px solid rgba(115,165,245,.24);background:rgba(10,24,62,.62)}
-  .cmp-step strong{display:block;font:italic 800 13px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;color:#5ef0ff}
-  .cmp-step p{margin:5px 0 0;font:400 12px/1.4 Inter,system-ui,Roboto,Arial,sans-serif;color:#d0def5}
-
-  footer{padding:16px 8px 18px;font-size:12px}
-  .legal-links a{font-size:11.5px}
+  footer{margin-top:0;padding:8px 8px 10px;font-size:11px;background:rgba(4,7,26,.45);border-radius:12px 12px 0 0}
+  .legal-links{margin-top:4px}
+  .legal-links a{font-size:11px}
+}
+@media(min-width:900px) and (max-height:830px){
+  .top{height:48px}
+  .hero{padding-top:2px}
+  h1{font-size:32px}
+  .ul{margin:4px auto 5px}
+  .sub{font-size:12.5px;line-height:1.28}
+  .card{padding:10px 16px 9px;margin-bottom:4px}
+  .desk-durations-wrap{margin-bottom:7px}
+  .tier{padding:9px 12px}
+  .tier h3{font-size:16.5px}
+  .tier-price{font-size:23px}
+  .tier-list{gap:3px;font-size:11.2px;margin-bottom:7px}
+  .tier-pick{min-height:31px;font-size:12px}
+  .action-left .cta{min-height:38px;font-size:14.5px}
+  footer{padding:6px 8px 7px}
 }
 </style>
 </head>
@@ -276,7 +289,7 @@ footer nav a:first-child{border:0}
     </a>
     <nav class="top-links" aria-label="Разделы сайта">
       <a class="pill" href="#about">О проекте</a>
-      <a class="pill desk-only-link" href="#compare">Сравнение 3 в 1</a>
+      <button class="pill desk-only-link" id="compare-open" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="compare-dialog">Сравнение 3 в 1</button>
       <a class="pill desk-only-link" href="#support">Поддержка</a>
       <a class="pill g" href="/#account" target="_top">Мой VPN</a>
     </nav>
@@ -287,12 +300,7 @@ footer nav a:first-child{border:0}
       <p class="eb">MNEBYVPN · ПОДКЛЮЧИЛ И НЕ ПАРИШЬСЯ</p>
       <h1><span class="l1">Один доступ —</span><span class="l2">3 технологии</span></h1>
       <div class="ul"></div>
-      <p class="sub">Настроил один раз — 90% времени YouTube, ChatGPT, Claude, Gemini и Telegram работают без постоянно включённого VPN.</p>
-      <div class="pillars" aria-label="Как работает экосистема 3 в 1">
-        <div class="pillar"><strong>◎ Smart DNS</strong><span>Выборочный доступ к нужному без замедления обычных сайтов. Личный конфиг Apple + DoT Android.</span></div>
-        <div class="pillar"><strong>✈ Telegram-прокси</strong><span>Автоматическая выдача маршрутов direct и ru с инструкцией прямо в кабинете после оплаты.</span></div>
-        <div class="pillar"><strong>◈ VPN до 3 устройств</strong><span>Не конфликтует с Smart DNS и Прокси: включайте по кнопке, когда нужен полный туннель.</span></div>
-      </div>
+      <p class="sub">Smart DNS — открывает то, куда не пускают из РФ (ChatGPT, Claude, Gemini и другие). VPN — ресурсы с ограничениями в РФ. Telegram-прокси — всегда на связи.</p>
     </div>
   </section>
 
@@ -301,7 +309,7 @@ footer nav a:first-child{border:0}
     <div class="mob-store">
       <div class="ch">
         <h2>Тариф <span class="plan-heading-product" id="mob-product-title">«3 в 1»</span></h2>
-        <button class="info-circle" id="dns-info-open" type="button" aria-label="Что такое Smart DNS и Экосистема 3 в 1" aria-haspopup="dialog" aria-expanded="false" aria-controls="dns-info-dialog">i</button>
+        <button class="info-circle" id="dns-info-open" type="button" aria-label="Как работают Smart DNS, VPN и Telegram-прокси" aria-haspopup="dialog" aria-expanded="false" aria-controls="dns-info-dialog">i</button>
       </div>
       <div class="mob-products" role="group" aria-label="Выбор варианта подписки">
         <button class="prod-tab" type="button" data-prod="vpn" aria-pressed="false"><b>VPN Лайт</b><small>1 устройство</small></button>
@@ -314,7 +322,7 @@ footer nav a:first-child{border:0}
         <button class="plan" type="button" data-d="60" aria-pressed="false"><b>60 дней</b><strong>—</strong><small>−12%</small></button>
         <button class="plan" type="button" data-d="90" aria-pressed="false"><b>90 дней</b><strong>—</strong><small>−21%</small></button>
       </div>
-      <p class="mob-perks" id="mob-perks">Smart DNS + Telegram-прокси + VPN до 3 устройств. Не конфликтуют друг с другом.</p>
+      <p class="mob-perks" id="mob-perks">Smart DNS (куда не пускают из РФ) + VPN до 3 устр. + Telegram-прокси. Без конфликтов.</p>
     </div>
 
     <!-- Desktop 3-card comparison storefront -->
@@ -322,7 +330,7 @@ footer nav a:first-child{border:0}
       <div class="desk-durations-wrap">
         <div class="desk-durations-title">
           <h2>Выберите срок и вариант доступа</h2>
-          <p>Разовая оплата через ЮKassa без автосписаний. После оплаты профиль Apple, DoT-адрес и Telegram-прокси выдаются автоматически.</p>
+          <p>Разовая оплата через ЮKassa (СБП и карты) без автосписаний. Профиль Apple, DoT и TG-прокси выдаются автоматически.</p>
         </div>
         <div class="desk-durations" role="group" aria-label="Срок подписки для всех тарифов">
           <button class="dur-pill" type="button" data-d="15" aria-pressed="false">15 дней</button>
@@ -335,51 +343,48 @@ footer nav a:first-child{border:0}
       <div class="desk-grid" role="group" aria-label="Сравнение тарифов">
         <article class="tier" data-card-product="vpn">
           <div class="tier-head"><span class="tier-badge">Базовый</span></div>
-          <h3>VPN Лайт</h3>
-          <p class="tier-sub">Чистый защищённый туннель для одного устройства.</p>
+          <div class="tier-top-row"><h3>VPN Лайт</h3></div>
+          <p class="tier-sub">Полный туннель туда, куда ограничен доступ из России.</p>
           <div class="tier-price-row"><strong class="tier-price" id="price-vpn">—</strong></div>
           <p class="tier-meta" id="meta-vpn">1 устройство</p>
           <ul class="tier-list">
-            <li>✓ Весь трафик через VPN</li>
-            <li>✓ 1 устройство</li>
-            <li class="no">✕ Без Smart DNS</li>
-            <li class="no">✕ Без Telegram-прокси</li>
+            <li>✓ Доступ ко всему, что ограничено в РФ</li>
+            <li>✓ Весь трафик устройства в туннеле</li>
+            <li class="no">✕ Без Smart DNS и TG-прокси</li>
           </ul>
           <button class="tier-pick" type="button" data-pick="vpn" aria-pressed="false">Выбрать VPN Лайт</button>
         </article>
 
         <article class="tier featured is-selected" data-card-product="bundle">
           <div class="tier-head">
-            <span class="tier-badge">★ Самый популярный · 3 в 1</span>
-            <button class="info-circle" id="dns-info-open-desk" type="button" aria-label="Что входит в Smart DNS" aria-haspopup="dialog" aria-expanded="false" aria-controls="dns-info-dialog">i</button>
+            <span class="tier-badge">★ Выгоднее · 3 в 1</span>
+            <button class="info-circle" id="dns-info-open-desk" type="button" aria-label="Как работают Smart DNS, VPN и Telegram-прокси" aria-haspopup="dialog" aria-expanded="false" aria-controls="dns-info-dialog">i</button>
           </div>
-          <h3>Экосистема «3 в 1»</h3>
-          <p class="tier-sub">Smart DNS + Telegram-прокси работают 90% времени сами; VPN всегда под рукой.</p>
+          <div class="tier-top-row"><h3>Экосистема «3 в 1»</h3></div>
+          <p class="tier-sub">DNS и TG-прокси работают 90% времени; VPN — для любых блокировок.</p>
           <div class="tier-price-row">
             <s class="tier-old" id="old-bundle" hidden>499 ₽</s>
             <strong class="tier-price" id="price-bundle">—</strong>
           </div>
           <p class="tier-meta" id="meta-bundle">133 ₽/устройство · до 3 устройств</p>
           <ul class="tier-list">
-            <li>✓ Smart DNS (до 1 000 000 запросов / 30 д)</li>
-            <li>✓ Telegram-прокси (маршруты direct и ru)</li>
-            <li>✓ VPN до 3 устройств (без конфликтов)</li>
-            <li>✓ Профиль Apple (.mobileconfig) + DoT Android</li>
+            <li>✓ Smart DNS (до 1 млн · куда не пускают из РФ)</li>
+            <li>✓ Telegram-прокси (direct + ru · без ограничений)</li>
+            <li>✓ VPN до 3 устр. + конфиг Apple (.mobileconfig) / DoT</li>
           </ul>
           <button class="tier-pick" type="button" data-pick="bundle" aria-pressed="true">Выбрано: «3 в 1»</button>
         </article>
 
         <article class="tier" data-card-product="smart_dns">
           <div class="tier-head"><span class="tier-badge">Без постоянного VPN</span></div>
-          <h3>Smart Доступ</h3>
-          <p class="tier-sub">Умный DNS + встроенный Telegram-прокси с автонастройкой.</p>
+          <div class="tier-top-row"><h3>Smart Доступ</h3></div>
+          <p class="tier-sub">Зарубежные сервисы (AI и др.) + Telegram без тормозов.</p>
           <div class="tier-price-row"><strong class="tier-price" id="price-smart_dns">—</strong></div>
           <p class="tier-meta" id="meta-smart_dns">1 000 000 DNS-запросов / 30 д</p>
           <ul class="tier-list">
-            <li>✓ Smart DNS (YouTube, AI-сервисы и др.)</li>
-            <li>✓ Telegram-прокси (direct и ru)</li>
-            <li>✓ Профиль Apple (.mobileconfig) + DoT Android</li>
-            <li class="no">✕ Без VPN-туннеля</li>
+            <li>✓ Smart DNS (ChatGPT, Gemini, Claude и другие)</li>
+            <li>✓ Telegram-прокси (direct и ru + инструкция)</li>
+            <li class="no">✕ Без VPN-туннеля (конфиг Apple + DoT включены)</li>
           </ul>
           <button class="tier-pick" type="button" data-pick="smart_dns" aria-pressed="false">Выбрать Smart Доступ</button>
         </article>
@@ -393,7 +398,7 @@ footer nav a:first-child{border:0}
           <button class="payment-info" type="button" id="payment-info-open" aria-label="Условия оплаты ЮKassa и напоминания" aria-haspopup="dialog" aria-controls="payment-info-dialog" aria-expanded="false">i</button>
         </div>
         <button class="cta" type="button" disabled>Загрузка тарифов…</button>
-        <p class="action-note">Разовая оплата через ЮKassa. Автоматическое создание профиля Apple (.mobileconfig), DoT-адреса для Android и ссылок Telegram-прокси сразу в личном кабинете.</p>
+        <p class="action-note">Разовая оплата через ЮKassa. Профиль Apple (.mobileconfig), DoT для Android и ссылки Telegram-прокси выдаются сразу после оплаты.</p>
         <p class="front-error" id="front-error" role="alert" aria-live="assertive" hidden></p>
         <a class="front-retry" id="front-retry" href="/" target="_top" hidden>Не удалось загрузить тарифы. Повторить</a>
       </div>
@@ -403,7 +408,7 @@ footer nav a:first-child{border:0}
           <svg viewBox="0 0 26 34" aria-hidden="true"><path d="M16 0 2 19h9l-3 15L24 13h-9z" fill="#19e6ff"/></svg>
           <div>
             <b>Бесплатные 24 часа</b>
-            <small class="trial-hint">Пробный VPN на 24 часа · Telegram-прокси и Smart DNS открываются после оплаты</small>
+            <small class="trial-hint">Пробный VPN на 24 часа · Smart DNS и Прокси после оплаты</small>
           </div>
           <button class="try" type="button" disabled aria-expanded="false" aria-controls="trial-options">Попробовать</button>
         </div>
@@ -417,25 +422,6 @@ footer nav a:first-child{border:0}
     </div>
   </main>
 
-  <section class="desk-compare" id="compare" aria-label="Подробное сравнение и запуск за 3 шага">
-    <h2>Почему «3 в 1» удобнее обычного VPN</h2>
-    <table class="cmp-table">
-      <thead><tr><th>Возможность</th><th>VPN Лайт</th><th>Smart Доступ</th><th>Экосистема «3 в 1» ★</th></tr></thead>
-      <tbody>
-        <tr><td>Smart DNS (до 1 000 000 запросов / 30 д)</td><td>—</td><td>✓</td><td>✓</td></tr>
-        <tr><td>Профиль Apple (.mobileconfig) + DoT для Android/роутера</td><td>—</td><td>✓</td><td>✓</td></tr>
-        <tr><td>Telegram-прокси (direct + ru + инструкция)</td><td>—</td><td>✓</td><td>✓</td></tr>
-        <tr><td>Полноценный VPN-туннель</td><td>1 устройство</td><td>—</td><td>до 3 устройств</td></tr>
-        <tr><td>90% времени без постоянного включения VPN</td><td>—</td><td>✓</td><td>✓</td></tr>
-      </tbody>
-    </table>
-    <div class="cmp-steps">
-      <div class="cmp-step"><strong>01. Оплатите в 1 клик (ЮKassa)</strong><p>Выберите тариф без привязки карты и скрытых автосписаний.</p></div>
-      <div class="cmp-step"><strong>02. Скачайте профиль Apple / DoT</strong><p>В личном кабинете сразу появятся файл .mobileconfig для iPhone/Mac, адрес DoT для Android и ссылки VPN.</p></div>
-      <div class="cmp-step"><strong>03. Подключите Telegram-прокси</strong><p>Нажмите на готовую ссылку маршрута direct или ru и пользуйтесь Telegram без конфликтов с VPN.</p></div>
-    </div>
-  </section>
-
   <footer>
     <nav><a href="https://t.me/MNEBYVPN_bot" target="_blank" rel="noopener noreferrer">@MNEBYVPN_bot</a><a href="#roadmap">Roadmap</a><a href="#support">Поддержка</a></nav>
     <div class="legal-links"><a href="/terms" target="_top">Оферта</a><a href="/agreement" target="_top">Соглашение</a><a href="/privacy" target="_top">Обработка данных</a></div>
@@ -444,15 +430,15 @@ footer nav a:first-child{border:0}
 
 <div id="dns-info-dialog" class="dns-popover" role="dialog" aria-modal="false" aria-labelledby="dns-modal-title" hidden>
   <div class="dns-popover-head">
-    <strong id="dns-modal-title">Как работает Smart DNS + Telegram-прокси</strong>
+    <strong id="dns-modal-title">Зачем нужны 3 технологии в одном доступе</strong>
     <button id="dns-info-close" type="button" aria-label="Закрыть информацию о Smart DNS">×</button>
   </div>
-  <p>Доступ к поддерживаемым сервисам без постоянного VPN. Остальные сайты открываются напрямую на скорости провайдера.</p>
+  <p><strong>Smart DNS</strong> — открывает сервисы, куда сайты не пускают подключения <b>из Российской Федерации</b>, не замедляя обычные сайты.</p>
   <div class="dns-popover-tags" aria-label="Примеры сервисов">
-    <span>YouTube</span><span>ChatGPT</span><span>Gemini</span><span>Claude</span>
-    <span>Google Antigravity</span><span>Grok</span><span>TikTok</span><span>Telegram</span>
+    <span>ChatGPT</span><span>Gemini</span><span>Claude</span><span>Google Antigravity</span>
+    <span>Grok</span><span>TikTok</span><span>Telegram</span><span>и другие</span>
   </div>
-  <p class="dns-popover-caution">После оплаты в личном кабинете выдаются готовый профиль Apple (.mobileconfig), DoT-адрес для Android/роутера и ссылки MTProto-прокси для Telegram. Smart DNS не шифрует весь трафик: для полного туннеля выберите «3 в 1».</p>
+  <p class="dns-popover-caution"><strong>VPN</strong> — нужен, чтобы открыть ресурсы, к которым ограничен доступ со стороны РФ. <strong>Telegram-прокси</strong> — позволяет Telegram работать вне зависимости от любых ограничений. После оплаты в кабинете сразу выдаются конфиг Apple (.mobileconfig), DoT-адрес для Android/роутера и ссылки прокси.</p>
   <button class="dns-request" type="button" id="dns-request-domain">Добавить свой домен через поддержку</button>
 </div>
 
@@ -460,7 +446,28 @@ footer nav a:first-child{border:0}
   <div class="payment-popover-head"><strong id="payment-info-title">Оплата и напоминания</strong><button id="payment-info-close" type="button" aria-label="Закрыть информацию">×</button></div>
   <p>Защищённая разовая оплата через ЮKassa (карта, СБП). Без автосписаний.</p>
   <p>Окончание срока напомним заранее, если к аккаунту привязан Telegram-бот.</p>
-  <p>Активация, выдача VPN, профилей Apple/Android Smart DNS и Telegram-прокси происходят автоматически только после подтверждения оплаты сервером.</p>
+  <p>Активация, выдача VPN, профилей Apple/Android Smart DNS и Telegram-прокси происходят автоматически сразу после подтверждения оплаты сервером.</p>
+</div>
+
+<div id="compare-dialog" class="compare-popover" role="dialog" aria-modal="false" aria-labelledby="compare-modal-title" hidden>
+  <div class="dns-popover-head">
+    <strong id="compare-modal-title">Почему «3 в 1» удобнее обычного VPN</strong>
+    <button id="compare-close" type="button" aria-label="Закрыть сравнение тарифов">×</button>
+  </div>
+  <table class="cmp-table">
+    <thead><tr><th>Возможность</th><th>VPN Лайт</th><th>Smart Доступ</th><th>Экосистема «3 в 1» ★</th></tr></thead>
+    <tbody>
+      <tr><td>Smart DNS (куда не пускают из РФ: AI и другие)</td><td>—</td><td>✓</td><td>✓</td></tr>
+      <tr><td>Профиль Apple (.mobileconfig) + DoT для Android</td><td>—</td><td>✓</td><td>✓</td></tr>
+      <tr><td>Telegram-прокси (работает без любых ограничений)</td><td>—</td><td>✓</td><td>✓</td></tr>
+      <tr><td>VPN-туннель (для ресурсов с ограничениями в РФ)</td><td>1 устройство</td><td>—</td><td>до 3 устройств</td></tr>
+    </tbody>
+  </table>
+  <div class="cmp-steps">
+    <div class="cmp-step"><strong>01. Оплата в 1 клик (ЮKassa)</strong><p>Разовая оплата по СБП или картой без автосписаний.</p></div>
+    <div class="cmp-step"><strong>02. Apple (.mobileconfig) и DoT</strong><p>Сразу после оплаты в кабинете появятся профиль Apple, DoT-адрес и ссылки VPN.</p></div>
+    <div class="cmp-step"><strong>03. Telegram-прокси</strong><p>Нажмите на готовую ссылку direct/ru — Telegram работает параллельно без конфликтов.</p></div>
+  </div>
 </div>
 
 <script>
@@ -558,9 +565,9 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
   const trialDnsStatus=$('#trial-dns-status'),trialVpn=$('#trial-vpn'),trialDns=$('#trial-dns');
   const titles={vpn:'VPN Лайт',bundle:'Экосистема «3 в 1»',smart_dns:'Smart Доступ'};
   const perks={
-    vpn:'Защищённый VPN-туннель на 1 устройство. Без Smart DNS и Telegram-прокси.',
-    bundle:'Smart DNS (до 1 млн запросов) + Telegram-прокси + VPN до 3 устройств. Профиль Apple (.mobileconfig) и DoT Android сразу после оплаты.',
-    smart_dns:'Smart DNS (до 1 млн запросов) + Telegram-прокси (direct и ru) + профиль Apple (.mobileconfig) и DoT для Android.'
+    vpn:'VPN-туннель на 1 устройство: открывает ресурсы, к которым ограничен доступ в РФ. Без Smart DNS и TG-прокси.',
+    bundle:'Smart DNS (куда не пускают из РФ) + VPN до 3 устр. (ограничения в РФ) + Telegram-прокси. Без конфликтов.',
+    smart_dns:'Smart DNS (ChatGPT, Claude, Gemini и другие — куда не пускают из РФ) + Telegram-прокси. Профиль Apple и DoT сразу.'
   };
 
   let selectedProduct='bundle',selectedDays=30,ready=false,serverData=null,resizeQueued=false,lastHeight=0;
@@ -568,13 +575,18 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
   const setPressed=(el,on)=>{if(el)el.setAttribute('aria-pressed',String(on));};
   const findOffer=(product,days)=>(serverData?.offers||[]).find(o=>o.product===product&&o.days===days);
 
+  // Measure natural content height without the 100%-min-height iframe feedback loop
   const resize=()=>{
     if(resizeQueued)return;
     resizeQueued=true;
     requestAnimationFrame(()=>{
       resizeQueued=false;
       const app=document.querySelector('.app');
-      const h=Math.ceil(app.scrollHeight+2);
+      if(!app)return;
+      const prevMin=app.style.minHeight;
+      app.style.minHeight='0';
+      const h=Math.ceil(app.scrollHeight);
+      app.style.minHeight=prevMin;
       if(Math.abs(h-lastHeight)>2){lastHeight=h;send('height',{height:h});}
     });
   };
@@ -656,6 +668,7 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
 
   const paymentDialog=$('#payment-info-dialog'),paymentOpen=$('#payment-info-open');
   const dnsDialog=$('#dns-info-dialog'),dnsOpens=[$('#dns-info-open'),$('#dns-info-open-desk')].filter(Boolean);
+  const compareDialog=$('#compare-dialog'),compareOpen=$('#compare-open');
   let lastDnsOpener=dnsOpens[0];
   const setPopover=(dialog,opener,visible,restoreFocus=false)=>{
     if(!dialog)return;
@@ -666,25 +679,35 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
   };
   paymentOpen.addEventListener('click',()=>{
     setPopover(dnsDialog,lastDnsOpener,false);
+    setPopover(compareDialog,compareOpen,false);
     setPopover(paymentDialog,paymentOpen,paymentDialog.hidden);
   });
   $('#payment-info-close').addEventListener('click',()=>setPopover(paymentDialog,paymentOpen,false,true));
   dnsOpens.forEach(btn=>btn.addEventListener('click',()=>{
     lastDnsOpener=btn;
     setPopover(paymentDialog,paymentOpen,false);
+    setPopover(compareDialog,compareOpen,false);
     setPopover(dnsDialog,btn,dnsDialog.hidden);
   }));
   $('#dns-info-close').addEventListener('click',()=>setPopover(dnsDialog,lastDnsOpener,false,true));
   $('#dns-request-domain').addEventListener('click',()=>{setPopover(dnsDialog,lastDnsOpener,false);send('support');});
+  compareOpen?.addEventListener('click',()=>{
+    setPopover(paymentDialog,paymentOpen,false);
+    setPopover(dnsDialog,lastDnsOpener,false);
+    setPopover(compareDialog,compareOpen,compareDialog.hidden);
+  });
+  $('#compare-close')?.addEventListener('click',()=>setPopover(compareDialog,compareOpen,false,true));
   document.addEventListener('keydown',e=>{
     if(e.key!=='Escape')return;
     if(!trialOptions.hidden){e.preventDefault();setTrialChooser(false);}
     else if(!paymentDialog.hidden){e.preventDefault();setPopover(paymentDialog,paymentOpen,false,true);}
     else if(!dnsDialog.hidden){e.preventDefault();setPopover(dnsDialog,lastDnsOpener,false,true);}
+    else if(compareDialog&&!compareDialog.hidden){e.preventDefault();setPopover(compareDialog,compareOpen,false,true);}
   });
   document.addEventListener('pointerdown',e=>{
     if(!paymentDialog.hidden&&!paymentDialog.contains(e.target)&&e.target!==paymentOpen)setPopover(paymentDialog,paymentOpen,false);
     if(!dnsDialog.hidden&&!dnsDialog.contains(e.target)&&!dnsOpens.includes(e.target))setPopover(dnsDialog,lastDnsOpener,false);
+    if(compareDialog&&!compareDialog.hidden&&!compareDialog.contains(e.target)&&e.target!==compareOpen)setPopover(compareDialog,compareOpen,false);
   });
 
   document.querySelector('.logo')?.addEventListener('click',e=>{e.preventDefault();send('plans');});
