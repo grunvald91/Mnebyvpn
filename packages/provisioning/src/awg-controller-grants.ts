@@ -233,7 +233,7 @@ export async function stageAwgRevoke(
   try{
     await tx.query('BEGIN');
     const found=await tx.query<Allocation>(
-      'SELECT peer_public_key,host(client_ipv4) AS client_ipv4,revision '+
+      'SELECT peer_public_key,host(client_ipv4) AS client_ipv4,revision,state '+
       'FROM vpn_awg_peer_allocations WHERE node_id=$1 AND entitlement_id=$2 FOR UPDATE',
       [input.nodeId,input.entitlementId]);
     const old=found.rows[0];
