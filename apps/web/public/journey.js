@@ -418,6 +418,10 @@
     const installButton=el('journey-installed');
     installButton.setAttribute('aria-pressed',String(installed));
     installButton.textContent=installed?'✓ Приложение установлено':'Я установил приложение';
+    // After explicit install confirmation, show the import step instead of
+    // repeating the three-step installation guide on a compact phone screen.
+    const installGuide=el('journey-vpn-guide');
+    if(installGuide)installGuide.hidden=installed;
     const value=state.loggedIn?state.guestSubscriptionUrl:null;
     const valid=typeof value==='string'&&safeSubscriptionUrl(value);
     const activeDns=(lastAccount?.access||[]).some(a=>a.product==='smart_dns'&&a.state==='ACTIVE'&&a.secondsRemaining>0);

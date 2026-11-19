@@ -6,6 +6,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import {canonicalAlias,requiresNoindex,renderRobots,renderSitemap} from './seo-core.ts';
+import {renderSeoPage} from './seo-pages.ts';
 import { createHash,createHmac,randomBytes,randomUUID,timingSafeEqual } from 'node:crypto';
 import { Pool } from 'pg';
 import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
@@ -228,6 +229,7 @@ const termsHtml = await readFile(new URL('../public/terms.html',import.meta.url)
 const privacyHtml = await readFile(new URL('../public/privacy.html',import.meta.url));
 const agreementHtml = await readFile(new URL('../public/agreement.html',import.meta.url));
 const legalCss = await readFile(new URL('../public/legal.css',import.meta.url));
+const seoCss = await readFile(new URL('../public/seo-pages.css',import.meta.url));
 const css = await readFile(new URL('../public/site.css', import.meta.url));
 const neoCss = await readFile(new URL('../public/neo.css', import.meta.url));
 const brandAvatar = await readFile(new URL('../public/brand-avatar.webp', import.meta.url));
@@ -703,6 +705,12 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     res.setHeader('Cache-Control','public, max-age=3600');
     res.writeHead(301).end();return;
   }
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    const informationalPage=renderSeoPage(url.pathname);
+    if(informationalPage){
+      send(res,200,informationalPage,'text/html; charset=utf-8');return;
+    }
+  }
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/payment/success' || url.pathname === '/payment/return')) {
     const device=cookie(req,deviceCookie);
     if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
@@ -750,6 +758,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === 'GET' && (url.pathname === '/agreement' || url.pathname === '/agreement.html')) {
     send(res,200,agreementHtml,'text/html; charset=utf-8');return;
+  }
+  if (req.method === 'GET' && url.pathname === '/seo-pages.css') {
+    send(res,200,seoCss,'text/css; charset=utf-8');return;
   }
   if (req.method === 'GET' && url.pathname === '/legal.css') {
     send(res,200,legalCss,'text/css; charset=utf-8');return;
