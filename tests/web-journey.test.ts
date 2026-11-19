@@ -311,8 +311,9 @@ test('desktop and mobile storefront present all 3 RUB products without Stars or 
   for(const service of ['ChatGPT','Gemini','Claude','Antigravity','Grok','TikTok','Telegram','и другие']){
     assert.ok(art.includes(service));
   }
-  assert.match(art,/из Российской Федерации/);
-  assert.match(art,/со стороны РФ/);
+  assert.doesNotMatch(art,/РФ|Россий|Росси/i);
+  assert.match(art,/из вашего региона/);
+  assert.match(art,/локальными сетевыми ограничениями/);
   assert.doesNotMatch(art,/⭐|Prodamus|payform/i);
   assert.match(art,/499 ₽/);
   assert.match(art,/133 ₽\/устройство/);
