@@ -7,12 +7,16 @@ import urllib.error
 import urllib.request
 
 ORIGIN="https://mnebyvpn.site"
+GUIDE_ROUTES=(
+    "/vpn", "/smart-dns", "/chatgpt", "/claude", "/gemini",
+    "/google-antigravity", "/telegram-proxy",
+)
 ROUTES=(
     "/", "/robots.txt", "/sitemap.xml", "/terms", "/privacy",
     "/agreement", "/landing-art.html", "/payment/success",
     "/index.html", "/terms.html", "/privacy.html", "/agreement.html",
     "/payment/return", "/seo-nonexistent-20261113",
-)
+) + GUIDE_ROUTES
 class Meta(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -71,12 +75,21 @@ for path in ROUTES:
             expected="https://mnebyvpn.site"+path
             if r.status!=200 or not meta.description or meta.canonical!=expected:
                 failures.append(path+": canonical/description/status")
+        elif path in GUIDE_ROUTES:
+            expected=ORIGIN+path
+            if (r.status!=200 or "text/html" not in h.get("Content-Type","") or
+                not meta.title or not meta.description or meta.canonical!=expected or
+                meta.h1!=1 or "noindex" in (meta.robots+" "+h.get("X-Robots-Tag","")).lower() or
+                '<script type="application/ld+json">' not in body):
+                failures.append(path+": guide status/meta/h1/canonical/schema")
         elif path=="/robots.txt":
             if r.status!=200 or not ("Sitemap: https://mnebyvpn.site/sitemap.xml" in body):
                 failures.append(path+": robots unavailable")
         elif path=="/sitemap.xml":
-            if r.status!=200 or '<urlset' not in body or '<loc>https://mnebyvpn.site/</loc>' not in body:
-                failures.append(path+": sitemap unavailable")
+            if (r.status!=200 or '<urlset' not in body or
+                '<loc>https://mnebyvpn.site/</loc>' not in body or
+                any('<loc>'+ORIGIN+p+'</loc>' not in body for p in GUIDE_ROUTES)):
+                failures.append(path+": sitemap missing public guides")
         elif path in ("/index.html","/terms.html","/privacy.html","/agreement.html"):
             canonical={"/index.html":"/","/terms.html":"/terms",
                        "/privacy.html":"/privacy","/agreement.html":"/agreement"}[path]
