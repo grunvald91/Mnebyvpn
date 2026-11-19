@@ -179,6 +179,36 @@ export const SEO_PAGES:ReadonlyArray<SeoPage>=[
   }
 ] as const;
 
+export const SEO_REFERENCES:Readonly<Record<string,ReadonlyArray<{title:string;url:string}>>>=Object.freeze({
+  '/vpn':[
+    {title:'INCY — официальные версии клиента',url:'https://github.com/INCY-DEV/incy-platforms/releases'},
+    {title:'Karing для iPhone — App Store',url:'https://apps.apple.com/ru/app/karing/id6472431552'},
+  ],
+  '/smart-dns':[
+    {title:'Android Developers — особенности Private DNS',url:'https://developer.android.com/privacy-and-security/risks/bad-dns'},
+    {title:'Apple Support — профиль настроек DNS',url:'https://support.apple.com/en-lamr/guide/deployment/dep86469ba99/web'},
+  ],
+  '/chatgpt':[
+    {title:'OpenAI — состояние ChatGPT',url:'https://status.openai.com/'},
+    {title:'OpenAI — поддерживаемые страны и территории',url:'https://help.openai.com/en/articles/7947663-chatgpt-and-openai-api-supported-countries-and-territories'},
+  ],
+  '/claude':[
+    {title:'Anthropic — состояние Claude',url:'https://status.claude.com/'},
+    {title:'Claude Code — официальная инструкция',url:'https://code.claude.com/docs/en/quickstart'},
+  ],
+  '/gemini':[
+    {title:'Google — официальный сайт Gemini',url:'https://gemini.google.com/'},
+    {title:'Google — доступность Gemini по странам',url:'https://support.google.com/gemini/answer/13575153?hl=ru'},
+  ],
+  '/google-antigravity':[
+    {title:'Google Antigravity — официальная инструкция',url:'https://antigravity.google/docs/getting-started'},
+  ],
+  '/telegram-proxy':[
+    {title:'Telegram — документация MTProto Proxy',url:'https://core.telegram.org/proxy'},
+    {title:'Telegram — формат ссылок на прокси',url:'https://core.telegram.org/api/links'},
+  ],
+});
+
 const ORIGIN='https://mnebyvpn.site';
 function esc(s:string):string {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -199,6 +229,9 @@ export function renderSeoPage(path:string):string|null {
     '</section>').join('');
   const faq=page.faq.map(item=>'<details class="seo-answer"><summary>'+esc(item.question)+
     '</summary><p>'+esc(item.answer)+'</p></details>').join('');
+  const officialLinks=(SEO_REFERENCES[path]??[]).map(source=>
+    '<li><a href="'+esc(source.url)+'" rel="noopener noreferrer">'+esc(source.title)+'</a></li>'
+  ).join('');
   const schema={
     '@context':'https://schema.org',
     '@graph':[
@@ -241,6 +274,9 @@ export function renderSeoPage(path:string):string|null {
     '<a class="button button-primary" href="/#plans">Посмотреть варианты доступа</a></div>'+
     '<article class="seo-article">'+sections+'</article>'+
     '<section class="seo-faq" aria-label="Вопросы и ответы"><h2>Частые вопросы</h2>'+faq+'</section>'+
+    '<section class="seo-sources" aria-label="Официальные источники"><h2>Официальные источники</h2>'+
+    '<p>Документация и страницы владельцев сервисов для самостоятельной проверки условий доступа и настройки.</p>'+
+    '<ul>'+officialLinks+'</ul></section>'+
     '<aside class="seo-next"><h2>Другие инструкции</h2><div class="seo-chips">'+links+'</div>'+
     '<p>Выберите режим подключения, который подходит вашей сети. Доступность отдельных ресурсов зависит от сети, аккаунта и правил владельца сервиса.</p>'+
     '<a class="seo-support-link" href="/#contact-support">Задать вопрос поддержке</a></aside></main>'+
