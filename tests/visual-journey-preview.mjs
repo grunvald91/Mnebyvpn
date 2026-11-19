@@ -117,7 +117,7 @@ async function auditNativeGeometry(page,selector,label){
   // while the old test incorrectly treated "document bottom" as a pass.
   const shouldFitViewport=/^(support|account)_(320x700|390x700)$/.test(label)||
     label==='account_1280x800';
-  if(shouldFitViewport&&!geometry.fits)failed=true;
+  if(shouldFitViewport&&!geometry.fits)(failed=true, console.error('VISUAL_FAIL_LOC_120'));
   if(geometry.error||geometry.hasHorizontalOverflow||
     geometry.logoHref!=='/#plans'||!geometry.headerBeforeMain||
     !geometry.footerAfterMain||Math.abs(geometry.horizontallyCentered)>3||
@@ -125,7 +125,7 @@ async function auditNativeGeometry(page,selector,label){
     (geometry.fits&&Math.abs(geometry.footerViewportGap)>3)||
     (!tooLarge&&Math.abs(geometry.centerDelta)>12)||
     (selector==='.contact-support'&&geometry.supportCols!==(geometry.viewportWidth<=680?1:2)))
-    failed=true;
+    (failed=true, console.error('VISUAL_FAIL_LOC_128'));
   return geometry;
 }
 for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[390,1000],[1440,900]]){
@@ -237,7 +237,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     (width<900&&metrics.frameWidth>480)||metrics.frameWidth<Math.min(360,width)||
     Math.abs(metrics.frameHeight-metrics.artBottom)>28||
     (width<=390&&metrics.outerScrollHeight>metrics.height+280)||
-    !metrics.price.includes('₽'))failed=true;
+    !metrics.price.includes('₽'))(failed=true, console.error('VISUAL_FAIL_LOC_240'));
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('VISUAL_JPEG_'+width+'_BEGIN');
     console.log(readFileSync(file).toString('base64'));
@@ -252,11 +252,11 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   const infoTrigger=width>=900?'#dns-info-open-desk':'#dns-info-open';
   await page.frameLocator('#journey-front-frame').locator(infoTrigger).click();
   const info=page.frameLocator('#journey-front-frame').locator('#dns-info-dialog');
-  if(!await info.isVisible())failed=true;
+  if(!await info.isVisible())(failed=true, console.error('VISUAL_FAIL_LOC_255'));
   const infoContent=await info.textContent();
   if(infoContent.includes('YouTube')||
     !['ChatGPT','Gemini','Claude','Antigravity','Grok','TikTok','Telegram','и другие'].every(x=>infoContent.includes(x))||
-    !infoContent.includes('домен')||!infoContent.includes('VPN'))failed=true;
+    !infoContent.includes('домен')||!infoContent.includes('VPN'))(failed=true, console.error('VISUAL_FAIL_LOC_259'));
   const dnsMetrics=await page.evaluate((sel)=>{
     const doc=document.querySelector('#journey-front-frame').contentDocument;
     const pop=doc.querySelector('#dns-info-dialog');
@@ -280,7 +280,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     dnsMetrics.ariaModal!=='false'||dnsMetrics.buttonExpanded!=='true'||
     dnsMetrics.modalCount!==0||dnsMetrics.backdrop!=='fixed'||
     !dnsMetrics.cardVisible||beforeDns.h!==dnsMetrics.scrollHeight||
-    Math.abs(beforeDns.footer-dnsMetrics.footerTop)>1)failed=true;
+    Math.abs(beforeDns.footer-dnsMetrics.footerTop)>1)(failed=true, console.error('VISUAL_FAIL_LOC_283'));
   if(width===390&&height===844){
     const file=process.env.RUNNER_TEMP+'/mnebyvpn-audit-02-smartdns-popover-390x844.jpg';
     await page.screenshot({path:file,type:'jpeg',quality:82,fullPage:true});
@@ -291,7 +291,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     }
   }
   await page.frameLocator('#journey-front-frame').locator('#dns-info-close').click();
-  if(await info.isVisible())failed=true;
+  if(await info.isVisible())(failed=true, console.error('VISUAL_FAIL_LOC_294'));
   // The informational card must float above price tiles and never open a modal
   // backdrop, resize the storefront, or hide the rest of the tariff controls.
   const beforeInfo=await page.evaluate(()=>{
@@ -301,7 +301,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.frameLocator('#journey-front-frame').locator('#payment-info-open').click();
   const paymentInfo=page.frameLocator('#journey-front-frame').locator('#payment-info-dialog');
   if(!await paymentInfo.isVisible()||
-     !(await paymentInfo.textContent()).includes('Без автосписаний'))failed=true;
+     !(await paymentInfo.textContent()).includes('Без автосписаний'))(failed=true, console.error('VISUAL_FAIL_LOC_304'));
   const popupMetrics=await page.evaluate(()=>{
     const doc=document.querySelector('#journey-front-frame').contentDocument;
     const pop=doc.querySelector('#payment-info-dialog');
@@ -320,7 +320,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     popupMetrics.ariaModal!=='false'||popupMetrics.hasModalState||
     popupMetrics.backgroundBackdrop!==0||!popupMetrics.contentVisible||
     popupMetrics.scrollHeight!==beforeInfo.h||
-    Math.abs(popupMetrics.footerTop-beforeInfo.footer)>1)failed=true;
+    Math.abs(popupMetrics.footerTop-beforeInfo.footer)>1)(failed=true, console.error('VISUAL_FAIL_LOC_323'));
   if(width===390&&height===844){
     await page.screenshot({
       path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-03-payment-popover-390x844.jpg',
@@ -328,7 +328,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     });
   }
   await page.frameLocator('#journey-front-frame').locator('#payment-info-close').click();
-  if(await paymentInfo.isVisible())failed=true;
+  if(await paymentInfo.isVisible())(failed=true, console.error('VISUAL_FAIL_LOC_331'));
   // Product & duration selection stays instant inside the iframe with zero reloads.
   await page.evaluate(()=>{
     window.__frontLoads=0;
@@ -353,7 +353,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   console.log('PRODUCT_SWITCH_'+width+'='+JSON.stringify(switched));
   if(switched.smartPressed!=='true'||switched.dur60Pressed!=='true'||
      !switched.summary.includes('Smart Доступ')||!switched.summary.includes('60')||
-     !switched.buyEnabled||switched.frameLoads!==0||Number(switched.opacity)<0.99)failed=true;
+     !switched.buyEnabled||switched.frameLoads!==0||Number(switched.opacity)<0.99)(failed=true, console.error('VISUAL_FAIL_LOC_356'));
   // Let the iframe finish any deferred parent-height sync from tariff taps.
   await page.waitForTimeout(220);
   const chooserBefore=await page.evaluate(()=>{
@@ -370,7 +370,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       frameHeight:frame.getBoundingClientRect().height};
   });
   await page.frameLocator('#journey-front-frame').locator('.try').click();
-  if(!await page.frameLocator('#journey-front-frame').locator('#trial-options').isVisible())failed=true;
+  if(!await page.frameLocator('#journey-front-frame').locator('#trial-options').isVisible())(failed=true, console.error('VISUAL_FAIL_LOC_373'));
   await page.waitForTimeout(100);
   const chooserAfter=await page.evaluate(()=>{
     const frame=document.querySelector('#journey-front-frame');
@@ -397,7 +397,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
      Math.abs(chooserAfter.slotTop-chooserBefore.slotTop)>1||
      Math.abs(chooserAfter.footerTop-chooserBefore.footerTop)>1||
      Math.abs(chooserAfter.scrollHeight-chooserBefore.scrollHeight)>2||
-     Math.abs(chooserAfter.frameHeight-chooserBefore.frameHeight)>2)failed=true;
+     Math.abs(chooserAfter.frameHeight-chooserBefore.frameHeight)>2)(failed=true, console.error('VISUAL_FAIL_LOC_400'));
   if(width===390&&height===844){
     await page.screenshot({
       path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-04-free-trial-chooser-390x844.jpg',
@@ -406,8 +406,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   }
   await page.frameLocator('#journey-front-frame').locator('#trial-dns').click();
   const trialDns=await page.frameLocator('#journey-front-frame').locator('#trial-dns-status');
-  if(!await trialDns.isVisible())failed=true;
-  if(await page.evaluate(()=>document.body.dataset.journeyView!=='plans'))failed=true;
+  if(!await trialDns.isVisible())(failed=true, console.error('VISUAL_FAIL_LOC_409'));
+  if(await page.evaluate(()=>document.body.dataset.journeyView!=='plans'))(failed=true, console.error('VISUAL_FAIL_LOC_410'));
   await page.frameLocator('#journey-front-frame').locator('#trial-vpn').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='trial-auth');
   const trial=await page.evaluate(()=>{
@@ -518,7 +518,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
      (width<=390&&!trial.noVerticalScroll)||
      !trial.emailButton||Math.abs(trial.emailButton.centerDelta)>5||
      trial.emailButton.width<200||trial.emailButton.height>54||
-     trial.emailButton.radius<20||trial.emailButton.leftRadius!==trial.emailButton.radius)failed=true;
+     trial.emailButton.radius<20||trial.emailButton.leftRadius!==trial.emailButton.radius)(failed=true, console.error('VISUAL_FAIL_LOC_521'));
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('TRIAL_AUTH_JPEG_'+width+'_BEGIN');
     console.log(readFileSync(authImage).toString('base64'));
@@ -531,7 +531,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       document.querySelector('#email-start-form')),
   }));
   if(!returned.home||!returned.emailRestored){
-    console.error('TRIAL_AUTH_BACK_FAILED',JSON.stringify(returned));failed=true;
+    console.error('TRIAL_AUTH_BACK_FAILED',JSON.stringify(returned));(failed=true, console.error('VISUAL_FAIL_LOC_534'));
   }
   await page.close();
 }
@@ -541,7 +541,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
  */
 {
   const page=await browser.newPage({viewport:{width:390,height:844}});
-  page.on('pageerror',error=>{console.error('TRIAL_DISABLED_PAGE_ERROR',String(error.message));failed=true;});
+  page.on('pageerror',error=>{console.error('TRIAL_DISABLED_PAGE_ERROR',String(error.message));(failed=true, console.error('VISUAL_FAIL_LOC_544'));});
   await page.route('**/api/plans',route=>route.fulfill({
     status:200,contentType:'application/json',
     body:JSON.stringify({plans,checkoutEnabled:true,loginEnabled:true,
@@ -569,7 +569,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.screenshot({path:image,type:'jpeg',quality:78,fullPage:true});
   console.log('TRIAL_UNLINKED_TELEGRAM_METRICS='+JSON.stringify(disabled));
   if(disabled.aria!=='true'||!disabled.hidden||!disabled.methodHidden||
-     disabled.footerHeight>130||disabled.overflow||!disabled.noVerticalScroll)failed=true;
+     disabled.footerHeight>130||disabled.overflow||!disabled.noVerticalScroll)(failed=true, console.error('VISUAL_FAIL_LOC_572'));
   await page.close();
 }
 /* Real Android regression: iframe may load before journey.js is available.
@@ -600,7 +600,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     };
   });
   console.log('ANDROID_SLOW_PARENT_HANDSHAKE='+JSON.stringify(result));
-  if(result.top>12||result.reloadVisible||!result.price.includes('₽')||result.error)failed=true;
+  if(result.top>12||result.reloadVisible||!result.price.includes('₽')||result.error)(failed=true, console.error('VISUAL_FAIL_LOC_603'));
   await page.close();
 }
 // A phone may load HTML successfully and lose every subsequent API request.
@@ -629,7 +629,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   }));
   console.log('BOOTSTRAPPED_CATALOG_NETWORK_LOSS='+JSON.stringify({first,cabinet}));
   if(!first.price.includes('₽')||first.unavailable||first.checkoutDisabled||
-     first.retryVisible||!cabinet.emailShown||cabinet.hash!=='#account')failed=true;
+     first.retryVisible||!cabinet.emailShown||cabinet.hash!=='#account')(failed=true, console.error('VISUAL_FAIL_LOC_632'));
   await page.close();
 }
 // The tariff service can fail. Never leave the visual frame spinning forever.
@@ -658,7 +658,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     };
   });
   console.log('CATALOG_FAILURE_FALLBACK='+JSON.stringify(result));
-  if(result.loading||!result.retryVisible||!result.retryTopLevel||!result.purchaseDisabled)failed=true;
+  if(result.loading||!result.retryVisible||!result.retryTopLevel||!result.purchaseDisabled)(failed=true, console.error('VISUAL_FAIL_LOC_661'));
   // A recovered mobile connection should update the iframe without a full
   // page reload, preserving the selected product and pending account intent.
   catalogUnavailable=false;
@@ -675,7 +675,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       buyDisabled:doc.querySelector('.cta').disabled};
   });
   console.log('CATALOG_RETRY_WITHOUT_RELOAD='+JSON.stringify(recovered));
-  if(!recovered.retryHidden||recovered.buyDisabled||!recovered.price.includes('₽'))failed=true;
+  if(!recovered.retryHidden||recovered.buyDisabled||!recovered.price.includes('₽'))(failed=true, console.error('VISUAL_FAIL_LOC_678'));
   await page.close();
 }
 // Verify the original owner video loads on normal connections and stays
@@ -699,7 +699,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       fallbackVisible:!inner?.querySelector('.scene')?.classList.contains('vid')};
   });
   console.log('VIDEO_REDUCED_MOTION='+JSON.stringify(optOut));
-  if(optOut.videoSources!==0||!optOut.fallbackVisible)failed=true;
+  if(optOut.videoSources!==0||!optOut.fallbackVisible)(failed=true, console.error('VISUAL_FAIL_LOC_702'));
   await reduced.close();
 }
 // Data-saving visitors get static globe artwork with no playback control.
@@ -730,7 +730,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       inner.querySelector('#video-retry')===null;
   });
   console.log('DATA_SAVER_STATIC_BACKGROUND='+JSON.stringify({...state,afterTap}));
-  if(!Object.values(state).every(Boolean)||!afterTap)failed=true;
+  if(!Object.values(state).every(Boolean)||!afterTap)(failed=true, console.error('VISUAL_FAIL_LOC_733'));
   await dataSave.close();
 }
 // Mobile regression: the video used to be disabled on 2-core devices and
@@ -739,7 +739,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
 {
   const page=await browser.newPage({viewport:{width:390,height:844},
     userAgent:'Mozilla/5.0 (Linux; Android 13; Pixel 5) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36'});
-  page.on('pageerror',e=>{console.error('VIDEO_ACCOUNT_PAGE_ERROR',String(e));failed=true;});
+  page.on('pageerror',e=>{console.error('VIDEO_ACCOUNT_PAGE_ERROR',String(e));(failed=true, console.error('VISUAL_FAIL_LOC_742'));});
   await page.addInitScript(()=>{
     Object.defineProperty(navigator,'hardwareConcurrency',{configurable:true,get:()=>2});
     if(navigator.connection)
@@ -782,7 +782,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   console.log('ANDROID_VIDEO_2CORE_3G='+JSON.stringify({...before,autoplayBlocked,videoFallback}));
   const isPlaying=before.scenePlaying&&!before.paused&&before.time>0.1;
   if(!before.artworkExternal||!before.navGrouped||before.error||
-    !videoFallback.noReplayButton||(!isPlaying&&!videoFallback.staticVisible))failed=true;
+    !videoFallback.noReplayButton||(!isPlaying&&!videoFallback.staticVisible))(failed=true, console.error('VISUAL_FAIL_LOC_785'));
 
   await page.frameLocator('#journey-front-frame').locator('.top-links a[href="/#account"]').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='account');
@@ -822,7 +822,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     !account.headingVisible||!account.headerTextVisible||
     !account.brandImage.includes('brand-avatar.webp')||
     account.panelBlur!=='none'||!account.videoPaused||account.viewportOverflow||
-    !account.backLinkVisible)failed=true;
+    !account.backLinkVisible)(failed=true, console.error('VISUAL_FAIL_LOC_825'));
   await page.locator('.account-back-to-plans').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='plans');
   await page.waitForFunction(()=>{
@@ -830,7 +830,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     const v=inner?.querySelector('#bgv');
     return v&&(!v.paused&&v.currentTime>0.1||
       !inner.querySelector('.scene').classList.contains('vid'));
-  },null,{timeout:8000}).catch(()=>{failed=true;});
+  },null,{timeout:8000}).catch(()=>{(failed=true, console.error('VISUAL_FAIL_LOC_833'));});
   console.log('ACCOUNT_RETURN_VIDEO_OR_STATIC_FALLBACK=true');
   await page.close();
 }
@@ -839,7 +839,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
 {
   const page=await browser.newPage({viewport:{width:390,height:844}});
   let checkoutCalls=0;
-  page.on('pageerror',error=>{console.error('ORDER_PAGE_ERROR',String(error.message));failed=true;});
+  page.on('pageerror',error=>{console.error('ORDER_PAGE_ERROR',String(error.message));(failed=true, console.error('VISUAL_FAIL_LOC_842'));});
   await page.route('**/api/me',route=>route.fulfill({
     status:200,contentType:'application/json',
     body:JSON.stringify({csrf:'visual-order-csrf',
@@ -889,9 +889,9 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     order.total==='—'||!order.confirmEnabled||order.hasCardFields||
     order.screenHasProviderBrand||order.hasHorizontalOverflow||checkoutCalls!==0||
     !switchedOrder.period?.includes('Smart Доступ')||!switchedOrder.period?.includes('60')||
-    !switchedOrder.total?.includes('449')||switchedOrder.overflowX)failed=true;
+    !switchedOrder.total?.includes('449')||switchedOrder.overflowX)(failed=true, console.error('VISUAL_FAIL_LOC_892'));
   await page.locator('#journey-order-back').click();
-  if(await page.locator('#journey-landing').isHidden())failed=true;
+  if(await page.locator('#journey-landing').isHidden())(failed=true, console.error('VISUAL_FAIL_LOC_894'));
   await page.close();
 }
 // Synthetic *end-to-end* email OTP and trial request (no customer records,
@@ -904,7 +904,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   });
   let verified=false,trialCalls=0;
   page.on('pageerror',error=>{
-    console.error('TRIAL_OTP_PAGE_ERROR',String(error.message));failed=true;
+    console.error('TRIAL_OTP_PAGE_ERROR',String(error.message));(failed=true, console.error('VISUAL_FAIL_LOC_907'));
   });
   await page.route('**/api/me',route=>route.fulfill({
     status:verified?200:401,contentType:'application/json',
@@ -930,7 +930,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     !document.querySelector('#journey-trial').disabled);
   await page.frameLocator('#journey-front-frame').locator('.try').click();
   await page.frameLocator('#journey-front-frame').locator('#trial-vpn').click();
-  if(trialCalls!==0)failed=true;
+  if(trialCalls!==0)(failed=true, console.error('VISUAL_FAIL_LOC_933'));
   await page.locator('#email-input').fill('visual-test@example.com');
   await page.locator('#email-send-button').click();
   await page.screenshot({
@@ -940,14 +940,14 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.locator('#email-code-input').fill('123456');
   await page.locator('#email-verify-button').click();
   try{await page.waitForFunction(()=>document.body.dataset.journeyView==='setup',{timeout:7000});}
-  catch{failed=true;}
+  catch{(failed=true, console.error('VISUAL_FAIL_LOC_943'));}
   const actual=await page.evaluate(()=>({
     view:document.body.dataset.journeyView,
     title:document.querySelector('#journey-setup-title')?.textContent,
     emailFormDuplicates:document.querySelectorAll('#email-start-form').length,
   }));
   console.log('TRIAL_EMAIL_OTP_SMOKE='+JSON.stringify({...actual,trialCalls}));
-  if(actual.view!=='setup'||trialCalls!==1||actual.emailFormDuplicates!==1)failed=true;
+  if(actual.view!=='setup'||trialCalls!==1||actual.emailFormDuplicates!==1)(failed=true, console.error('VISUAL_FAIL_LOC_950'));
   await page.screenshot({
     path:process.env.RUNNER_TEMP+'/mnebyvpn-audit-09-setup-pending-390x844.jpg',
     type:'jpeg',quality:82,fullPage:true
@@ -1016,7 +1016,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     !changedPlatform.alternateHidden||!changedPlatform.importHidden||changedPlatform.pressed!=='false'||
     !setupAfter.importVisible||!setupAfter.autoVisible||
     setupAfter.installConfirmed!=='true'||!setupAfter.installText.includes('установлено')||
-    !setupAfter.toastHidden)failed=true;
+    !setupAfter.toastHidden)(failed=true, console.error('VISUAL_FAIL_LOC_1019'));
   await page.close();
 }
 // Cross-screen visual review. Each image is created from the actual site
@@ -1098,7 +1098,7 @@ for(const scenario of [
     (scenario.expected==='payment'&&(!result.payment?.accountHidden||
       !result.payment.loginNotDuplicated||!result.payment.buttonVisible||
       !result.payment.buttonText.includes('Войти')||
-      !result.payment.statusVisible||!result.payment.noExtraScroll)))failed=true;
+      !result.payment.statusVisible||!result.payment.noExtraScroll)))(failed=true, console.error('VISUAL_FAIL_LOC_1101'));
   if(scenario.expected==='payment'){
     await page.locator('#journey-payment-to-account').click();
     const afterClick=await page.evaluate(()=>({
@@ -1107,7 +1107,7 @@ for(const scenario of [
       emailVisible:document.querySelector('#email-auth-panel')?.getBoundingClientRect().height>0,
     }));
     console.log('PAYMENT_AUTH_EXPLICIT_CLICK='+JSON.stringify(afterClick));
-    if(afterClick.view!=='account'||!afterClick.accountVisible||!afterClick.emailVisible)failed=true;
+    if(afterClick.view!=='account'||!afterClick.accountVisible||!afterClick.emailVisible)(failed=true, console.error('VISUAL_FAIL_LOC_1110'));
   }
   await page.close();
 }
@@ -1129,7 +1129,7 @@ for(const [width,height] of [[320,700],[390,700],[390,1000],[1280,800]]){
         ({support:'16',payment:'17',account:'18'}[view])+'-'+view+'-390x1000.jpg';
       await page.screenshot({path:filename,type:'jpeg',quality:80,fullPage:true});
     }
-    if(metrics.view!==view)failed=true;
+    if(metrics.view!==view)(failed=true, console.error('VISUAL_FAIL_LOC_1132'));
     await page.close();
   }
 }
