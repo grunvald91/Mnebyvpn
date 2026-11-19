@@ -69,6 +69,7 @@ for path in ROUTES:
               " canonical="+(meta.canonical or "none")[:90]+
               " location="+h.get("Location","none")[:95]+
               " h1="+str(meta.h1)+
+              " cache="+h.get("Cache-Control","none")[:70]+
               " robots_map="+str("Sitemap:" in body and "/sitemap.xml" in body)+
               " xml_urlset="+str("<urlset" in body),flush=True)
         if path in ("/","/terms","/privacy","/agreement"):
@@ -82,6 +83,13 @@ for path in ROUTES:
                 meta.h1!=1 or "noindex" in (meta.robots+" "+h.get("X-Robots-Tag","")).lower() or
                 '<script type="application/ld+json">' not in body):
                 failures.append(path+": guide status/meta/h1/canonical/schema")
+            if ('<section class="seo-sources"' not in body or
+                'rel="noopener noreferrer"' not in body or
+                'href="/seo-pages.css"' not in body):
+                failures.append(path+": missing visible official sources/style")
+            cache=h.get("Cache-Control","").lower()
+            if "public" not in cache or "max-age=300" not in cache or "no-store" in cache:
+                failures.append(path+": missing short public-only caching")
         elif path=="/robots.txt":
             if r.status!=200 or not ("Sitemap: https://mnebyvpn.site/sitemap.xml" in body):
                 failures.append(path+": robots unavailable")
