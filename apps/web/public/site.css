@@ -115,3 +115,6 @@ body.journey-active .seo-home{display:none!important}
 .seo-home{padding:56px 0 42px}.seo-home h2{max-width:850px;font-size:clamp(25px,3.3vw,38px);line-height:1.2;letter-spacing:-.8px;margin:5px 0 18px}.seo-home>p:not(.eyebrow){max-width:880px;color:var(--muted);font-size:16px}
 .seo-home-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:13px;margin-top:22px}.seo-home-grid a{border:1px solid var(--line);border-radius:17px;padding:19px;background:linear-gradient(145deg,rgba(18,34,55,.9),rgba(12,23,42,.9));transition:border-color .2s,transform .2s;display:flex;flex-direction:column;gap:7px}.seo-home-grid a:hover{border-color:var(--teal);transform:translateY(-2px)}.seo-home-grid strong{color:var(--text);font-size:17px}.seo-home-grid span{color:var(--muted);font-size:13px;line-height:1.45}.seo-home-note{font-size:13px!important}
 .journey-guides{font-size:14px!important}.journey-guides a{color:#96eff7;text-decoration:underline;text-underline-offset:3px}.journey-guides a:hover{color:#fff}
+
+/* Keep the 320px transactional viewport compact; SEO routes remain in static HTML. */
+@media(max-width:359px){body.journey-active .journey-guides{display:none!important}}
