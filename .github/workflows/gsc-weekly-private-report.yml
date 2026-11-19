@@ -1,0 +1,34 @@
+name: MNEBYVPN weekly private Google Search Console report
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '37 5 * * 1' # Weekly Monday, UTC, final Search Console data.
+permissions:
+  contents: read
+concurrency:
+  group: mnebyvpn-gsc-private-report
+  cancel-in-progress: false
+jobs:
+  report:
+    # In this public repository never run/report analytics until a private
+    # delivery channel and Google read-only credential are configured.
+    if: ${{ vars.GSC_REPORT_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Read-only Google Search Console analytics to private Telegram
+        env:
+          GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
+          GSC_SITE_URL: ${{ vars.GSC_SITE_URL || 'sc-domain:mnebyvpn.site' }}
+          GSC_TELEGRAM_BOT_TOKEN: ${{ secrets.GSC_TELEGRAM_BOT_TOKEN }}
+          GSC_TELEGRAM_CHAT_ID: ${{ secrets.GSC_TELEGRAM_CHAT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/gsc-weekly-report.ts
