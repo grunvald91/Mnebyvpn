@@ -328,8 +328,8 @@ function sendBackgroundVideo(req: IncomingMessage, res: ServerResponse, data: Bu
   else res.end(data.subarray(start,end+1));
 }
 
-function send(res: ServerResponse, status: number, body: string|Buffer, type = 'application/json; charset=utf-8') {
-  res.setHeader('Cache-Control', 'no-store');
+function send(res: ServerResponse, status: number, body: string|Buffer, type = 'application/json; charset=utf-8', cacheControl = 'no-store') {
+  res.setHeader('Cache-Control', cacheControl);
   res.setHeader('Content-Type', type);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -708,7 +708,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if (req.method === 'GET' || req.method === 'HEAD') {
     const informationalPage=renderSeoPage(url.pathname);
     if(informationalPage){
-      send(res,200,informationalPage,'text/html; charset=utf-8');return;
+      // Public fixed HTML can be cached briefly; account, checkout and APIs stay no-store.
+      send(res,200,informationalPage,'text/html; charset=utf-8','public, max-age=300, must-revalidate');return;
     }
   }
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/payment/success' || url.pathname === '/payment/return')) {
@@ -759,8 +760,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if (req.method === 'GET' && (url.pathname === '/agreement' || url.pathname === '/agreement.html')) {
     send(res,200,agreementHtml,'text/html; charset=utf-8');return;
   }
-  if (req.method === 'GET' && url.pathname === '/seo-pages.css') {
-    send(res,200,seoCss,'text/css; charset=utf-8');return;
+  if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/seo-pages.css') {
+    send(res,200,seoCss,'text/css; charset=utf-8','public, max-age=300, must-revalidate');return;
   }
   if (req.method === 'GET' && url.pathname === '/legal.css') {
     send(res,200,legalCss,'text/css; charset=utf-8');return;

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
-import {SEO_PAGES,renderSeoPage} from '../apps/web/src/seo-pages.ts';
+import {SEO_PAGES,SEO_REFERENCES,renderSeoPage} from '../apps/web/src/seo-pages.ts';
 import {PUBLIC_SEO_PATHS,renderSitemap,canonicalAlias,requiresNoindex} from '../apps/web/src/seo-core.ts';
 
 const ORIGIN='https://mnebyvpn.site';
@@ -64,4 +64,31 @@ test('SEO-specific CSS has no inline scripts, and routes have an external styles
     assert.ok(html.includes('href="/seo-pages.css"'));
     assert.ok(!/<script(?! type="application\/ld\+json")/i.test(html));
   }
+});
+
+test('guides link to verified official references without tracking or credentials',()=>{
+  assert.deepEqual(Object.keys(SEO_REFERENCES).sort(),SEO_PAGES.map(p=>p.path).sort());
+  for(const page of SEO_PAGES){
+    const html=renderSeoPage(page.path)!;
+    assert.ok(html.includes('class="seo-sources"'),page.path);
+    const refs=SEO_REFERENCES[page.path];
+    assert.ok(refs?.length>0,page.path);
+    for(const {title,url} of refs){
+      const parsed=new URL(url);
+      assert.equal(parsed.protocol,'https:',page.path);
+      assert.ok(!parsed.username&&!parsed.password,page.path);
+      assert.ok(!/[?&](?:key|token|secret|session|api_key)=/i.test(parsed.search),page.path);
+      assert.ok(title.trim().length>10,page.path);
+      assert.ok(html.includes('href="'+url+'" rel="noopener noreferrer"'),url);
+    }
+  }
+});
+
+test('public cache is explicitly restricted to anonymous guides and their stylesheet',()=>{
+  const server=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
+  assert.match(server,/function send\([^\n]+cacheControl = 'no-store'/);
+  assert.match(server,/send\(res,200,informationalPage,'text\/html; charset=utf-8','public, max-age=300, must-revalidate'\)/);
+  assert.match(server,/send\(res,200,seoCss,'text\/css; charset=utf-8','public, max-age=300, must-revalidate'\)/);
+  assert.ok(!server.includes('public, max-age=300, must-revalidate') ||
+    (server.match(/public, max-age=300, must-revalidate/g)??[]).length===2);
 });
