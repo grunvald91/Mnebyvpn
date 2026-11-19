@@ -24,10 +24,10 @@ a{color:inherit;text-decoration:none}
 .bg{position:fixed;inset:0;z-index:-1;overflow:hidden;background:radial-gradient(120% 80% at 50% 0,#0a1240,var(--bg) 70%)}
 .bg::before{content:"";position:absolute;inset:-50%;background:conic-gradient(from 0deg at 50% 40%,transparent,rgba(59,123,255,.22),transparent 28%,rgba(190,70,255,.2),transparent 58%,rgba(25,230,255,.18),transparent 82%);opacity:.28}
 .desk-scene{display:none}
-.desk-poster,.bgv-desktop{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 40%;transform:translateY(-4%) scale(1.08)}
+.desk-poster,.bgv-desktop{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 46%;transform:scale(1.01)}
 .bgv-desktop{opacity:0;transition:opacity .7s ease}
 .desk-scene.vid .bgv-desktop{opacity:1}
-.desk-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,7,26,.44) 0%,rgba(4,7,26,.08) 14%,rgba(4,7,26,0) 32%,rgba(4,7,26,.02) 50%,rgba(4,7,26,.38) 74%,rgba(4,7,26,.72) 100%)}
+.desk-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,7,26,.36) 0%,rgba(4,7,26,.06) 15%,rgba(4,7,26,0) 34%,rgba(4,7,26,.04) 52%,rgba(4,7,26,.42) 76%,rgba(4,7,26,.76) 100%)}
 
 /* Mobile portrait Earth scene */
 .app{position:relative;z-index:1;max-width:480px;min-height:100%;margin:0 auto;display:flex;flex-direction:column;overflow-x:clip;background:radial-gradient(ellipse 95% 54% at 50% 56%,rgba(20,42,109,.34),transparent 80%),linear-gradient(#04071a,#07112e 84%,#04071a)}
@@ -73,6 +73,7 @@ h1 span{display:block}
 .l2{background:linear-gradient(95deg,#25e9ff 5%,#5eaaff 45%,#bc72ff 95%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 14px rgba(60,160,255,.45))}
 .ul{width:200px;max-width:60%;height:2.5px;margin:4px auto 6px;border-radius:50%;background:linear-gradient(90deg,transparent,var(--cy),var(--vi),var(--mg),transparent);box-shadow:0 0 10px rgba(100,120,255,.65)}
 .sub{margin:0 auto;max-width:286px;font:italic 500 10.8px/1.28 Inter,system-ui,Roboto,Arial,sans-serif;color:#eef2ff;text-shadow:0 1px 10px rgba(2,6,30,.95)}
+.desk-br{display:none}
 @media(max-width:350px){.txt{padding:2px 32px}.sub{max-width:236px;font-size:9.8px}.lock{width:7.5%;left:1.2%}}
 
 /* Storefront Card & Controls (placed below sunrise & network arcs) */
@@ -163,40 +164,41 @@ footer nav a:first-child{border:0}
 .legal-links a{font:italic 700 clamp(9.5px,2.6vw,10.5px)/1.15 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
 
 /* ==========================================================================
-   DESKTOP FULL-SCREEN COMPOSITION (>= 900px) — fits 1280x800 & 1440x900
-   Hero sits inside upper dark cosmic opening; Card sits below sunrise & arcs.
+   DESKTOP FULL-SCREEN COMPOSITION (>= 900px) — fits 1280x800, 1440x900, 1920x1080
+   Hero scales naturally and centers inside upper cosmic opening; Card sits below arcs.
    ========================================================================== */
 @media(min-width:900px){
   html,body{background:transparent}
   .scene{display:none!important}
   .desk-scene{display:block;position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;overflow:hidden;background:#04071a}
-  .app{max-width:1180px;width:min(1180px,calc(100vw - 48px));min-height:100dvh;background:none;overflow:visible}
-  .top{height:54px;padding:0 4px;background:none}
+  .app{max-width:1140px;width:min(1140px,calc(100vw - 48px));min-height:100dvh;background:none;overflow:visible}
+  .top{height:56px;padding:0 4px;background:none}
   .mark{width:34px;height:34px}
   .brand{font-size:18px}
   .top-links{gap:8px}
   .pill{padding:8px 16px;font-size:13px}
   .desk-only-link{display:inline-flex;align-items:center}
+  .desk-br{display:block}
 
-  /* Strictly framed inside the dark cosmic portal hole */
-  .hero{min-height:0;padding:clamp(4px,1vh,10px) 0 0;margin:0 auto;max-width:680px}
-  .txt{max-width:660px;padding:4px 18px 8px}
-  .txt::before{inset:-4px -18px -6px;background:radial-gradient(ellipse at 50% 50%,rgba(4,7,26,.72),rgba(4,7,26,.35) 60%,transparent 80%)}
-  .eb{font-size:11px;letter-spacing:.16em}
-  h1{font-size:clamp(30px,3.2vw,42px);margin:4px 0 0;letter-spacing:-.025em}
+  /* Centered gracefully inside the dark cosmic portal cavity above the sunrise & arcs */
+  .hero{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;min-height:0;padding:clamp(10px,1.8vh,24px) 16px clamp(18px,3.6vh,48px);margin:0 auto;max-width:900px}
+  .txt{max-width:min(860px,100%);padding:12px 28px 14px}
+  .txt::before{inset:-10px -26px -12px;background:radial-gradient(ellipse at 50% 50%,rgba(4,7,26,.78),rgba(4,7,26,.42) 60%,transparent 82%)}
+  .eb{font-size:clamp(11px,.9vw,13px);letter-spacing:.17em}
+  h1{font-size:clamp(36px,3.6vw,50px);margin:7px 0 0;letter-spacing:-.025em;line-height:1.06}
   h1 span{display:inline}
   h1 .l2{margin-left:10px}
-  .ul{width:290px;margin:6px auto 7px}
-  .sub{max-width:630px;font:500 clamp(12.5px,1.2vw,14px)/1.35 Inter,system-ui,Roboto,Arial,sans-serif;color:#eaf0ff}
+  .ul{width:clamp(240px,22vw,340px);height:3px;margin:9px auto 11px}
+  .sub{max-width:800px;font:500 clamp(14px,1.2vw,16.5px)/1.44 Inter,system-ui,Roboto,Arial,sans-serif;color:#f1f5ff}
 
-  /* Leave middle band open for glowing horizon arcs and sunrise, card sits below */
-  .card{margin:auto 0 8px;padding:clamp(12px,1.5vh,16px) 18px clamp(10px,1.3vh,14px);border-radius:22px;background:linear-gradient(155deg,rgba(7,15,44,.78),rgba(11,12,42,.84));-webkit-backdrop-filter:blur(16px) saturate(125%)!important;backdrop-filter:blur(16px) saturate(125%)!important}
+  /* Leave middle band open for glowing horizon arcs and sunrise, card sits symmetrically below */
+  .card{margin:0 0 clamp(8px,1.3vh,14px);padding:clamp(13px,1.6vh,17px) 18px clamp(11px,1.4vh,15px);border-radius:22px;background:linear-gradient(155deg,rgba(7,15,44,.78),rgba(11,12,42,.85));-webkit-backdrop-filter:blur(16px) saturate(125%)!important;backdrop-filter:blur(16px) saturate(125%)!important}
   .mob-store{display:none}
   .desk-store{display:block}
 
-  .desk-durations-wrap{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:clamp(8px,1.1vh,12px)}
-  .desk-durations-title h2{margin:0;font:italic 800 clamp(16px,1.5vw,19px)/1.15 Inter,system-ui,Roboto,Arial,sans-serif}
-  .desk-durations-title p{margin:2px 0 0;font:400 12px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;color:#c3d4ef}
+  .desk-durations-wrap{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:clamp(9px,1.2vh,13px)}
+  .desk-durations-title h2{margin:0;font:italic 800 clamp(16.5px,1.45vw,19px)/1.15 Inter,system-ui,Roboto,Arial,sans-serif}
+  .desk-durations-title p{margin:3px 0 0;font:400 12px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;color:#c3d4ef}
   .desk-durations{display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;border-radius:14px;border:1px solid rgba(120,165,245,.34);background:rgba(5,12,38,.78)}
   .dur-pill{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:10px;font:italic 700 12.5px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;color:#d4e4ff;transition:background .18s,border-color .18s}
   .dur-pill em{font-style:normal;font-size:10px;padding:2px 6px;border-radius:99px;background:rgba(36,216,255,.16);color:#75f3ff}
@@ -204,38 +206,38 @@ footer nav a:first-child{border:0}
   .dur-pill[aria-pressed="true"]{background:linear-gradient(110deg,#12b9de,#5d56df);color:#fff;box-shadow:0 0 14px rgba(25,215,245,.35)}
   .dur-pill[aria-pressed="true"] em{background:rgba(255,255,255,.22);color:#fff}
 
-  .desk-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) minmax(0,1fr);gap:12px;align-items:stretch}
-  .tier{position:relative;display:flex;flex-direction:column;padding:12px 14px 11px;border-radius:16px;border:1px solid rgba(122,158,245,.34);background:rgba(7,16,48,.74);transition:border-color .2s,box-shadow .2s,transform .2s}
+  .desk-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:stretch}
+  .tier{position:relative;display:flex;flex-direction:column;padding:13px 15px 12px;border-radius:16px;border:1px solid rgba(122,158,245,.34);background:rgba(7,16,48,.74);cursor:pointer;transition:border-color .2s,box-shadow .2s,transform .2s}
   .tier:hover{border-color:rgba(108,215,255,.7);transform:translateY(-1px)}
   .tier.is-selected{border-color:#53edff;box-shadow:0 0 22px rgba(34,210,248,.24),inset 0 0 0 1px rgba(145,245,255,.45);background:linear-gradient(155deg,rgba(10,34,76,.88),rgba(19,20,66,.9))}
   .tier.featured{border-color:rgba(92,226,255,.72);background:linear-gradient(155deg,rgba(12,34,82,.88),rgba(34,18,76,.88));box-shadow:0 0 28px rgba(80,140,255,.24)}
-  .tier-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
+  .tier-head{display:flex;align-items:center;justify-content:space-between;gap:6px;min-height:24px}
   .tier-badge{display:inline-block;padding:3px 8px;border-radius:99px;font:italic 800 10px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#a8f6ff;border:1px solid rgba(82,216,255,.45);background:rgba(14,52,96,.7)}
   .tier.featured .tier-badge{background:linear-gradient(95deg,#19e6ff,#8b5cff);color:#04081d;border-color:transparent}
   .tier-top-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:6px}
   .tier h3{margin:0;font:italic 800 clamp(17px,1.5vw,19.5px)/1.12 Inter,system-ui,Roboto,Arial,sans-serif}
-  .tier-sub{margin:3px 0 0;font:400 11.5px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;color:#c2d4ef}
-  .tier-price-row{display:flex;align-items:baseline;gap:8px;margin:7px 0 2px}
+  .tier-sub{margin:4px 0 0;min-height:31px;font:400 11.5px/1.32 Inter,system-ui,Roboto,Arial,sans-serif;color:#c2d4ef}
+  .tier-price-row{display:flex;align-items:baseline;gap:8px;margin:7px 0 3px;min-height:28px}
   .tier-price{font:italic 900 clamp(24px,2.2vw,28px)/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#54f2ff}
   .tier.featured .tier-price{color:#fff;text-shadow:0 0 16px rgba(64,225,255,.45)}
   .tier-old{font:italic 700 14px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#99a8cb;text-decoration:line-through}
   .tier-old[hidden]{display:none}
-  .tier-meta{margin:0 0 7px;font:600 11px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;color:#92e6ff}
-  .tier-list{list-style:none;margin:0 0 9px;padding:0;display:flex;flex-direction:column;gap:4px;font:400 11.8px/1.28 Inter,system-ui,Roboto,Arial,sans-serif;color:#dde8fb;flex:1}
+  .tier-meta{margin:0 0 8px;min-height:14px;font:600 11px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;color:#92e6ff}
+  .tier-list{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-direction:column;gap:4.5px;font:400 11.8px/1.28 Inter,system-ui,Roboto,Arial,sans-serif;color:#dde8fb;flex:1}
   .tier-list li.no{color:#8fa1c4}
-  .tier-pick{width:100%;min-height:34px;border-radius:99px;border:1px solid rgba(110,190,255,.55);background:rgba(16,42,92,.78);font:italic 800 12.5px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#e8f7ff;transition:background .18s,border-color .18s}
+  .tier-pick{width:100%;min-height:35px;border-radius:99px;border:1px solid rgba(110,190,255,.55);background:rgba(16,42,92,.78);font:italic 800 12.5px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#e8f7ff;transition:background .18s,border-color .18s}
   .tier.is-selected .tier-pick,.tier.featured .tier-pick{background:linear-gradient(100deg,#19e6ff,#3b7bff 55%,#a64dff);border-color:rgba(205,252,255,.8);color:#fff}
 
-  .action-strip{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,.95fr);gap:14px;align-items:center;margin-top:clamp(8px,1.1vh,12px);padding-top:clamp(8px,1.1vh,12px);border-top:1px solid rgba(110,165,245,.25)}
+  .action-strip{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);gap:16px;align-items:center;margin-top:clamp(9px,1.2vh,13px);padding-top:clamp(9px,1.2vh,13px);border-top:1px solid rgba(110,165,245,.25)}
   .action-left{display:flex;flex-direction:column;gap:5px}
   .action-left .sum{margin:0;justify-content:flex-start;text-align:left;font-size:13px}
   .action-left .sum::before,.action-left .sum::after{display:none}
-  .action-left .cta{max-width:420px;min-height:42px;font-size:15.5px}
+  .action-left .cta{width:100%;max-width:none;min-height:43px;font-size:15.5px}
   .action-note{margin:0;text-align:left;font:400 11px/1.28 Inter,system-ui,Roboto,Arial,sans-serif;color:#afc3e3}
   .trial-slot{margin-top:0}
-  .free{padding:9px 13px;min-height:48px;border-radius:14px}
+  .free{padding:11px 14px;min-height:56px;border-radius:14px}
   .free b{font-size:14px}
-  .free small.trial-hint{display:block;font:400 10.5px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;color:#b8d2f2;margin-top:1px}
+  .free small.trial-hint{display:block;font:400 10.5px/1.28 Inter,system-ui,Roboto,Arial,sans-serif;color:#b8d2f2;margin-top:2px}
 
   footer{margin-top:0;padding:8px 8px 10px;font-size:11px;background:rgba(4,7,26,.45);border-radius:12px 12px 0 0}
   .legal-links{margin-top:4px}
@@ -243,18 +245,21 @@ footer nav a:first-child{border:0}
 }
 @media(min-width:900px) and (max-height:830px){
   .top{height:48px}
-  .hero{padding-top:2px}
-  h1{font-size:32px}
-  .ul{margin:4px auto 5px}
-  .sub{font-size:12.5px;line-height:1.28}
-  .card{padding:10px 16px 9px;margin-bottom:4px}
+  .hero{padding:6px 16px 14px}
+  .txt{padding:6px 20px 8px}
+  h1{font-size:clamp(32px,3.2vw,38px);margin-top:4px}
+  .ul{margin:6px auto 7px}
+  .sub{font-size:13px;line-height:1.32}
+  .card{padding:10px 16px 9px;margin-bottom:5px}
   .desk-durations-wrap{margin-bottom:7px}
   .tier{padding:9px 12px}
   .tier h3{font-size:16.5px}
+  .tier-sub{min-height:29px;font-size:11px}
   .tier-price{font-size:23px}
   .tier-list{gap:3px;font-size:11.2px;margin-bottom:7px}
   .tier-pick{min-height:31px;font-size:12px}
-  .action-left .cta{min-height:38px;font-size:14.5px}
+  .action-left .cta{min-height:39px;font-size:14.5px}
+  .free{min-height:48px;padding:8px 12px}
   footer{padding:6px 8px 7px}
 }
 </style>
@@ -300,7 +305,7 @@ footer nav a:first-child{border:0}
       <p class="eb">MNEBYVPN · ПОДКЛЮЧИЛ И НЕ ПАРИШЬСЯ</p>
       <h1><span class="l1">Один доступ —</span><span class="l2">3 технологии</span></h1>
       <div class="ul"></div>
-      <p class="sub">Smart DNS — открывает то, куда не пускают из РФ (ChatGPT, Claude, Gemini и другие). VPN — ресурсы с ограничениями в РФ. Telegram-прокси — всегда на связи.</p>
+      <p class="sub">Smart DNS — открывает то, куда не пускают из РФ (ChatGPT, Claude, Gemini и другие).<br class="desk-br"> VPN — для ресурсов с ограничениями в РФ · Telegram-прокси — всегда на связи.</p>
     </div>
   </section>
 
@@ -609,6 +614,12 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
       const offer=findOffer(prod,selectedDays);
       setText($('#price-'+prod),offer?.available?offer.price:'—');
     }
+    const bundleOffer=findOffer('bundle',selectedDays);
+    if(bundleOffer?.available){
+      const rub=parseInt(String(bundleOffer.price).replace(/\s+/g,''),10);
+      if(Number.isFinite(rub)&&rub>0)setText($('#meta-bundle'),Math.round(rub/3)+' ₽/устройство · до 3 устройств');
+    }
+    setText($('#meta-smart_dns'),'1 000 000 DNS-запросов / '+selectedDays+' д');
     const oldBundle=$('#old-bundle');
     if(oldBundle)oldBundle.hidden=selectedDays!==30;
     deskCards.forEach(c=>c.classList.toggle('is-selected',c.dataset.cardProduct===selectedProduct));
@@ -652,6 +663,10 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
   mobProdButtons.forEach(b=>b.addEventListener('click',()=>choose(b.dataset.prod,selectedDays)));
   mobDurButtons.forEach(b=>b.addEventListener('click',()=>{if(!b.disabled)choose(selectedProduct,Number(b.dataset.d));}));
   deskDurButtons.forEach(b=>b.addEventListener('click',()=>choose(selectedProduct,Number(b.dataset.d))));
+  deskCards.forEach(c=>c.addEventListener('click',ev=>{
+    if(ev.target.closest('button,a'))return;
+    choose(c.dataset.cardProduct,selectedDays);
+  }));
   deskPicks.forEach(b=>b.addEventListener('click',()=>choose(b.dataset.pick,selectedDays,b.dataset.pick===selectedProduct)));
   button.addEventListener('click',()=>{if(!button.disabled)send('buy');});
   retry.addEventListener('click',e=>{if(ready){e.preventDefault();retry.hidden=true;send('refresh');}});
