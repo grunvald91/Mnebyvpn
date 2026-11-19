@@ -203,7 +203,7 @@ jobs:
           # Separate explicitly disposable DB and ephemeral keys. The test SSH
           # runner is injected: it MUST NEVER contact real FI217/RU188 hosts.
           test "$PGDATABASE" = mnebyvpn_test
-          sudo -E "$(command -v node)" --experimental-strip-types --test \
+          sudo "$(command -v node)" --experimental-strip-types --test \
             tests/ci/awg-delivery-disposable-e2e.test.ts
       # The SAME runtime dependencies that passed CI are shipped to the VPS.
       # Remote npm install after tests would resolve a different dependency graph.
