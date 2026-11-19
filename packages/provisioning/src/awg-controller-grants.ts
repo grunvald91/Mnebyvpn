@@ -110,8 +110,8 @@ export async function stageAwgGrant(
   try{
     await tx.query('BEGIN');
     const e=await tx.query<Entitlement>(
-      'SELECT id::text,product,state,revision,expires_at FROM entitlements '+
-      'WHERE id=$1 FOR SHARE',[input.entitlementId]);
+      'SELECT id::text,product,state,revision,expires_at '+
+      'FROM public.awg_worker_lock_entitlement($1::uuid)',[input.entitlementId]);
     const ent=e.rows[0];
     if(!ent||ent.id!==input.entitlementId||ent.product!=='vpn'||
        ent.state!=='ACTIVE'||ent.revision!==input.expectedBillingRevision||
@@ -120,12 +120,11 @@ export async function stageAwgGrant(
       throw new AwgControllerError('Billing entitlement not active/current');
 
     const enrollment=await tx.query<Enrolled>(
-      'SELECT endpoint_host,status FROM vpn_node_enrollment_inventory '+
-      'WHERE node_id=$1 FOR SHARE',[input.nodeId]);
+      'SELECT endpoint_host,status FROM public.awg_worker_lock_node($1)',[input.nodeId]);
     const item=enrollment.rows[0];
     const pools=await tx.query<NodePool>(
-      'SELECT node_id,endpoint_host,state,subnet_cidr::text AS subnet_cidr,verified_at,'+
-      'server_public_key FROM vpn_awg_node_pools WHERE node_id=$1 FOR SHARE',
+      'SELECT node_id,endpoint_host,state,subnet_cidr,verified_at,'+
+      'server_public_key FROM public.awg_worker_lock_pool($1)',
       [input.nodeId]);
     const pool=pools.rows[0];
     if(!item||item.status!=='enrolled'||!pool||

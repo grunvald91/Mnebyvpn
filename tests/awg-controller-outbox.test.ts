@@ -53,7 +53,7 @@ function deliveryDb(args:{
           product:'vpn',state:args.active===false?'EXPIRED':'ACTIVE',
           revision:11,expires_at:new Date(now.getTime()+1_800_000),
         }]};
-      if(sql.startsWith('SELECT p.state,p.verified_at,p.endpoint_host'))
+      if(sql.startsWith('SELECT state,verified_at,endpoint_host,status'))
         return {rows:[{
           state:'verified',verified_at:new Date(now.getTime()-2000),
           endpoint_host:'fi.mnebyvpn.site',
@@ -83,7 +83,7 @@ function deliveryDb(args:{
           product:'vpn',revision:args.billingRevision??11,
           expires_at:new Date(now.getTime()+60000),
         }]};
-      if(sql.startsWith('SELECT p.state,i.status,p.verified_at'))
+      if(sql.startsWith('SELECT state,status,verified_at'))
         return {rows:[{
           state:args.verified===false?'degraded':'verified',
           status:args.enrolled===false?'disabled':'enrolled',
