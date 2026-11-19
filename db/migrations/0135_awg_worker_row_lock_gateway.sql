@@ -7,6 +7,7 @@
 -- COMMIT/ROLLBACK without any round trip in the VPN data plane.
 BEGIN;
 
+DROP FUNCTION IF EXISTS public.awg_worker_lock_entitlement(uuid);
 CREATE FUNCTION public.awg_worker_lock_entitlement(p_entitlement uuid)
 RETURNS TABLE (
   id uuid, product text, state text, revision bigint, expires_at timestamptz
@@ -18,6 +19,7 @@ AS $$
     FROM public.entitlements AS e WHERE e.id=p_entitlement FOR SHARE;
 $$;
 
+DROP FUNCTION IF EXISTS public.awg_worker_lock_node(text);
 CREATE FUNCTION public.awg_worker_lock_node(p_node text)
 RETURNS TABLE (
   endpoint_host text,status text,identity_public_spki text
@@ -30,6 +32,7 @@ AS $$
     WHERE i.node_id=p_node AND p_node='fi-test-01' FOR SHARE;
 $$;
 
+DROP FUNCTION IF EXISTS public.awg_worker_lock_pool(text);
 CREATE FUNCTION public.awg_worker_lock_pool(p_node text)
 RETURNS TABLE (
   node_id text,endpoint_host text,state text,subnet_cidr text,
@@ -44,6 +47,7 @@ AS $$
     WHERE p.node_id=p_node AND p_node='fi-test-01' FOR SHARE;
 $$;
 
+DROP FUNCTION IF EXISTS public.awg_worker_lock_pool_node(text);
 CREATE FUNCTION public.awg_worker_lock_pool_node(p_node text)
 RETURNS TABLE (
   state text,verified_at timestamptz,endpoint_host text,status text

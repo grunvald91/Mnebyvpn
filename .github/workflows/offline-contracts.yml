@@ -156,6 +156,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0132_yookassa_and_3in1_catalog.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0133_vpn_awg_command_outbox.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0134_stars_ratio_and_3in1_bot.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0135_awg_worker_row_lock_gateway.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0002_billing_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0003_ipv6_claims_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0005_outbox_contract.sql
