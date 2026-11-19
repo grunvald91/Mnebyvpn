@@ -33,7 +33,6 @@ type GscIndexResult={inspectionResult?:{indexStatusResult?:{
 }}};
 type AuthCredentials={type?:string;client_email?:string;private_key?:string;token_uri?:string};
 type SearchMetrics={clicks:number;impressions:number;ctr:number|null;position:number|null;hasData:boolean};
-export type SearchPageMetric={path:string;current:SearchMetrics;previous:SearchMetrics;indexVerdict:string;coverage:string};
 export type GscReportInput={
   property:string;current:{startDate:string;endDate:string};previous:{startDate:string;endDate:string};
   totalsCurrent:GscResponse;totalsPrevious:GscResponse;pagesCurrent:GscResponse;
@@ -154,14 +153,15 @@ export function buildReport(input:GscReportInput):string{
     '',
     '## Канонические посадочные страницы',
     '',
-    '| Страница | Клики | Показы | CTR | Позиция | Вердикт индексации Google |',
-    '|---|---:|---:|---:|---:|---|',
+    '| Страница | Клики | Показы | Показы ранее | CTR | Позиция | Вердикт индексации Google |',
+    '|---|---:|---:|---:|---:|---:|---|',
   ];
   for(const path of GSC_URL_PATHS){
     const url=GSC_ORIGIN+path;
     const m=pageMetrics(input.pagesCurrent.rows,url);
+    const previousPage=pageMetrics(input.pagesPrevious.rows,url);
     const index=input.inspections[path]?.inspectionResult?.indexStatusResult;
-    lines.push(`| \`${path}\` | ${m.hasData?fmtNumber(m.clicks):'нет данных'} | ${m.hasData?fmtNumber(m.impressions):'нет данных'} | ${fmtRate(m.ctr)} | ${fmtPosition(m.position)} | ${safeCell(index?.verdict??'не проверено')} |`);
+    lines.push(`| \`${path}\` | ${m.hasData?fmtNumber(m.clicks):'нет данных'} | ${m.hasData?fmtNumber(m.impressions):'нет данных'} | ${previousPage.hasData?fmtNumber(previousPage.impressions):'нет данных'} | ${fmtRate(m.ctr)} | ${fmtPosition(m.position)} | ${safeCell(index?.verdict??'не проверено')} |`);
   }
   lines.push('',
     '## Запросы по темам (выборка Google)',
@@ -285,6 +285,47 @@ export async function readSearchConsoleReport(
   return {property,...dates,totalsCurrent,totalsPrevious,pagesCurrent,pagesPrevious,queryData,inspections};
 }
 
+
+/** Private, size-limited Telegram report: never call this with a public GitHub summary. */
+export function formatTelegramReport(input:GscReportInput):string{
+  const total=combineDailyRows(input.totalsCurrent.rows);
+  const previous=combineDailyRows(input.totalsPrevious.rows);
+  const lines=[
+    'MNEBYVPN · Google Search Console',
+    input.current.startDate+' — '+input.current.endDate+' (28 дней)',
+    'Показы: '+(total.hasData?fmtNumber(total.impressions):'нет данных')+
+      ' (ранее: '+(previous.hasData?fmtNumber(previous.impressions):'нет данных')+')',
+    'Клики: '+(total.hasData?fmtNumber(total.clicks):'нет данных')+
+      ' (ранее: '+(previous.hasData?fmtNumber(previous.clicks):'нет данных')+')',
+    'CTR: '+fmtRate(total.ctr)+' · позиция: '+fmtPosition(total.position),
+    '',
+    'Страницы:'
+  ];
+  for(const path of GSC_URL_PATHS){
+    const m=pageMetrics(input.pagesCurrent.rows,GSC_ORIGIN+path);
+    const verdict=input.inspections[path]?.inspectionResult?.indexStatusResult?.verdict??'не проверено';
+    lines.push(path+': '+(m.hasData?fmtNumber(m.impressions)+' показов / '+fmtNumber(m.clicks)+' кликов':'нет данных')+'; индекс: '+safeCell(verdict));
+  }
+  const grouped=groupedQuerySamples(input.queryData.rows);
+  lines.push('','Запросы по темам (выборка, не весь рынок):');
+  for(const g of grouped.slice(0,8))lines.push(g.topic+': '+fmtNumber(g.impressions)+' показов');
+  lines.push('','Отсутствие показов не доказывает отсутствие индексации. Данные Google могут поступать с задержкой.');
+  return lines.join('\n').slice(0,3800);
+}
+
+export async function sendPrivateTelegramReport(
+  summary:string,token:string,chatId:string,fetchImpl:HttpClient=fetch,
+):Promise<void>{
+  if(!/^\d{5,12}:[A-Za-z0-9_-]{30,}$/.test(token)||
+    !/^-?\d{5,20}$/.test(chatId))throw Error('GSC_TELEGRAM_CONFIG_INVALID');
+  if(summary.length>3900)throw Error('GSC_TELEGRAM_REPORT_TOO_LONG');
+  const reply=await requestJSON(fetchImpl,'https://api.telegram.org/bot'+token+'/sendMessage',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({chat_id:chatId,text:summary,disable_web_page_preview:true}),
+  },'TELEGRAM');
+  if(reply.ok!==true)throw Error('GSC_TELEGRAM_DELIVERY_FAILED');
+}
+
 export async function main():Promise<void>{
   const credential=process.env.GSC_SERVICE_ACCOUNT_JSON;
   if(!credential)throw Error('GSC_NOT_CONFIGURED');
@@ -292,8 +333,17 @@ export async function main():Promise<void>{
   const input=await readSearchConsoleReport(property,credential);
   const report=buildReport(input);
   const summary=process.env.GITHUB_STEP_SUMMARY;
-  if(summary)appendFileSync(summary,report+'\n',{encoding:'utf8'});
-  else process.stdout.write(report);
+  if(process.env.GITHUB_ACTIONS==='true'){
+    // This repository is public. Never print metrics into public Action logs/summaries/artifacts.
+    const botToken=process.env.GSC_TELEGRAM_BOT_TOKEN||'';
+    const adminChat=process.env.GSC_TELEGRAM_CHAT_ID||'';
+    if(!botToken||!adminChat)throw Error('GSC_PRIVATE_DELIVERY_NOT_CONFIGURED');
+    await sendPrivateTelegramReport(formatTelegramReport(input),botToken,adminChat);
+    if(summary)appendFileSync(summary,'GSC: отчёт доставлен в приватный Telegram. Данные не публиковались в GitHub.\n',{encoding:'utf8'});
+  }else{
+    // Local execution is permitted: stdout stays on the operator's own machine.
+    process.stdout.write(report);
+  }
   console.log('GSC_REPORT_STATUS=PASS; PAGES='+GSC_URL_PATHS.length+'; RAW_QUERIES_EXPORTED=0');
 }
 
