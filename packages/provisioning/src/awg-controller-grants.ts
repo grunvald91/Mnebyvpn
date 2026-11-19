@@ -72,8 +72,16 @@ function assertNow(date:Date){
 }
 type Db=Pick<Pool,'connect'>;
 type Entitlement={
-  id:string;product:string;state:string;revision:number;expires_at:Date|null;
+  id:string;product:string;state:string;revision:number|string;expires_at:Date|null;
 };
+/** PostgreSQL int8 (bigint) is a decimal STRING in node-postgres by default.
+ * Compare revisions exactly; never coerce an out-of-range bigint to number. */
+function exactBillingRevision(actual:unknown,expected:number):boolean{
+  if(!Number.isSafeInteger(expected)||expected<1)return false;
+  if(typeof actual==='number')return Number.isSafeInteger(actual)&&actual===expected;
+  return typeof actual==='string'&&/^[1-9]\d{0,15}$/.test(actual)&&
+    actual===String(expected);
+}
 type Enrolled={
   endpoint_host:string;status:string;
 };
@@ -114,7 +122,7 @@ export async function stageAwgGrant(
       'FROM public.awg_worker_lock_entitlement($1::uuid)',[input.entitlementId]);
     const ent=e.rows[0];
     if(!ent||ent.id!==input.entitlementId||ent.product!=='vpn'||
-       ent.state!=='ACTIVE'||ent.revision!==input.expectedBillingRevision||
+       ent.state!=='ACTIVE'||!exactBillingRevision(ent.revision,input.expectedBillingRevision)||
        !(ent.expires_at instanceof Date)||
        ent.expires_at.getTime()<=now.getTime())
       throw new AwgControllerError('Billing entitlement not active/current');
