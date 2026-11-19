@@ -42,3 +42,11 @@
  .seo-faq{margin-bottom:26px}
  .seo-next{padding:20px}
 }
+
+/* Verifiable primary sources, distinct from product marketing claims. */
+.seo-sources{max-width:830px;margin:0 auto 35px;padding:12px 0 25px;border-bottom:1px solid rgba(185,213,236,.13)}
+.seo-sources h2{font-size:clamp(21px,2.8vw,27px);margin:8px 0 12px}
+.seo-sources p{color:#bacde0;line-height:1.6}
+.seo-sources ul{padding-left:21px;display:grid;gap:9px}
+.seo-sources a{color:#96eff7;text-decoration:underline;text-underline-offset:4px}
+.seo-sources a:hover{color:#fff}
