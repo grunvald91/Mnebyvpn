@@ -12,14 +12,14 @@ function pretendController(mode:'empty'|'renew'|'revoke'|'denied'|'retryRenew'|'
   const queries:string[]=[];
   let staged=0;
   const row={node_id:'fi-test-01',entitlement_id:ENTITLEMENT,
-    allocation_revision:3,billing_revision:7,peer_public_key:KEY,
+    allocation_revision:3,billing_revision:'7',peer_public_key:KEY,
     allocation_state:mode==='retryRevoke'?'revoked':mode==='retryRenew'?'staged':'applied'};
   const client={
     async query(sql:string,args:unknown[]=[]){
       queries.push(sql);
       if(sql.startsWith('SELECT id::text,product,state,revision'))
         return {rows:[{id:ENTITLEMENT,product:'vpn',state:'ACTIVE',
-          revision:7,expires_at:new Date(NOW.getTime()+30*86400000)}]};
+          revision:'7',expires_at:new Date(NOW.getTime()+30*86400000)}]};
       if(sql.startsWith('SELECT endpoint_host,status'))
         return {rows:[{endpoint_host:'fi.mnebyvpn.site',status:'enrolled'}]};
       if(sql.startsWith('SELECT node_id,endpoint_host,state,subnet_cidr'))
@@ -61,7 +61,7 @@ test('background no-op needs no SSH, credentials or user connection',async()=>{
   assert(!controller.queries.some(s=>s.includes('socket')||s.includes('handshake')));
 });
 
-test('asynchronous renewal uses active billing and existing peer revision',async()=>{
+test('asynchronous renewal normalizes real PostgreSQL bigint billing revision',async()=>{
   const controller=pretendController('renew');
   const result=await stageDueOfflineAwgMaintenance(controller.db as never,privateKey,NOW);
   assert.deepEqual(result,{stagedRenewals:1,stagedRevocations:0,failed:0});

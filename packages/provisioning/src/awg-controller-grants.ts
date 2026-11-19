@@ -72,8 +72,21 @@ function assertNow(date:Date){
 }
 type Db=Pick<Pool,'connect'>;
 type Entitlement={
-  id:string;product:string;state:string;revision:number;expires_at:Date|null;
+  id:string;product:string;state:string;revision:number|string;expires_at:Date|null;
 };
+/** node-postgres returns PostgreSQL int8 (bigint) as a string by default.
+ * Reject lossy conversions and non-canonical representations. */
+export function normalizeAwgBillingRevision(value:unknown):number|null{
+  if(typeof value==='number')
+    return Number.isSafeInteger(value)&&value>=1?value:null;
+  if(typeof value!=='string'||!/^[1-9]\d{0,15}$/.test(value))return null;
+  const parsed=Number(value);
+  return Number.isSafeInteger(parsed)&&String(parsed)===value?parsed:null;
+}
+function exactBillingRevision(actual:unknown,expected:number):boolean{
+  return Number.isSafeInteger(expected)&&expected>=1&&
+    normalizeAwgBillingRevision(actual)===expected;
+}
 type Enrolled={
   endpoint_host:string;status:string;
 };
@@ -114,7 +127,7 @@ export async function stageAwgGrant(
       'FROM public.awg_worker_lock_entitlement($1::uuid)',[input.entitlementId]);
     const ent=e.rows[0];
     if(!ent||ent.id!==input.entitlementId||ent.product!=='vpn'||
-       ent.state!=='ACTIVE'||ent.revision!==input.expectedBillingRevision||
+       ent.state!=='ACTIVE'||!exactBillingRevision(ent.revision,input.expectedBillingRevision)||
        !(ent.expires_at instanceof Date)||
        ent.expires_at.getTime()<=now.getTime())
       throw new AwgControllerError('Billing entitlement not active/current');
@@ -233,7 +246,7 @@ export async function stageAwgRevoke(
   try{
     await tx.query('BEGIN');
     const found=await tx.query<Allocation>(
-      'SELECT peer_public_key,host(client_ipv4) AS client_ipv4,revision '+
+      'SELECT peer_public_key,host(client_ipv4) AS client_ipv4,revision,state '+
       'FROM vpn_awg_peer_allocations WHERE node_id=$1 AND entitlement_id=$2 FOR UPDATE',
       [input.nodeId,input.entitlementId]);
     const old=found.rows[0];

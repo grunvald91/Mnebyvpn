@@ -11,7 +11,7 @@
  */
 import type {KeyObject} from 'node:crypto';
 import type {Pool} from 'pg';
-import {stageAwgGrant,stageAwgRevoke} from './awg-controller-grants.ts';
+import {stageAwgGrant,stageAwgRevoke,normalizeAwgBillingRevision} from './awg-controller-grants.ts';
 
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const REFRESH_BEFORE_MS=2*24*60*60*1000;
@@ -88,14 +88,15 @@ export async function stageDueOfflineAwgMaintenance(
     );
     for(const row of renew.rows){
       try{
+        const billingRevision=normalizeAwgBillingRevision(row.billing_revision);
         if(!UUID.test(row.entitlement_id)||row.node_id!=='fi-test-01'||
            !['applied','staged'].includes(row.allocation_state)||
            !Number.isSafeInteger(row.allocation_revision)||
-           !Number.isSafeInteger(row.billing_revision))throw Error('Invalid candidate');
+           billingRevision===null)throw Error('Invalid candidate');
         await stageAwgGrant(db,{
           nodeId:row.node_id,entitlementId:row.entitlement_id,
           peerPublicKey:row.peer_public_key,
-          expectedBillingRevision:row.billing_revision,
+          expectedBillingRevision:billingRevision,
           expectedAllocationRevision:row.allocation_revision,
           expectedAllocationState:row.allocation_state,
         },key,now);

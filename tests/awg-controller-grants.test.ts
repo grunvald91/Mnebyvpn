@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {generateKeyPairSync,verify} from 'node:crypto';
 import test from 'node:test';
 import {
-  stageAwgGrant,stageAwgRevoke,awgControllerPayload,
+  stageAwgGrant,stageAwgRevoke,awgControllerPayload,normalizeAwgBillingRevision,
 } from '../packages/provisioning/src/awg-controller-grants.ts';
 
 const NOW=new Date('2026-11-18T04:30:00.000Z');
@@ -13,7 +13,7 @@ const {privateKey,publicKey}=generateKeyPairSync('ed25519');
 function fakeDb(options:{
   entitled?:boolean;enrolled?:boolean;verified?:boolean;
   released?:boolean;existing?:boolean;expired?:boolean;
-  expiresDays?:number;
+  expiresDays?:number;pgBigint?:boolean;
 }={}){
   const queries:string[]=[];
   const client={
@@ -21,7 +21,7 @@ function fakeDb(options:{
       queries.push(sql);
       if(sql.startsWith('SELECT id::text,product,state,revision'))
         return {rows:[{id:ENTITLEMENT,product:'vpn',
-          state:options.entitled===false?'EXPIRED':'ACTIVE',revision:7,
+          state:options.entitled===false?'EXPIRED':'ACTIVE',revision:options.pgBigint?'7':7,
           expires_at:new Date(NOW.getTime()+(options.expired? -1000:(options.expiresDays??1)*86400000))}]};
       if(sql.startsWith('SELECT endpoint_host,status'))
         return {rows:[{endpoint_host:'fi.mnebyvpn.site',
@@ -142,4 +142,20 @@ test('controller signs paid term locally capped at seven days, not an hourly cal
   assert.equal(result.command.expiresAt,'2026-11-25T04:30:00.000Z');
   assert(verify(null,awgControllerPayload(result.command),publicKey,
     Buffer.from(result.command.signature,'base64url')));
+});
+
+test('PostgreSQL int8 billing revision is accepted exactly, never rounded',async()=>{
+  assert.equal(normalizeAwgBillingRevision('7'),7);
+  assert.equal(normalizeAwgBillingRevision(7),7);
+  for(const value of ['7.0','07','-7','+7','9007199254740992',
+                      '9999999999999999',0,-1,7.4,null,undefined]){
+    assert.equal(normalizeAwgBillingRevision(value),null,String(value));
+  }
+  const {db,queries}=fakeDb({pgBigint:true});
+  const result=await stageAwgGrant(db as never,{
+    nodeId:'fi-test-01',entitlementId:ENTITLEMENT,
+    peerPublicKey:KEY,expectedBillingRevision:7,
+  },privateKey,NOW);
+  assert.equal(result.staged,true);
+  assert(queries.includes('COMMIT'));
 });
