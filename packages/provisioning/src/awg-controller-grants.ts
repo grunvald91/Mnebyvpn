@@ -74,13 +74,18 @@ type Db=Pick<Pool,'connect'>;
 type Entitlement={
   id:string;product:string;state:string;revision:number|string;expires_at:Date|null;
 };
-/** PostgreSQL int8 (bigint) is a decimal STRING in node-postgres by default.
- * Compare revisions exactly; never coerce an out-of-range bigint to number. */
+/** node-postgres returns PostgreSQL int8 (bigint) as a string by default.
+ * Reject lossy conversions and non-canonical representations. */
+export function normalizeAwgBillingRevision(value:unknown):number|null{
+  if(typeof value==='number')
+    return Number.isSafeInteger(value)&&value>=1?value:null;
+  if(typeof value!=='string'||!/^[1-9]\d{0,15}$/.test(value))return null;
+  const parsed=Number(value);
+  return Number.isSafeInteger(parsed)&&String(parsed)===value?parsed:null;
+}
 function exactBillingRevision(actual:unknown,expected:number):boolean{
-  if(!Number.isSafeInteger(expected)||expected<1)return false;
-  if(typeof actual==='number')return Number.isSafeInteger(actual)&&actual===expected;
-  return typeof actual==='string'&&/^[1-9]\d{0,15}$/.test(actual)&&
-    actual===String(expected);
+  return Number.isSafeInteger(expected)&&expected>=1&&
+    normalizeAwgBillingRevision(actual)===expected;
 }
 type Enrolled={
   endpoint_host:string;status:string;
