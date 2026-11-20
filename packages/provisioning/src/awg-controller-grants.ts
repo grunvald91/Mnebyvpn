@@ -57,6 +57,9 @@ function nextClientAddress(subnet:string,used:string[]):string{
   const prefix=approvedSubnet(subnet);
   const assigned=new Set(used);
   for(let n=2;n<=254;n++){
+    // .253 is reserved for the independent 30-minute FI217 encrypted canary.
+    // Never allocate that synthetic IP to a paying subscriber.
+    if(n===253)continue;
     const address=prefix+'.'+n;
     if(!assigned.has(address))return address;
   }
