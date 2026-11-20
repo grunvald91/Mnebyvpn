@@ -878,7 +878,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     if(!owner){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
     try{
       const profile=await loadVerifiedAwgMaterial(
-        subscriptionPool,owner,publicKey,awgHeaderProtectionKey,awgServerPublicKey);
+        subscriptionPool,owner,publicKey,awgHeaderProtectionKey,awgServerPublicKey,
+        sessionHash(awgMatch[1]));
       if(!profile){json(res,404,{code:'AWG_PEER_NOT_ACKNOWLEDGED'});return;}
       json(res,200,profile);
     }catch{
