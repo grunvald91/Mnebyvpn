@@ -74,6 +74,11 @@ jobs:
           set -euo pipefail
           bash -n ops/controller188-runtime/stage.sh
           node --test tests/controller188-runtime.test.mjs
+      - name: Verify on-device X25519 and private-key-free FI browser registration
+        run: |
+          set -Eeuo pipefail
+          node --check apps/web/public/awg-setup.js
+          node --test tests/awg-browser-setup.test.mjs
       - name: Test isolated controller key bootstrap as root on disposable CI runner
         run: |
           set -euo pipefail
@@ -157,6 +162,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0133_vpn_awg_command_outbox.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0134_stars_ratio_and_3in1_bot.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0135_awg_worker_row_lock_gateway.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0136_awg_device_enrollment_queue.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0002_billing_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0003_ipv6_claims_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0005_outbox_contract.sql
@@ -201,6 +207,16 @@ jobs:
         run: |
           set -Eeuo pipefail
           node --experimental-strip-types --test tests/ci/awg-material-readonly-pg.test.ts
+      - name: Exercise FI217 session-gated public-key registration in disposable PostgreSQL
+        env:
+          PGPASSWORD: test
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: test
+          PGDATABASE: mnebyvpn_test
+        run: |
+          set -Eeuo pipefail
+          node --experimental-strip-types --test tests/ci/awg-device-registration-pg.test.ts
       - name: Prove signed AWG grant ACK and guarded revoke in disposable PostgreSQL
         env:
           PGPASSWORD: test
