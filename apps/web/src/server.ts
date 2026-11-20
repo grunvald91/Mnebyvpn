@@ -19,6 +19,8 @@ import {additionalNodeVerificationKey,loadAdditionalVpnLinks}
   from '../../../packages/provisioning/src/multi-node-subscriptions.ts';
 import {isCanonicalAwgPublicKey,loadVerifiedAwgMaterial}
   from '../../../packages/provisioning/src/awg-subscriber-material.ts';
+import {deriveSubscriptionAwgIdentity,verifiedIncyAwgLine}
+  from '../../../packages/provisioning/src/awg-in-subscription.ts';
 import {
   prepareWebsiteProdamusCheckout, prepareWebsiteYookassaCheckout, type PayformLinkTransport,
 } from '../../../packages/billing/src/website-checkout.ts';
@@ -145,6 +147,15 @@ const awgHeaderProtectionKey=awgMaterialEnabled
   ?required('WEB_FI_AWG_HEADER_PROTECTION_KEY'):'';
 const awgServerPublicKey=awgMaterialEnabled
   ?required('WEB_FI_AWG_SERVER_PUBLIC_KEY'):'';
+// One FI access under the EXISTING RU188 VPN entitlement and /sub bearer.
+// No second customer subscription, payment check or manual profile link.
+const awgInSubscriptionEnabled=
+  process.env.WEB_FI_AWG_IN_SUBSCRIPTION_ENABLED==='yes';
+const awgSubscriptionIdentityRoot=awgInSubscriptionEnabled
+  ?required('AWG_INCY_SUBSCRIPTION_SEED'):'';
+if(awgInSubscriptionEnabled&&!awgMaterialEnabled)
+  throw Error('Mixed AWG subscription requires verified FI material');
+
 if(awgMaterialEnabled&&
    (!isCanonicalAwgPublicKey(awgHeaderProtectionKey)||
     !isCanonicalAwgPublicKey(awgServerPublicKey)))
@@ -861,7 +872,27 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
           console.error('Additional VPN node registry unavailable');
         }
       }
-      const profile=[legacyProfile,...extraProfiles].join('\n');
+      // INCY Android/iOS accepts native AmneziaWG URIs in the SAME base64
+      // feed as VLESS. The canonical entitlement, token, expiry and RU188
+      // signed FI ACK are rechecked; an unready node is omitted, not faked.
+      // Karing currently gets only its existing verified VLESS variants.
+      let fiProfile:string|null=null;
+      if(awgInSubscriptionEnabled&&requestedClient!=='karing'){
+        try{
+          const identity=deriveSubscriptionAwgIdentity(
+            owner.entitlementId,awgSubscriptionIdentityRoot);
+          const material=await loadVerifiedAwgMaterial(
+            subscriptionPool,owner,identity.publicKey,
+            awgHeaderProtectionKey,awgServerPublicKey,
+            sessionHash(subMatch[1]));
+          if(material)fiProfile=verifiedIncyAwgLine(material,identity);
+        }catch{
+          // Never log token, peer keys, private keys or raw response bytes.
+          console.error('FI AWG subscription entry unavailable');
+        }
+      }
+      const profile=[legacyProfile,...extraProfiles,
+        ...(fiProfile?[fiProfile]:[])].join('\n');
       // Standard V2Ray base64 subscription: clients repeatedly fetch this URL.
       // Network revocation is enforced both in DB and by the real Xray node.
       res.setHeader('subscription-userinfo',

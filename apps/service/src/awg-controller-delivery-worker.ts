@@ -14,7 +14,8 @@ import {pathToFileURL} from 'node:url';
 import {Pool} from 'pg';
 import {deliverNextAwgCommand} from '../../../packages/provisioning/src/awg-trusted-ssh-delivery.ts';
 import {stageDueOfflineAwgMaintenance} from '../../../packages/provisioning/src/awg-offline-maintenance.ts';
-import {stageNextFiAwgDevice} from '../../../packages/provisioning/src/awg-device-registration-worker.ts';
+import {stageNextFiAwgDevice,enqueueFiAwgActiveSubscriptions}
+  from '../../../packages/provisioning/src/awg-device-registration-worker.ts';
 
 type DeliveryResult={status:'idle'}|{status:'acknowledged';outboxId:string};
 type Deliver=()=>Promise<DeliveryResult>;
@@ -103,6 +104,9 @@ async function main():Promise<void>{
     sshIdentityFile:process.env.AWG_CONTROLLER_SSH_IDENTITY_FILE??'',
     pinnedKnownHostsFile:process.env.AWG_CONTROLLER_SSH_KNOWN_HOSTS_FILE??'',
   };
+  // RU188 owns one additional peer identity per canonical entitlement,
+  // NOT a second subscription, token, purchase or access controller.
+  const subscriptionIdentityRoot=process.env.AWG_INCY_SUBSCRIPTION_SEED??'';
   const db=new Pool({connectionString:url,max:1,connectionTimeoutMillis:3000,
                      idleTimeoutMillis:12000});
   const abort=new AbortController();
@@ -120,6 +124,7 @@ async function main():Promise<void>{
     // Keep deliveries moving even if a maintenance cycle fails; the next
     // cycle retries while the FI node keeps honoring its local signed ledger.
     let nextMaintenanceAt=0;
+    let nextSubscriptionEnrollmentAt=0;
     await runAwgDeliveryLoop(
       async()=>{
         const current=Date.now();
@@ -130,6 +135,18 @@ async function main():Promise<void>{
             if(result.failed>0)process.stderr.write('AWG_OFFLINE_MAINTENANCE_PARTIAL\n');
           }catch{
             process.stderr.write('AWG_OFFLINE_MAINTENANCE_RETRY\n');
+          }
+        }
+        // All already paid/trial-entitled subscribers are enrolled for FI
+        // asynchronously. Connections and /sub requests never call RU188.
+        if(subscriptionIdentityRoot&&current>=nextSubscriptionEnrollmentAt){
+          nextSubscriptionEnrollmentAt=current+60_000;
+          try{
+            const queued=await enqueueFiAwgActiveSubscriptions(
+              db,subscriptionIdentityRoot,12);
+            if(queued>0)process.stdout.write('FI_AWG_SUBSCRIPTION_ENROLLMENT_QUEUED\n');
+          }catch{
+            process.stderr.write('FI_AWG_SUBSCRIPTION_ENROLLMENT_RETRY\n');
           }
         }
         // User-submitted PUBLIC keys enter the existing signed grant

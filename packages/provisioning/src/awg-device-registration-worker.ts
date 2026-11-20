@@ -8,6 +8,7 @@
  */
 import type {Pool} from 'pg';
 import type {KeyObject} from 'node:crypto';
+import {deriveSubscriptionAwgIdentity} from './awg-in-subscription.ts';
 import {
   stageAwgGrant,normalizeAwgBillingRevision,
 } from './awg-controller-grants.ts';
@@ -116,4 +117,79 @@ export async function stageNextFiAwgDevice(
       kind==='retry'?(row.attempts>=98?'blocked':'queued'):'staged',next],
   );
   return {status:kind};
+}
+
+/**
+ * Automatic subscription-wide FI217 enrollment. RU188 is the single source
+ * of truth: every active, node-acknowledged VPN entitlement has the right to
+ * the same FI pool, without a second purchase, link or browser registration.
+ *
+ * This function only queues the existing public-key enrollment operation.
+ * Actual signed lease, FI application and acknowledgement still use the
+ * already deployed, asynchronous AWG outbox and trusted delivery worker.
+ * No packet or subscription HTTP request waits for this loop.
+ */
+export async function enqueueFiAwgActiveSubscriptions(
+  db:Pick<Pool,'query'>,identityRoot:string,limit=12,
+):Promise<number>{
+  if(!Number.isSafeInteger(limit)||limit<1||limit>40)
+    throw Error('Invalid bounded FI subscription batch');
+  // Refuse a missing or malformed root even when no customers are present.
+  deriveSubscriptionAwgIdentity('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',identityRoot);
+  const candidates=await db.query<{
+    entitlement_id:string;billing_revision:number|string;
+  }>(
+    'SELECT e.id::text AS entitlement_id,e.revision AS billing_revision '+
+    'FROM entitlements e JOIN provisioning_state v ON '+
+    "v.entitlement_id=e.id AND v.adapter='vpn' "+
+    'AND v.applied_revision=e.revision AND v.last_observed_at IS NOT NULL '+
+    'JOIN vpn_release_flags f ON '+
+    "f.feature='vpn_awg_clients' AND f.enabled=true "+
+    'JOIN vpn_awg_node_pools p ON '+
+    "p.node_id='fi-test-01' AND p.state='verified' "+
+    "AND p.endpoint_host='fi.mnebyvpn.site' "+
+    "AND p.verified_at>clock_timestamp()-interval '1 hour' "+
+    "AND p.verified_at<=clock_timestamp()+interval '30 seconds' "+
+    'JOIN vpn_node_enrollment_inventory n ON '+
+    "n.node_id=p.node_id AND n.status='enrolled' "+
+    "WHERE e.product='vpn' AND e.state='ACTIVE' "+
+    'AND e.expires_at>clock_timestamp() '+
+    'AND NOT EXISTS(SELECT 1 FROM vpn_awg_device_requests q '+
+    'WHERE q.entitlement_id=e.id) '+
+    'AND NOT EXISTS(SELECT 1 FROM vpn_awg_peer_allocations a '+
+    "WHERE a.entitlement_id=e.id AND a.node_id='fi-test-01') "+
+    'ORDER BY e.expires_at ASC,e.id ASC LIMIT $1',[limit],
+  );
+  let queued=0;
+  for(const candidate of candidates.rows){
+    const rev=normalizeAwgBillingRevision(candidate.billing_revision);
+    if(!UUID.test(candidate.entitlement_id)||rev===null)
+      throw Error('Invalid canonical VPN subscription record');
+    const identity=deriveSubscriptionAwgIdentity(candidate.entitlement_id,identityRoot);
+    // Re-check billing/release at INSERT time: race with expiration, cancellation
+    // or an existing browser-enrolled device never changes an existing binding.
+    const result=await db.query(
+      'INSERT INTO vpn_awg_device_requests '+
+      '(entitlement_id,node_id,peer_public_key,billing_revision) '+
+      "SELECT e.id,'fi-test-01',$2,e.revision FROM entitlements e "+
+      'JOIN provisioning_state v ON '+
+      "v.entitlement_id=e.id AND v.adapter='vpn' "+
+      'AND v.applied_revision=e.revision AND v.last_observed_at IS NOT NULL '+
+      'JOIN vpn_release_flags f ON '+
+      "f.feature='vpn_awg_clients' AND f.enabled=true "+
+      'JOIN vpn_awg_node_pools p ON '+
+      "p.node_id='fi-test-01' AND p.state='verified' "+
+      "AND p.verified_at>clock_timestamp()-interval '1 hour' "+
+      "WHERE e.id=$1::uuid AND e.revision=$3 "+
+      "AND e.product='vpn' AND e.state='ACTIVE' "+
+      'AND e.expires_at>clock_timestamp() '+
+      'AND NOT EXISTS(SELECT 1 FROM vpn_awg_peer_allocations a '+
+      "WHERE a.entitlement_id=e.id AND a.node_id='fi-test-01') "+
+      'ON CONFLICT DO NOTHING',
+      [candidate.entitlement_id,identity.publicKey,rev],
+    );
+    if(result.rowCount===1)queued++;
+    else if(result.rowCount!==0)throw Error('Unexpected subscription enrollment count');
+  }
+  return queued;
 }
