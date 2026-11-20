@@ -65,9 +65,9 @@ test('RU188 auto-backfills all eligible subscription rights into its existing qu
           {entitlement_id:id2,billing_revision:12},
         ],rowCount:2};
       }
-      if(sql.startsWith('INSERT INTO vpn_awg_device_requests ')){
+      if(sql.startsWith('SELECT public.awg_controller_enqueue_fi_subscription(')){
         inserts.push({sql,args});
-        return {rows:[],rowCount:1};
+        return {rows:[{queued:true}],rowCount:1};
       }
       throw Error('Unexpected SQL '+sql.slice(0,60));
     },
@@ -77,10 +77,8 @@ test('RU188 auto-backfills all eligible subscription rights into its existing qu
   assert.deepEqual(inserts[0]!.args,[a,deriveSubscriptionAwgIdentity(a,root).publicKey,11]);
   assert.deepEqual(inserts[1]!.args,[b,deriveSubscriptionAwgIdentity(b,root).publicKey,12]);
   for(const {sql} of inserts){
-    assert(sql.includes('ON CONFLICT DO NOTHING'));
-    assert(sql.includes("e.product='vpn' AND e.state='ACTIVE'"));
-    assert(sql.includes("f.feature='vpn_awg_clients' AND f.enabled=true"));
-    assert(!/\b(?:DELETE|UPDATE|ALTER)\b/i.test(sql));
+    assert(sql.includes('public.awg_controller_enqueue_fi_subscription('));
+    assert(!/\b(?:INSERT|DELETE|UPDATE|ALTER)\b/i.test(sql));
   }
   await assert.rejects(enqueueFiAwgActiveSubscriptions(db as never,root,999));
 });
