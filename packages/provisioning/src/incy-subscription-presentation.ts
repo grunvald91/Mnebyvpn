@@ -1,0 +1,52 @@
+/** INCY presentation of the existing, verified RU188 VPN subscription.
+ *
+ * Do not change billing, server credentials, core transport endpoints or
+ * already signed AWG peers. Reality remains installed server-side, but is no
+ * longer advertised to customers until independently proven functional.
+ */
+export const INCY_SITE_URL='https://mnebyvpn.site';
+export const INCY_BOT_URL='https://t.me/MNEBYVPN_bot';
+export const INCY_SUPPORT_URL='https://t.me/MNEBYVPN_bot?start=support';
+
+/** The upstream bridge is validated separately (including its WS auth).
+ * Only the canonical verified German WebSocket URI is returned. */
+export function germanWebSocketOnly(validatedNodeProfile:string):string{
+  const links=validatedNodeProfile.split('\n');
+  const ws=links.filter(link=>{
+    try{
+      const uri=new URL(link);
+      return uri.protocol==='vless:' && uri.hostname==='cdn.servgo.ru' &&
+        uri.port==='8443' && uri.searchParams.get('type')==='ws' &&
+        uri.searchParams.get('security')==='tls';
+    }catch{return false;}
+  });
+  if(ws.length!==1)throw Error('Expected one verified German WS transport');
+  const uri=new URL(ws[0]!);
+  uri.hash=encodeURIComponent('🇩🇪 MNEBYVPN · Германия · WebSocket');
+  return uri.toString();
+}
+
+/** INCY expects a Unix expiration timestamp in SECONDS, not a count of days
+ * and not the lifetime of the reusable HTTPS bearer URL. No fabricated
+ * traffic totals or free trial expiry: always use authoritative entitlement.
+ */
+export function incySubscriptionHeaders(expiresAt:Date):Record<string,string>{
+  const ms=expiresAt?.getTime();
+  if(!(expiresAt instanceof Date)||!Number.isFinite(ms))
+    throw Error('Invalid VPN entitlement expiry');
+  const expire=Math.floor(ms!/1000);
+  if(!Number.isSafeInteger(expire)||expire<=0)
+    throw Error('Unrepresentable INCY expiry');
+  return {
+    'subscription-userinfo':'upload=0;download=0;total=0;expire='+expire,
+    'profile-title':'base64:'+Buffer.from('MNEBYVPN','utf8').toString('base64'),
+    'profile-update-interval':'1',
+    'profile-web-page-url':INCY_SITE_URL,
+    // INCY's standard support button opens the bot with an explicit
+    // support deep-link payload; the client does not need Premium API.
+    'support-url':INCY_SUPPORT_URL,
+    // INCY's optional "Premium" action is a provider account/purchase link.
+    // The existing bot is the subscription/renewal management entrypoint.
+    'premium-url':INCY_BOT_URL,
+  };
+}
