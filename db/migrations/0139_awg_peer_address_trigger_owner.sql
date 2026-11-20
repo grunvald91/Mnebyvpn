@@ -12,15 +12,20 @@ BEGIN;
 DO $fi_owner$
 DECLARE
   actual_owner text;
+  pool_owner text;
 BEGIN
-  SELECT pg_get_userbyid(p.proowner) INTO actual_owner
+  SELECT pg_catalog.pg_get_userbyid(p.proowner) INTO actual_owner
   FROM pg_catalog.pg_proc p
   JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
   WHERE n.nspname='public' AND p.proname='vpn_awg_enforce_address_pool'
     AND p.pronargs=0
     AND p.prorettype='pg_catalog.trigger'::pg_catalog.regtype;
-  IF actual_owner IS DISTINCT FROM 'mnebyvpn_stage' THEN
-    RAISE EXCEPTION 'Unapproved FI allocation trigger owner';
+  SELECT pg_catalog.pg_get_userbyid(c.relowner) INTO pool_owner
+  FROM pg_catalog.pg_class c
+  WHERE c.oid='public.vpn_awg_node_pools'::pg_catalog.regclass;
+  IF actual_owner IS DISTINCT FROM current_user
+     OR pool_owner IS DISTINCT FROM current_user THEN
+    RAISE EXCEPTION 'Unapproved FI trigger or verified pool owner';
   END IF;
   IF NOT EXISTS(
     SELECT 1 FROM pg_catalog.pg_trigger t
