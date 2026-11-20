@@ -237,6 +237,7 @@ class MerchantTransport implements PayformLinkTransport {
 const html = await readFile(new URL('../public/index.html', import.meta.url));
 const fiAwgSetupHtml=await readFile(new URL('../public/awg-setup.html',import.meta.url));
 const fiAwgSetupJs=await readFile(new URL('../public/awg-setup.js',import.meta.url));
+const fiAwgSetupCss=await readFile(new URL('../public/awg-setup.css',import.meta.url));
 const landingArtHtml = await readFile(new URL('../public/landing-art.html', import.meta.url));
 const bg3Webm = await readFile(new URL('../public/bg3.webm', import.meta.url));
 const bg3Mp4 = await readFile(new URL('../public/bg3.mp4', import.meta.url));
@@ -820,6 +821,10 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     res.setHeader('X-Robots-Tag','noindex, nofollow');
     if(!fiAwgRegistrationAvailable){json(res,404,{code:'AWG_SETUP_NOT_READY'});return;}
     send(res,200,fiAwgSetupHtml,'text/html; charset=utf-8');return;
+  }
+  if(req.method==='GET'&&url.pathname==='/awg-setup.css'){
+    if(!fiAwgRegistrationAvailable){json(res,404,{code:'AWG_SETUP_NOT_READY'});return;}
+    send(res,200,fiAwgSetupCss,'text/css; charset=utf-8');return;
   }
   if(req.method==='GET'&&url.pathname==='/awg-setup.js'){
     if(!fiAwgRegistrationAvailable){json(res,404,{code:'AWG_SETUP_NOT_READY'});return;}
