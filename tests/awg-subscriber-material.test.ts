@@ -89,8 +89,8 @@ test('no profile without verified node, paid revision, local grant and ACK',()=>
 });
 
 test('reject noncanonical peer keys and invalid local private keys',()=>{
-  for(const key of ('x','A'.repeat(44),'A'.repeat(43)+'=',' '.repeat(44),
-                    client.pub.replace('+','-'),'\n'+client.pub)){
+  for(const key of ['x','A'.repeat(44),'A'.repeat(43)+'=',' '.repeat(44),
+                    client.pub.replace('+','-'),'\n'+client.pub]){
     if(key!==client.pub) assert.equal(isCanonicalAwgPublicKey(key),false);
   }
   assert.equal(isCanonicalAwgPublicKey(client.pub),true);
@@ -98,7 +98,7 @@ test('reject noncanonical peer keys and invalid local private keys',()=>{
   assert.equal(verifiedAwgMaterial(sample(),owner,client.pub,'bad',clock),null);
   const material=verifiedAwgMaterial(sample(),owner,client.pub,header,clock)!;
   assert.throws(()=>renderLocalAwgConfig(material,'not-a-key'));
-  assert.throws(()=>renderLocalAwgConfig({...material,endpoint:'bad.example.com:51821'},client.priv));
+  assert.throws(()=>renderLocalAwgConfig({...material,endpoint:'bad.example.com:51821'} as typeof material,client.priv));
 });
 
 test('database reader is read-only, parameterized, checked against a canonical owner and peer',async()=>{
