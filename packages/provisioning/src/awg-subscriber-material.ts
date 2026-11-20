@@ -18,7 +18,6 @@ const NODE='fi-test-01';
 const HOST='fi.mnebyvpn.site';
 const PORT=51821;
 const SUBNET='10.73.91.0/24';
-const HEALTH_MS=3600000;
 
 export type AwgSubscriptionOwner={
   entitlementId:string;revision:number;expiresAt:Date;
@@ -102,7 +101,11 @@ export function verifiedAwgMaterial(
      row.pool_state!=='verified'||row.enrollment_status!=='enrolled'||
      !(row.verified_at instanceof Date)||
      !Number.isFinite(row.verified_at.getTime())||
-     now-row.verified_at.getTime()>HEALTH_MS||
+     // An already applied, independently signed grant must remain visible
+     // throughout its valid lease even when periodic E2E probing is delayed.
+     // New grants still require fresh independent proof in stageAwgGrant;
+     // degraded/disabled pools, revoked or expired peers, and missing ACKs
+     // remain fail-closed here.
      row.verified_at.getTime()>now+30000||
      row.server_public_key!==expectedServerPublicKey||
      row.peer_public_key!==clientPublicKey||
