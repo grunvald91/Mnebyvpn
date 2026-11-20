@@ -64,7 +64,8 @@ type AwgDbRow={
 export function isCanonicalAwgPublicKey(value:unknown):value is string{
   if(typeof value!=='string'||!KEY.test(value))return false;
   const raw=Buffer.from(value,'base64');
-  return raw.length===32&&raw.toString('base64')===value;
+  return raw.length===32&&raw.toString('base64')===value&&
+    raw.some(byte=>byte!==0);
 }
 function billRevision(value:unknown):number|null{
   if(typeof value==='number')
@@ -77,7 +78,8 @@ function billRevision(value:unknown):number|null{
 /** Parse the EXACT reviewed FI row, without treating an issued command as an ACK. */
 export function verifiedAwgMaterial(
   row:AwgDbRow,owner:AwgSubscriptionOwner,clientPublicKey:string,
-  headerProtectionKey:string,now=Date.now(),
+  headerProtectionKey:string,expectedServerPublicKey:string,
+  now=Date.now(),
 ):VerifiedAwgMaterial|null{
   if(!UUID.test(owner.entitlementId)||!Number.isSafeInteger(owner.revision)||
      owner.revision<1||!(owner.expiresAt instanceof Date)||
@@ -85,6 +87,7 @@ export function verifiedAwgMaterial(
      owner.expiresAt.getTime()<=now||!Number.isFinite(now)||
      !isCanonicalAwgPublicKey(clientPublicKey)||
      !isCanonicalAwgPublicKey(headerProtectionKey)||
+     !isCanonicalAwgPublicKey(expectedServerPublicKey)||
      !row||row.enabled!==true||
      row.node_id!==NODE||row.endpoint_host!==HOST||
      row.listen_port!==PORT||row.subnet_cidr!==SUBNET||
@@ -93,7 +96,7 @@ export function verifiedAwgMaterial(
      !Number.isFinite(row.verified_at.getTime())||
      now-row.verified_at.getTime()>HEALTH_MS||
      row.verified_at.getTime()>now+30000||
-     !isCanonicalAwgPublicKey(row.server_public_key)||
+     row.server_public_key!==expectedServerPublicKey||
      row.peer_public_key!==clientPublicKey||
      !IP.test(row.client_ipv4)||
      row.allocation_state!=='applied'||
@@ -128,10 +131,11 @@ export function verifiedAwgMaterial(
 export async function loadVerifiedAwgMaterial(
   pool:Pick<Pool,'query'>,owner:AwgSubscriptionOwner,
   clientPublicKey:string,headerProtectionKey:string,
-  now=Date.now(),
+  expectedServerPublicKey:string,now=Date.now(),
 ):Promise<VerifiedAwgMaterial|null>{
   if(!isCanonicalAwgPublicKey(clientPublicKey)||
      !isCanonicalAwgPublicKey(headerProtectionKey)||
+     !isCanonicalAwgPublicKey(expectedServerPublicKey)||
      !UUID.test(owner.entitlementId))return null;
   const query=
     'SELECT f.enabled,p.node_id,p.endpoint_host,p.listen_port,'+
@@ -158,7 +162,7 @@ export async function loadVerifiedAwgMaterial(
     query,[owner.entitlementId,clientPublicKey,'vpn_awg_clients',NODE]);
   if(result.rows.length!==1)return null;
   return verifiedAwgMaterial(result.rows[0],owner,
-    clientPublicKey,headerProtectionKey,now);
+    clientPublicKey,headerProtectionKey,expectedServerPublicKey,now);
 }
 
 /** Browser-only serializer: raw X25519 private key NEVER crosses the network.
