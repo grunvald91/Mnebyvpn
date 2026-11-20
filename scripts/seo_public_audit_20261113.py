@@ -87,6 +87,10 @@ for path in ROUTES:
                 'rel="noopener noreferrer"' not in body or
                 'href="/seo-pages.css"' not in body):
                 failures.append(path+": missing visible official sources/style")
+            if ('<section class="seo-diagnostics"' not in body or
+                body.count('class="seo-diagnostic-card"')!=3 or
+                'Что проверить дальше' not in body):
+                failures.append(path+": distinct diagnostic answers are not published")
             cache=h.get("Cache-Control","").lower()
             if "public" not in cache or "max-age=300" not in cache or "no-store" in cache:
                 failures.append(path+": missing short public-only caching")
