@@ -2,6 +2,8 @@
  * Public, server-rendered informational pages. No user identifiers, private URLs,
  * dynamic pricing or universal service guarantees in crawler-visible HTML.
  */
+import {SEO_DIAGNOSTICS} from './seo-diagnostics.ts';
+
 export type SeoSection={heading:string;paragraphs:string[];points?:string[]};
 export type SeoFaq={question:string;answer:string};
 export type SeoPage={
@@ -232,6 +234,11 @@ export function renderSeoPage(path:string):string|null {
   const officialLinks=(SEO_REFERENCES[path]??[]).map(source=>
     '<li><a href="'+esc(source.url)+'" rel="noopener noreferrer">'+esc(source.title)+'</a></li>'
   ).join('');
+  const diagnostics=(SEO_DIAGNOSTICS[path]??[]).map((item)=>
+    '<article class="seo-diagnostic-card"><h3>'+esc(item.symptom)+'</h3>'+
+    '<p><strong>Что это может означать.</strong> '+esc(item.meaning)+'</p>'+
+    '<p><strong>Что проверить дальше.</strong> '+esc(item.next)+'</p></article>'
+  ).join('');
   const schema={
     '@context':'https://schema.org',
     '@graph':[
@@ -272,6 +279,10 @@ export function renderSeoPage(path:string):string|null {
     '<div class="seo-top"><p class="seo-kicker">MNEBYVPN · ПОМОЩЬ С ПОДКЛЮЧЕНИЕМ</p>'+
     '<h1>'+esc(page.headline)+'</h1><p class="seo-lead">'+esc(page.lead)+'</p>'+
     '<a class="button button-primary" href="/#plans">Посмотреть варианты доступа</a></div>'+
+    '<section class="seo-diagnostics" aria-label="Разбор частых симптомов">'+
+    '<h2>Не работает? Определите причину по признакам</h2>'+
+    '<p class="seo-diagnostic-intro">Похожие ошибки могут возникать на разных этапах: в сети, в приложении или в аккаунте. Эти проверки помогут понять, куда смотреть дальше, но не заменяют диагностику сервиса.</p>'+
+    '<div class="seo-diagnostic-grid">'+diagnostics+'</div></section>'+
     '<article class="seo-article">'+sections+'</article>'+
     '<section class="seo-faq" aria-label="Вопросы и ответы"><h2>Частые вопросы</h2>'+faq+'</section>'+
     '<section class="seo-sources" aria-label="Официальные источники"><h2>Официальные источники</h2>'+
