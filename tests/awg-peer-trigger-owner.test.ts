@@ -8,7 +8,8 @@ test('FI native AWG pool trigger keeps owner-only FOR SHARE without growing work
   assert.match(sql,/vpn_awg_address_immutability/);
   assert.match(sql,/SECURITY DEFINER/);
   assert.match(sql,/SET search_path = pg_catalog, public/);
-  assert.match(sql,/actual_owner IS DISTINCT FROM 'mnebyvpn_stage'/);
+  assert.match(sql,/actual_owner IS DISTINCT FROM current_user/);
+  assert.match(sql,/pool_owner IS DISTINCT FROM current_user/);
   assert.match(sql,/REVOKE ALL ON FUNCTION public\.vpn_awg_enforce_address_pool\(\) FROM PUBLIC/);
   assert.doesNotMatch(sql,/GRANT\s+UPDATE|GRANT\s+ALL/i);
   assert.doesNotMatch(sql,/\b(?:DELETE FROM|TRUNCATE|DROP TABLE|UPDATE public\.)\b/i);
