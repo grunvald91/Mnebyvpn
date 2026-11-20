@@ -142,5 +142,8 @@ test('website AWG material is separate from existing VLESS subscription and priv
   const material=readFileSync(
     new URL('../packages/provisioning/src/awg-subscriber-material.ts',import.meta.url),'utf8');
   assert.ok(!material.includes('createPrivateKey('));
+  assert.ok(!material.includes('Buffer.from('));
+  assert.ok(material.includes('atob(value)'));
+  assert.ok(material.includes('btoa(raw)'));
   assert.ok(!material.includes('sign(null'));
 });
