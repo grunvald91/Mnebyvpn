@@ -1,0 +1,28 @@
+name: MNEBYVPN index-only Google URL Inspection audit
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/gsc-public-index-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Public URL index-only inspection (no keyword or traffic exports)
+        shell: bash
+        env:
+          GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
+          GSC_SITE_URL: ${{ vars.GSC_SITE_URL || 'sc-domain:mnebyvpn.site' }}
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/gsc-index-audit.ts
