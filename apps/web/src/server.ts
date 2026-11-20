@@ -854,12 +854,13 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
           console.error('Additional VPN node registry unavailable');
         }
       }
-      // INCY Android/iOS accepts native AmneziaWG URIs in the SAME base64
-      // feed as VLESS. The canonical entitlement, token, expiry and RU188
-      // signed FI ACK are rechecked; an unready node is omitted, not faked.
-      // Karing currently gets only its existing verified VLESS variants.
+      // Include the same signed FI AmneziaWG entry in every subscription
+      // variant (INCY, Karing and canonical URL). Import support is decided
+      // by the client, not filtered by RU188. The existing entitlement,
+      // release flag, expiry, peer binding and signed FI ACK still gate FI.
+      // An unready node is omitted, never manufactured.
       let fiProfile:string|null=null;
-      if(awgInSubscriptionEnabled&&requestedClient!=='karing'){
+      if(awgInSubscriptionEnabled){
         try{
           const identity=deriveSubscriptionAwgIdentity(
             owner.entitlementId,awgSubscriptionIdentityRoot);
