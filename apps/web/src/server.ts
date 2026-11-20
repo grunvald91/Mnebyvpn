@@ -137,6 +137,8 @@ const extraVpnNodeKey=process.env.VPN_ADDITIONAL_NODES_ENABLED==='yes'
 // Disabled until FI node is verified, signed grant/ACK is real and admin
 // explicitly releases native AWG material for an EXISTING device key.
 const awgMaterialEnabled=process.env.WEB_FI_AWG_MATERIAL_ENABLED==='yes';
+const fiAwgRegistrationAvailable=networkVerified&&loginEnabled&&awgMaterialEnabled&&
+  process.env.WEB_FI_AWG_REGISTRATION_ENABLED==='yes';
 const awgHeaderProtectionKey=awgMaterialEnabled
   ?required('WEB_FI_AWG_HEADER_PROTECTION_KEY'):'';
 const awgServerPublicKey=awgMaterialEnabled
@@ -233,6 +235,8 @@ class MerchantTransport implements PayformLinkTransport {
 }
 
 const html = await readFile(new URL('../public/index.html', import.meta.url));
+const fiAwgSetupHtml=await readFile(new URL('../public/awg-setup.html',import.meta.url));
+const fiAwgSetupJs=await readFile(new URL('../public/awg-setup.js',import.meta.url));
 const landingArtHtml = await readFile(new URL('../public/landing-art.html', import.meta.url));
 const bg3Webm = await readFile(new URL('../public/bg3.webm', import.meta.url));
 const bg3Mp4 = await readFile(new URL('../public/bg3.mp4', import.meta.url));
@@ -811,6 +815,16 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if(req.method==='GET' && url.pathname==='/vpn-install.js'){
     send(res,200,vpnInstallJs,'text/javascript; charset=utf-8');return;
   }
+  if(req.method==='GET'&&url.pathname==='/awg/setup'){
+    res.setHeader('Cache-Control','no-store, max-age=0');
+    res.setHeader('X-Robots-Tag','noindex, nofollow');
+    if(!fiAwgRegistrationAvailable){json(res,404,{code:'AWG_SETUP_NOT_READY'});return;}
+    send(res,200,fiAwgSetupHtml,'text/html; charset=utf-8');return;
+  }
+  if(req.method==='GET'&&url.pathname==='/awg-setup.js'){
+    if(!fiAwgRegistrationAvailable){json(res,404,{code:'AWG_SETUP_NOT_READY'});return;}
+    send(res,200,fiAwgSetupJs,'text/javascript; charset=utf-8');return;
+  }
   const subMatch=/^\/sub\/([A-Za-z0-9_-]{43})$/.exec(url.pathname);
   if(req.method==='GET'&&subMatch){
     if(!subscriptionPool){json(res,503,{code:'SUBSCRIPTION_BACKEND_UNAVAILABLE'});return;}
@@ -1138,7 +1152,8 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   if (!auth) { json(res, 401, { code: 'LOGIN_REQUIRED' }); return; }
   if (req.method === 'GET' && url.pathname === '/api/me') {
     const dashboard = await loadDashboard(authPool, auth.accountId, meteringVerified);
-    json(res,200,{ ...dashboard, telegramProxyBonusEnabled:proxyBonusEnabled||wsProxyEnabled, wsProxyEnabled, appleDnsProfileEnabled, personalDnsEnabled:appleDnsProfileEnabled, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
+    json(res,200,{ ...dashboard, telegramProxyBonusEnabled:proxyBonusEnabled||wsProxyEnabled, wsProxyEnabled, appleDnsProfileEnabled, personalDnsEnabled:appleDnsProfileEnabled,
+      fiAwgRegistrationAvailable, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
   }
 
   async function issuePersonalDnsFromRequest(
@@ -1274,6 +1289,55 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       body.product as 'vpn'|'smart_dns'|'bundle',body.inviteToken as string|undefined,
       createHash('sha256').update('trial-device-v1:').update(device).digest('hex'));
     json(res,200,{status:result.status,expiresAt:result.expiresAt?.toISOString()??null});
+    return;
+  }
+  if((req.method==='POST'&&url.pathname==='/api/awg/fi/device')||
+     (req.method==='GET'&&url.pathname==='/api/awg/fi/device/status')){
+    res.setHeader('Cache-Control','private, no-store, max-age=0');
+    res.setHeader('X-Robots-Tag','noindex, nofollow');
+    if(!fiAwgRegistrationAvailable){json(res,503,{code:'AWG_REGISTRATION_NOT_READY'});return;}
+    if(!sameCanonicalPostgresDb(authDbUrl??'',subscriptionDbUrl)){
+      json(res,503,{code:'CANONICAL_AWG_DATABASE_UNAVAILABLE'});return;
+    }
+    if(req.method==='POST'&&
+       (!csrfAllowed(req,auth.raw)||req.headers.origin!==publicOrigin||
+        req.headers['content-type']?.split(';')[0].trim()!=='application/json')){
+      json(res,403,{code:'FORBIDDEN'});return;
+    }
+    const payload=req.method==='POST'?await bodyJson(req):{
+      entitlementId:url.searchParams.get('entitlementId'),
+      peerPublicKey:url.searchParams.get('peer'),
+    };
+    const entitlementId=payload.entitlementId;
+    const peerPublicKey=payload.peerPublicKey;
+    if(Object.keys(payload).sort().join(',')!=='entitlementId,peerPublicKey'||
+       typeof entitlementId!=='string'||
+       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entitlementId)||
+       !isCanonicalAwgPublicKey(peerPublicKey)){
+      json(res,400,{code:'INVALID_AWG_DEVICE_REQUEST'});return;
+    }
+    try{
+      if(req.method==='POST'){
+        const result=await authPool.query(
+          'SELECT public.website_request_fi_awg_device($1,$2::uuid,$3) AS state',
+          [sessionHash(auth.raw),entitlementId,peerPublicKey]);
+        const state=result.rows[0]?.state;
+        if(state==='QUEUED'){json(res,202,{state:'QUEUED'});return;}
+        json(res,state==='DENY_BOUND'?409:403,
+          {code:state==='DENY_BOUND'?'AWG_DEVICE_ALREADY_BOUND':'AWG_ACCESS_DENIED'});
+      }else{
+        const result=await authPool.query(
+          'SELECT public.website_fi_awg_device_status($1,$2::uuid,$3) AS state',
+          [sessionHash(auth.raw),entitlementId,peerPublicKey]);
+        const state=result.rows[0]?.state;
+        if(!['QUEUED','PROCESSING','STAGED','ACKNOWLEDGED','BLOCKED'].includes(state)){
+          json(res,404,{code:'AWG_DEVICE_NOT_ACTIVE'});return;
+        }
+        json(res,200,{state});
+      }
+    }catch{
+      json(res,503,{code:'AWG_DEVICE_QUEUE_UNAVAILABLE'});
+    }
     return;
   }
   if(req.method==='POST' && url.pathname==='/api/vpn/subscription'){

@@ -545,6 +545,15 @@ function renderAccess(accesses) {
       setup.type='button';
       setup.addEventListener('click',()=>loadSubscription(a.id));
       item.append(setup);
+      if(state.fiAwgRegistrationAvailable===true){
+        const fi=node('button','button button-secondary setup-button',
+          '🇫🇮 Финляндия · AmneziaWG');
+        fi.type='button';
+        fi.addEventListener('click',()=>{
+          window.location.href='/awg/setup?entitlementId='+encodeURIComponent(a.id);
+        });
+        item.append(fi);
+      }
     }
     const durations=state.plans.filter(p=>p.product===a.product);
     if (durations.length && a.startsAt && a.expiresAt &&
@@ -666,6 +675,7 @@ function renderAccount(payload) {
   state.telegramProxyBonusEnabled=payload.telegramProxyBonusEnabled===true;
   state.wsProxyEnabled=payload.wsProxyEnabled===true;
   state.appleDnsProfileEnabled=payload.appleDnsProfileEnabled===true;
+  state.fiAwgRegistrationAvailable=payload.fiAwgRegistrationAvailable===true;
   state.personalDnsEnabled=payload.personalDnsEnabled===true||payload.appleDnsProfileEnabled===true;
   byId('login-prompt').classList.add('hidden');
   byId('account-content').classList.remove('hidden');
