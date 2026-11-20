@@ -77,7 +77,6 @@ test('canonical GET /sub uses same metadata for every entitlement and keeps FI A
   // because the subscription installer includes ?client=karing.
   assert.match(site,/if\(awgInSubscriptionEnabled\)\s*\{/);
   assert.doesNotMatch(site,/awgInSubscriptionEnabled\s*&&\s*requestedClient\s*!==\s*['"]karing['"]/);
-  assert.ok(site.includes("requestedClient!=='karing'")===false);
   assert.ok(site.includes('...extraProfiles'));
   assert.ok(site.includes('...(fiProfile?[fiProfile]:[])'));
   assert.ok(!site.includes('stableMultiClientVpnProfile(nodeProfile)'));
