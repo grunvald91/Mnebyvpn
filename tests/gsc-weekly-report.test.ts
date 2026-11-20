@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {generateKeyPairSync,verify} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {
   GSC_ALLOWED_PROPERTIES,GSC_ORIGIN,GSC_URL_PATHS,minusDays,reportPeriods,
   combineDailyRows,pageMetrics,queryTopic,groupedQuerySamples,buildReport,identifySeoReviewItems,
@@ -222,4 +223,19 @@ test('Telegram transport sends privately and never echoes credentials on error',
     return true;
   });
   assert.deepEqual(GSC_ALLOWED_PROPERTIES,['sc-domain:mnebyvpn.site','https://mnebyvpn.site/']);
+});
+
+test('weekly GitHub report auto-attempts with existing secrets and never prints private values',()=>{
+  const workflow=readFileSync(new URL('../.github/workflows/gsc-weekly-private-report.yml',import.meta.url),'utf8');
+  assert.match(workflow,/cron: '37 5 \* \* 1'/);
+  assert.match(workflow,/push:\s*\n\s*branches: \[main\]/);
+  assert.match(workflow,/GSC_JSON_PRESENT: \$\{\{ secrets\.GSC_SERVICE_ACCOUNT_JSON != '' \}\}/);
+  assert.match(workflow,/BOT_TOKEN_PRESENT: \$\{\{ secrets\.TELEGRAM_BOT_TOKEN != '' \|\| secrets\.TELEGRAM_TOKEN_BOT != '' \}\}/);
+  assert.match(workflow,/OPERATOR_ID_PRESENT: \$\{\{ secrets\.GSC_TELEGRAM_CHAT_ID != '' \|\| secrets\.SUPPORT_TELEGRAM_OPERATOR_ID != '' \}\}/);
+  assert.match(workflow,/if: steps\.preflight\.outputs\.ready == 'yes'/);
+  assert.match(workflow,/GSC_TELEGRAM_BOT_TOKEN: \$\{\{ secrets\.TELEGRAM_BOT_TOKEN \|\| secrets\.TELEGRAM_TOKEN_BOT \}\}/);
+  assert.match(workflow,/GSC_TELEGRAM_CHAT_ID: \$\{\{ secrets\.GSC_TELEGRAM_CHAT_ID \|\| secrets\.SUPPORT_TELEGRAM_OPERATOR_ID \}\}/);
+  assert.ok(!workflow.includes('GSC_REPORT_ENABLED'));
+  assert.ok(!workflow.includes('GSC_TELEGRAM_BOT_TOKEN: ${{ secrets.GSC_TELEGRAM_BOT_TOKEN }}'));
+  assert.ok(!/echo[^\n]*(GSC_SERVICE_ACCOUNT_JSON|TELEGRAM_BOT_TOKEN|SUPPORT_TELEGRAM_OPERATOR_ID).*\$\{\{/m.test(workflow));
 });
