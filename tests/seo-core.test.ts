@@ -61,3 +61,25 @@ test('static public pages expose matching self-canonical and description',()=>{
     assert.equal((html.match(/rel="canonical"/g)??[]).length,1);
   }
 });
+
+test('homepage visibly associates Cyrillic brand spellings with its canonical site',()=>{
+  const home=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
+  const head=home.split('</head>')[0];
+  const body=home.split('</head>')[1] ?? '';
+  assert.match(head,/<title>Мне бы VPN \(Мне бы ВПН\) — VPN и Smart DNS \| MNEBYVPN<\/title>/);
+  assert.match(head,/<meta name="description" content="[^"]*Мне бы VPN[^"]*Мне бы ВПН[^"]*">/);
+  const raw=head.match(/<script type="application\/ld\+json">([^<]+)<\/script>/)?.[1];
+  assert.ok(raw,'homepage JSON-LD must be present');
+  const graph=JSON.parse(raw)['@graph'];
+  for(const type of ['Organization','WebSite']){
+    const item=graph.find((entry:{'@type':string})=>entry['@type']===type);
+    assert.equal(item?.name,'Мне бы VPN');
+    assert.deepEqual(item?.alternateName,['Мне бы ВПН','МНЕБЫВПН','MNEBYVPN']);
+    assert.equal(item?.url,origin+'/');
+  }
+  for(const query of ['Мне бы VPN','Мне бы ВПН','мнебывпн','мне бы впн сайт'])
+    assert.ok(body.includes(query),'missing Russian brand query: '+query);
+  assert.match(body,/<p class="hero-lead">«Мне бы VPN»/);
+  assert.match(body,/<footer[^>]*>[\s\S]*?«Мне бы VPN»/);
+  assert.equal((head.match(/rel="canonical"/g)??[]).length,1);
+});

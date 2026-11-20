@@ -143,7 +143,7 @@ test('mobile native header stays branded and toast stays clear of install contro
 test('native routes share bottom-anchored footer and centered content without forced clipping',()=>{
   const html=file('apps/web/public/index.html');
   const css=file('apps/web/public/journey.css');
-  assert.match(html,/href="\/#plans" class="brand" aria-label="MNEBYVPN — на главную к тарифам"/);
+  assert.match(html,/href="\/#plans" class="brand" aria-label="Мне бы VPN \(MNEBYVPN\) — на главную к тарифам"/);
   assert.match(css,/\/\* Unified geometry for every native screen/);
   assert.match(css,/min-height:100dvh!important/);
   assert.match(css,/justify-content:safe center!important/);
