@@ -139,8 +139,12 @@ const extraVpnNodeKey=process.env.VPN_ADDITIONAL_NODES_ENABLED==='yes'
 const awgMaterialEnabled=process.env.WEB_FI_AWG_MATERIAL_ENABLED==='yes';
 const awgHeaderProtectionKey=awgMaterialEnabled
   ?required('WEB_FI_AWG_HEADER_PROTECTION_KEY'):'';
-if(awgMaterialEnabled&&!isCanonicalAwgPublicKey(awgHeaderProtectionKey))
-  throw Error('Invalid independently configured FI AWG 3.1 header key');
+const awgServerPublicKey=awgMaterialEnabled
+  ?required('WEB_FI_AWG_SERVER_PUBLIC_KEY'):'';
+if(awgMaterialEnabled&&
+   (!isCanonicalAwgPublicKey(awgHeaderProtectionKey)||
+    !isCanonicalAwgPublicKey(awgServerPublicKey)))
+  throw Error('Independently verified FI AWG server/header keys are required');
 // Login identities must live in the same canonical DB as the VPN node.
 // Never give the brochure site the bot's unrestricted writer credentials.
 const authDbUrl=process.env.WEB_AUTH_DATABASE_URL;
@@ -874,7 +878,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     if(!owner){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
     try{
       const profile=await loadVerifiedAwgMaterial(
-        subscriptionPool,owner,publicKey,awgHeaderProtectionKey);
+        subscriptionPool,owner,publicKey,awgHeaderProtectionKey,awgServerPublicKey);
       if(!profile){json(res,404,{code:'AWG_PEER_NOT_ACKNOWLEDGED'});return;}
       json(res,200,profile);
     }catch{
