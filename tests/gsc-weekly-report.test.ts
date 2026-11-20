@@ -3,7 +3,7 @@ import test from 'node:test';
 import {generateKeyPairSync,verify} from 'node:crypto';
 import {
   GSC_ALLOWED_PROPERTIES,GSC_ORIGIN,GSC_URL_PATHS,minusDays,reportPeriods,
-  combineDailyRows,pageMetrics,queryTopic,groupedQuerySamples,buildReport,
+  combineDailyRows,pageMetrics,queryTopic,groupedQuerySamples,buildReport,identifySeoReviewItems,
   assertionForCredentials,getAccessToken,readSearchConsoleReport,
   formatTelegramReport,sendPrivateTelegramReport,
 } from '../scripts/gsc-weekly-report.ts';
@@ -86,6 +86,26 @@ test('report differentiates Google inspection verdicts from absence of impressio
   assert.throws(()=>buildReport({...input,property:'sc-domain:another.example'}),/PROPERTY_NOT_ALLOWED/);
 });
 
+test('SEO review flags explain the observed data and never invent ranking causes',()=>{
+  const input=fixture();
+  input.pagesCurrent.rows[0].clicks=0;
+  input.pagesCurrent.rows[0].impressions=160;
+  input.pagesPrevious.rows[0].impressions=400;
+  input.inspections['/gemini'].inspectionResult.indexStatusResult.verdict='FAIL';
+  const notes=identifySeoReviewItems(input);
+  assert.ok(notes.some(s=>s.includes('/gemini')&&s.includes('Google URL Inspection')));
+  assert.ok(notes.some(s=>s.includes('/gemini')&&s.includes('более чем на 50%')&&s.includes('400 → 160')));
+  assert.ok(notes.some(s=>s.includes('/gemini')&&s.includes('CTR ниже 1%')));
+  const compact=formatTelegramReport(input);
+  assert.ok(compact.includes('Проверить:'));
+  assert.ok(compact.includes('400 → 160'));
+  assert.ok(!compact.includes(fakeQuery));
+  const full=buildReport(input);
+  assert.ok(full.includes('Правила: снижение показов'));
+  assert.ok(full.includes('CTR ниже 1%'));
+  assert.ok(!/гарантирует (?:рост|позиции)/i.test(full));
+});
+
 test('JWT assertion signs with the read-only scope and no credential in payload',()=>{
   const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
   const credentials=JSON.stringify({
@@ -121,8 +141,16 @@ test('Search Console API reads one approved property and eight static URLs only'
     if(target==='https://oauth2.googleapis.com/token')return ok({access_token:'test-token'});
     if(target.includes('/sites/')&&!target.includes('searchAnalytics'))return ok({siteUrl:property,permissionLevel:'siteFullUser'});
     if(target.includes('searchAnalytics')){
-      if(body.dimensions[0]==='query')return ok({rows:[{keys:['gemini'],clicks:1,impressions:2}]});
-      if(body.dimensions[0]==='page')return ok({rows:[]});
+      if(body.dimensions[0]==='query'||body.dimensions[0]==='page'){
+        // Not a loose domain-wide contains filter: only approved canonical URLs.
+        assert.deepEqual(body.dimensionFilterGroups,[{
+          filterLists:[{dimension:'page',expressions:GSC_URL_PATHS.map(p=>GSC_ORIGIN+p)}]
+        }]);
+        assert.equal(body.dimensions[0]==='page'?body.rowLimit:1000,
+          body.dimensions[0]==='page'?100:1000);
+        if(body.dimensions[0]==='query')return ok({rows:[{keys:['gemini'],clicks:1,impressions:2}]});
+        return ok({rows:[]});
+      }
       return ok({rows:[]});
     }
     if(target.includes('urlInspection')){
