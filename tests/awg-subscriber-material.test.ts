@@ -62,10 +62,26 @@ test('a real FI outbox signed ACK may produce native AWG 3.1 connection material
   assert.equal(file.split('[Peer]').length,2);
 });
 
+test('signed and applied FI lease remains in subscription when E2E proof is delayed',()=>{
+  const lateProof={...sample(),verified_at:new Date(clock-3*3600_000)};
+  const material=verifiedAwgMaterial(lateProof,owner,client.pub,header,server.pub,clock);
+  assert.ok(material);
+  assert.equal(material.clientAddress,'10.73.91.2/32');
+  // A stale proof does not bypass node disabling, an expired lease or revocation.
+  assert.equal(verifiedAwgMaterial({...lateProof,pool_state:'degraded'},owner,
+    client.pub,header,server.pub,clock),null);
+  assert.equal(verifiedAwgMaterial({...lateProof,allocation_state:'revoked'},owner,
+    client.pub,header,server.pub,clock),null);
+  assert.equal(verifiedAwgMaterial({...lateProof,outbox_state:'queued'},owner,
+    client.pub,header,server.pub,clock),null);
+  assert.equal(verifiedAwgMaterial({...lateProof,expires_at:new Date(clock-1)},owner,
+    client.pub,header,server.pub,clock),null);
+});
+
 test('no profile without verified node, paid revision, local grant and ACK',()=>{
   const failed=[
     {enabled:false},{pool_state:'staged'},{pool_state:'degraded'},
-    {enrollment_status:'revoked'},{verified_at:new Date(clock-3600_001)},
+    {enrollment_status:'revoked'},
     {verified_at:new Date(clock+40_000)},
     {server_public_key:keyPair().pub},{peer_public_key:keyPair().pub},
     {client_ipv4:'10.73.91.1'},{client_ipv4:'10.73.91.255'},
