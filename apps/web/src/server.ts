@@ -21,7 +21,7 @@ import {isCanonicalAwgPublicKey,loadVerifiedAwgMaterial}
   from '../../../packages/provisioning/src/awg-subscriber-material.ts';
 import {deriveSubscriptionAwgIdentity,verifiedIncyAwgLine}
   from '../../../packages/provisioning/src/awg-in-subscription.ts';
-import {germanWebSocketOnly,incySubscriptionHeaders}
+import {germanWebSocketOnly,keepSupportedAdditionalTransport,incySubscriptionHeaders}
   from '../../../packages/provisioning/src/incy-subscription-presentation.ts';
 import {
   prepareWebsiteProdamusCheckout, prepareWebsiteYookassaCheckout, type PayformLinkTransport,
@@ -847,7 +847,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       let extraProfiles:string[]=[];
       if(extraVpnNodeKey){
         try{
-          extraProfiles=await loadAdditionalVpnLinks(subscriptionPool,owner,extraVpnNodeKey);
+          extraProfiles=(await loadAdditionalVpnLinks(
+              subscriptionPool,owner,extraVpnNodeKey))
+              .filter(keepSupportedAdditionalTransport);
         }catch{
           console.error('Additional VPN node registry unavailable');
         }
