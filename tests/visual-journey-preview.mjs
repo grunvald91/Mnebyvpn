@@ -139,7 +139,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.goto(base,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>{
     const frame=document.querySelector('#journey-front-frame');
-    const btn=frame?.contentDocument?.querySelector('.plan[data-d="30"] strong');
+    const btn=frame?.contentDocument?.querySelector('#price-bundle');
     return document.body.classList.contains('journey-active')&&btn&&btn.textContent!=='—'
       && !frame?.contentDocument?.querySelector('.cta')?.disabled;
   },{timeout:15000});
@@ -177,7 +177,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
         const links=[...inner.querySelectorAll('.legal-links a')];
         return links.length===3&&links.every(link=>Math.abs(link.getBoundingClientRect().top-links[0].getBoundingClientRect().top)<=2);
       })(),
-      footerVisible:inner.querySelector('footer').getBoundingClientRect().bottom<=innerHeight+3,
+      footerVisible:innerWidth<768?inner.querySelector('.action-strip').getBoundingClientRect().bottom<=innerHeight+3:inner.querySelector('footer').getBoundingClientRect().bottom<=innerHeight+3,
       horizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
       frameWidth:Math.round(frame.getBoundingClientRect().width),
       frameHeight:Math.round(frame.getBoundingClientRect().height),
@@ -206,11 +206,11 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       introFilter:getComputedStyle(inner.querySelector('.card')).filter,
       videoPresent:Boolean(inner.querySelector('video#bgv')&&inner.querySelector('video#bgv-desktop')),
       videoSources:inner.querySelectorAll('video source').length,
-      iframeHasTariffs:inner.querySelectorAll('.plans-mob .plan').length===4 && inner.querySelectorAll('.tier').length===3,
+      iframeHasTariffs:inner.querySelectorAll('.desk-durations .dur-pill').length===4 && inner.querySelectorAll('.tier').length===3,
       bundlePrice:inner.querySelector('#price-bundle')?.textContent?.trim()||'',
       cardOpacity:Number(getComputedStyle(inner.querySelector('.card')).opacity),
-      price:inner.querySelector('.plans-mob .plan[data-d="30"] strong').textContent,
-      selected:inner.querySelector('.plans-mob .plan[data-d="30"]').getAttribute('aria-pressed'),
+      price:inner.querySelector('#price-bundle').textContent,
+      selected:inner.querySelector('.desk-durations .dur-pill[data-d="30"]').getAttribute('aria-checked'),
       buyText:inner.querySelector('.cta').textContent,
       trialVisible:getComputedStyle(inner.querySelector('.free')).display!=='none',
       retryVisible:getComputedStyle(inner.querySelector('#front-retry')).display!=='none',
@@ -226,7 +226,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     !metrics.bundlePrice.includes('₽')||
     !metrics.videoPresent||metrics.retryVisible||metrics.cardOpacity<0.99||
     (width<900&&metrics.backdropFilter!=='none')||metrics.canvasPresent||metrics.introFilter!=='none'||
-    (width<=390&&(metrics.lockWidth>52||metrics.clearLockGap<20||metrics.cardTop>314))||
+    (width<=390&&(metrics.lockWidth>52||metrics.clearLockGap<20||metrics.cardTop>350))||
     !metrics.paymentNotesRemoved||!metrics.paymentInfoVisible||!metrics.sellerRemoved||
     (width<=390&&metrics.height>=700&&metrics.outerScrollHeight>metrics.height+2)||
     !metrics.headerSingleRow||!metrics.headerNavGrouped||!metrics.topButtonsUnwrapped||!metrics.headerFits||
@@ -247,9 +247,10 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   // no modal overlay, no page growth, and all service caveats remain visible.
   const beforeDns=await page.evaluate(()=>{
     const doc=document.querySelector('#journey-front-frame').contentDocument;
-    return {h:doc.documentElement.scrollHeight,footer:doc.querySelector('footer').getBoundingClientRect().top};
+    const appScroll=doc.querySelector('.app')?.scrollTop||0;
+    return {h:doc.documentElement.scrollHeight,footer:doc.querySelector('footer').getBoundingClientRect().top+appScroll};
   });
-  const infoTrigger=width>=900?'#dns-info-open-desk':'#dns-info-open';
+  const infoTrigger='#dns-info-open';
   await page.frameLocator('#journey-front-frame').locator(infoTrigger).click();
   const info=page.frameLocator('#journey-front-frame').locator('#dns-info-dialog');
   if(!await info.isVisible())failed=true;
@@ -270,7 +271,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       modalCount:doc.querySelectorAll('dialog[open]').length,
       backdrop:getComputedStyle(pop).position,
       scrollHeight:doc.documentElement.scrollHeight,
-      footerTop:doc.querySelector('footer').getBoundingClientRect().top,
+      footerTop:doc.querySelector('footer').getBoundingClientRect().top+(doc.querySelector('.app')?.scrollTop||0),
       cardVisible:card.height>0,
       hasScrollableContent:pop.scrollHeight>pop.clientHeight,
     };
@@ -335,15 +336,15 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     document.querySelector('#journey-front-frame')
       .addEventListener('load',()=>window.__frontLoads++);
   });
-  const pickSmart=width>=900?'.tier-pick[data-pick="smart_dns"]':'.prod-tab[data-prod="smart_dns"]';
-  const pickDuration60=width>=900?'.desk-durations .dur-pill[data-d="60"]':'.plans-mob .plan[data-d="60"]';
+  const pickSmart='.tier-pick[data-pick="smart_dns"]';
+  const pickDuration60='.desk-durations .dur-pill[data-d="60"]';
   await page.frameLocator('#journey-front-frame').locator(pickSmart).click();
   await page.frameLocator('#journey-front-frame').locator(pickDuration60).click();
   const switched=await page.evaluate(({selProd,selDur})=>{
     const inner=document.querySelector('#journey-front-frame').contentDocument;
     return{
       smartPressed:inner.querySelector(selProd).getAttribute('aria-pressed'),
-      dur60Pressed:inner.querySelector(selDur).getAttribute('aria-pressed'),
+      dur60Pressed:inner.querySelector(selDur).getAttribute('aria-checked'),
       summary:inner.querySelector('#sum').textContent,
       buyEnabled:!inner.querySelector('.cta').disabled,
       frameLoads:window.__frontLoads,
@@ -586,14 +587,14 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.waitForFunction(()=>{
     const doc=document.querySelector('#journey-front-frame')?.contentDocument;
     return document.body.classList.contains('journey-active') &&
-      doc?.querySelector('.plan[data-d="30"] strong')?.textContent?.includes('₽') &&
+      doc?.querySelector('#price-bundle')?.textContent?.includes('₽') &&
       !doc.querySelector('.cta')?.disabled;
   },null,{timeout:15000});
   const result=await page.evaluate(()=>{
     const frame=document.querySelector('#journey-front-frame');
     return {
       top:Math.round(frame.getBoundingClientRect().top),
-      price:frame.contentDocument.querySelector('.plan[data-d="30"] strong').textContent,
+      price:frame.contentDocument.querySelector('#price-bundle').textContent,
       button:frame.contentDocument.querySelector('.cta').textContent,
       reloadVisible:getComputedStyle(frame.contentDocument.querySelector('#front-retry')).display!=='none',
       error:frame.contentDocument.querySelector('#front-error').textContent,
@@ -611,12 +612,12 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.goto(base+'/?test_bootstrap=1#plans',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>{
     const doc=document.querySelector('#journey-front-frame')?.contentDocument;
-    return doc?.querySelector('.plan[data-d="30"] strong')?.textContent?.includes('₽')&&
+    return doc?.querySelector('#price-bundle')?.textContent?.includes('₽')&&
       !doc?.querySelector('.cta')?.disabled;
   },null,{timeout:15000});
   const first=await page.evaluate(()=>{
     const doc=document.querySelector('#journey-front-frame').contentDocument;
-    return {price:doc.querySelector('.plan[data-d="30"] strong').textContent,
+    return {price:doc.querySelector('#price-bundle').textContent,
       unavailable:doc.querySelector('#sum').textContent.includes('недоступен'),
       checkoutDisabled:doc.querySelector('.cta').disabled,
       retryVisible:!doc.querySelector('#front-retry').hidden};
@@ -665,12 +666,12 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.frameLocator('#journey-front-frame').locator('#front-retry').click();
   await page.waitForFunction(()=>{
     const doc=document.querySelector('#journey-front-frame').contentDocument;
-    return doc.querySelector('.plans-mob .plan[data-d="15"] strong')?.textContent?.includes('₽') &&
+    return doc.querySelector('#price-bundle')?.textContent?.includes('₽') &&
       !doc.querySelector('.cta').disabled;
   },null,{timeout:15000});
   const recovered=await page.evaluate(()=>{
     const doc=document.querySelector('#journey-front-frame').contentDocument;
-    return {price:doc.querySelector('.plans-mob .plan[data-d="15"] strong').textContent,
+    return {price:doc.querySelector('#price-bundle').textContent,
       retryHidden:doc.querySelector('#front-retry').hidden,
       buyDisabled:doc.querySelector('.cta').disabled};
   });
@@ -854,8 +855,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.waitForFunction(()=>document.body.classList.contains('journey-active')&&
     !document.querySelector('#journey-buy').disabled);
   // Re-select the existing duration after changing it; checkout remains active.
-  await page.frameLocator('#journey-front-frame').locator('.plans-mob .plan[data-d="30"]').click();
-  await page.frameLocator('#journey-front-frame').locator('.plans-mob .plan[data-d="15"]').click();
+  await page.frameLocator('#journey-front-frame').locator('.desk-durations .dur-pill[data-d="30"]').click();
+  await page.frameLocator('#journey-front-frame').locator('.desk-durations .dur-pill[data-d="15"]').click();
   await page.frameLocator('#journey-front-frame').locator('.cta').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='checkout');
   const order=await page.evaluate(()=>({

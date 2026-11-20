@@ -1842,8 +1842,8 @@ body.journey-active[data-journey-view="trial-auth"] .header-actions{
 body.journey-active[data-journey-view="trial-auth"] .header-actions .about-trigger,
 body.journey-active[data-journey-view="trial-auth"] .header-actions .journey-header-account{
   min-height:0;
-  padding:8px 12px;
-  font:italic 700 12px/1 Inter,system-ui,sans-serif;
+  padding:8px 13px;
+  font:600 13px/1 Inter,system-ui,Roboto,Arial,sans-serif;
   border-radius:99px;
   box-shadow:none;
   transform:none;
@@ -1985,8 +1985,8 @@ body.journey-active[data-journey-view="trial-auth"] .footer-links button{
   body.journey-active[data-journey-view="trial-auth"] .header-actions{gap:4px}
   body.journey-active[data-journey-view="trial-auth"] .header-actions .about-trigger,
   body.journey-active[data-journey-view="trial-auth"] .header-actions .journey-header-account{
-    padding:8px 7px;
-    font-size:11px;
+    padding:8px 10px;
+    font-size:12px;
   }
   body.journey-active[data-journey-view="trial-auth"] .journey-trial-auth-card{
     padding:12px 12px 10px;
@@ -2279,10 +2279,10 @@ body.journey-active .journey-setup .journey-back{
   body.journey-active:not([data-journey-view="plans"]) .header-actions .about-trigger,
   body.journey-active:not([data-journey-view="plans"]) .header-actions .journey-header-account{
     display:inline-flex!important;align-items:center!important;justify-content:center!important;
-    margin:0!important;min-height:34px!important;padding:8px 12px!important;
+    margin:0!important;min-height:34px!important;padding:8px 13px!important;
     border-radius:99px!important;white-space:nowrap!important;
     color:#f5fbff!important;
-    font:italic 700 12px/1 Inter,system-ui,Roboto,Arial,sans-serif!important;
+    font:600 13px/1 Inter,system-ui,Roboto,Arial,sans-serif!important;
     box-shadow:none!important;transform:none!important;
   }
   body.journey-active:not([data-journey-view="plans"]) .header-actions .about-trigger{
@@ -2313,7 +2313,7 @@ body.journey-active .journey-setup .journey-back{
   }
   body.journey-active:not([data-journey-view="plans"]) .header-actions .about-trigger,
   body.journey-active:not([data-journey-view="plans"]) .header-actions .journey-header-account{
-    padding:8px 7px!important;font-size:11px!important;
+    padding:8px 10px!important;font-size:12px!important;
   }
 }
 /* Native site notifications must never cover import/installation buttons.
@@ -2594,7 +2594,7 @@ body.journey-active .journey-dns-proxy-setup[hidden]{display:none!important}
   }
   body.journey-active:not([data-journey-view="plans"]) .header-actions .about-trigger,
   body.journey-active:not([data-journey-view="plans"]) .header-actions .journey-header-account{
-    padding:8px 16px!important;font-size:13px!important;
+    padding:8px 13px!important;font-size:13px!important;
   }
   body.journey-active[data-journey-view="account"] > main > .account-section{
     width:min(1040px,calc(100% - 48px))!important;max-width:1040px!important;

@@ -82,7 +82,7 @@ test('illustrated storefront keeps responsive geometry and payment fine print in
   const art=file('apps/web/public/landing-art.html');
   assert.match(art,/id="payment-info-open"/);
   assert.match(art,/id="payment-info-dialog"/);
-  assert.match(art,/\.hero\{position:relative;min-height:clamp\(/);
+  assert.match(art,/\.hero\{position:relative;padding:/);
   assert.match(art,/footer\{margin-top:auto/);
   assert.doesNotMatch(art,/<p class="note"/);
   assert.doesNotMatch(art,/<p class="note2"/);
@@ -299,7 +299,7 @@ test('desktop and mobile storefront present all 3 RUB products without Stars or 
   assert.match(art,/data-card-product="vpn"/);
   assert.match(art,/data-card-product="bundle"/);
   assert.match(art,/data-card-product="smart_dns"/);
-  assert.match(art,/class="mob-products"/);
+  assert.match(art,/class="desk-durations"/);
   assert.match(art,/id="dns-info-dialog"/);
   assert.match(art,/id="trial-options"/);
   assert.match(art,/id="trial-dns"/);

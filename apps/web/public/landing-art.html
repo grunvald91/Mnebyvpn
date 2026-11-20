@@ -8,17 +8,27 @@
 <style>
 @property --a{syntax:'<angle>';initial-value:0deg;inherits:false}
 :root{
-  --bg:#04071a;--cy:#19e6ff;--bl:#3b7bff;--vi:#a64dff;--mg:#ff3fd2;--mut:#b9c3e8;
-  color-scheme:dark;box-sizing:border-box;
-  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#04071a;
+  --cy:#22e5ff;
+  --bl:#3b7bff;
+  --vi:#8b5cff;
+  --grn:#4ade80;
+  --red:#ff8f9e;
+  --txt:#f4f7ff;
+  --mut:#dce6f9;
+  --mut-no:#c2cee6;
+  color-scheme:dark;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
 }
 html,body{height:100%;min-height:100%}
 html{overflow-x:clip;scroll-padding-top:env(safe-area-inset-top,0px);background:var(--bg)}
 *,*::before,*::after{box-sizing:inherit}
-body{margin:0;min-height:100dvh;background:var(--bg);color:#fff;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+body{margin:0;min-height:100dvh;background:var(--bg);color:var(--txt);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-style:normal;overflow-x:hidden;-webkit-font-smoothing:antialiased}
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 a{color:inherit;text-decoration:none}
-:focus-visible{outline:2px solid var(--cy);outline-offset:3px}
+:focus-visible{outline:2px solid #5eeeff;outline-offset:2px}
 
 /* Background layers */
 .bg{position:fixed;inset:0;z-index:-1;overflow:hidden;background:radial-gradient(120% 80% at 50% 0,#0a1240,var(--bg) 70%)}
@@ -27,10 +37,12 @@ a{color:inherit;text-decoration:none}
 .desk-poster,.bgv-desktop{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 46%;transform:scale(1.01)}
 .bgv-desktop{opacity:0;transition:opacity .7s ease}
 .desk-scene.vid .bgv-desktop{opacity:1}
-.desk-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,7,26,.24) 0%,rgba(4,7,26,0) 14%,rgba(4,7,26,0) 64%,rgba(4,7,26,.16) 84%,rgba(4,7,26,.38) 100%)}
+/* Darken central zone behind content while keeping glowing portal rim & edges bright */
+.desk-scrim{position:absolute;inset:0;background:radial-gradient(ellipse 68% 66% at 50% 48%,rgba(4,7,26,.68) 0%,rgba(4,7,26,.42) 58%,rgba(4,7,26,.16) 100%),linear-gradient(180deg,rgba(4,7,26,.46) 0%,rgba(4,7,26,.14) 24%,rgba(4,7,26,.28) 65%,rgba(4,7,26,.62) 100%)}
 
 /* Mobile portrait Earth scene */
-.app{position:relative;z-index:1;max-width:480px;min-height:100%;margin:0 auto;display:flex;flex-direction:column;overflow-x:clip;background:radial-gradient(ellipse 95% 54% at 50% 56%,rgba(20,42,109,.34),transparent 80%),linear-gradient(#04071a,#07112e 84%,#04071a)}
+.app{position:relative;z-index:1;max-width:480px;height:100dvh;min-height:100%;margin:0 auto;display:flex;flex-direction:column;overflow-x:clip;overflow-y:auto;overscroll-behavior-y:contain;background:radial-gradient(ellipse 95% 54% at 50% 56%,rgba(20,42,109,.34),transparent 80%),linear-gradient(#04071a,#07112e 84%,#04071a)}
+.main{display:flex;flex-direction:column;flex:1 1 auto;min-width:0}
 .scene{position:absolute;left:0;right:0;top:0;aspect-ratio:941/1672;z-index:0;pointer-events:none;overflow:hidden;-webkit-mask-image:linear-gradient(#000 0%,#000 90%,transparent 100%);mask-image:linear-gradient(#000 0%,#000 90%,transparent 100%)}
 .pz,.kb,.fg,.fx{position:absolute;inset:0}
 .kb{background:url(/landing-earth.webp) center/100% 100% no-repeat}
@@ -46,221 +58,232 @@ a{color:inherit;text-decoration:none}
 .rk{position:absolute;width:var(--s);aspect-ratio:1;background:linear-gradient(135deg,#f0d5ae,#9a7655 55%,#4b3b33);clip-path:polygon(50% 0,100% 32%,82% 100%,18% 88%,0 30%)}
 @keyframes run{to{stroke-dashoffset:-100}}
 @keyframes spin{to{--a:360deg}}
-@keyframes shine{to{background-position:100% 0}}
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.tier.featured,.cta,.pill{box-shadow:none!important}}
 
-/* Shared Header */
-.top{display:flex;align-items:center;justify-content:space-between;gap:6px;height:48px;padding:0 10px;position:relative;z-index:5;flex-shrink:0;background:linear-gradient(180deg,rgba(4,7,26,.65),transparent)}
-.logo{display:flex;align-items:center;gap:6px;white-space:nowrap;min-width:0;flex:0 0 auto}
-.mark{width:30px;height:30px;border-radius:50%;border:1px solid rgba(120,160,255,.6);display:block;object-fit:cover;flex:none;box-shadow:0 0 14px rgba(80,140,255,.5)}
-.brand{font:italic 800 clamp(13px,3.6vw,17px)/1 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:-.04em;white-space:nowrap}
+/* Shared Header — upright navigation, italic reserved strictly for logo + H1 */
+.top{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:52px;padding:4px 12px;position:relative;z-index:5;flex-shrink:0;background:linear-gradient(180deg,rgba(4,7,26,.78),transparent)}
+.logo{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;min-width:0;min-height:44px;flex:0 0 auto}
+.mark{width:32px;height:32px;border-radius:50%;border:1px solid rgba(120,160,255,.65);display:block;object-fit:cover;flex:none;box-shadow:0 0 12px rgba(80,140,255,.45)}
+.brand{font:italic 800 clamp(14px,3.8vw,17px)/1 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:-.04em;white-space:nowrap}
 .brand b{background:linear-gradient(100deg,var(--cy),var(--vi));-webkit-background-clip:text;background-clip:text;color:transparent}
 .top-links{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-left:auto;min-width:0}
-.pill{flex:0 0 auto;white-space:nowrap;padding:8px 12px;border-radius:99px;border:1px solid rgba(140,150,255,.5);background:rgba(10,16,52,.78);font:italic 700 12px/1 Inter,system-ui,Roboto,Arial,sans-serif;transition:border-color .2s,box-shadow .2s}
-.pill:hover{border-color:rgba(120,230,255,.85);box-shadow:0 0 16px rgba(80,160,255,.4)}
-.pill.g{border-color:rgba(60,230,255,.9);background:linear-gradient(100deg,rgba(25,230,255,.24),rgba(166,77,255,.34));box-shadow:0 0 14px rgba(60,200,255,.35),inset 0 0 12px rgba(120,100,255,.25)}
+.pill{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;white-space:nowrap;min-height:38px;padding:8px 13px;border-radius:99px;border:1px solid rgba(140,165,255,.55);background:rgba(10,16,48,.86);font:600 13px/1 Inter,system-ui,Roboto,Arial,sans-serif;transition:border-color .18s,background-color .18s}
+.pill:hover{border-color:#7ce7ff;background:rgba(18,32,82,.94)}
+.pill.g{border-color:#44e7ff;background:rgba(12,56,92,.88);color:#e8fbff}
 .desk-only-link{display:none}
-@media(max-width:365px){.top{padding:0 7px;gap:4px}.brand{font-size:12px}.pill{padding:8px 7px;font-size:11px}}
+@media(max-width:365px){.top{padding:4px 8px;gap:4px}.brand{font-size:13px}.pill{padding:8px 10px;font-size:12px}}
 
-/* Hero centered inside the dark upper portal opening, above the sunrise & arcs */
-.hero{position:relative;min-height:clamp(146px,20svh,180px);padding:12px 0 6px;text-align:center;flex-shrink:0;z-index:2}
-.txt{position:relative;z-index:2;max-width:336px;margin:0 auto;padding:2px 24px 4px}
-.txt::before{content:"";position:absolute;inset:-6px -2px -8px;z-index:-1;pointer-events:none;border-radius:26px;background:radial-gradient(ellipse at 50% 52%,rgba(3,7,30,.78),rgba(3,7,30,.48) 58%,transparent 78%)}
-.eb{margin:0;font:italic 800 9.5px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:.12em;background:linear-gradient(90deg,var(--cy),#9daeff 60%,#cf7aff);-webkit-background-clip:text;background-clip:text;color:transparent}
-h1{margin:4px 0 0;font:italic 800 clamp(23px,6.8vw,32px)/1.03 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:-.02em}
-h1 span{display:block}
-.l1{background:linear-gradient(180deg,#fff,#dce3fb);-webkit-background-clip:text;background-clip:text;color:transparent}
-.l2{background:linear-gradient(95deg,#25e9ff 5%,#5eaaff 45%,#bc72ff 95%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 14px rgba(60,160,255,.45))}
-.ul{width:200px;max-width:60%;height:2.5px;margin:4px auto 6px;border-radius:50%;background:linear-gradient(90deg,transparent,var(--cy),var(--vi),var(--mg),transparent);box-shadow:0 0 10px rgba(100,120,255,.65)}
-.sub{margin:0 auto;max-width:286px;font:italic 500 10.8px/1.28 Inter,system-ui,Roboto,Arial,sans-serif;color:#eef2ff;text-shadow:0 1px 10px rgba(2,6,30,.95)}
-.desk-br{display:none}
-@media(max-width:350px){.txt{padding:2px 32px}.sub{max-width:236px;font-size:9.8px}.lock{width:7.5%;left:1.2%}}
+/* Hero with upright 14px eyebrow + italic H1 + 3 compact icon chips */
+.hero{position:relative;padding:8px 12px 10px;text-align:center;flex-shrink:0;z-index:2}
+.txt{position:relative;z-index:2;max-width:100%;margin:0 auto;padding:6px 14px}
+.txt::before{content:"";position:absolute;inset:-6px -4px;z-index:-1;pointer-events:none;border-radius:24px;background:radial-gradient(ellipse at 50% 50%,rgba(4,7,26,.82),rgba(4,7,26,.48) 62%,transparent 82%)}
+.eb{margin:0;font:700 14px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:.06em;color:#8aefff}
+h1{margin:6px 0 0;font:italic 800 clamp(25px,7vw,34px)/1.06 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:-.02em}
+h1 span{display:inline-block}
+h1 .l1{color:#ffffff}
+h1 .l2{margin-left:6px;background:linear-gradient(95deg,#38eeff 5%,#7ebbff 48%,#c48bff 95%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.ul{width:210px;max-width:60%;height:2.5px;margin:7px auto 10px;border-radius:50%;background:linear-gradient(90deg,transparent,var(--cy),var(--vi),transparent)}
+.hero-chips{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin:0 auto;padding:2px 0}
+.hero-chip{display:inline-flex;align-items:center;gap:6px;flex:0 1 auto;min-height:36px;padding:6px 11px;border-radius:99px;border:1px solid rgba(120,165,245,.42);background:rgba(7,15,44,.88);font:500 14px/1.15 Inter,system-ui,Roboto,Arial,sans-serif;color:#eef4ff;white-space:nowrap}
+.hero-chip svg{width:16px;height:16px;flex:none;color:#4be8ff}
+.hero-chip strong{font-weight:700;color:#ffffff}
 
-/* Storefront Card & Controls (placed below sunrise & network arcs) */
-.card{position:relative;margin:clamp(22px,4.5svh,44px) 14px 6px;padding:10px 11px 9px;border-radius:20px;background:linear-gradient(155deg,rgba(7,14,44,.52),rgba(6,11,36,.58));-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:0 0 26px rgba(80,120,255,.28),0 18px 40px rgba(0,0,10,.45);text-shadow:0 1px 4px rgba(2,5,20,.85);z-index:3;flex-shrink:0}
-.card::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.5px;background:conic-gradient(from var(--a),var(--cy),#4a5cff,var(--vi),var(--mg),var(--vi),#4a5cff,var(--cy));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
-.mob-store{display:block}
-.desk-store{display:none}
+/* Unified Storefront Card (solid 92% on mobile & non-blur browsers; 87% + blur(12px) when supported on >=768px) */
+.card{position:relative;margin:10px 12px 8px;padding:14px 12px 0;border-radius:20px;background:rgba(6,12,34,.92);border:1.5px solid rgba(110,165,245,.38);-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:0 16px 40px rgba(0,0,10,.6);z-index:3;flex-shrink:0}
+.desk-durations-wrap{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+.desk-durations-title h2{margin:0;font:700 18px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;color:#ffffff}
+.desk-durations{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:4px;border-radius:14px;border:1px solid rgba(130,165,235,.4);background:rgba(8,16,46,.9)}
+.dur-pill{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:44px;padding:6px 4px;border-radius:10px;font:600 14px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;color:#e6efff;transition:background-color .15s,border-color .15s}
+.dur-pill em{font-style:normal;font-size:12px;font-weight:700;padding:2px 7px;border-radius:99px;background:rgba(11,52,44,.92);color:#6ee7b7;border:1px solid rgba(74,222,128,.35)}
+.dur-pill:hover{background:rgba(28,58,122,.55);color:#ffffff}
+.dur-pill[aria-checked="true"]{background:#1c4f9c;color:#ffffff;box-shadow:inset 0 0 0 1.5px #5eeeff}
+.dur-pill[aria-checked="true"] em{background:#0b3b2e;color:#86efac;border-color:#4ade80}
 
-.ch{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 2px 6px}
-.ch h2{margin:0;display:flex;align-items:center;gap:6px;font:italic 800 15px/1.15 Inter,system-ui,Roboto,Arial,sans-serif}
-.ch h2::before{content:"";width:5px;height:14px;transform:skewX(-18deg);border-radius:2px;background:linear-gradient(180deg,var(--cy),var(--vi))}
-.plan-heading-product{color:#51e6ff;text-shadow:0 0 12px rgba(22,212,250,.3)}
+/* Compact Free Trial Bar (<= 48px) */
+.trial-slot{position:relative;isolation:isolate;min-width:0}
+.free{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;max-height:48px;padding:4px 10px;border-radius:12px;border:1px solid rgba(110,175,245,.42);background:rgba(10,22,62,.88)}
+.trial-slot.is-choosing .free{visibility:hidden}
+.free-left{display:flex;align-items:center;gap:8px;min-width:0}
+.free svg{width:18px;height:22px;flex:none;color:#38e8ff}
+.free b{font:700 14px/1.15 Inter,system-ui,Roboto,Arial,sans-serif;color:#ffffff;white-space:nowrap}
+.free .try{display:inline-flex;align-items:center;justify-content:center;min-height:40px;min-width:44px;padding:8px 16px;border-radius:99px;background:#22d3ee;color:#041022;font:700 14px/1 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap;transition:background-color .15s}
+.free .try:hover{background:#5eeeff}
+.trial-options{position:absolute;inset:0;z-index:3;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 44px;align-items:stretch;gap:6px}
+.trial-choice{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-height:44px;padding:4px 6px;border:1px solid rgba(94,238,255,.7);border-radius:10px;background:#0c2d5c;color:#ffffff;font:700 13px/1.1 Inter,system-ui,Roboto,Arial,sans-serif}
+.trial-choice small{font:500 12px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;color:#bae6fd}
+.trial-choice:disabled{opacity:.55;cursor:not-allowed}
+.trial-close{display:grid;place-items:center;min-width:44px;min-height:44px;border-radius:10px;border:1px solid rgba(130,175,245,.5);background:#0f204d;font-size:20px;color:#e6f2ff}
+.trial-dns-status{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:12;padding:10px 12px;margin:0;border-radius:12px;background:#0b1a46;border:1px solid rgba(72,197,253,.8);box-shadow:0 8px 24px rgba(0,0,18,.75);font:500 13px/1.35 Inter,system-ui,Roboto,Arial,sans-serif;text-align:center;color:#e8f2ff}
 
-.mob-products{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-bottom:6px}
-.prod-tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:38px;padding:4px;border-radius:10px;border:1px solid rgba(130,150,245,.42);background:rgba(8,18,52,.44);color:#d8e6ff;text-align:center}
-.prod-tab b{font:italic 800 11px/1.05 Inter,system-ui,Roboto,Arial,sans-serif}
-.prod-tab small{font:600 9px/1.05 Inter,system-ui,Roboto,Arial,sans-serif;color:#93d7f7}
-.prod-tab[aria-pressed="true"]{background:linear-gradient(110deg,rgba(15,213,243,.86),rgba(90,74,238,.9));border-color:#9ef2ff;color:#fff;box-shadow:inset 0 0 0 1px rgba(210,252,255,.45)}
-.prod-tab[aria-pressed="true"] small{color:#eafbff}
+/* Cards grid — Mobile default: 1 column, recommended ("3 в 1") FIRST */
+.desk-grid{display:flex;flex-direction:column;gap:12px}
+.tier{position:relative;display:grid;grid-template-rows:auto auto auto auto auto 1fr auto;padding:14px 14px 14px;border-radius:16px;border:1px solid rgba(148,175,224,.38);background:rgba(10,20,56,.78);cursor:pointer;transition:border-color .18s,box-shadow .18s,background-color .18s}
+.tier:hover{border-color:rgba(165,215,255,.78);box-shadow:0 6px 20px rgba(8,24,72,.55)}
+.tier.featured{order:-1;border:2px solid transparent;background:linear-gradient(rgba(12,26,72,.92),rgba(18,18,62,.92)) padding-box,linear-gradient(135deg,#22e5ff,#8b5cff) border-box;box-shadow:0 0 28px rgba(45,200,255,.22)}
+.tier.is-selected:not(.featured){border:1.5px solid #38bdf8;background:rgba(56,189,248,.08)}
+.tier.featured.is-selected{background:linear-gradient(rgba(16,40,92,.92),rgba(22,26,76,.92)) padding-box,linear-gradient(135deg,#22e5ff,#8b5cff) border-box}
+.tier-check{position:absolute;top:12px;right:12px;display:none;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:#38bdf8;color:#041022;font:700 14px/1 Inter,system-ui,Roboto,Arial,sans-serif}
+.tier.is-selected .tier-check{display:inline-flex}
+.tier.featured.is-selected .tier-check{right:54px}
 
-.plans{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
-.plan{min-height:38px;padding:4px 6px;border-radius:10px;border:1px solid rgba(150,120,255,.42);background:rgba(11,18,58,.42);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;transition:border-color .14s ease,background-color .14s ease}
-.plan b{font:italic 700 11.5px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#eef1ff}
-.plan strong{font:italic 800 15px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#4df0ff}
-.plan small{font:700 9px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#ffb4ec}
-.plan:disabled{cursor:not-allowed;opacity:.5}
-.plan[aria-pressed="true"]{background:linear-gradient(105deg,#13b6dc,#5658d9);border-color:rgba(190,250,255,.92);box-shadow:inset 0 0 0 1px rgba(192,252,255,.5)}
-.plan[aria-pressed="true"] strong,.plan[aria-pressed="true"] small{color:#fff}
+.tier-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:28px;padding-right:30px}
+.tier.featured .tier-head{padding-right:0}
+.tier-badge{display:inline-flex;align-items:center;padding:4px 10px;border-radius:99px;font:700 12px/1.15 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:.03em;text-transform:uppercase}
+.tier[data-card-product="vpn"] .tier-badge{background:rgba(42,60,114,.9);color:#d7e3ff;border:1px solid rgba(154,178,240,.5)}
+.tier.featured .tier-badge{background:#38e8ff;color:#041024;border:1px solid transparent}
+.tier[data-card-product="smart_dns"] .tier-badge{background:rgba(13,72,76,.92);color:#99f6e4;border:1px solid rgba(45,212,191,.55)}
 
-.mob-perks{margin:6px 2px 2px;padding:5px 8px;border-radius:10px;border:1px solid rgba(90,175,245,.32);background:rgba(7,17,48,.46);font:500 10px/1.26 Inter,system-ui,Roboto,Arial,sans-serif;color:#dbeaff;text-align:center}
+.tier-top-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:8px}
+.tier h3{margin:0;font:700 18px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;color:#ffffff}
+.tier-sub{margin:4px 0 0;font:400 14px/1.35 Inter,system-ui,Roboto,Arial,sans-serif;color:var(--mut)}
+.tier-price-row{display:flex;align-items:baseline;gap:10px;margin:10px 0 3px;min-height:32px}
+.tier-price{font:800 28px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#62f3ff}
+.tier.featured .tier-price{color:#ffffff}
+.tier-old{font:600 15px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#b8c6e3;text-decoration:line-through}
+.tier-old[hidden]{display:none}
+.tier-meta{margin:0 0 10px;min-height:18px;font:600 14px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;color:#9eeeff}
+.tier-list{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:6px;font:400 14px/1.35 Inter,system-ui,Roboto,Arial,sans-serif;color:#edf3ff}
+.tier-list li{display:flex;align-items:flex-start;gap:7px}
+.tier-list li .ico{flex:0 0 auto;font-weight:700;line-height:1.35}
+.tier-list li .ico-ok{color:var(--grn)}
+.tier-list li.no{color:var(--mut-no)}
+.tier-list li.no .ico-no{color:var(--red)}
 
-/* Dialog / Info & Comparison popovers */
-.info-circle,.payment-info{display:grid;place-items:center;width:24px;height:24px;min-width:24px;border:1.4px solid #51e6ff;border-radius:50%;color:#bbfaff;font:italic 800 14px/1 Inter,system-ui,Roboto,Arial,sans-serif;background:rgba(17,48,91,.8)}
-.payment-info{width:21px;height:21px;min-width:21px;font-size:13px;background:rgba(20,58,108,.85)}
-.dns-popover,.payment-popover,.compare-popover{position:fixed;inset:auto 14px auto 14px;top:50%;transform:translateY(-50%);max-width:440px;margin:0 auto;z-index:40;border-radius:16px;border:1px solid rgba(92,226,255,.78);background:rgba(8,18,52,.98);box-shadow:0 16px 46px rgba(0,0,15,.85),0 0 24px rgba(34,202,244,.28);padding:13px 14px;color:#edf5ff;font:400 11.5px/1.4 Inter,system-ui,Roboto,Arial,sans-serif}
-.compare-popover{max-width:740px}
+/* Card buttons: outline 44px, muted solid "✓ Выбрано" when selected, NO gradient */
+.tier-pick{width:100%;min-height:44px;height:44px;padding:0 14px;border-radius:99px;border:1.5px solid rgba(125,195,255,.72);background:transparent;font:700 14px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#eef6ff;transition:background-color .16s,border-color .16s,color .16s}
+.tier-pick:hover{background:rgba(56,189,248,.12);border-color:#7ce7ff}
+.tier.is-selected .tier-pick{background:rgba(56,189,248,.16);border-color:rgba(56,189,248,.78);color:#e0f7ff}
+
+/* Info icon: 44x44 tap target with 22px visible circle inside */
+.info-wrap{position:relative;display:inline-flex;align-items:center}
+.info-circle,.payment-info{position:relative;isolation:isolate;z-index:0;display:grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;margin:-10px -8px;border-radius:50%;color:#d5f9ff;font:700 13px/1 Inter,system-ui,Roboto,Arial,sans-serif}
+.info-circle::before,.payment-info::before{content:"";position:absolute;width:22px;height:22px;border-radius:50%;border:1.5px solid #5eeeff;background:rgba(14,44,86,.92);z-index:-1}
+.info-circle:hover::before,.payment-info:hover::before{background:rgba(24,72,132,.96);border-color:#9ef6ff}
+
+/* Sticky mobile / desktop summary action bar with ONE gradient CTA (>=52px) */
+.action-strip{position:sticky;bottom:0;z-index:8;margin:12px -12px 0;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid rgba(110,165,245,.36);background:rgba(6,12,34,.96);border-radius:0 0 18px 18px;display:flex;flex-direction:column;gap:6px}
+.action-main-row{display:flex;flex-direction:column;gap:8px}
+.sum{display:flex;align-items:center;justify-content:center;gap:6px;font:600 14px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;color:#ffffff;text-align:center}
+.cta{position:relative;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;width:100%;min-height:52px;padding:12px 20px;border-radius:99px;font:700 16px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;color:#ffffff;background:linear-gradient(100deg,#0eb8db,#3b7bff 52%,#8b5cff 100%);border:1.5px solid rgba(200,250,255,.8);box-shadow:0 6px 24px rgba(34,150,255,.45);text-shadow:0 1px 6px rgba(0,14,56,.65)}
+.cta:hover{filter:brightness(1.06)}
+.cta:disabled{cursor:not-allowed;opacity:.65;filter:saturate(.6)}
+.action-note{margin:0;text-align:center;font:400 12.5px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;color:#cbd9f4}
+.front-error{font-size:13px;line-height:1.3;color:#ffc1d1;text-align:center;margin:4px 0 0}
+.front-error[hidden],.front-retry[hidden],.trial-options[hidden],.trial-dns-status[hidden]{display:none!important}
+.front-retry{display:block;margin:4px auto 0;color:#b8faff;font-size:13px;text-decoration:underline;text-align:center}
+
+/* Popovers & Mobile Bottom Sheets */
+.dns-popover,.payment-popover,.compare-popover{position:fixed;left:0;right:0;bottom:0;top:auto;transform:none;max-width:100%;margin:0 auto;z-index:40;border-radius:18px 18px 0 0;border:1px solid rgba(92,226,255,.78);background:rgba(8,18,52,.98);box-shadow:0 -12px 40px rgba(0,0,15,.88);padding:12px 14px calc(12px + env(safe-area-inset-bottom,0px));color:#edf5ff;font:400 13px/1.36 Inter,system-ui,Roboto,Arial,sans-serif}
 .dns-popover[hidden],.payment-popover[hidden],.compare-popover[hidden]{display:none!important}
 .dns-popover-head,.payment-popover-head{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#fff}
-.dns-popover-head strong,.payment-popover-head strong{font:italic 800 13.5px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
-.dns-popover-head button,.payment-popover-head button{display:grid;place-items:center;flex:0 0 26px;width:26px;height:26px;border-radius:50%;background:rgba(77,110,175,.35);font:500 18px/1 Inter,system-ui,Roboto,Arial,sans-serif}
-.dns-popover p,.payment-popover p{margin:6px 0 0;color:#d6e3f5}
-.dns-popover-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
-.dns-popover-tags span{border-radius:99px;padding:3px 7px;border:1px solid rgba(95,164,245,.45);background:rgba(46,82,151,.28);font:500 10px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
-.dns-popover-caution{color:#bdd1ee;font-size:10.8px;line-height:1.36}
-.dns-request{display:block;width:100%;min-height:33px;margin-top:8px;padding:6px 10px;border-radius:99px;border:1px solid rgba(145,244,255,.7);background:linear-gradient(110deg,#14b7e9,#5f6be8);color:#fff;font:italic 800 12px/1.15 Inter,system-ui,Roboto,Arial,sans-serif}
+.dns-popover-head strong,.payment-popover-head strong{font:700 14px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
+.dns-popover-head button,.payment-popover-head button{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;margin:-8px -8px -8px 0;border-radius:50%;background:rgba(77,110,175,.35);font:500 20px/1 Inter,system-ui,Roboto,Arial,sans-serif}
+.dns-popover p,.payment-popover p{margin:6px 0 0;color:#dce7fa}
+.dns-popover-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.dns-popover-tags span{border-radius:99px;padding:3px 8px;border:1px solid rgba(95,164,245,.45);background:rgba(46,82,151,.34);font:500 12px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
+.dns-popover-caution{color:#cad8f2;font-size:12.5px;line-height:1.34}
+.dns-request{display:block;width:100%;min-height:44px;margin-top:8px;padding:8px 12px;border-radius:99px;border:1px solid rgba(145,244,255,.7);background:#12609e;color:#fff;font:700 13.5px/1.15 Inter,system-ui,Roboto,Arial,sans-serif}
 
-.cmp-table{width:100%;border-collapse:collapse;margin-top:10px;font:400 12.5px/1.38 Inter,system-ui,Roboto,Arial,sans-serif}
+.cmp-table{width:100%;border-collapse:collapse;margin-top:10px;font:400 13px/1.38 Inter,system-ui,Roboto,Arial,sans-serif}
 .cmp-table th,.cmp-table td{padding:7px 8px;border-bottom:1px solid rgba(115,155,225,.2);text-align:left}
-.cmp-table th{color:#8aefff;font:italic 700 12px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
+.cmp-table th{color:#8aefff;font:700 13px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
 .cmp-table td:not(:first-child){text-align:center;font-weight:600}
 .cmp-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
 .cmp-step{padding:10px 12px;border-radius:12px;border:1px solid rgba(115,165,245,.26);background:rgba(10,24,62,.68)}
-.cmp-step strong{display:block;font:italic 800 12px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;color:#5ef0ff}
-.cmp-step p{margin:4px 0 0;font:400 11.5px/1.35 Inter,system-ui,Roboto,Arial,sans-serif;color:#d0def5}
+.cmp-step strong{display:block;font:700 13px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;color:#5ef0ff}
+.cmp-step p{margin:4px 0 0;font:400 12.5px/1.35 Inter,system-ui,Roboto,Arial,sans-serif;color:#d6e3f7}
 
-/* Summary, CTA, Error, Trial strip */
-.sum{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;margin:6px 0;font:600 11.5px/1.22 Inter,system-ui,Roboto,Arial,sans-serif;color:#e8ecff;text-align:center}
-.sum::before,.sum::after{content:"";flex:1;height:1.5px;background:linear-gradient(90deg,transparent,var(--cy))}
-.sum::after{background:linear-gradient(270deg,transparent,var(--cy))}
-.cta{position:relative;overflow:hidden;display:block;width:100%;min-height:41px;padding:8px 16px;border-radius:99px;font:italic 800 15.5px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;background:linear-gradient(100deg,#19e6ff,#3b7bff 50%,#a64dff 100%);background-size:160% 100%;border:1.5px solid rgba(200,250,255,.75);box-shadow:0 0 24px rgba(60,160,255,.5),inset 0 0 14px rgba(255,255,255,.25);text-shadow:0 2px 8px rgba(0,20,80,.45)}
-.cta:disabled{cursor:not-allowed;opacity:.65;filter:saturate(.6)}
-.action-note{margin:5px 2px 0;text-align:center;font:400 9.5px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;color:#afc3e3}
-.trial-hint{display:none}
-.front-error{font-size:11px;line-height:1.3;color:#ffc1d1;text-align:center;margin:6px 0 0}
-.front-error[hidden],.front-retry[hidden],.trial-options[hidden],.trial-dns-status[hidden]{display:none!important}
-.front-retry{display:block;margin:6px auto 0;color:#b8faff;font-size:11px;text-decoration:underline;text-align:center}
-
-.trial-slot{position:relative;isolation:isolate;margin-top:6px;min-width:0}
-.free{display:flex;align-items:center;gap:8px;min-height:36px;padding:4px 9px;border-radius:13px;border:1px solid rgba(150,130,255,.5);background:rgba(9,16,52,.45)}
-.trial-slot.is-choosing .free{visibility:hidden}
-.free svg{width:19px;height:25px;flex:none;filter:drop-shadow(0 0 7px var(--cy))}
-.free b{flex:1;font:italic 800 12.5px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
-.free .try{padding:8px 12px;border-radius:99px;border:1.5px solid var(--cy);background:rgba(8,26,70,.8);font:italic 700 11.5px/1 Inter,system-ui,Roboto,Arial,sans-serif;box-shadow:0 0 12px rgba(25,230,255,.4)}
-.trial-options{position:absolute;inset:0;z-index:3;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 28px;align-items:stretch;gap:5px}
-.trial-choice{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:3px;border:1px solid rgba(74,213,245,.65);border-radius:12px;background:linear-gradient(110deg,rgba(10,53,96,.97),rgba(39,25,99,.97));font:italic 800 12px/1.05 Inter,system-ui,Roboto,Arial,sans-serif}
-.trial-choice small{font:500 9.5px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;color:#c5ddfa}
-.trial-choice:disabled{opacity:.55;cursor:not-allowed}
-.trial-close{display:grid;place-items:center;border-radius:11px;border:1px solid rgba(111,175,251,.45);background:rgba(12,24,60,.96);font-size:20px;color:#cfe9ff}
-.trial-dns-status{position:absolute;left:0;right:0;bottom:calc(100% + 5px);z-index:4;padding:8px 10px;margin:0;border-radius:12px;background:#0c1b46;border:1px solid rgba(72,197,253,.72);box-shadow:0 5px 20px rgba(0,0,18,.5);font:500 10.5px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;text-align:center;color:#d6ecff}
-
-/* Footer */
-footer{margin-top:auto;padding:8px 8px 9px;text-align:center;font:italic 400 10.5px/1.15 Inter,system-ui,Roboto,Arial,sans-serif;color:#cfd6f7;position:relative;flex-shrink:0}
+/* Footer: >= 12px, contrast >= 4.5:1, touch friendly */
+footer{margin-top:auto;padding:10px 8px 12px;text-align:center;font:500 12px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;color:#dce4f9;position:relative;flex-shrink:0}
 footer::before{content:"";position:absolute;left:0;right:0;top:0;height:1px;background:linear-gradient(90deg,transparent,#3a7cff 30%,#a64dff 70%,transparent)}
-footer nav{display:flex;justify-content:center;gap:0}
-footer nav a{padding:0 10px;border-left:1px solid rgba(150,150,255,.35);white-space:nowrap}
+footer nav{display:flex;justify-content:center;flex-wrap:wrap;gap:4px 0}
+footer nav a{display:inline-flex;align-items:center;min-height:36px;padding:6px 12px;border-left:1px solid rgba(150,165,255,.35);white-space:nowrap}
 footer nav a:first-child{border:0}
-.legal-links{display:flex;flex-wrap:nowrap;justify-content:center;align-items:center;gap:clamp(7px,2.1vw,14px);margin-top:5px}
-.legal-links a{font:italic 700 clamp(9.5px,2.6vw,10.5px)/1.15 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
+.legal-links{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:6px 14px;margin-top:2px}
+.legal-links a{display:inline-flex;align-items:center;min-height:36px;padding:4px 6px;font:600 12px/1.2 Inter,system-ui,Roboto,Arial,sans-serif;white-space:nowrap}
 
 /* ==========================================================================
-   DESKTOP FULL-SCREEN COMPOSITION (>= 900px) — fits 1280x800, 1440x900, 1920x1080
-   Hero scales naturally and centers inside upper cosmic opening; Card sits below arcs.
+   TABLET & DESKTOP (>= 768px): 3 cards in a row (recommended in center),
+   blur(12px) when supported, solid 92% fallback, fits 1366x768 & 1920x960.
    ========================================================================== */
-@media(min-width:900px){
-  html,body{background:transparent}
+@media(min-width:768px){
+  html,body{background:var(--bg)}
   .scene{display:none!important}
   .desk-scene{display:block;position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;overflow:hidden;background:#04071a}
-  .app{max-width:1140px;width:min(1140px,calc(100vw - 48px));min-height:100dvh;background:none;overflow:visible}
-  .top{height:56px;padding:0 4px;background:none}
+  .app{max-width:1160px;width:min(1160px,calc(100vw - 32px));height:auto;min-height:100dvh;overflow:visible;background:none}
+  .top{min-height:50px;padding:4px 2px;background:linear-gradient(180deg,rgba(4,7,26,.72),rgba(4,7,26,0))}
   .mark{width:34px;height:34px}
   .brand{font-size:18px}
   .top-links{gap:8px}
-  .pill{padding:8px 16px;font-size:13px}
-  .desk-only-link{display:inline-flex;align-items:center}
-  .desk-br{display:block}
+  .pill{min-height:40px;padding:8px 13px;font-size:13px}
+  .desk-only-link{display:inline-flex}
 
-  /* Centered gracefully inside the dark cosmic portal cavity above the sunrise & arcs */
-  .hero{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;min-height:0;padding:clamp(10px,1.8vh,24px) 16px clamp(18px,3.6vh,48px);margin:0 auto;max-width:940px}
-  .txt{max-width:min(920px,100%);padding:12px 28px 14px}
-  .txt::before{inset:-10px -26px -12px;background:radial-gradient(ellipse at 50% 50%,rgba(4,7,26,.78),rgba(4,7,26,.42) 60%,transparent 82%)}
-  .eb{font-size:clamp(11px,.9vw,13px);letter-spacing:.17em}
-  h1{font-size:clamp(36px,3.6vw,50px);margin:7px 0 0;letter-spacing:-.025em;line-height:1.06}
-  h1 span{display:inline}
-  h1 .l2{margin-left:10px}
-  .ul{width:clamp(240px,22vw,340px);height:3px;margin:9px auto 11px}
-  .sub{max-width:880px;font:500 clamp(13.5px,1.15vw,16px)/1.44 Inter,system-ui,Roboto,Arial,sans-serif;color:#f1f5ff}
+  .hero{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:clamp(4px,1.2vh,16px) 8px clamp(8px,1.8vh,24px);max-width:980px;margin:0 auto}
+  .txt{padding:6px 20px}
+  h1{font-size:clamp(32px,3.2vw,44px);margin:5px 0 0}
+  .ul{width:clamp(220px,20vw,320px);margin:7px auto 10px}
+  .hero-chips{justify-content:center;overflow-x:visible;flex-wrap:wrap;gap:10px}
+  .hero-chip{min-height:38px;font-size:14px}
 
-  /* Leave middle band open for glowing horizon arcs and sunrise, card sits symmetrically below as clear frosted glass */
-  .card{margin:0 0 clamp(8px,1.3vh,14px);padding:clamp(13px,1.6vh,17px) 18px clamp(11px,1.4vh,15px);border-radius:22px;background:linear-gradient(155deg,rgba(5,12,38,.28),rgba(8,10,34,.34));-webkit-backdrop-filter:blur(5px) saturate(115%)!important;backdrop-filter:blur(5px) saturate(115%)!important;text-shadow:0 1px 4px rgba(2,5,20,.9)}
-  .mob-store{display:none}
-  .desk-store{display:block}
+  .card{margin:0 0 8px;padding:14px 16px 12px;border-radius:22px;background:rgba(6,12,34,.92)}
+  @supports ((backdrop-filter:blur(12px)) or (-webkit-backdrop-filter:blur(12px))){
+    .card{background:rgba(6,12,34,.87);-webkit-backdrop-filter:blur(12px) saturate(115%)!important;backdrop-filter:blur(12px) saturate(115%)!important}
+  }
 
-  .desk-durations-wrap{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:clamp(9px,1.2vh,13px)}
-  .desk-durations-title h2{margin:0;font:italic 800 clamp(16.5px,1.45vw,19px)/1.15 Inter,system-ui,Roboto,Arial,sans-serif}
-  .desk-durations-title p{margin:3px 0 0;font:400 12px/1.3 Inter,system-ui,Roboto,Arial,sans-serif;color:#dbe8ff}
-  .desk-durations{display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;border-radius:14px;border:1px solid rgba(120,165,245,.38);background:rgba(5,12,38,.42)}
-  .dur-pill{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:10px;font:italic 700 12.5px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;color:#d4e4ff;transition:background .18s,border-color .18s}
-  .dur-pill em{font-style:normal;font-size:10px;padding:2px 6px;border-radius:99px;background:rgba(36,216,255,.16);color:#75f3ff}
-  .dur-pill:hover{color:#fff;background:rgba(32,74,142,.45)}
-  .dur-pill[aria-pressed="true"]{background:linear-gradient(110deg,#12b9de,#5d56df);color:#fff;box-shadow:0 0 14px rgba(25,215,245,.35)}
-  .dur-pill[aria-pressed="true"] em{background:rgba(255,255,255,.22);color:#fff}
+  .desk-durations-wrap{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;margin-bottom:14px}
+  .desk-durations-title h2{font-size:18px}
+  .desk-durations{display:inline-flex;grid-template-columns:none;gap:4px}
+  .dur-pill{flex-direction:row;min-height:40px;padding:6px 12px;gap:6px}
+  .free{min-height:44px;max-height:46px;padding:4px 6px 4px 12px}
 
-  .desk-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:stretch}
-  .tier{position:relative;display:flex;flex-direction:column;padding:13px 15px 12px;border-radius:16px;border:1px solid rgba(122,158,245,.38);background:rgba(5,12,40,.30);cursor:pointer;transition:border-color .2s,box-shadow .2s,transform .2s}
-  .tier:hover{border-color:rgba(108,215,255,.72);transform:translateY(-1px)}
-  .tier.is-selected{border-color:#53edff;box-shadow:0 0 22px rgba(34,210,248,.24),inset 0 0 0 1px rgba(145,245,255,.45);background:linear-gradient(155deg,rgba(8,32,74,.44),rgba(16,18,58,.46))}
-  .tier.featured{border-color:rgba(92,226,255,.72);background:linear-gradient(155deg,rgba(8,26,68,.40),rgba(22,12,56,.40));box-shadow:0 0 28px rgba(80,140,255,.2)}
-  .tier-head{display:flex;align-items:center;justify-content:space-between;gap:6px;min-height:24px}
-  .tier-badge{display:inline-block;padding:3px 8px;border-radius:99px;font:italic 800 10px/1.1 Inter,system-ui,Roboto,Arial,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#a8f6ff;border:1px solid rgba(82,216,255,.45);background:rgba(14,52,96,.52)}
-  .tier.featured .tier-badge{background:linear-gradient(95deg,#19e6ff,#8b5cff);color:#04081d;border-color:transparent;text-shadow:none}
-  .tier-top-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:6px}
-  .tier h3{margin:0;font:italic 800 clamp(17px,1.5vw,19.5px)/1.12 Inter,system-ui,Roboto,Arial,sans-serif}
-  .tier-sub{margin:4px 0 0;min-height:31px;font:400 11.5px/1.32 Inter,system-ui,Roboto,Arial,sans-serif;color:#dbe7ff}
-  .tier-price-row{display:flex;align-items:baseline;gap:8px;margin:7px 0 3px;min-height:28px}
-  .tier-price{font:italic 900 clamp(24px,2.2vw,28px)/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#54f2ff}
-  .tier.featured .tier-price{color:#fff;text-shadow:0 0 16px rgba(64,225,255,.45)}
-  .tier-old{font:italic 700 14px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#a9b8db;text-decoration:line-through}
-  .tier-old[hidden]{display:none}
-  .tier-meta{margin:0 0 8px;min-height:14px;font:600 11px/1.25 Inter,system-ui,Roboto,Arial,sans-serif;color:#92e6ff}
-  .tier-list{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-direction:column;gap:4.5px;font:400 11.8px/1.28 Inter,system-ui,Roboto,Arial,sans-serif;color:#ebf2ff;flex:1}
-  .tier-list li.no{color:#b0c0df}
-  .tier-pick{width:100%;min-height:35px;border-radius:99px;border:1px solid rgba(110,190,255,.58);background:rgba(12,32,76,.55);font:italic 800 12.5px/1 Inter,system-ui,Roboto,Arial,sans-serif;color:#e8f7ff;transition:background .18s,border-color .18s}
-  .tier.is-selected .tier-pick,.tier.featured .tier-pick{background:linear-gradient(100deg,#19e6ff,#3b7bff 55%,#a64dff);border-color:rgba(205,252,255,.8);color:#fff}
+  .desk-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:center}
+  .tier{padding:14px 14px 14px;min-height:0}
+  .tier.featured{order:0;padding-top:24px;padding-bottom:24px}
+  .tier-meta{font-size:13px}
 
-  .action-strip{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);gap:16px;align-items:center;margin-top:clamp(9px,1.2vh,13px);padding-top:clamp(9px,1.2vh,13px);border-top:1px solid rgba(110,165,245,.28)}
-  .action-left{display:flex;flex-direction:column;gap:5px}
-  .action-left .sum{margin:0;justify-content:flex-start;text-align:left;font-size:13px}
-  .action-left .sum::before,.action-left .sum::after{display:none}
-  .action-left .cta{width:100%;max-width:none;min-height:43px;font-size:15.5px}
-  .action-note{margin:0;text-align:left;font:400 11px/1.28 Inter,system-ui,Roboto,Arial,sans-serif;color:#cfe0fa}
-  .trial-slot{margin-top:0}
-  .free{padding:11px 14px;min-height:56px;border-radius:14px;background:rgba(6,13,44,.38)}
-  .free b{font-size:14px}
-  .free small.trial-hint{display:block;font:400 10.5px/1.28 Inter,system-ui,Roboto,Arial,sans-serif;color:#cde0fc;margin-top:2px}
+  .action-strip{position:static;margin:14px 0 0;padding:12px 0 0;background:transparent;border-radius:0;border-top:1px solid rgba(110,165,245,.28);gap:6px}
+  .action-main-row{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:16px}
+  .sum{justify-content:flex-start;text-align:left;font-size:15px}
+  .cta{width:auto;min-width:290px;min-height:52px;padding:12px 28px}
+  .action-note{text-align:left;font-size:12.5px}
 
-  footer{margin-top:0;padding:8px 8px 10px;font-size:11px;background:rgba(4,7,26,.24);border-radius:12px 12px 0 0}
-  .legal-links{margin-top:4px}
-  .legal-links a{font-size:11px}
+  .dns-popover,.payment-popover,.compare-popover{inset:auto 14px auto 14px;top:16px;bottom:auto;transform:none;max-width:440px;border-radius:16px;padding:14px 16px;box-shadow:0 16px 46px rgba(0,0,15,.85)}
+  .payment-popover{top:180px}
+  .compare-popover{top:90px;max-width:740px}
+
+  footer{padding:8px 8px 10px;background:rgba(4,7,26,.45);border-radius:12px 12px 0 0}
+  footer nav a,.legal-links a{min-height:28px;padding:3px 10px;font-size:12.5px}
 }
-@media(min-width:900px) and (max-height:830px){
-  .top{height:48px}
-  .hero{padding:6px 16px 14px}
-  .txt{padding:6px 20px 8px}
-  h1{font-size:clamp(32px,3.2vw,38px);margin-top:4px}
-  .ul{margin:6px auto 7px}
-  .sub{font-size:13px;line-height:1.32}
-  .card{padding:10px 16px 9px;margin-bottom:5px}
-  .desk-durations-wrap{margin-bottom:7px}
-  .tier{padding:9px 12px}
-  .tier h3{font-size:16.5px}
-  .tier-sub{min-height:29px;font-size:11px}
-  .tier-price{font-size:23px}
-  .tier-list{gap:3px;font-size:11.2px;margin-bottom:7px}
-  .tier-pick{min-height:31px;font-size:12px}
-  .action-left .cta{min-height:39px;font-size:14.5px}
-  .free{min-height:48px;padding:8px 12px}
-  footer{padding:6px 8px 7px}
+/* 768-1023px tablet tighter spacing so all 3 cards fit cleanly side by side */
+@media(min-width:768px) and (max-width:1023px){
+  .desk-durations-wrap{grid-template-columns:1fr auto;gap:8px}
+  .trial-slot{grid-column:1 / -1}
+  .desk-grid{gap:8px}
+  .tier{padding:12px 10px}
+  .tier.featured{padding-top:18px;padding-bottom:18px}
+  .tier-price{font-size:24px}
+}
+/* Short laptop viewports (e.g. 1366x768 where usable height is ~630px): keep headings, prices & Выбрать buttons visible on 1st screen */
+@media(min-width:1024px) and (max-height:800px){
+  .top{min-height:44px;padding:2px}
+  .hero{padding:2px 8px 6px}
+  .txt{padding:2px 16px}
+  .eb{font-size:13px}
+  h1{font-size:32px;margin-top:2px}
+  .ul{margin:4px auto 6px}
+  .hero-chip{min-height:34px;padding:4px 10px;font-size:13px}
+  .card{padding:10px 14px 9px;margin-bottom:4px}
+  .desk-durations-wrap{margin-bottom:8px}
+  .tier{padding:10px 12px}
+  .tier.featured{padding-top:18px;padding-bottom:18px}
+  .tier-sub{margin-top:2px;font-size:14px;line-height:1.25}
+  .tier-price-row{margin:6px 0 2px;min-height:28px}
+  .tier-price{font-size:25px}
+  .tier-meta{margin-bottom:6px;font-size:13px}
+  .tier-list{gap:3px;margin-bottom:8px;font-size:14px;line-height:1.28}
+  .action-strip{margin-top:8px;padding-top:8px}
+  .cta{min-height:52px}
+  footer{padding:4px 8px 6px}
 }
 /* Extremely narrow viewport: retain complete tariff card and footer without scrolling. */
 @media(max-width:350px) and (max-height:730px){.card{margin-top:16px}}
@@ -302,135 +325,130 @@ footer nav a:first-child{border:0}
     </nav>
   </header>
 
-  <section class="hero">
-    <div class="txt">
-      <p class="eb">MNEBYVPN · ПОДКЛЮЧИЛ И НЕ ПАРИШЬСЯ</p>
-      <h1><span class="l1">Один доступ —</span><span class="l2">3 технологии</span></h1>
-      <div class="ul"></div>
-      <p class="sub">Smart DNS — открывает сервисы, недоступные для вашего региона (ChatGPT, Claude, Gemini и другие).<br class="desk-br"> VPN — для ресурсов с ограничениями доступа · Telegram-прокси — всегда на связи.</p>
-    </div>
-  </section>
+  <main class="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="txt">
+        <p class="eb">MNEBYVPN · ПОДКЛЮЧИЛ И НЕ ПАРИШЬСЯ</p>
+        <h1 id="hero-title"><span class="l1">Один доступ —</span><span class="l2">3 технологии</span></h1>
+        <div class="ul" aria-hidden="true"></div>
+        <div class="hero-chips" aria-label="Состав доступа">
+          <span class="hero-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+            <span><strong>Smart DNS</strong> — гео-сервисы</span>
+          </span>
+          <span class="hero-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3z"/></svg>
+            <span><strong>VPN</strong> — локальные ограничения</span>
+          </span>
+          <span class="hero-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 4L3 11l6 2 2 6 4-4 4 3 2-14z"/></svg>
+            <span><strong>Telegram-прокси</strong> — всегда на связи</span>
+          </span>
+        </div>
+      </div>
+    </section>
 
-  <main class="card" aria-label="Выбор тарифа">
-    <!-- Mobile compact 3-product + 4-duration layout -->
-    <div class="mob-store">
-      <div class="ch">
-        <h2>Тариф <span class="plan-heading-product" id="mob-product-title">«3 в 1»</span></h2>
-        <button class="info-circle" id="dns-info-open" type="button" aria-label="Как работают Smart DNS, VPN и Telegram-прокси" aria-haspopup="dialog" aria-expanded="false" aria-controls="dns-info-dialog">i</button>
-      </div>
-      <div class="mob-products" role="group" aria-label="Выбор варианта подписки">
-        <button class="prod-tab" type="button" data-prod="vpn" aria-pressed="false"><b>VPN Лайт</b><small>1 устройство</small></button>
-        <button class="prod-tab" type="button" data-prod="bundle" aria-pressed="true"><b>★ 3 в 1</b><small>до 3 устр.</small></button>
-        <button class="prod-tab" type="button" data-prod="smart_dns" aria-pressed="false"><b>Smart Доступ</b><small>DNS + TG</small></button>
-      </div>
-      <div class="plans plans-mob" role="group" aria-label="Выбор срока подписки">
-        <button class="plan" type="button" data-d="15" aria-pressed="false"><b>15 дней</b><strong>—</strong></button>
-        <button class="plan" type="button" data-d="30" aria-pressed="true"><b>30 дней</b><strong>—</strong><small class="plan-tag" hidden></small></button>
-        <button class="plan" type="button" data-d="60" aria-pressed="false"><b>60 дней</b><strong>—</strong><small>−12%</small></button>
-        <button class="plan" type="button" data-d="90" aria-pressed="false"><b>90 дней</b><strong>—</strong><small>−21%</small></button>
-      </div>
-      <p class="mob-perks" id="mob-perks">Smart DNS (где ограничено по региону) + VPN до 3 устр. + Telegram-прокси. Без конфликтов.</p>
-    </div>
-
-    <!-- Desktop 3-card comparison storefront -->
-    <div class="desk-store">
+    <section class="card" aria-label="Выбор тарифа">
       <div class="desk-durations-wrap">
         <div class="desk-durations-title">
-          <h2>Выберите срок и вариант доступа</h2>
-          <p>Разовая оплата через ЮKassa (СБП и карты) без автосписаний. Профиль Apple, DoT и TG-прокси выдаются автоматически.</p>
+          <h2>Выберите срок и тариф</h2>
         </div>
-        <div class="desk-durations" role="group" aria-label="Срок подписки для всех тарифов">
-          <button class="dur-pill" type="button" data-d="15" aria-pressed="false">15 дней</button>
-          <button class="dur-pill" type="button" data-d="30" aria-pressed="true">30 дней<em>хит</em></button>
-          <button class="dur-pill" type="button" data-d="60" aria-pressed="false">60 дней<em>−12%</em></button>
-          <button class="dur-pill" type="button" data-d="90" aria-pressed="false">90 дней<em>−21%</em></button>
+        <div class="desk-durations" role="radiogroup" aria-label="Срок подписки">
+          <button class="dur-pill" type="button" role="radio" data-d="15" aria-checked="false" tabindex="-1">15 д</button>
+          <button class="dur-pill" type="button" role="radio" data-d="30" aria-checked="true" tabindex="0">30 д<em>ХИТ</em></button>
+          <button class="dur-pill" type="button" role="radio" data-d="60" aria-checked="false" tabindex="-1">60 д<em>−12%</em></button>
+          <button class="dur-pill" type="button" role="radio" data-d="90" aria-checked="false" tabindex="-1">90 д<em>−21%</em></button>
+        </div>
+
+        <div class="trial-slot" id="trial-slot">
+          <div class="free">
+            <div class="free-left">
+              <svg viewBox="0 0 26 34" aria-hidden="true"><path d="M16 0 2 19h9l-3 15L24 13h-9z" fill="currentColor"/></svg>
+              <b>Бесплатные 24 часа</b>
+            </div>
+            <button class="try" type="button" disabled aria-expanded="false" aria-controls="trial-options">Попробовать</button>
+          </div>
+          <div class="trial-options" id="trial-options" role="group" aria-label="Выберите пробный продукт" hidden>
+            <button type="button" class="trial-choice" id="trial-vpn">VPN <small>24 часа</small></button>
+            <button type="button" class="trial-choice" id="trial-dns">DNS + Прокси <small>После оплаты</small></button>
+            <button type="button" class="trial-close" id="trial-close" aria-label="Закрыть выбор пробного доступа">×</button>
+            <p class="trial-dns-status" id="trial-dns-status" role="status" hidden>Telegram-прокси и личный профиль Smart DNS выдаются только после подтверждённой оплаты «Smart Доступ» или «3 в 1». Сейчас доступен бесплатный VPN на 24 часа.</p>
+          </div>
         </div>
       </div>
 
-      <div class="desk-grid" role="group" aria-label="Сравнение тарифов">
+      <div class="desk-grid" role="group" aria-label="Тарифные планы">
         <article class="tier" data-card-product="vpn">
+          <span class="tier-check" aria-hidden="true">✓</span>
           <div class="tier-head"><span class="tier-badge">Базовый</span></div>
           <div class="tier-top-row"><h3>VPN Лайт</h3></div>
-          <p class="tier-sub">Полный туннель туда, куда ограничен доступ в вашей сети.</p>
+          <p class="tier-sub">Полный туннель для ресурсов с локальными ограничениями.</p>
           <div class="tier-price-row"><strong class="tier-price" id="price-vpn">—</strong></div>
           <p class="tier-meta" id="meta-vpn">1 устройство</p>
           <ul class="tier-list">
-            <li>✓ Доступ ко всему, где есть локальные ограничения</li>
-            <li>✓ Весь трафик устройства в туннеле</li>
-            <li class="no">✕ Без Smart DNS и TG-прокси</li>
+            <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>Доступ ко всему, где есть ограничения</span></li>
+            <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>Весь трафик устройства в туннеле</span></li>
+            <li class="no"><span class="ico ico-no" aria-hidden="true">✕</span><span>Без Smart DNS и Telegram-прокси</span></li>
           </ul>
-          <button class="tier-pick" type="button" data-pick="vpn" aria-pressed="false">Выбрать VPN Лайт</button>
+          <button class="tier-pick" type="button" data-pick="vpn" aria-pressed="false" aria-label="Выбрать тариф VPN Лайт">Выбрать</button>
         </article>
 
         <article class="tier featured is-selected" data-card-product="bundle">
+          <span class="tier-check" aria-hidden="true">✓</span>
           <div class="tier-head">
-            <span class="tier-badge">★ Выгоднее · 3 в 1</span>
-            <button class="info-circle" id="dns-info-open-desk" type="button" aria-label="Как работают Smart DNS, VPN и Telegram-прокси" aria-haspopup="dialog" aria-expanded="false" aria-controls="dns-info-dialog">i</button>
+            <span class="tier-badge">ВЫГОДНЕЕ · 3 В 1</span>
+            <span class="info-wrap">
+              <button class="info-circle" id="dns-info-open" type="button" aria-label="Как работают Smart DNS, VPN и Telegram-прокси" aria-haspopup="dialog" aria-expanded="false" aria-controls="dns-info-dialog">i</button>
+            </span>
           </div>
           <div class="tier-top-row"><h3>Экосистема «3 в 1»</h3></div>
-          <p class="tier-sub">DNS и TG-прокси работают 90% времени; VPN — для любых блокировок.</p>
+          <p class="tier-sub">DNS и TG-прокси без тормозов; VPN — для любых блокировок.</p>
           <div class="tier-price-row">
             <s class="tier-old" id="old-bundle" hidden>499 ₽</s>
             <strong class="tier-price" id="price-bundle">—</strong>
           </div>
           <p class="tier-meta" id="meta-bundle">133 ₽/устройство · до 3 устройств</p>
           <ul class="tier-list">
-            <li>✓ Smart DNS (до 1 млн · сервисы с гео-ограничением)</li>
-            <li>✓ Telegram-прокси (direct + ru · без ограничений)</li>
-            <li>✓ VPN до 3 устр. + конфиг Apple (.mobileconfig) / DoT</li>
+            <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>Smart DNS (до 1 млн · AI и др.)</span></li>
+            <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>Telegram-прокси (direct + ru)</span></li>
+            <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>VPN до 3 устр. + Apple (.mobileconfig) / DoT</span></li>
           </ul>
-          <button class="tier-pick" type="button" data-pick="bundle" aria-pressed="true">Выбрано: «3 в 1»</button>
+          <button class="tier-pick" type="button" data-pick="bundle" aria-pressed="true" aria-label="✓ Выбрано: тариф Экосистема 3 в 1">✓ Выбрано</button>
         </article>
 
         <article class="tier" data-card-product="smart_dns">
+          <span class="tier-check" aria-hidden="true">✓</span>
           <div class="tier-head"><span class="tier-badge">Без постоянного VPN</span></div>
           <div class="tier-top-row"><h3>Smart Доступ</h3></div>
-          <p class="tier-sub">Зарубежные сервисы (AI и др.) + Telegram без тормозов.</p>
+          <p class="tier-sub">Зарубежные сервисы (AI и другие) + Telegram без туннеля.</p>
           <div class="tier-price-row"><strong class="tier-price" id="price-smart_dns">—</strong></div>
           <p class="tier-meta" id="meta-smart_dns">1 000 000 DNS-запросов / 30 д</p>
           <ul class="tier-list">
-            <li>✓ Smart DNS (ChatGPT, Gemini, Claude и другие)</li>
-            <li>✓ Telegram-прокси (direct и ru + инструкция)</li>
-            <li class="no">✕ Без VPN-туннеля (конфиг Apple + DoT включены)</li>
+            <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>Smart DNS (ChatGPT, Gemini, Claude и другие)</span></li>
+            <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>Telegram-прокси (direct и ru + инструкция)</span></li>
+            <li class="no"><span class="ico ico-no" aria-hidden="true">✕</span><span>Без VPN-туннеля (Apple + DoT включены)</span></li>
           </ul>
-          <button class="tier-pick" type="button" data-pick="smart_dns" aria-pressed="false">Выбрать Smart Доступ</button>
+          <button class="tier-pick" type="button" data-pick="smart_dns" aria-pressed="false" aria-label="Выбрать тариф Smart Доступ">Выбрать</button>
         </article>
       </div>
-    </div>
 
-    <div class="action-strip">
-      <div class="action-left">
-        <div class="sum" aria-live="polite">
-          <span id="sum">Загрузка тарифов…</span>
-          <button class="payment-info" type="button" id="payment-info-open" aria-label="Условия оплаты ЮKassa и напоминания" aria-haspopup="dialog" aria-controls="payment-info-dialog" aria-expanded="false">i</button>
+      <div class="action-strip">
+        <div class="action-main-row">
+          <div class="sum" aria-live="polite">
+            <span id="sum">Загрузка тарифов…</span>
+            <button class="payment-info" type="button" id="payment-info-open" aria-label="Условия оплаты ЮKassa и напоминания" aria-haspopup="dialog" aria-controls="payment-info-dialog" aria-expanded="false">i</button>
+          </div>
+          <button class="cta" type="button" disabled>Загрузка тарифов…</button>
         </div>
-        <button class="cta" type="button" disabled>Загрузка тарифов…</button>
-        <p class="action-note">Разовая оплата через ЮKassa. Профиль Apple (.mobileconfig), DoT для Android и ссылки Telegram-прокси выдаются сразу после оплаты.</p>
+        <p class="action-note">Разовая оплата через ЮKassa (СБП и карты) без автосписаний. Пробный VPN на 24 часа; профиль Apple (.mobileconfig), DoT и TG-прокси — после оплаты.</p>
         <p class="front-error" id="front-error" role="alert" aria-live="assertive" hidden></p>
         <a class="front-retry" id="front-retry" href="/" target="_top" hidden>Не удалось загрузить тарифы. Повторить</a>
       </div>
-
-      <div class="trial-slot" id="trial-slot">
-        <div class="free">
-          <svg viewBox="0 0 26 34" aria-hidden="true"><path d="M16 0 2 19h9l-3 15L24 13h-9z" fill="#19e6ff"/></svg>
-          <div>
-            <b>Бесплатные 24 часа</b>
-            <small class="trial-hint">Пробный VPN на 24 часа · Smart DNS и Прокси после оплаты</small>
-          </div>
-          <button class="try" type="button" disabled aria-expanded="false" aria-controls="trial-options">Попробовать</button>
-        </div>
-        <div class="trial-options" id="trial-options" role="group" aria-label="Выберите пробный продукт" hidden>
-          <button type="button" class="trial-choice" id="trial-vpn">VPN <small>24 часа</small></button>
-          <button type="button" class="trial-choice" id="trial-dns">DNS + Прокси <small>После оплаты</small></button>
-          <button type="button" class="trial-close" id="trial-close" aria-label="Закрыть выбор пробного доступа">×</button>
-          <p class="trial-dns-status" id="trial-dns-status" role="status" hidden>Telegram-прокси и личный профиль Smart DNS выдаются только после подтверждённой оплаты «Smart Доступ» или «3 в 1». Сейчас доступен бесплатный VPN на 24 часа.</p>
-        </div>
-      </div>
-    </div>
+    </section>
   </main>
 
   <footer>
-    <nav><a href="https://t.me/MNEBYVPN_bot" target="_blank" rel="noopener noreferrer">@MNEBYVPN_bot</a><a href="#roadmap">Roadmap</a><a href="#support">Поддержка</a></nav>
+    <nav aria-label="Дополнительные ссылки"><a href="https://t.me/MNEBYVPN_bot" target="_blank" rel="noopener noreferrer">@MNEBYVPN_bot</a><a href="#roadmap">Roadmap</a><a href="#support">Поддержка</a></nav>
     <div class="legal-links"><a href="/terms" target="_top">Оферта</a><a href="/agreement" target="_top">Соглашение</a><a href="/privacy" target="_top">Обработка данных</a></div>
   </footer>
 </div>
@@ -462,7 +480,7 @@ footer nav a:first-child{border:0}
     <button id="compare-close" type="button" aria-label="Закрыть сравнение тарифов">×</button>
   </div>
   <table class="cmp-table">
-    <thead><tr><th>Возможность</th><th>VPN Лайт</th><th>Smart Доступ</th><th>Экосистема «3 в 1» ★</th></tr></thead>
+    <thead><tr><th scope="col">Возможность</th><th scope="col">VPN Лайт</th><th scope="col">Smart Доступ</th><th scope="col">Экосистема «3 в 1» ★</th></tr></thead>
     <tbody>
       <tr><td>Smart DNS (куда не пускают по региону: AI и другие)</td><td>—</td><td>✓</td><td>✓</td></tr>
       <tr><td>Профиль Apple (.mobileconfig) + DoT для Android</td><td>—</td><td>✓</td><td>✓</td></tr>
@@ -485,11 +503,11 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
 (()=>{
   const mobScene=$('#mob-scene'),mobVideo=$('#bgv');
   const deskScene=$('#desk-scene'),deskVideo=$('#bgv-desktop');
-  const mqlDesk=matchMedia('(min-width: 900px)');
+  const mqlDesk=matchMedia('(min-width: 768px)');
   const isDesktopViewport=()=>{
     if(mqlDesk.matches)return true;
     try{
-      if(window.parent!==window&&window.parent.innerWidth>=900)return true;
+      if(window.parent!==window&&window.parent.innerWidth>=768)return true;
     }catch{}
     return false;
   };
@@ -563,31 +581,27 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
   const channel='mnebyvpn-front-v1';
   const send=(type,extra={})=>window.parent.postMessage({channel,type,...extra},location.origin);
   const button=$('.cta'),trial=$('.try'),summary=$('#sum'),error=$('#front-error'),retry=$('#front-retry');
-  const mobProdButtons=[...document.querySelectorAll('.prod-tab[data-prod]')];
-  const mobDurButtons=[...document.querySelectorAll('.plans-mob .plan[data-d]')];
   const deskDurButtons=[...document.querySelectorAll('.desk-durations .dur-pill[data-d]')];
   const deskCards=[...document.querySelectorAll('.tier[data-card-product]')];
   const deskPicks=[...document.querySelectorAll('.tier-pick[data-pick]')];
   const trialOptions=$('#trial-options'),trialSlot=$('#trial-slot'),trialClose=$('#trial-close');
   const trialDnsStatus=$('#trial-dns-status'),trialVpn=$('#trial-vpn'),trialDns=$('#trial-dns');
   const titles={vpn:'VPN Лайт',bundle:'Экосистема «3 в 1»',smart_dns:'Smart Доступ'};
-  const perks={
-    vpn:'VPN-туннель на 1 устройство: открывает ресурсы с локальными ограничениями доступа. Без Smart DNS и TG-прокси.',
-    bundle:'Smart DNS (где ограничено по региону) + VPN до 3 устр. + Telegram-прокси. Без конфликтов.',
-    smart_dns:'Smart DNS (ChatGPT, Claude, Gemini и другие — без гео-ограничений) + Telegram-прокси. Профиль Apple и DoT сразу.'
-  };
 
   let selectedProduct='bundle',selectedDays=30,ready=false,serverData=null,resizeQueued=false,lastHeight=0;
   const setText=(el,v)=>{if(el&&el.textContent!==v)el.textContent=v;};
-  const setPressed=(el,on)=>{if(el)el.setAttribute('aria-pressed',String(on));};
   const findOffer=(product,days)=>(serverData?.offers||[]).find(o=>o.product===product&&o.days===days);
 
-  // Measure natural content height without the 100%-min-height iframe feedback loop
   const resize=()=>{
     if(resizeQueued)return;
     resizeQueued=true;
     requestAnimationFrame(()=>{
       resizeQueued=false;
+      if(window.innerWidth<768){
+        const vh=Math.max(window.innerHeight,document.documentElement?.clientHeight||0);
+        if(vh>0&&Math.abs(vh-lastHeight)>2){lastHeight=vh;send('height',{height:vh});}
+        return;
+      }
       const app=document.querySelector('.app');
       if(!app)return;
       const prevMin=app.style.minHeight;
@@ -599,18 +613,11 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
   };
 
   const updateView=()=>{
-    mobProdButtons.forEach(b=>setPressed(b,b.dataset.prod===selectedProduct));
-    setText($('#mob-product-title'),selectedProduct==='bundle'?'«3 в 1»':titles[selectedProduct]);
-    setText($('#mob-perks'),perks[selectedProduct]);
-
-    mobDurButtons.forEach(b=>{
-      const d=Number(b.dataset.d),offer=findOffer(selectedProduct,d);
-      const ok=Boolean(offer?.available);
-      b.disabled=!ok;
-      setText(b.querySelector('strong'),ok?offer.price:'—');
-      setPressed(b,d===selectedDays);
+    deskDurButtons.forEach(b=>{
+      const d=Number(b.dataset.d),active=d===selectedDays;
+      b.setAttribute('aria-checked',String(active));
+      b.tabIndex=active?0:-1;
     });
-    deskDurButtons.forEach(b=>setPressed(b,Number(b.dataset.d)===selectedDays));
 
     for(const prod of ['vpn','bundle','smart_dns']){
       const offer=findOffer(prod,selectedDays);
@@ -624,11 +631,13 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
     setText($('#meta-smart_dns'),'1 000 000 DNS-запросов / '+selectedDays+' д');
     const oldBundle=$('#old-bundle');
     if(oldBundle)oldBundle.hidden=selectedDays!==30;
+
     deskCards.forEach(c=>c.classList.toggle('is-selected',c.dataset.cardProduct===selectedProduct));
     deskPicks.forEach(b=>{
-      const active=b.dataset.pick===selectedProduct;
-      setPressed(b,active);
-      setText(b,active?'Выбрано: '+(b.dataset.pick==='bundle'?'«3 в 1»':titles[b.dataset.pick]):'Выбрать '+titles[b.dataset.pick]);
+      const prod=b.dataset.pick,active=prod===selectedProduct;
+      b.setAttribute('aria-pressed',String(active));
+      setText(b,active?'✓ Выбрано':'Выбрать');
+      b.setAttribute('aria-label',(active?'✓ Выбрано: тариф ':'Выбрать тариф ')+titles[prod]);
     });
 
     const activeOffer=findOffer(selectedProduct,selectedDays);
@@ -662,9 +671,23 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
     if(autoBuy&&!button.disabled)send('buy');
   };
 
-  mobProdButtons.forEach(b=>b.addEventListener('click',()=>choose(b.dataset.prod,selectedDays)));
-  mobDurButtons.forEach(b=>b.addEventListener('click',()=>{if(!b.disabled)choose(selectedProduct,Number(b.dataset.d));}));
-  deskDurButtons.forEach(b=>b.addEventListener('click',()=>choose(selectedProduct,Number(b.dataset.d))));
+  deskDurButtons.forEach((b,idx)=>{
+    b.addEventListener('click',()=>choose(selectedProduct,Number(b.dataset.d)));
+    b.addEventListener('keydown',e=>{
+      let nextIdx=-1;
+      if(e.key==='ArrowRight'||e.key==='ArrowDown')nextIdx=(idx+1)%deskDurButtons.length;
+      else if(e.key==='ArrowLeft'||e.key==='ArrowUp')nextIdx=(idx-1+deskDurButtons.length)%deskDurButtons.length;
+      else if(e.key==='Home')nextIdx=0;
+      else if(e.key==='End')nextIdx=deskDurButtons.length-1;
+      if(nextIdx>=0){
+        e.preventDefault();
+        const target=deskDurButtons[nextIdx];
+        target.focus();
+        choose(selectedProduct,Number(target.dataset.d));
+      }
+    });
+  });
+
   deskCards.forEach(c=>c.addEventListener('click',ev=>{
     if(ev.target.closest('button,a'))return;
     choose(c.dataset.cardProduct,selectedDays);
@@ -684,46 +707,66 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
   trialDns.addEventListener('click',()=>{trialDnsStatus.hidden=false;});
 
   const paymentDialog=$('#payment-info-dialog'),paymentOpen=$('#payment-info-open');
-  const dnsDialog=$('#dns-info-dialog'),dnsOpens=[$('#dns-info-open'),$('#dns-info-open-desk')].filter(Boolean);
+  const dnsDialog=$('#dns-info-dialog'),dnsOpen=$('#dns-info-open');
   const compareDialog=$('#compare-dialog'),compareOpen=$('#compare-open');
-  let lastDnsOpener=dnsOpens[0];
   const setPopover=(dialog,opener,visible,restoreFocus=false)=>{
     if(!dialog)return;
     dialog.hidden=!visible;
     opener?.setAttribute('aria-expanded',String(visible));
-    if(visible)dialog.querySelector('button[id$="-close"]')?.focus();
-    else if(restoreFocus)opener?.focus();
+    if(visible&&restoreFocus)dialog.querySelector('button[id$="-close"]')?.focus();
+    else if(!visible&&restoreFocus)opener?.focus();
   };
-  paymentOpen.addEventListener('click',()=>{
-    setPopover(dnsDialog,lastDnsOpener,false);
-    setPopover(compareDialog,compareOpen,false);
-    setPopover(paymentDialog,paymentOpen,paymentDialog.hidden);
-  });
+  const closeOthers=(except)=>{
+    if(except!==paymentDialog)setPopover(paymentDialog,paymentOpen,false);
+    if(except!==dnsDialog)setPopover(dnsDialog,dnsOpen,false);
+    if(except!==compareDialog)setPopover(compareDialog,compareOpen,false);
+  };
+  const wireInfoTrigger=(btn,dialog)=>{
+    if(!btn||!dialog)return;
+    let pinned=false;
+    const syncPinned=()=>{if(dialog.hidden)pinned=false;};
+    btn.addEventListener('click',()=>{
+      closeOthers(dialog);
+      const next=dialog.hidden||!pinned;
+      pinned=next;
+      setPopover(dialog,btn,next,true);
+    });
+    btn.addEventListener('mouseenter',()=>{
+      if(window.innerWidth>=768&&dialog.hidden){pinned=false;closeOthers(dialog);setPopover(dialog,btn,true,false);}
+    });
+    btn.addEventListener('mouseleave',()=>{
+      if(window.innerWidth>=768&&!pinned&&!dialog.matches(':hover'))setPopover(dialog,btn,false,false);
+    });
+    btn.addEventListener('focus',()=>{
+      if(window.innerWidth>=768&&dialog.hidden&&btn.matches(':focus-visible')){pinned=false;closeOthers(dialog);setPopover(dialog,btn,true,false);}
+    });
+    btn.addEventListener('blur',e=>{
+      if(window.innerWidth>=768&&!pinned&&!dialog.contains(e.relatedTarget))setPopover(dialog,btn,false,false);
+    });
+    dialog.addEventListener('click',()=>{pinned=true;});
+    dialog.querySelector('button[id$="-close"]')?.addEventListener('click',()=>{pinned=false;});
+    new MutationObserver(syncPinned).observe(dialog,{attributes:true,attributeFilter:['hidden']});
+  };
+  wireInfoTrigger(paymentOpen,paymentDialog);
+  wireInfoTrigger(dnsOpen,dnsDialog);
   $('#payment-info-close').addEventListener('click',()=>setPopover(paymentDialog,paymentOpen,false,true));
-  dnsOpens.forEach(btn=>btn.addEventListener('click',()=>{
-    lastDnsOpener=btn;
-    setPopover(paymentDialog,paymentOpen,false);
-    setPopover(compareDialog,compareOpen,false);
-    setPopover(dnsDialog,btn,dnsDialog.hidden);
-  }));
-  $('#dns-info-close').addEventListener('click',()=>setPopover(dnsDialog,lastDnsOpener,false,true));
-  $('#dns-request-domain').addEventListener('click',()=>{setPopover(dnsDialog,lastDnsOpener,false);send('support');});
+  $('#dns-info-close').addEventListener('click',()=>setPopover(dnsDialog,dnsOpen,false,true));
+  $('#dns-request-domain').addEventListener('click',()=>{setPopover(dnsDialog,dnsOpen,false);send('support');});
   compareOpen?.addEventListener('click',()=>{
-    setPopover(paymentDialog,paymentOpen,false);
-    setPopover(dnsDialog,lastDnsOpener,false);
-    setPopover(compareDialog,compareOpen,compareDialog.hidden);
+    closeOthers(compareDialog);
+    setPopover(compareDialog,compareOpen,compareDialog.hidden,true);
   });
   $('#compare-close')?.addEventListener('click',()=>setPopover(compareDialog,compareOpen,false,true));
   document.addEventListener('keydown',e=>{
     if(e.key!=='Escape')return;
     if(!trialOptions.hidden){e.preventDefault();setTrialChooser(false);}
     else if(!paymentDialog.hidden){e.preventDefault();setPopover(paymentDialog,paymentOpen,false,true);}
-    else if(!dnsDialog.hidden){e.preventDefault();setPopover(dnsDialog,lastDnsOpener,false,true);}
+    else if(!dnsDialog.hidden){e.preventDefault();setPopover(dnsDialog,dnsOpen,false,true);}
     else if(compareDialog&&!compareDialog.hidden){e.preventDefault();setPopover(compareDialog,compareOpen,false,true);}
   });
   document.addEventListener('pointerdown',e=>{
     if(!paymentDialog.hidden&&!paymentDialog.contains(e.target)&&e.target!==paymentOpen)setPopover(paymentDialog,paymentOpen,false);
-    if(!dnsDialog.hidden&&!dnsDialog.contains(e.target)&&!dnsOpens.includes(e.target))setPopover(dnsDialog,lastDnsOpener,false);
+    if(!dnsDialog.hidden&&!dnsDialog.contains(e.target)&&e.target!==dnsOpen)setPopover(dnsDialog,dnsOpen,false);
     if(compareDialog&&!compareDialog.hidden&&!compareDialog.contains(e.target)&&e.target!==compareOpen)setPopover(compareDialog,compareOpen,false);
   });
 
