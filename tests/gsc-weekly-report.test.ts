@@ -274,10 +274,11 @@ test('weekly GitHub report auto-attempts with existing secrets and never prints 
   assert.match(workflow,/push:\s*\n\s*branches: \[main\]/);
   assert.match(workflow,/GSC_JSON_PRESENT: \$\{\{ secrets\.GSC_SERVICE_ACCOUNT_JSON != '' \}\}/);
   assert.match(workflow,/BOT_TOKEN_PRESENT: \$\{\{ secrets\.TELEGRAM_BOT_TOKEN != '' \|\| secrets\.TELEGRAM_TOKEN_BOT != '' \}\}/);
-  assert.match(workflow,/OPERATOR_ID_PRESENT: \$\{\{ secrets\.GSC_TELEGRAM_CHAT_ID != '' \|\| secrets\.SUPPORT_TELEGRAM_OPERATOR_ID != '' \}\}/);
+  assert.ok(!workflow.includes('OPERATOR_ID_PRESENT'));
+  assert.ok(!workflow.includes('SUPPORT_TELEGRAM_OPERATOR_ID'));
   assert.match(workflow,/if: steps\.preflight\.outputs\.ready == 'yes'/);
   assert.match(workflow,/GSC_TELEGRAM_BOT_TOKEN: \$\{\{ secrets\.TELEGRAM_BOT_TOKEN \|\| secrets\.TELEGRAM_TOKEN_BOT \}\}/);
-  assert.match(workflow,/GSC_TELEGRAM_CHAT_ID: \$\{\{ secrets\.GSC_TELEGRAM_CHAT_ID \|\| secrets\.SUPPORT_TELEGRAM_OPERATOR_ID \}\}/);
+  assert.ok(!workflow.includes('GSC_TELEGRAM_CHAT_ID:'));
   assert.ok(!workflow.includes('GSC_REPORT_ENABLED'));
   assert.ok(!workflow.includes('GSC_TELEGRAM_BOT_TOKEN: ${{ secrets.GSC_TELEGRAM_BOT_TOKEN }}'));
   assert.ok(!/echo[^\n]*(GSC_SERVICE_ACCOUNT_JSON|TELEGRAM_BOT_TOKEN|SUPPORT_TELEGRAM_OPERATOR_ID).*\$\{\{/m.test(workflow));
