@@ -18,8 +18,7 @@ test('one canonical RU188 entitlement has one stable AWG key on every refresh',(
     first.publicKey);
   assert.match(first.privateKey,/^[A-Za-z0-9+/]{43}=$/);
   assert.match(first.publicKey,/^[A-Za-z0-9+/]{43}=$/);
-  for(const invalid of ['', '1'.repeat(64),'0'.repeat(64),'bad']){
-    if(invalid==='1'.repeat(64))continue;
+  for(const invalid of ['', '0'.repeat(64),'bad']){
     assert.throws(()=>deriveSubscriptionAwgIdentity(a,invalid));
   }
   assert.throws(()=>deriveSubscriptionAwgIdentity('invalid',root));
@@ -83,5 +82,5 @@ test('RU188 auto-backfills all eligible subscription rights into its existing qu
     assert(sql.includes("f.feature='vpn_awg_clients' AND f.enabled=true"));
     assert(!/\b(?:DELETE|UPDATE|ALTER)\b/i.test(sql));
   }
-  assert.throws(()=>enqueueFiAwgActiveSubscriptions(db as never,root,999));
+  await assert.rejects(enqueueFiAwgActiveSubscriptions(db as never,root,999));
 });
