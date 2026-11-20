@@ -38,6 +38,8 @@ const sample=()=>({
   last_command_sha256:'a'.repeat(64),
   node_receipt_sha256:'b'.repeat(64),
   command_peer_key:client.pub,command_client_ip:'10.73.91.2',
+  command_expires_at:expires.toISOString(),command_entitlement_id:owner.entitlementId,
+  command_node_id:'fi-test-01',command_revision:'3',
 });
 
 test('a real FI outbox signed ACK may produce native AWG 3.1 connection material',()=>{
@@ -75,6 +77,9 @@ test('no profile without verified node, paid revision, local grant and ACK',()=>
     {last_command_sha256:'b'.repeat(64)},
     {node_receipt_sha256:null},{command_peer_key:keyPair().pub},
     {command_client_ip:'10.73.91.6'},
+    {command_expires_at:new Date(clock+7200_000).toISOString()},
+    {command_entitlement_id:'99999999-8888-4777-8666-555555555555'},
+    {command_node_id:'de-test-01'},{command_revision:'2'},
     {endpoint_host:'evil.example.com'},{listen_port:51822},
     {subnet_cidr:'10.73.92.0/24'},
   ];
@@ -110,23 +115,35 @@ test('database reader is read-only, parameterized, checked against a canonical o
       seen=sql;args=params;return {rows:[sample()]};
     },
   };
-  const material=await loadVerifiedAwgMaterial(pool as never,owner,client.pub,header,server.pub,clock);
+  const material=await loadVerifiedAwgMaterial(pool as never,owner,client.pub,header,server.pub,'c'.repeat(64),clock);
   assert.ok(material);
-  assert.deepEqual(args,[owner.entitlementId,client.pub,'vpn_awg_clients','fi-test-01']);
+  assert.deepEqual(args,[owner.entitlementId,client.pub,'vpn_awg_clients',
+    'fi-test-01','c'.repeat(64),owner.revision,owner.expiresAt]);
   assert.match(seen,/vpn_release_flags/);
   assert.match(seen,/vpn_awg_command_outbox/);
   assert.match(seen,/vpn_node_enrollment_inventory/);
   assert.match(seen,/vpn_awg_peer_allocations/);
   assert.match(seen,/a\.revision/);
+  assert.match(seen,/l\.revoked_at IS NULL/);
+  assert.match(seen,/l\.token_sha256=\$5/);
+  assert.match(seen,/e\.state='ACTIVE'/);
+  assert.match(seen,/e\.revision=\$6/);
+  assert.match(seen,/e\.expires_at>clock_timestamp\(\)/);
+  assert.match(seen,/v\.applied_revision=e\.revision/);
+  assert.match(seen,/command_expires_at/);
+  assert.match(seen,/command_node_id/);
   assert.ok(!/^\s*(?:INSERT|UPDATE|DELETE|GRANT|ALTER)\s/mi.test(seen));
   const none=await loadVerifiedAwgMaterial({
     query:async()=>({rows:[]}),
-  } as never,owner,client.pub,header,server.pub,clock);
+  } as never,owner,client.pub,header,server.pub,'c'.repeat(64),clock);
   assert.equal(none,null);
   const duplicates=await loadVerifiedAwgMaterial({
     query:async()=>({rows:[sample(),sample()]}),
-  } as never,owner,client.pub,header,server.pub,clock);
+  } as never,owner,client.pub,header,server.pub,'c'.repeat(64),clock);
   assert.equal(duplicates,null);
+  const wrongBearer=await loadVerifiedAwgMaterial(pool as never,owner,
+    client.pub,header,server.pub,'wrong',clock);
+  assert.equal(wrongBearer,null);
 });
 
 test('website AWG material is separate from existing VLESS subscription and private-key free',()=>{
@@ -138,6 +155,7 @@ test('website AWG material is separate from existing VLESS subscription and priv
   assert.match(site,/Cache-Control','no-store/);
   assert.match(site,/AWG_PEER_NOT_ACKNOWLEDGED/);
   assert.match(site,/subscriptionOwner\(subscriptionPool,awgMatch\[1\]\)/);
+  assert.ok(site.includes('sessionHash(awgMatch[1])'));
   assert.ok(!site.includes("renderLocalAwgConfig("));
   const material=readFileSync(
     new URL('../packages/provisioning/src/awg-subscriber-material.ts',import.meta.url),'utf8');

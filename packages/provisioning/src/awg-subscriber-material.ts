@@ -59,6 +59,10 @@ type AwgDbRow={
   node_receipt_sha256:string;
   command_peer_key:string;
   command_client_ip:string;
+  command_expires_at:string;
+  command_entitlement_id:string;
+  command_node_id:string;
+  command_revision:string;
 };
 
 export function isCanonicalAwgPublicKey(value:unknown):value is string{
@@ -116,7 +120,11 @@ export function verifiedAwgMaterial(
      row.outbox_command_sha256!==row.last_command_sha256||
      !HASH.test(row.node_receipt_sha256)||
      row.command_peer_key!==clientPublicKey||
-     row.command_client_ip!==row.client_ipv4)
+     row.command_client_ip!==row.client_ipv4||
+     row.command_node_id!==NODE||
+     row.command_entitlement_id!==owner.entitlementId||
+     row.command_revision!==String(row.allocation_revision)||
+     row.command_expires_at!==row.expires_at.toISOString())
     return null;
   return {
     protocol:'AmneziaWG 3.1',nodeId:NODE,
@@ -135,11 +143,16 @@ export function verifiedAwgMaterial(
 export async function loadVerifiedAwgMaterial(
   pool:Pick<Pool,'query'>,owner:AwgSubscriptionOwner,
   clientPublicKey:string,headerProtectionKey:string,
-  expectedServerPublicKey:string,now=Date.now(),
+  expectedServerPublicKey:string,subscriptionTokenSha256:string,
+  now=Date.now(),
 ):Promise<VerifiedAwgMaterial|null>{
   if(!isCanonicalAwgPublicKey(clientPublicKey)||
      !isCanonicalAwgPublicKey(headerProtectionKey)||
      !isCanonicalAwgPublicKey(expectedServerPublicKey)||
+     !HASH.test(subscriptionTokenSha256)||
+     !Number.isSafeInteger(owner.revision)||owner.revision<1||
+     !(owner.expiresAt instanceof Date)||
+     !Number.isFinite(owner.expiresAt.getTime())||
      !UUID.test(owner.entitlementId))return null;
   const query=
     'SELECT f.enabled,p.node_id,p.endpoint_host,p.listen_port,'+
@@ -152,18 +165,37 @@ export async function loadVerifiedAwgMaterial(
     'o.command_sha256 AS outbox_command_sha256,'+
     'a.last_command_sha256,o.node_receipt_sha256,'+
     "o.signed_command->>'peerPublicKey' AS command_peer_key,"+
-    "o.signed_command->>'clientIpv4' AS command_client_ip "+
+    "o.signed_command->>'clientIpv4' AS command_client_ip,"+
+    "o.signed_command->>'expiresAt' AS command_expires_at,"+
+    "o.signed_command->>'entitlementId' AS command_entitlement_id,"+
+    "o.signed_command->>'nodeId' AS command_node_id,"+
+    "o.signed_command->>'revision' AS command_revision "+
     'FROM vpn_awg_peer_allocations a '+
     'JOIN vpn_awg_node_pools p ON p.node_id=a.node_id '+
     'JOIN vpn_node_enrollment_inventory n ON n.node_id=a.node_id '+
     'JOIN vpn_release_flags f ON f.feature=$3 '+
+    // Recheck the bearer, subscription and current billing revision in
+    // this SAME query. The earlier subscriptionOwner() check can race a
+    // revoke/expiry/renewal and is not sufficient authorization by itself.
+    'JOIN entitlements e ON e.id=a.entitlement_id '+
+    'JOIN provisioning_state v ON v.entitlement_id=e.id '+
+    "AND v.adapter='vpn' AND v.applied_revision=e.revision "+
+    'AND v.last_observed_at IS NOT NULL '+
+    'JOIN vpn_subscription_links l ON l.entitlement_id=e.id '+
+    'AND l.token_sha256=$5 AND l.revoked_at IS NULL '+
     'JOIN vpn_awg_command_outbox o ON '+
     'o.node_id=a.node_id AND o.entitlement_id=a.entitlement_id '+
     "AND o.revision=a.revision AND o.op='grant' "+
     'WHERE a.node_id=$4 AND a.entitlement_id=$1 '+
-    'AND a.peer_public_key=$2 LIMIT 2';
+    'AND a.peer_public_key=$2 '+
+    "AND e.product='vpn' AND e.state='ACTIVE' "+
+    'AND e.revision=$6 AND e.expires_at>clock_timestamp() '+
+    "AND e.expires_at BETWEEN $7::timestamptz - interval '1 millisecond' "+
+    "AND $7::timestamptz + interval '1 millisecond' "+
+    'LIMIT 2';
   const result=await pool.query<AwgDbRow>(
-    query,[owner.entitlementId,clientPublicKey,'vpn_awg_clients',NODE]);
+    query,[owner.entitlementId,clientPublicKey,'vpn_awg_clients',NODE,
+      subscriptionTokenSha256,owner.revision,owner.expiresAt]);
   if(result.rows.length!==1)return null;
   return verifiedAwgMaterial(result.rows[0],owner,
     clientPublicKey,headerProtectionKey,expectedServerPublicKey,now);
