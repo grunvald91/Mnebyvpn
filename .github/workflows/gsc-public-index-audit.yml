@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/gsc-public-index-audit.yml'
       - 'scripts/gsc-index-audit.ts'
+      - 'scripts/gsc-sitemap-audit.ts'
   workflow_dispatch:
 permissions:
   contents: read
@@ -27,3 +28,11 @@ jobs:
         run: |
           set -euo pipefail
           node --experimental-strip-types scripts/gsc-index-audit.ts
+      - name: Inspect whether public sitemap is registered and processed by Google
+        shell: bash
+        env:
+          GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
+          GSC_SITE_URL: ${{ vars.GSC_SITE_URL || 'sc-domain:mnebyvpn.site' }}
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/gsc-sitemap-audit.ts
