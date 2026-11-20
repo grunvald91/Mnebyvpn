@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {SEO_PAGES,SEO_REFERENCES,renderSeoPage} from '../apps/web/src/seo-pages.ts';
+import {SEO_DIAGNOSTICS} from '../apps/web/src/seo-diagnostics.ts';
 import {PUBLIC_SEO_PATHS,renderSitemap,canonicalAlias,requiresNoindex} from '../apps/web/src/seo-core.ts';
 
 const ORIGIN='https://mnebyvpn.site';
@@ -91,4 +92,29 @@ test('public cache is explicitly restricted to anonymous guides and their styles
   assert.match(server,/send\(res,200,seoCss,'text\/css; charset=utf-8','public, max-age=300, must-revalidate'\)/);
   assert.ok(!server.includes('public, max-age=300, must-revalidate') ||
     (server.match(/public, max-age=300, must-revalidate/g)??[]).length===2);
+});
+
+test('each guide has three unique, readable diagnostic answers in server-rendered HTML',()=>{
+  assert.deepEqual(Object.keys(SEO_DIAGNOSTICS).sort(),SEO_PAGES.map(p=>p.path).sort());
+  const symptoms=new Set<string>();
+  for(const page of SEO_PAGES){
+    const rows=SEO_DIAGNOSTICS[page.path];
+    assert.equal(rows.length,3,page.path);
+    const html=renderSeoPage(page.path)!;
+    assert.ok(html.includes('class="seo-diagnostics"'),page.path);
+    assert.ok(html.includes('aria-label="Разбор частых симптомов"'),page.path);
+    assert.equal((html.match(/class="seo-diagnostic-card"/g)??[]).length,3,page.path);
+    assert.equal((html.match(/<h1>/g)??[]).length,1,page.path);
+    for(const row of rows){
+      assert.ok(row.symptom.length>=16&&row.next.length>=55,page.path);
+      assert.ok(!symptoms.has(row.symptom),row.symptom);
+      symptoms.add(row.symptom);
+      assert.ok(html.includes(row.symptom.replace(/&/g,'&amp;')),page.path);
+    }
+    assert.ok(html.includes('href="/#plans"'),page.path);
+    assert.ok(html.includes('class="seo-sources"'),page.path);
+  }
+  const css=readFileSync(new URL('../apps/web/public/seo-pages.css',import.meta.url),'utf8');
+  assert.ok(css.includes('@media(max-width:860px)'));
+  assert.ok(css.includes('.seo-diagnostic-grid'));
 });
