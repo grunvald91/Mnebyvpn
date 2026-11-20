@@ -21,6 +21,8 @@ import {isCanonicalAwgPublicKey,loadVerifiedAwgMaterial}
   from '../../../packages/provisioning/src/awg-subscriber-material.ts';
 import {deriveSubscriptionAwgIdentity,verifiedIncyAwgLine}
   from '../../../packages/provisioning/src/awg-in-subscription.ts';
+import {germanWebSocketOnly,keepSupportedAdditionalTransport,incySubscriptionHeaders}
+  from '../../../packages/provisioning/src/incy-subscription-presentation.ts';
 import {
   prepareWebsiteProdamusCheckout, prepareWebsiteYookassaCheckout, type PayformLinkTransport,
 } from '../../../packages/billing/src/website-checkout.ts';
@@ -660,25 +662,6 @@ function validNodeVpnProfile(value:unknown):value is string {
   return shape==='ws'||shape==='reality_chrome,ws'||
     shape==='reality_chrome,reality_firefox,ws';
 }
-/** Preserve the signed node configuration and existing working WS profile.
- * Karing uses type+server+port for disabled-node bookkeeping, which collides
- * for Chrome and Firefox if both Reality fingerprints dial the same host:2053.
- * Use the existing verified public IPv4 only for Chrome; Firefox keeps the
- * canonical domain. Both still reach the same node and use the same UUID/SNI.
- * This changes only subscription import URLs, not any live Xray service.
- */
-function stableMultiClientVpnProfile(nodeProfile:string):string {
-  return nodeProfile.split('\n').map(link=>{
-    const url=new URL(link);
-    if(url.port==='2053' && url.hostname==='cdn.servgo.ru' &&
-       url.searchParams.get('security')==='reality' &&
-       url.searchParams.get('fp')==='chrome'){
-      url.hostname='89.125.90.101';
-      return url.toString();
-    }
-    return link;
-  }).join('\n');
-}
 async function liveVpnProfile(owner:{
   telegramUserId:number|null;entitlementId:string;
 }):Promise<string>{
@@ -850,24 +833,23 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     if(!owner){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
     try{
       const nodeProfile=await liveVpnProfile(owner);
-      // Every MNEBYVPN subscription URL is one living server group for
-      // both INCY and Karing: include all independently verified transports
-      // with the original WebSocket TLS fallback last. Never hide Reality
-      // based on the client's name; the user chooses the working transport.
-      // Only authenticated, node-verified profiles may appear in this group.
+      // Preserve canonical RU188 entitlement; display verified FI AWG and
+      // German WebSocket only. Hide nonworking German Reality transport.
       const requestedClient=url.searchParams.get('client');
       if(url.searchParams.size>1||
          [...url.searchParams.keys()].some(k=>k!=='client')||
          (requestedClient!==null&&requestedClient!=='incy'&&requestedClient!=='karing')){
         json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
       }
-      const legacyProfile=stableMultiClientVpnProfile(nodeProfile);
+      const germanProfile=germanWebSocketOnly(nodeProfile);
       // An experimental registry failure cannot erase a working subscription.
       // Only fresh cryptographically signed grants produce additional nodes.
       let extraProfiles:string[]=[];
       if(extraVpnNodeKey){
         try{
-          extraProfiles=await loadAdditionalVpnLinks(subscriptionPool,owner,extraVpnNodeKey);
+          extraProfiles=(await loadAdditionalVpnLinks(
+              subscriptionPool,owner,extraVpnNodeKey))
+              .filter(keepSupportedAdditionalTransport);
         }catch{
           console.error('Additional VPN node registry unavailable');
         }
@@ -891,14 +873,13 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
           console.error('FI AWG subscription entry unavailable');
         }
       }
-      const profile=[legacyProfile,...extraProfiles,
-        ...(fiProfile?[fiProfile]:[])].join('\n');
-      // Standard V2Ray base64 subscription: clients repeatedly fetch this URL.
-      // Network revocation is enforced both in DB and by the real Xray node.
-      res.setHeader('subscription-userinfo',
-        'upload=0; download=0; total=0; expire='+
-        Math.floor(owner.expiresAt.getTime()/1000));
-      res.setHeader('profile-title','base64:'+Buffer.from('MNEBYVPN').toString('base64'));
+      const profile=[...extraProfiles,
+        ...(fiProfile?[fiProfile]:[]),germanProfile].join('\n');
+      // Per-entitlement INCY metadata refreshed on every request.
+      // A durable subscription URL does not imply unlimited VPN access.
+      for(const [name,value] of Object.entries(
+        incySubscriptionHeaders(owner.expiresAt)))
+        res.setHeader(name,value);
       send(res,200,Buffer.from(profile+'\n','utf8').toString('base64')+'\n',
         'text/plain; charset=utf-8');
     }catch{

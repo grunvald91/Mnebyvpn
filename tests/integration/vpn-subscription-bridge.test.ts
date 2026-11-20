@@ -8,6 +8,8 @@ import {spawn,type ChildProcess} from 'node:child_process';
 import {Pool} from 'pg';
 import {fileURLToPath} from 'node:url';
 import {issueSubscriptionLink} from '../../packages/provisioning/src/subscription-links.ts';
+import {germanWebSocketOnly}
+  from '../../packages/provisioning/src/incy-subscription-presentation.ts';
 
 test('public HTTPS subscription bridge serves only node-verified active bearer tokens',async()=>{
  const db='postgresql://'+(process.env.PGUSER||'test')+':'+
@@ -92,7 +94,16 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.match(response.headers.get('content-type')??'',/text\/plain/);
    assert.equal(response.headers.get('cache-control'),'no-store');
    const decoded=Buffer.from((await response.text()).trim(),'base64').toString('utf8').trim();
-   assert.equal(decoded,profile);
+   const displayedWs=germanWebSocketOnly(profile);
+   assert.equal(decoded,displayedWs);
+   assert.equal(response.headers.get('profile-web-page-url'),'https://mnebyvpn.site');
+   assert.equal(response.headers.get('premium-url'),'https://t.me/MNEBYVPN_bot');
+   assert.equal(response.headers.get('support-url'),
+     'https://t.me/MNEBYVPN_bot?start=support');
+   assert.equal(response.headers.get('profile-update-interval'),'1');
+   assert.equal(response.headers.get('subscription-userinfo'),
+     'upload=0;download=0;total=0;expire='+
+     Math.floor(issued!.expiresAt.getTime()/1000));
    // A node-verified fast profile can be offered without removing existing
    // websocket access. Both links must belong to the same user credential.
    const reality='vless://'+credential+
@@ -109,15 +120,14 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const legacyRefresh=await fetch(root+'/sub/'+issued!.token);
    assert.equal(legacyRefresh.status,200);
    assert.equal(Buffer.from((await legacyRefresh.text()).trim(),'base64')
-     .toString('utf8').trim(),[fastDial,firefox,fallback].join('\n'));
+     .toString('utf8').trim(),displayedWs);
    const dual=await fetch(root+'/sub/'+issued!.token+'?client=incy');
    assert.equal(dual.status,200);
-   assert.equal(Buffer.from((await dual.text()).trim(),'base64').toString('utf8').trim(),
-     [fastDial,firefox,fallback].join('\n'));
+   assert.equal(Buffer.from((await dual.text()).trim(),'base64').toString('utf8').trim(),displayedWs);
    const karing=await fetch(root+'/sub/'+issued!.token+'?client=karing');
    assert.equal(karing.status,200);
    assert.equal(Buffer.from((await karing.text()).trim(),'base64')
-     .toString('utf8').trim(),[fastDial,firefox,fallback].join('\n'));
+     .toString('utf8').trim(),displayedWs);
    assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=other')).status,400);
    // Never publish a profile from an unexpected node, even on an authenticated
    // internal response.
@@ -135,7 +145,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const single=await fetch(root+'/sub/'+issued!.token+'?client=karing');
    assert.equal(single.status,200);
    assert.equal(Buffer.from((await single.text()).trim(),'base64')
-     .toString('utf8').trim(),fallback);
+     .toString('utf8').trim(),displayedWs);
    // Multi-country nodes appear only after the DB release gate, fresh verified
    // registry status, and a cryptographic grant for this SAME active entitlement.
    const current=await pool.query(
@@ -166,7 +176,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    // still false: existing clients cannot see staged endpoints.
    const notReleased=await fetch(root+'/sub/'+issued!.token);
    assert.equal(Buffer.from((await notReleased.text()).trim(),'base64')
-     .toString('utf8').trim(),fallback);
+     .toString('utf8').trim(),displayedWs);
    for(const row of extras){
      await pool.query(
        'INSERT INTO vpn_additional_nodes(node_id,country_code,country_name_ru,'+
@@ -189,23 +199,22 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.equal(withCountries.status,200);
    const delivered=Buffer.from((await withCountries.text()).trim(),'base64')
      .toString('utf8').trim().split('\n');
-   assert.equal(delivered.length,3);
-   assert.equal(delivered[0],fallback);
-   assert.match(delivered[1],new RegExp(encodeURIComponent('🇩🇪 MNEBYVPN')));
-   assert.match(delivered[2],new RegExp(encodeURIComponent('🇳🇱 MNEBYVPN')));
+   assert.equal(delivered.length,2);
+   assert.match(delivered[0],new RegExp(encodeURIComponent('🇳🇱 MNEBYVPN')));
+   assert.equal(delivered[1],displayedWs);
    const forKaring=await fetch(root+'/sub/'+issued!.token+'?client=karing');
    assert.deepEqual(Buffer.from((await forKaring.text()).trim(),'base64')
      .toString('utf8').trim().split('\n'),delivered);
    await pool.query("UPDATE vpn_additional_nodes SET state='degraded' WHERE node_id='nl-node-02'");
    const degraded=await fetch(root+'/sub/'+issued!.token);
    assert.equal(Buffer.from((await degraded.text()).trim(),'base64')
-     .toString('utf8').trim().split('\n').length,2);
+     .toString('utf8').trim().split('\n').length,1);
    await pool.query(
      "UPDATE vpn_additional_node_receipts SET signature=$1 WHERE node_id='de-node-02'",
      ['0'.repeat(86)]);
    const tampered=await fetch(root+'/sub/'+issued!.token);
    assert.equal(Buffer.from((await tampered.text()).trim(),'base64')
-     .toString('utf8').trim(),fallback);
+     .toString('utf8').trim(),displayedWs);
    await pool.query("UPDATE vpn_release_flags SET enabled=false WHERE feature='vpn_additional_nodes'");
    assert.equal((await fetch(root+'/sub/'+'B'.repeat(43))).status,404);
    const installer=await fetch(root+'/install/'+issued!.token+'?client=incy');
