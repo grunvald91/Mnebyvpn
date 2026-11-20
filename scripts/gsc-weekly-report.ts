@@ -122,6 +122,39 @@ export function groupedQuerySamples(rows:GscRow[]=[]):{topic:string;clicks:numbe
   return [...grouped.values()].sort((a,b)=>b.impressions-a.impressions||a.topic.localeCompare(b.topic,'ru'));
 }
 
+
+/**
+ * Simple review flags, not proof of a search-ranking cause or a guaranteed
+ * improvement. Every threshold is transparent and based on actual GSC rows.
+ */
+export function identifySeoReviewItems(input:GscReportInput):string[]{
+  const notes:string[]=[];
+  for(const path of GSC_URL_PATHS){
+    const current=pageMetrics(input.pagesCurrent.rows,GSC_ORIGIN+path);
+    const previous=pageMetrics(input.pagesPrevious.rows,GSC_ORIGIN+path);
+    const status=input.inspections[path]?.inspectionResult?.indexStatusResult;
+    if(!status){
+      notes.push(path+': URL Inspection не вернул статус — индексация не установлена.');
+    }else if(status.verdict!=='PASS'){
+      notes.push(path+': Google URL Inspection: '+safeCell(status.verdict??'UNKNOWN')+
+        ', состояние: '+safeCell(status.coverageState??'не указано')+
+        '. Проверить причину в Search Console.');
+    }
+    if(previous.hasData&&previous.impressions>=40&&
+      current.hasData&&current.impressions*2<previous.impressions){
+      notes.push(path+': показы снизились более чем на 50% ('+
+        Math.round(previous.impressions)+' → '+Math.round(current.impressions)+
+        ' за одинаковые 28-дневные интервалы). Проверить динамику запроса и конкуренцию.');
+    }
+    if(current.hasData&&current.impressions>=100&&
+      current.ctr!==null&&current.ctr<0.01){
+      notes.push(path+': CTR ниже 1% при '+Math.round(current.impressions)+
+        ' показах. Проверить соответствие заголовка поисковым запросам; это не диагноз.');
+    }
+  }
+  return notes;
+}
+
 function fmtNumber(n:number):string{return Math.round(n).toLocaleString('ru-RU');}
 function fmtRate(rate:number|null):string{return rate===null?'нет данных':(rate*100).toFixed(2)+'%';}
 function fmtPosition(n:number|null):string{return n===null?'нет данных':n.toFixed(1);}
@@ -172,8 +205,14 @@ export function buildReport(input:GscReportInput):string{
   if(groups.length===0)lines.push('| Нет данных | — | — |');
   for(const group of groups)lines.push(`| ${group.topic} | ${fmtNumber(group.clicks)} | ${fmtNumber(group.impressions)} |`);
   lines.push('',
-    '## Что требуют внимания',
+    '## Что требует внимания',
     '');
+  const reviewItems=identifySeoReviewItems(input);
+  if(reviewItems.length){
+    lines.push('Правила: снижение показов более 50% при ≥40 предыдущих показах; CTR менее 1% при ≥100 текущих показах. Это наблюдения, не доказанные причины.');
+    for(const note of reviewItems)lines.push('- '+note);
+    lines.push('');
+  }
   let issues=0;
   for(const path of GSC_URL_PATHS){
     const index=input.inspections[path]?.inspectionResult?.indexStatusResult;
@@ -258,16 +297,18 @@ export async function readSearchConsoleReport(
   };
   const requestBody=(period:{startDate:string;endDate:string},dimensions:string[],rowLimit:number,filtered=false)=>({
     ...period,dimensions,type:'web',dataState:'final',rowLimit,
-    ...(filtered?{dimensionFilterGroups:[{filters:[{
-      dimension:'page',operator:'contains',expression:GSC_ORIGIN+'/',
+    // Filter by the exact eight canonical URLs. Google's filterLists accepts
+    // several exact page values in one request; avoid a site-wide top-N cutoff.
+    ...(filtered?{dimensionFilterGroups:[{filterLists:[{
+      dimension:'page',expressions:GSC_URL_PATHS.map(path=>GSC_ORIGIN+path),
     }]}]}:{}),
   });
   // Property-level daily totals: no page filters, no query-based truncation.
   const totalsCurrent=await search(requestBody(dates.current,['date'],1000));
   const totalsPrevious=await search(requestBody(dates.previous,['date'],1000));
-  // Known canonical URLs appear as exact keys in the page dimension.
-  const pagesCurrent=await search(requestBody(dates.current,['page'],25000,true));
-  const pagesPrevious=await search(requestBody(dates.previous,['page'],25000,true));
+  // Keep just the exact canonical pages, not the top 25k domain-wide pages.
+  const pagesCurrent=await search(requestBody(dates.current,['page'],100,true));
+  const pagesPrevious=await search(requestBody(dates.previous,['page'],100,true));
   // Sampled/possibly anonymized: never infer market demand from this set.
   const queryData=await search(requestBody(dates.current,['query'],1000,true));
 
@@ -309,6 +350,11 @@ export function formatTelegramReport(input:GscReportInput):string{
   const grouped=groupedQuerySamples(input.queryData.rows);
   lines.push('','Запросы по темам (выборка, не весь рынок):');
   for(const g of grouped.slice(0,8))lines.push(g.topic+': '+fmtNumber(g.impressions)+' показов');
+  const review=identifySeoReviewItems(input);
+  lines.push('','Проверить:');
+  if(!review.length)lines.push('Нет срабатываний установленных правил.');
+  else for(const note of review.slice(0,5))lines.push('• '+note);
+  if(review.length>5)lines.push('И ещё '+(review.length-5)+' пункта; полный отчёт доступен при локальном запуске.');
   lines.push('','Отсутствие показов не доказывает отсутствие индексации. Данные Google могут поступать с задержкой.');
   return lines.join('\n').slice(0,3800);
 }
