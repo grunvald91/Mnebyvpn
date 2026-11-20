@@ -247,7 +247,8 @@ type HttpClient=(input:string|URL,init?:RequestInit)=>Promise<Response>;
 async function requestJSON(fetchImpl:HttpClient,url:string,init:RequestInit,context:string):Promise<any>{
   let response:Response;
   try{
-    response=await fetchImpl(url,{...init,signal:AbortSignal.timeout(20000)});
+    // A redirected API request must never forward bearer credentials or bot-token URLs.
+    response=await fetchImpl(url,{...init,redirect:'error',signal:AbortSignal.timeout(20000)});
   }catch{throw Error(`GSC_${context}_NETWORK_ERROR`);}
   if(!response.ok)throw Error(`GSC_${context}_HTTP_${response.status}`);
   try{return await response.json();}catch{throw Error(`GSC_${context}_INVALID_JSON`);}
@@ -348,11 +349,20 @@ export function formatTelegramReport(input:GscReportInput):string{
   return lines.join('\n').slice(0,3800);
 }
 
+/**
+ * Only a positive Telegram user ID is accepted for a private owner report.
+ * Group/supergroup/channel IDs are negative and intentionally rejected.
+ * This checks address shape; successful private delivery still needs Bot API verification.
+ */
+export function validPrivateTelegramDestination(token:string,chatId:string):boolean{
+  return /^[0-9]{5,20}:[A-Za-z0-9_-]{25,}$/.test(token)&&
+    /^[1-9][0-9]{0,15}$/.test(chatId)&&Number.isSafeInteger(Number(chatId));
+}
 export async function sendPrivateTelegramReport(
   summary:string,token:string,chatId:string,fetchImpl:HttpClient=fetch,
 ):Promise<void>{
-  if(!/^\d{5,12}:[A-Za-z0-9_-]{30,}$/.test(token)||
-    !/^-?\d{5,20}$/.test(chatId))throw Error('GSC_TELEGRAM_CONFIG_INVALID');
+  if(!validPrivateTelegramDestination(token,chatId))
+    throw Error('GSC_TELEGRAM_CONFIG_INVALID');
   if(summary.length>3900)throw Error('GSC_TELEGRAM_REPORT_TOO_LONG');
   const reply=await requestJSON(fetchImpl,'https://api.telegram.org/bot'+token+'/sendMessage',{
     method:'POST',headers:{'Content-Type':'application/json'},
@@ -365,19 +375,21 @@ export async function main():Promise<void>{
   const credential=process.env.GSC_SERVICE_ACCOUNT_JSON;
   if(!credential)throw Error('GSC_NOT_CONFIGURED');
   const property=process.env.GSC_SITE_URL||'sc-domain:mnebyvpn.site';
+  const githubActions=process.env.GITHUB_ACTIONS==='true';
+  const botToken=process.env.GSC_TELEGRAM_BOT_TOKEN||'';
+  const adminChat=process.env.GSC_TELEGRAM_CHAT_ID||'';
+  // Fail closed before contacting Google if private delivery is absent or invalid.
+  if(githubActions&&!validPrivateTelegramDestination(botToken,adminChat))
+    throw Error('GSC_PRIVATE_DELIVERY_NOT_CONFIGURED');
   const input=await readSearchConsoleReport(property,credential);
-  const report=buildReport(input);
-  const summary=process.env.GITHUB_STEP_SUMMARY;
-  if(process.env.GITHUB_ACTIONS==='true'){
-    // This repository is public. Never print metrics into public Action logs/summaries/artifacts.
-    const botToken=process.env.GSC_TELEGRAM_BOT_TOKEN||'';
-    const adminChat=process.env.GSC_TELEGRAM_CHAT_ID||'';
-    if(!botToken||!adminChat)throw Error('GSC_PRIVATE_DELIVERY_NOT_CONFIGURED');
+  if(githubActions){
+    // No search statistics go to public GitHub logs, artifacts or summaries.
     await sendPrivateTelegramReport(formatTelegramReport(input),botToken,adminChat);
+    const summary=process.env.GITHUB_STEP_SUMMARY;
     if(summary)appendFileSync(summary,'GSC: отчёт доставлен в приватный Telegram. Данные не публиковались в GitHub.\n',{encoding:'utf8'});
   }else{
     // Local execution is permitted: stdout stays on the operator's own machine.
-    process.stdout.write(report);
+    process.stdout.write(buildReport(input));
   }
   console.log('GSC_REPORT_STATUS=PASS; PAGES='+GSC_URL_PATHS.length+'; RAW_QUERIES_EXPORTED=0');
 }
