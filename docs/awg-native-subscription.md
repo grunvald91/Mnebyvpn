@@ -12,7 +12,8 @@ granted, applied on FI and acknowledged to the production controller through
 the independently verified signed node receipt.
 
 The endpoint is disabled until `WEB_FI_AWG_MATERIAL_ENABLED=yes` and a
-verified, root-controlled `WEB_FI_AWG_HEADER_PROTECTION_KEY` are configured.
+verified, root-controlled `WEB_FI_AWG_HEADER_PROTECTION_KEY` and
+independently pinned `WEB_FI_AWG_SERVER_PUBLIC_KEY` are configured.
 The canonical PostgreSQL release flag `vpn_awg_clients` must also be true.
 There is no automatic flag change, new peer allocation or production launch
 in this change.
@@ -22,7 +23,8 @@ in this change.
 - Existing active `vpn_subscription_links` bearer token resolves to an
   ACTIVE paid/confirmed VPN entitlement; its revision and expiry are current.
 - Exact immutable FI217 node and peer identities, enrolled Ed25519 node
-  inventory and matching configured AWG 3.1 public server key.
+  inventory and a server public key matching the independently pinned
+  `WEB_FI_AWG_SERVER_PUBLIC_KEY`, not just a database value.
 - Fresh verified FI node pool (not `staged`) and `verified_at` within one
   hour of the request. The successful external test is **evidence**, not by
   itself a continuously healthy production pool.
