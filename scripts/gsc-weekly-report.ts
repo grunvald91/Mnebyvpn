@@ -134,7 +134,7 @@ export function identifySeoReviewItems(input:GscReportInput):string[]{
     const previous=pageMetrics(input.pagesPrevious.rows,GSC_ORIGIN+path);
     const status=input.inspections[path]?.inspectionResult?.indexStatusResult;
     if(!status){
-      notes.push(path+': URL Inspection не вернул статус — индексация не установлена.');
+      notes.push(path+': статус URL Inspection недоступен; **не делаем вывода об индексации**.');
     }else if(status.verdict!=='PASS'){
       notes.push(path+': Google URL Inspection: '+safeCell(status.verdict??'UNKNOWN')+
         ', состояние: '+safeCell(status.coverageState??'не указано')+
@@ -213,18 +213,7 @@ export function buildReport(input:GscReportInput):string{
     for(const note of reviewItems)lines.push('- '+note);
     lines.push('');
   }
-  let issues=0;
-  for(const path of GSC_URL_PATHS){
-    const index=input.inspections[path]?.inspectionResult?.indexStatusResult;
-    if(!index){
-      lines.push(`- \`${path}\`: статус Google URL Inspection недоступен; **не делаем вывода об индексации**.`);
-      issues++;
-    }else if(index.verdict!=='PASS'){
-      lines.push(`- \`${path}\`: вердикт ${safeCell(index.verdict??'UNKNOWN')}; причина по API: ${safeCell(index.coverageState??'не указана')}.`);
-      issues++;
-    }
-  }
-  if(!issues)lines.push('Все восемь URL получили вердикт PASS в URL Inspection. Это данные об индексной версии, не live-проверка.');
+  if(!reviewItems.length)lines.push('По данным текущего отчёта установленные правила не сработали.');
   lines.push('',
     '> Важные ограничения: отсутствие показов **не равно** отсутствию индексации; URL Inspection показывает состояние версии в индексе, не тест живой страницы. Строки по запросам — только доступная выборка верхних запросов Google, а не полная статистика и не частотность рынка. Отчёт не содержит сами поисковые фразы, идентификаторы пользователей или приватные URL.',
     '',
