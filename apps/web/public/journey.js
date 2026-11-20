@@ -54,7 +54,8 @@
       offers,
       buyDisabled:Boolean(el('journey-buy').disabled),
       buyText:el('journey-buy').textContent||'Оплата подключается',
-      trialAvailable:state.trialOffers.includes('vpn'),
+      trialAvailable:state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'),
+      trialOffers:state.trialOffers,
       trialDisabled:Boolean(el('journey-trial').disabled),
       error:el('journey-error').textContent||'',
     },location.origin);
@@ -96,8 +97,10 @@
       if(!el('journey-buy').disabled)el('journey-buy').click();
       return;
     }
-    if(msg.type==='trial'&&!el('journey-trial').disabled)
+    if(msg.type==='trial'&&!el('journey-trial').disabled){
+      state.trialProduct=msg.product==='smart_dns'?'smart_dns':'vpn';
       el('journey-trial').click();
+    }
   });
   // The iframe can finish loading BEFORE deferred journey.js installs the
   // postMessage listener (notably on fast/cached Android connections).
@@ -156,7 +159,10 @@
       // An external Telegram OIDC redirect does not call setView, and keeps
       // the intent across the redirect so existing linked users can continue.
       if(!state.loggedIn){
-        try{sessionStorage.removeItem('mnebyvpn-pending-trial');}catch{}
+        try{
+          sessionStorage.removeItem('mnebyvpn-pending-trial');
+          sessionStorage.removeItem('mnebyvpn-pending-trial-product');
+        }catch{}
       }
     }
     view=next;
@@ -207,6 +213,9 @@
   // entry screen: never create duplicate inputs/IDs or a second auth service.
   function updateTrialAuth(){
     if(!trialAuth)return;
+    const isDns=state.trialProduct==='smart_dns';
+    const title=el('journey-trial-title');
+    if(title)title.textContent=isDns?'Ваши 24 часа Smart DNS':'Ваши 24 часа VPN';
     const emailOn=state.emailLoginEnabled===true;
     el('journey-email-unavailable').hidden=emailOn;
     if(view==='trial-auth'&&emailPanel){
@@ -262,7 +271,7 @@
     const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
     buy.disabled=original.disabled;
     buy.textContent=original.textContent;
-    const trialAvailable=state.trialOffers.includes('vpn');
+    const trialAvailable=state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns');
     el('journey-trial').disabled=el('trial-button').disabled;
     el('journey-trial-offer').hidden=!trialAvailable;
     updateTrialAuth();
@@ -686,10 +695,14 @@
     event.preventDefault();setView('plans',true);
   });
   el('journey-trial').addEventListener('click',async()=>{
-    if(!state.trialOffers.includes('vpn'))return;
+    const trialProduct=state.trialProduct==='smart_dns'?'smart_dns':'vpn';
+    if(!state.trialOffers.includes(trialProduct))return;
     if(!state.loggedIn){
       saveSelection();
-      try{sessionStorage.setItem('mnebyvpn-pending-trial','1');}catch{}
+      try{
+        sessionStorage.setItem('mnebyvpn-pending-trial','1');
+        sessionStorage.setItem('mnebyvpn-pending-trial-product',trialProduct);
+      }catch{}
       setView('trial-auth',true);
       // Do not summon the mobile keyboard before the visitor requests it:
       // the reduced visual viewport would immediately force scrolling.

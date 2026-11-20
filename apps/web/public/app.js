@@ -6,7 +6,7 @@ const state = {
   loggedIn: false, csrf: '', busy: false, requestId: null, trialOffers: [],
   inviteToken: null, refreshing: false, renewalTargetId: null,
   telegramLoginEnabled:false,emailLoginEnabled:false,emailLinkMode:false,
-  trialStatus:'NONE',guestSubscriptionUrl:null,setupLoading:false,
+  trialStatus:'NONE',trialProduct:'vpn',hasPendingProvisioning:false,guestSubscriptionUrl:null,setupLoading:false,
   purchaseIntent:null,telegramProxyBonusEnabled:false,wsProxyEnabled:false,
   appleDnsProfileEnabled:false,personalDnsEnabled:false,paymentProvider:'yookassa',
 };
@@ -129,7 +129,7 @@ function renderPlan() {
     !state.checkoutEnabled?'Оплата подключается':
     !state.loggedIn?'Войти для оплаты':state.renewalTargetId?'К оплате продления':'Перейти к оплате';
   const trial=byId('trial-button');
-  const trialAvailable=state.trialOffers.includes('vpn')&&state.loginEnabled;
+  const trialAvailable=(state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'))&&state.loginEnabled;
   trial.disabled=!trialAvailable||state.busy;
   trial.textContent=state.busy?'Проверяем заявку…':
     !state.loginEnabled?'Бесплатный доступ временно недоступен':
@@ -685,6 +685,7 @@ function renderAccount(payload) {
   text('account-name','Мой аккаунт');
   text('account-subtitle','Защищённый вход · '+(payload.identity?.email||'Telegram'));
   const accesses=payload.access||[];
+  state.hasPendingProvisioning=accesses.some(a=>a.state==='PAID_PENDING_PROVISIONING');
   const active=accesses.filter(a=>a.state==='ACTIVE' && a.secondsRemaining>0);
   text('active-count',active.length);
   const timed=active.filter(a=>a.secondsRemaining!==null).sort((a,b)=>a.secondsRemaining-b.secondsRemaining);
@@ -737,6 +738,7 @@ function renderLoggedOut() {
   // A session that expires or is revoked must not leave stale private data on
   // a shared browser screen. Keep the public catalog and selected product.
   state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;
+  state.hasPendingProvisioning=false;state.trialProduct='vpn';
   state.telegramProxyBonusEnabled=false;
   state.wsProxyEnabled=false;
   state.appleDnsProfileEnabled=false;
@@ -943,19 +945,23 @@ async function purchase() {
 }
 async function claimTrial(){
   if(state.busy)return;
-  if(!state.trialOffers.includes('vpn')){
+  const trialProduct=state.trialProduct==='smart_dns'?'smart_dns':'vpn';
+  if(!state.trialOffers.includes(trialProduct)){
     toast('Бесплатный доступ сейчас недоступен.');return;
   }
   if(!state.loggedIn){
     if(!state.loginEnabled){toast('Вход пока недоступен.');return;}
     saveSelection();
-    try{sessionStorage.setItem('mnebyvpn-pending-trial','1');}catch{}
+    try{
+      sessionStorage.setItem('mnebyvpn-pending-trial','1');
+      sessionStorage.setItem('mnebyvpn-pending-trial-product',trialProduct);
+    }catch{}
     byId('account').scrollIntoView({behavior:'smooth'});
     toast('Для получения бесплатных суток сначала войдите по email или через привязанный Telegram.');
     return;
   }
   state.busy=true;renderPlan();
-  const payload={product:'vpn'};
+  const payload={product:trialProduct};
   if(state.inviteToken)payload.inviteToken=state.inviteToken;
   try{
     const response=await api('/api/trial',{method:'POST',headers:{
@@ -1225,12 +1231,20 @@ function applyInitialSelectionFromUrl(){
 applyInitialSelectionFromUrl();
 applyLinkOptions();
 async function consumePendingTrial(){
-  if(state.loggedIn && state.trialOffers.includes('vpn')){
-    let pending=false;
-    try{pending=sessionStorage.getItem('mnebyvpn-pending-trial')==='1';
+  if(state.loggedIn && (state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'))){
+    let pending=null;
+    try{
+      const raw=sessionStorage.getItem('mnebyvpn-pending-trial');
+      const prod=sessionStorage.getItem('mnebyvpn-pending-trial-product');
+      if(raw==='1'||raw==='vpn'||raw==='smart_dns')
+        pending=(prod==='smart_dns'||raw==='smart_dns')?'smart_dns':'vpn';
       sessionStorage.removeItem('mnebyvpn-pending-trial');
+      sessionStorage.removeItem('mnebyvpn-pending-trial-product');
     }catch{}
-    if(pending)await claimTrial();
+    if(pending&&state.trialOffers.includes(pending)){
+      state.trialProduct=pending;
+      await claimTrial();
+    }
   }
 }
 Promise.all([loadLoginOptions(),loadCatalog(),refresh()]).then(consumePendingTrial);
@@ -1239,7 +1253,7 @@ let pollTick=0;
 setInterval(()=>{
   if(document.visibilityState!=='visible'||!state.loggedIn)return;
   const view=document.body?.dataset?.journeyView;
-  const fastWait=view==='payment'||(view==='setup'&&!state.guestSubscriptionUrl);
+  const fastWait=view==='payment'||(view==='setup'&&state.hasPendingProvisioning);
   pollTick=(pollTick+1)%4;
   if(fastWait||pollTick===0)refresh();
 },3800);

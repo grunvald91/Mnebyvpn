@@ -652,8 +652,13 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
     error.hidden=!error.textContent;
 
     trial.disabled=false;
-    trialVpn.disabled=!serverData?.trialAvailable||Boolean(serverData?.trialDisabled);
+    const offers=Array.isArray(serverData?.trialOffers)?serverData.trialOffers:[];
+    const vpnTrialOn=(serverData?.trialAvailable&&offers.length===0)||offers.includes('vpn');
+    const dnsTrialOn=offers.includes('smart_dns');
+    trialVpn.disabled=!vpnTrialOn||Boolean(serverData?.trialDisabled);
     setText(trialVpn.querySelector('small'),trialVpn.disabled?'Пока недоступно':'24 часа');
+    trialDns.dataset.trialMode=dnsTrialOn?'free':'paid';
+    setText(trialDns.querySelector('small'),dnsTrialOn?'24 часа':'После оплаты');
     resize();
   };
 
@@ -706,7 +711,10 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
   trial.addEventListener('click',()=>setTrialChooser(trialOptions.hidden));
   trialClose.addEventListener('click',()=>setTrialChooser(false));
   trialVpn.addEventListener('click',()=>{if(!trialVpn.disabled){setTrialChooser(false);send('trial');}});
-  trialDns.addEventListener('click',()=>{trialDnsStatus.hidden=false;});
+  trialDns.addEventListener('click',()=>{
+    if(trialDns.dataset.trialMode==='free'){setTrialChooser(false);send('trial',{product:'smart_dns'});}
+    else{trialDnsStatus.hidden=false;}
+  });
 
   const paymentDialog=$('#payment-info-dialog'),paymentOpen=$('#payment-info-open');
   const dnsDialog=$('#dns-info-dialog'),dnsOpen=$('#dns-info-open');
