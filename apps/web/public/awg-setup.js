@@ -121,6 +121,7 @@ export async function createFiAwgSetup(entitlementId,csrf,onProgress,transport=a
       });
       const url=new URL(subscription.subscriptionUrl);
       if(url.origin!=='https://cdn.servgo.ru:8443'||
+         url.username||url.password||
          !/^\/sub\/[A-Za-z0-9_-]{43}$/.test(url.pathname)||
          url.search||url.hash)throw Error('UNTRUSTED_SUBSCRIPTION');
       const token=url.pathname.split('/')[2];

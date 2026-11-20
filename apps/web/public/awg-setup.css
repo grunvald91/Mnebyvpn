@@ -1,0 +1,38 @@
+/* Separate same-origin stylesheet: the public site forbids inline styles. */
+.awg-setup-main {
+  box-sizing: border-box;
+  max-width: 680px;
+  margin: 32px auto;
+  padding: 28px;
+  background: rgba(18, 24, 39, 0.82);
+  border: 1px solid rgba(130, 164, 217, 0.2);
+  border-radius: 24px;
+  color: #f2f6ff;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, .23);
+}
+.awg-setup-main h1 { font-size: clamp(1.5rem, 5vw, 2.3rem); line-height: 1.15; }
+.awg-setup-main p { line-height: 1.65; margin: 1rem 0; }
+.awg-setup-main a { color: #9ad9ff; }
+.awg-setup-main button {
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: 0;
+  color: #061126;
+  font-weight: 700;
+  background: #85d5ff;
+  cursor: pointer;
+  max-width: 100%;
+}
+.awg-setup-main button:disabled { opacity: .45; cursor: not-allowed; }
+.awg-setup-main #awg-state { padding: 12px 0; font-weight: 650; }
+.awg-setup-main #awg-download {
+  display: inline-block;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-top: 12px;
+}
+.awg-setup-main [hidden] { display: none !important; }
+@media (max-width: 700px) {
+  .awg-setup-main { margin: 12px; padding: 18px; border-radius: 18px; }
+}
