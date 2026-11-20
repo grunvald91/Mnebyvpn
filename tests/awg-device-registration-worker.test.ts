@@ -76,4 +76,13 @@ test('public registration request never includes a private key',async()=>{
   assert(server.includes("sessionHash(auth.raw),entitlementId,peerPublicKey"));
   assert(worker.includes("stageNextFiAwgDevice("));
   assert(!worker.includes("WEB_FI_AWG_REGISTRATION_PRIVATE_KEY"));
+  assert(server.includes("fiAwgSetupCss=await readFile("));
+  assert(server.includes("url.pathname==='/awg-setup.css'"));
+  assert(server.includes("fiAwgRegistrationAvailable"));
+  const html=await source(new URL('../apps/web/public/awg-setup.html',import.meta.url),'utf8');
+  assert(html.includes('href="/awg-setup.css"'));
+  assert(!html.includes('<main style='));
+  const browser=await source(new URL('../apps/web/public/awg-setup.js',import.meta.url),'utf8');
+  assert(browser.includes("url.username||url.password"));
+
 });
