@@ -16,6 +16,8 @@ import {subscriptionOwner,subscriptionLink,issueSubscriptionLinkForAccount}
   from '../../../packages/provisioning/src/subscription-links.ts';
 import {additionalNodeVerificationKey,loadAdditionalVpnLinks}
   from '../../../packages/provisioning/src/multi-node-subscriptions.ts';
+import {isCanonicalAwgPublicKey,loadVerifiedAwgMaterial}
+  from '../../../packages/provisioning/src/awg-subscriber-material.ts';
 import {
   prepareWebsiteProdamusCheckout, prepareWebsiteYookassaCheckout, type PayformLinkTransport,
 } from '../../../packages/billing/src/website-checkout.ts';
@@ -131,6 +133,14 @@ const subscriptionPool=subscriptionDbUrl
 // sees only an Ed25519 verification key; signing keys stay with the controller.
 const extraVpnNodeKey=process.env.VPN_ADDITIONAL_NODES_ENABLED==='yes'
   ?additionalNodeVerificationKey(required('VPN_ADDITIONAL_NODE_VERIFY_KEY')):null;
+// Separate native AmneziaWG protocol: never append a .conf to VLESS /sub.
+// Disabled until FI node is verified, signed grant/ACK is real and admin
+// explicitly releases native AWG material for an EXISTING device key.
+const awgMaterialEnabled=process.env.WEB_FI_AWG_MATERIAL_ENABLED==='yes';
+const awgHeaderProtectionKey=awgMaterialEnabled
+  ?required('WEB_FI_AWG_HEADER_PROTECTION_KEY'):'';
+if(awgMaterialEnabled&&!isCanonicalAwgPublicKey(awgHeaderProtectionKey))
+  throw Error('Invalid independently configured FI AWG 3.1 header key');
 // Login identities must live in the same canonical DB as the VPN node.
 // Never give the brochure site the bot's unrestricted writer credentials.
 const authDbUrl=process.env.WEB_AUTH_DATABASE_URL;
@@ -837,6 +847,38 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
         'text/plain; charset=utf-8');
     }catch{
       json(res,503,{code:'VPN_SUBSCRIPTION_UNAVAILABLE'});
+    }
+    return;
+  }
+
+  // Native AmneziaWG is a separate client protocol. Return ONLY the
+  // connection material for a peer already signed and acknowledged on FI.
+  // The client's X25519 private key is generated/held on-device; this route
+  // never accepts it and NEVER grants a new public key.
+  const awgMatch=/^\/awg\/([A-Za-z0-9_-]{43})\/material$/.exec(url.pathname);
+  if(req.method==='GET'&&awgMatch){
+    res.setHeader('Cache-Control','no-store, max-age=0');
+    res.setHeader('Pragma','no-cache');
+    res.setHeader('Referrer-Policy','no-referrer');
+    res.setHeader('X-Robots-Tag','noindex, nofollow');
+    if(!awgMaterialEnabled){json(res,404,{code:'AWG_MATERIAL_NOT_AVAILABLE'});return;}
+    if(!subscriptionPool){json(res,503,{code:'SUBSCRIPTION_BACKEND_UNAVAILABLE'});return;}
+    if(url.searchParams.size!==1||![...url.searchParams.keys()].every(k=>k==='peer')){
+      json(res,400,{code:'INVALID_AWG_PUBLIC_KEY'});return;
+    }
+    const publicKey=url.searchParams.get('peer');
+    if(!isCanonicalAwgPublicKey(publicKey)){
+      json(res,400,{code:'INVALID_AWG_PUBLIC_KEY'});return;
+    }
+    const owner=await subscriptionOwner(subscriptionPool,awgMatch[1]);
+    if(!owner){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
+    try{
+      const profile=await loadVerifiedAwgMaterial(
+        subscriptionPool,owner,publicKey,awgHeaderProtectionKey);
+      if(!profile){json(res,404,{code:'AWG_PEER_NOT_ACKNOWLEDGED'});return;}
+      json(res,200,profile);
+    }catch{
+      json(res,503,{code:'AWG_MATERIAL_BACKEND_UNAVAILABLE'});
     }
     return;
   }
