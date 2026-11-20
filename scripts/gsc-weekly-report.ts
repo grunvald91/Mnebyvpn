@@ -21,6 +21,12 @@ export const GSC_URL_PATHS=Object.freeze([
   '/', '/vpn', '/smart-dns', '/chatgpt', '/claude',
   '/gemini', '/google-antigravity', '/telegram-proxy',
 ]);
+/**
+ * Google Search Analytics filterLists is documented for country/device,
+ * not page. An anchored RE2 page filter matches exactly these public URLs.
+ */
+export const GSC_EXACT_PAGES_REGEX='^https://mnebyvpn\\.site/(?:'+
+  GSC_URL_PATHS.filter(path=>path!=='/').map(path=>path.slice(1)).join('|')+')?'+String.fromCharCode(36);
 const TOKEN_URL='https://oauth2.googleapis.com/token';
 const SCOPE='https://www.googleapis.com/auth/webmasters.readonly';
 const API_BASE='https://www.googleapis.com';
@@ -287,10 +293,10 @@ export async function readSearchConsoleReport(
   };
   const requestBody=(period:{startDate:string;endDate:string},dimensions:string[],rowLimit:number,filtered=false)=>({
     ...period,dimensions,type:'web',dataState:'final',rowLimit,
-    // Filter by the exact eight canonical URLs. Google's filterLists accepts
-    // several exact page values in one request; avoid a site-wide top-N cutoff.
-    ...(filtered?{dimensionFilterGroups:[{filterLists:[{
-      dimension:'page',expressions:GSC_URL_PATHS.map(path=>GSC_ORIGIN+path),
+    // A single anchored RE2 page filter matches the eight canonical paths.
+    // Google documents filterLists for country/device, not for page.
+    ...(filtered?{dimensionFilterGroups:[{filters:[{
+      dimension:'page',operator:'includingRegex',expression:GSC_EXACT_PAGES_REGEX,
     }]}]}:{}),
   });
   // Property-level daily totals: no page filters, no query-based truncation.

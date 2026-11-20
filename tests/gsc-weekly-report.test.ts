@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {generateKeyPairSync,verify} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {
-  GSC_ALLOWED_PROPERTIES,GSC_ORIGIN,GSC_URL_PATHS,minusDays,reportPeriods,
+  GSC_ALLOWED_PROPERTIES,GSC_ORIGIN,GSC_URL_PATHS,GSC_EXACT_PAGES_REGEX,minusDays,reportPeriods,
   combineDailyRows,pageMetrics,queryTopic,groupedQuerySamples,buildReport,identifySeoReviewItems,
   assertionForCredentials,getAccessToken,readSearchConsoleReport,
   formatTelegramReport,sendPrivateTelegramReport,validPrivateTelegramDestination,main,
@@ -144,7 +145,7 @@ test('Search Console API reads one approved property and eight static URLs only'
       if(body.dimensions[0]==='query'||body.dimensions[0]==='page'){
         // Not a loose domain-wide contains filter: only approved canonical URLs.
         assert.deepEqual(body.dimensionFilterGroups,[{
-          filterLists:[{dimension:'page',expressions:GSC_URL_PATHS.map(p=>GSC_ORIGIN+p)}]
+          filters:[{dimension:'page',operator:'includingRegex',expression:GSC_EXACT_PAGES_REGEX}]
         }]);
         assert.equal(body.dimensions[0]==='page'?body.rowLimit:1000,
           body.dimensions[0]==='page'?100:1000);
@@ -222,4 +223,36 @@ test('Telegram transport sends privately and never echoes credentials on error',
     return true;
   });
   assert.deepEqual(GSC_ALLOWED_PROPERTIES,['sc-domain:mnebyvpn.site','https://mnebyvpn.site/']);
+});
+
+test('Google Search Analytics RE2 page filter matches the eight canonical URLs only',()=>{
+  const regexp=new RegExp(GSC_EXACT_PAGES_REGEX);
+  assert.ok(GSC_EXACT_PAGES_REGEX.startsWith('^https://'));
+  assert.equal(GSC_EXACT_PAGES_REGEX.charCodeAt(GSC_EXACT_PAGES_REGEX.length-1),36);
+  for(const path of GSC_URL_PATHS)assert.ok(regexp.test(GSC_ORIGIN+path),path);
+  for(const value of [
+    GSC_ORIGIN+'/privacy',
+    GSC_ORIGIN+'/vpn/',
+    GSC_ORIGIN+'/vpn/other',
+    GSC_ORIGIN+'/payment/success',
+    GSC_ORIGIN+'/gemini?token=abc',
+    'https://mnebyvpnXsite/vpn',
+    'http://mnebyvpn.site/vpn',
+    'https://sub.mnebyvpn.site/chatgpt',
+  ])assert.equal(regexp.test(value),false,value);
+});
+
+test('weekly GitHub report auto-attempts with existing secrets and never prints private values',()=>{
+  const workflow=readFileSync(new URL('../.github/workflows/gsc-weekly-private-report.yml',import.meta.url),'utf8');
+  assert.match(workflow,/cron: '37 5 \* \* 1'/);
+  assert.match(workflow,/push:\s*\n\s*branches: \[main\]/);
+  assert.match(workflow,/GSC_JSON_PRESENT: \$\{\{ secrets\.GSC_SERVICE_ACCOUNT_JSON != '' \}\}/);
+  assert.match(workflow,/BOT_TOKEN_PRESENT: \$\{\{ secrets\.TELEGRAM_BOT_TOKEN != '' \|\| secrets\.TELEGRAM_TOKEN_BOT != '' \}\}/);
+  assert.match(workflow,/OPERATOR_ID_PRESENT: \$\{\{ secrets\.GSC_TELEGRAM_CHAT_ID != '' \|\| secrets\.SUPPORT_TELEGRAM_OPERATOR_ID != '' \}\}/);
+  assert.match(workflow,/if: steps\.preflight\.outputs\.ready == 'yes'/);
+  assert.match(workflow,/GSC_TELEGRAM_BOT_TOKEN: \$\{\{ secrets\.TELEGRAM_BOT_TOKEN \|\| secrets\.TELEGRAM_TOKEN_BOT \}\}/);
+  assert.match(workflow,/GSC_TELEGRAM_CHAT_ID: \$\{\{ secrets\.GSC_TELEGRAM_CHAT_ID \|\| secrets\.SUPPORT_TELEGRAM_OPERATOR_ID \}\}/);
+  assert.ok(!workflow.includes('GSC_REPORT_ENABLED'));
+  assert.ok(!workflow.includes('GSC_TELEGRAM_BOT_TOKEN: ${{ secrets.GSC_TELEGRAM_BOT_TOKEN }}'));
+  assert.ok(!/echo[^\n]*(GSC_SERVICE_ACCOUNT_JSON|TELEGRAM_BOT_TOKEN|SUPPORT_TELEGRAM_OPERATOR_ID).*\$\{\{/m.test(workflow));
 });

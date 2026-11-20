@@ -1,5 +1,10 @@
 name: MNEBYVPN weekly private Google Search Console report
 on:
+  # One initial attempt after the reviewed workflow lands on main.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/gsc-weekly-private-report.yml'
   workflow_dispatch:
   schedule:
     - cron: '37 5 * * 1' # Weekly Monday, UTC, final Search Console data.
@@ -10,19 +15,41 @@ concurrency:
   cancel-in-progress: false
 jobs:
   report:
-    # In this public repository never run/report analytics until a private
-    # delivery channel and Google read-only credential are configured.
-    if: ${{ vars.GSC_REPORT_ENABLED == 'true' }}
+    # User authorized scheduled reports. The first step checks configuration
+    # without revealing IDs, tokens, search data or JSON in this public repo.
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
+      - name: Verify existing read-only Google and private Telegram inputs
+        id: preflight
+        shell: bash
+        env:
+          GSC_JSON_PRESENT: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON != '' }}
+          BOT_TOKEN_PRESENT: ${{ secrets.TELEGRAM_BOT_TOKEN != '' || secrets.TELEGRAM_TOKEN_BOT != '' }}
+          OPERATOR_ID_PRESENT: ${{ secrets.GSC_TELEGRAM_CHAT_ID != '' || secrets.SUPPORT_TELEGRAM_OPERATOR_ID != '' }}
+        run: |
+          set -euo pipefail
+          if [[ "$GSC_JSON_PRESENT" == true && "$BOT_TOKEN_PRESENT" == true && "$OPERATOR_ID_PRESENT" == true ]]; then
+            echo 'ready=yes' >> "$GITHUB_OUTPUT"
+            echo 'gsc_report_prerequisites=present' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'ready=no' >> "$GITHUB_OUTPUT"
+            echo 'gsc_report_prerequisites=incomplete' >> "$GITHUB_STEP_SUMMARY"
+            [[ "$GSC_JSON_PRESENT" == true ]] || echo 'missing_gsc_json=yes' >> "$GITHUB_STEP_SUMMARY"
+            [[ "$BOT_TOKEN_PRESENT" == true ]] || echo 'missing_existing_bot_token=yes' >> "$GITHUB_STEP_SUMMARY"
+            [[ "$OPERATOR_ID_PRESENT" == true ]] || echo 'missing_existing_operator_id_in_this_repo=yes' >> "$GITHUB_STEP_SUMMARY"
+            echo 'gsc_report=skipped_without_external_requests'
+          fi
       - uses: actions/checkout@v4
+        if: steps.preflight.outputs.ready == 'yes'
         with:
           persist-credentials: false
       - uses: actions/setup-node@v4
+        if: steps.preflight.outputs.ready == 'yes'
         with:
           node-version: '22.16.0'
       - name: Read-only Google Search Console analytics to private Telegram
+        if: steps.preflight.outputs.ready == 'yes'
         env:
           GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
           GSC_SITE_URL: ${{ vars.GSC_SITE_URL || 'sc-domain:mnebyvpn.site' }}
