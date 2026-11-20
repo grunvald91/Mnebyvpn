@@ -74,3 +74,43 @@ column-scoped read privileges in one transaction and verifies no UPDATE
 privilege. This step makes the API query executable but does not change any
 client flag or create a peer. The AWG endpoint remains gated OFF until its
 independent production release.
+
+## FI217 device enrollment workflow (feature gated)
+
+A single signed-in customer opens the Finland button in their active VPN
+entitlement card. The browser uses **WebCrypto X25519** to generate the
+client's public and private key, keeping the private key in page memory.
+The original existing VLESS subscription remains unchanged.
+
+1. The authenticated same-origin page sends **ONLY** the 32-byte X25519
+   public key to `POST /api/awg/fi/device` with the current website
+   session, CSRF header and an existing VPN entitlement UUID.
+2. The narrow `website_request_fi_awg_device` SECURITY DEFINER RPC
+   rechecks session revocation, entitlement ownership, current node-acknowledged
+   VPN billing revision, verified FI node/pool, and `vpn_awg_clients=true`
+   before creating one idempotent queue row. Other keys cannot silently
+   replace that entitlement's existing device binding.
+3. The trusted RU188 worker independently claims **one** public key per
+   cycle, calls the existing signed `stageAwgGrant`, and writes the
+   durable outbox. The existing pinned SSH delivery validates the FI217
+   signed ACK. The worker can retry a transient failure; it never handles
+   the device's private key.
+4. The browser polls account-scoped queue status, then gets a fresh
+   existing VPN subscription bearer and retrieves native AWG material.
+   The material route independently requires a real FI signed ACK.
+   Only then does the browser build and download the `.conf` locally.
+
+**Security gates:** `WEB_FI_AWG_REGISTRATION_ENABLED=yes` in addition to
+`WEB_FI_AWG_MATERIAL_ENABLED=yes`, `WEB_NETWORK_PROVISIONING_VERIFIED=yes`,
+a configured separately verified FI server public key/header key,
+valid browser login and `vpn_awg_clients=true` in the canonical DB.
+The worker must be explicitly enabled on RU188 after verified deployment.
+All of these remain OFF unless separately released. The merged code does
+not start the production worker, publish a VPN profile, alter payments or
+touch existing FI217 peers.
+
+A browser refresh during initial provisioning destroys the in-memory
+private key; for safety the registration does not silently rotate an
+existing bound peer. The next production UX milestone is a secure,
+controlled device rotation/recovery flow. Browsers lacking WebCrypto X25519
+are shown an incompatibility message rather than an unsafe fallback.
