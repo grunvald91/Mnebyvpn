@@ -87,6 +87,25 @@ test('report differentiates Google inspection verdicts from absence of impressio
   assert.throws(()=>buildReport({...input,property:'sc-domain:another.example'}),/PROPERTY_NOT_ALLOWED/);
 });
 
+test('new SEO pages report preliminary last three Pacific dates separately from finalized data',()=>{
+  const input={...fixture(),fresh:{
+    startDate:'2026-11-17',endDate:'2026-11-19',
+    totals:{rows:[{keys:['2026-11-19'],clicks:1,impressions:12,position:7}]},
+    pages:{rows:[{keys:[GSC_ORIGIN+'/gemini'],clicks:1,impressions:12}]},
+    queries:{rows:[{keys:['gemini '+fakeQuery],clicks:1,impressions:12}]},
+  }};
+  const report=buildReport(input);
+  assert.ok(report.includes('Новые данные: предварительная статистика'));
+  assert.ok(report.includes('2026-11-17 — 2026-11-19'));
+  assert.ok(report.includes('Google может пересчитать'));
+  assert.ok(!report.includes(fakeQuery));
+  const tg=formatTelegramReport(input);
+  assert.ok(tg.includes('Новейшие 3 дня (предварительно'));
+  assert.ok(tg.includes('Показы: 12'));
+  assert.ok(!tg.includes(fakeQuery));
+  const without={...input,fresh:{...input.fresh,totals:{rows:[]},queries:{rows:[]}}};
+  assert.ok(formatTelegramReport(without).includes('данные отсутствуют'));
+});
 test('SEO review flags explain the observed data and never invent ranking causes',()=>{
   const input=fixture();
   input.pagesCurrent.rows[0].clicks=0;
@@ -147,8 +166,8 @@ test('Search Console API reads one approved property and eight static URLs only'
         assert.deepEqual(body.dimensionFilterGroups,[{
           filters:[{dimension:'page',operator:'includingRegex',expression:GSC_EXACT_PAGES_REGEX}]
         }]);
-        assert.equal(body.dimensions[0]==='page'?body.rowLimit:1000,
-          body.dimensions[0]==='page'?100:1000);
+        assert.ok(body.dimensions[0]==='page'?body.rowLimit===100:
+          body.rowLimit===1000||body.rowLimit===300);
         if(body.dimensions[0]==='query')return ok({rows:[{keys:['gemini'],clicks:1,impressions:2}]});
         return ok({rows:[]});
       }
@@ -161,10 +180,13 @@ test('Search Console API reads one approved property and eight static URLs only'
     throw Error('UNEXPECTED_TEST_URL');
   };
   const report=await readSearchConsoleReport(property,creds,mocked,new Date('2026-11-19T12:00:00Z'));
-  assert.equal(calls.length,15); // OAuth, permission, five analytics queries, eight inspections.
+  assert.equal(calls.length,18); // OAuth, permission, eight analytics queries, eight inspections.
   assert.equal(report.current.endDate,'2026-11-16');
   assert.equal(report.inspections['/gemini']?.inspectionResult?.indexStatusResult?.verdict,'PASS');
-  assert.equal(calls.filter(x=>x.url.includes('searchAnalytics')).length,5);
+  assert.equal(calls.filter(x=>x.url.includes('searchAnalytics')).length,8);
+  assert.equal(calls.filter(x=>x.body?.dataState==='all').length,3);
+  assert.equal(report.fresh?.startDate,'2026-11-17');
+  assert.equal(report.fresh?.endDate,'2026-11-19');
   assert.ok(calls.every(x=>!x.url.includes('another.example')));
   await assert.rejects(readSearchConsoleReport('sc-domain:another.example',creds,mocked),/PROPERTY_NOT_ALLOWED/);
 });
