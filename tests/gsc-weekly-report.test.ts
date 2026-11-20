@@ -185,14 +185,14 @@ test('Telegram delivery accepts existing bot IDs but rejects groups and channels
   assert.equal(called,false,'Never send private analytics to a group');
 });
 
-test('GitHub report fails before Google network access without a private recipient',async()=>{
+test('GitHub report fails before Google network access without an existing bot token',async()=>{
   const keys=['GITHUB_ACTIONS','GSC_SERVICE_ACCOUNT_JSON','GSC_TELEGRAM_BOT_TOKEN',
     'GSC_TELEGRAM_CHAT_ID','GSC_SITE_URL'] as const;
   const original=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
   try{
     process.env.GITHUB_ACTIONS='true';
     process.env.GSC_SERVICE_ACCOUNT_JSON='not-json';
-    process.env.GSC_TELEGRAM_BOT_TOKEN='123456:abcdefghijklmnopqrstuvwxyzABCDEFGH';
+    process.env.GSC_TELEGRAM_BOT_TOKEN='';
     process.env.GSC_TELEGRAM_CHAT_ID='-1001234567890';
     await assert.rejects(main(),/GSC_PRIVATE_DELIVERY_NOT_CONFIGURED/);
   }finally{
