@@ -73,6 +73,11 @@ test('canonical GET /sub uses same metadata for every entitlement and keeps FI A
   assert.ok(site.includes('germanWebSocketOnly(nodeProfile)'));
   assert.ok(site.includes('incySubscriptionHeaders(owner.expiresAt)'));
   assert.ok(site.includes('verifiedIncyAwgLine(material,identity)'));
+  // Karing and INCY share one verified FI grant: never discard AWG solely
+  // because the subscription installer includes ?client=karing.
+  assert.match(site,/if\(awgInSubscriptionEnabled\)\s*\{/);
+  assert.doesNotMatch(site,/awgInSubscriptionEnabled\s*&&\s*requestedClient\s*!==\s*['"]karing['"]/);
+  assert.ok(site.includes("requestedClient!=='karing'")===false);
   assert.ok(site.includes('...extraProfiles'));
   assert.ok(site.includes('...(fiProfile?[fiProfile]:[])'));
   assert.ok(!site.includes('stableMultiClientVpnProfile(nodeProfile)'));
