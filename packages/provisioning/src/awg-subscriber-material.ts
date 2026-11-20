@@ -9,7 +9,6 @@
  * material locally to assemble an official AmneziaWG 3.1 .conf.
  */
 import type {Pool} from 'pg';
-import {isIP} from 'node:net';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const KEY=/^[A-Za-z0-9+/]{43}=$/;
