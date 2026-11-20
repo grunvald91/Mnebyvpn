@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/gsc-public-index-audit.yml'
+      - 'scripts/gsc-index-audit.ts'
   workflow_dispatch:
 permissions:
   contents: read
