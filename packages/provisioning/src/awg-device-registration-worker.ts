@@ -13,7 +13,7 @@ import {
 } from './awg-controller-grants.ts';
 
 const KEY=/^[A-Za-z0-9+/]{43}=$/;
-const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const NODE='fi-test-01';
 type Db=Pick<Pool,'connect'|'query'>;
 type Pending={
