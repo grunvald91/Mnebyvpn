@@ -84,6 +84,17 @@ test('support is reached by a button and replies to its prompt without slash com
  assert.match(failed.text,/Канал поддержки ещё настраивается/);
  assert.doesNotMatch(failed.text,/Обращение отправлено/);
 });
+test('INCY support deep link opens the actual Telegram support prompt',async()=>{
+ const r=await update({update_id:202,message:{chat:{id:user,type:'private'},
+   from:{id:user},text:'/start support'}});
+ assert.equal(r.status,200);
+ const result=await r.json() as any;
+ assert.equal(result.method,'sendMessage');
+ assert.equal(result.chat_id,user);
+ assert.equal(result.reply_markup.force_reply,true);
+ assert.match(result.text,/напишите вопрос в поддержку/);
+ assert.doesNotMatch(result.text,/Выберите тариф ниже/);
+});
 test('VPN callback edits Telegram message instead of redirect to website',async()=>{
  const r=await update({update_id:3,callback_query:{id:'callback3',from:{id:user},
   message:{chat:{id:user,type:'private'},message_id:990},data:'nav:vpn'}});
