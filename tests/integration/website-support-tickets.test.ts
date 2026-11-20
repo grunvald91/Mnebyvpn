@@ -47,6 +47,22 @@ test('website support tickets are private, operator replies are signed, and dupl
     assert.equal(ready,true,'website did not start: '+stderr);
     const status=await fetch(origin+'/api/support/status');
     assert.deepEqual(await status.json(),{available:true});
+    // GSC report relay cannot be used by anonymous public visitors.
+    const gscPayload={text:'MNEBYVPN · Google Search Console\n2026-11-01 — 2026-11-20\nПоказы: 120\nКлики: 7'};
+    const gscUnsigned=await fetch(origin+'/api/internal/gsc-report',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(gscPayload),
+    });
+    assert.equal(gscUnsigned.status,403);
+    const gscBadSignature=await fetch(origin+'/api/internal/gsc-report',{
+      method:'POST',headers:{
+        'Content-Type':'application/json','X-Mnebyvpn-Gsc-Ts':String(Math.floor(Date.now()/1000)),
+        'X-Mnebyvpn-Gsc-Signature':'f'.repeat(64),
+      },
+      body:JSON.stringify(gscPayload),
+    });
+    assert.equal(gscBadSignature.status,403);
+
     const empty=await fetch(origin+'/api/support/ticket');
     assert.deepEqual(await empty.json(),{status:'NONE'});
     const cookie='mnebyvpn_support='+id+'.'+opaque;

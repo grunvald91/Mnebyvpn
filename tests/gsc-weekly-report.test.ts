@@ -6,7 +6,7 @@ import {
   GSC_ALLOWED_PROPERTIES,GSC_ORIGIN,GSC_URL_PATHS,GSC_EXACT_PAGES_REGEX,minusDays,reportPeriods,
   combineDailyRows,pageMetrics,queryTopic,groupedQuerySamples,buildReport,identifySeoReviewItems,
   assertionForCredentials,getAccessToken,readSearchConsoleReport,
-  formatTelegramReport,sendPrivateTelegramReport,validPrivateTelegramDestination,main,
+  formatTelegramReport,sendPrivateTelegramReport,validPrivateTelegramDestination,sendGscReportToExistingOwner,main,
 } from '../scripts/gsc-weekly-report.ts';
 
 const property='sc-domain:mnebyvpn.site';
@@ -185,14 +185,14 @@ test('Telegram delivery accepts existing bot IDs but rejects groups and channels
   assert.equal(called,false,'Never send private analytics to a group');
 });
 
-test('GitHub report fails before Google network access without a private recipient',async()=>{
+test('GitHub report fails before Google network access without an existing bot token',async()=>{
   const keys=['GITHUB_ACTIONS','GSC_SERVICE_ACCOUNT_JSON','GSC_TELEGRAM_BOT_TOKEN',
     'GSC_TELEGRAM_CHAT_ID','GSC_SITE_URL'] as const;
   const original=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
   try{
     process.env.GITHUB_ACTIONS='true';
     process.env.GSC_SERVICE_ACCOUNT_JSON='not-json';
-    process.env.GSC_TELEGRAM_BOT_TOKEN='123456:abcdefghijklmnopqrstuvwxyzABCDEFGH';
+    process.env.GSC_TELEGRAM_BOT_TOKEN='';
     process.env.GSC_TELEGRAM_CHAT_ID='-1001234567890';
     await assert.rejects(main(),/GSC_PRIVATE_DELIVERY_NOT_CONFIGURED/);
   }finally{
@@ -201,6 +201,32 @@ test('GitHub report fails before Google network access without a private recipie
       else process.env[key]=original[key];
     }
   }
+});
+
+test('GSC report uses signed existing owner relay instead of copying the Telegram user ID',async()=>{
+  const existingToken='123456:abcdefghijklmnopqrstuvwxyzABCDEFGH';
+  const summary=formatTelegramReport(fixture());
+  let called=0;
+  const clock=1800000000000;
+  const mock=async(url:string|URL,init?:RequestInit)=>{
+    called++;
+    assert.equal(String(url),'https://mnebyvpn.site/api/internal/gsc-report');
+    assert.equal(init?.method,'POST');
+    assert.equal(init?.redirect,'error');
+    const body=JSON.parse(String(init?.body));
+    assert.equal(body.text,summary);
+    assert.ok(!JSON.stringify(init).includes(existingToken),'Never send the bot token');
+    assert.ok(!JSON.stringify(init).includes('123456789'),'Never send operator ID');
+    const headers=init?.headers as Record<string,string>;
+    assert.match(headers['X-Mnebyvpn-Gsc-Ts'],/^[0-9]{10}$/);
+    assert.match(headers['X-Mnebyvpn-Gsc-Signature'],/^[a-f0-9]{64}$/);
+    return new Response(JSON.stringify({delivered:true}),{status:200});
+  };
+  await sendGscReportToExistingOwner(summary,existingToken,mock,clock);
+  assert.equal(called,1);
+  const notDelivered=async()=>new Response(JSON.stringify({delivered:false}),{status:200});
+  await assert.rejects(sendGscReportToExistingOwner(summary,existingToken,notDelivered,clock),
+    /GSC_OWNER_RELAY_DELIVERY_UNCONFIRMED/);
 });
 
 test('Telegram transport sends privately and never echoes credentials on error',async()=>{

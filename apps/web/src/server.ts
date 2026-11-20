@@ -11,6 +11,7 @@ import { createHash,createHmac,randomBytes,randomUUID,timingSafeEqual } from 'no
 import { Pool } from 'pg';
 import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
   from '../../../packages/support/src/telegram-relay.ts';
+import {verifyGscOwnerRelaySignature} from '../../../packages/support/src/gsc-owner-relay.ts';
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
 import {subscriptionOwner,subscriptionLink,issueSubscriptionLinkForAccount}
   from '../../../packages/provisioning/src/subscription-links.ts';
@@ -69,6 +70,7 @@ const supportAuthKey=/^[a-f0-9]{64}$/.test(bridgeSecret)
 // No public operator API may ever authenticate with an empty HMAC key.
 const contactLimit=supportLimiter(3,15*60_000);
 const globalSupportLimit=supportLimiter(120,60_000);
+const gscRelayReplayLimit=supportLimiter(1,10*60_000);
 const sessionSecret = required('WEB_SESSION_SECRET');
 if (sessionSecret.length < 32) throw new Error('WEB_SESSION_SECRET too short');
 // A public informational site can be deployed before BotFather issues OIDC
@@ -415,13 +417,13 @@ async function readPaymentBody(req: IncomingMessage): Promise<Buffer> {
   }
   return Buffer.concat(chunks);
 }
-async function bodyJson(req: IncomingMessage): Promise<Record<string,unknown>> {
+async function bodyJson(req: IncomingMessage,maxBytes=4096): Promise<Record<string,unknown>> {
   let total = 0;
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     const part = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     total += part.length;
-    if (total > 4096) throw new Error('Request too large');
+    if (total > maxBytes) throw new Error('Request too large');
     chunks.push(part);
   }
   const body: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -996,6 +998,36 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       [ticketId,message.trim()]);
     if(updated.rowCount!==1){json(res,409,{code:'TICKET_NOT_OPEN'});return;}
     json(res,200,{saved:true});return;
+  }
+  if(req.method==='POST'&&url.pathname==='/api/internal/gsc-report'){
+    // Only the existing primary bot may relay this analytics summary.
+    // The report's owner ID is read from the already deployed server config.
+    if(!support?.botToken){
+      json(res,503,{code:'GSC_OWNER_RELAY_NOT_CONFIGURED'});return;
+    }
+    if(!req.headers['content-type']?.startsWith('application/json')){
+      json(res,415,{code:'UNSUPPORTED_MEDIA_TYPE'});return;
+    }
+    const timestamp=req.headers['x-mnebyvpn-gsc-ts'];
+    const signature=req.headers['x-mnebyvpn-gsc-signature'];
+    if(typeof timestamp!=='string'||typeof signature!=='string'||
+      !/^[1-9][0-9]{9}$/.test(timestamp)||!/^[a-f0-9]{64}$/.test(signature)){
+      json(res,403,{code:'FORBIDDEN'});return;
+    }
+    const body=await bodyJson(req,12000);
+    if(Object.keys(body).some(key=>key!=='text')||
+      !verifyGscOwnerRelaySignature(support.botToken,timestamp,signature,body.text)){
+      json(res,403,{code:'FORBIDDEN'});return;
+    }
+    if(!gscRelayReplayLimit(signature)){
+      json(res,409,{code:'GSC_REPORT_ALREADY_ACCEPTED'});return;
+    }
+    try{
+      await telegramSupportSend(support,body.text as string,support.operatorId);
+    }catch{
+      json(res,502,{code:'GSC_TELEGRAM_DELIVERY_FAILED'});return;
+    }
+    json(res,200,{delivered:true});return;
   }
   if(req.method==='POST'&&url.pathname==='/api/support'){
     if(!support||!supportAuthKey){json(res,503,{code:'SUPPORT_NOT_CONFIGURED'});return;}
