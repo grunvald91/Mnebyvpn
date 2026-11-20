@@ -14,6 +14,7 @@ import {pathToFileURL} from 'node:url';
 import {Pool} from 'pg';
 import {deliverNextAwgCommand} from '../../../packages/provisioning/src/awg-trusted-ssh-delivery.ts';
 import {stageDueOfflineAwgMaintenance} from '../../../packages/provisioning/src/awg-offline-maintenance.ts';
+import {stageNextFiAwgDevice} from '../../../packages/provisioning/src/awg-device-registration-worker.ts';
 
 type DeliveryResult={status:'idle'}|{status:'acknowledged';outboxId:string};
 type Deliver=()=>Promise<DeliveryResult>;
@@ -130,6 +131,19 @@ async function main():Promise<void>{
           }catch{
             process.stderr.write('AWG_OFFLINE_MAINTENANCE_RETRY\n');
           }
+        }
+        // User-submitted PUBLIC keys enter the existing signed grant
+        // outbox asynchronously, never during a client connection or GET.
+        // The same dormant worker and FI client release gates apply.
+        try{
+          const device=await stageNextFiAwgDevice(db,signing,new Date(current));
+          if(device.status==='staged')
+            process.stdout.write('FI_AWG_DEVICE_GRANT_STAGED\\n');
+          if(device.status==='blocked')
+            process.stderr.write('FI_AWG_DEVICE_REQUEST_BLOCKED\\n');
+        }catch{
+          // Queue failure does not suppress an already-approved grant revoke.
+          process.stderr.write('FI_AWG_DEVICE_QUEUE_RETRY\\n');
         }
         return deliverNextAwgCommand(db,signing,config);
       },
