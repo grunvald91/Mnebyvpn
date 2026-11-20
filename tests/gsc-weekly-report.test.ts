@@ -5,7 +5,7 @@ import {
   GSC_ALLOWED_PROPERTIES,GSC_ORIGIN,GSC_URL_PATHS,minusDays,reportPeriods,
   combineDailyRows,pageMetrics,queryTopic,groupedQuerySamples,buildReport,identifySeoReviewItems,
   assertionForCredentials,getAccessToken,readSearchConsoleReport,
-  formatTelegramReport,sendPrivateTelegramReport,
+  formatTelegramReport,sendPrivateTelegramReport,validPrivateTelegramDestination,main,
 } from '../scripts/gsc-weekly-report.ts';
 
 const property='sc-domain:mnebyvpn.site';
@@ -168,10 +168,45 @@ test('Search Console API reads one approved property and eight static URLs only'
   await assert.rejects(readSearchConsoleReport('sc-domain:another.example',creds,mocked),/PROPERTY_NOT_ALLOWED/);
 });
 
+test('Telegram delivery accepts existing bot IDs but rejects groups and channels',async()=>{
+  const legacy='123456:abcdefghijklmnopqrstuvwxyzABCDEFGH';
+  const current='123456789012345:abcdefghijklmnopqrstuvwxyzABCDEFGH';
+  assert.equal(validPrivateTelegramDestination(legacy,'123456789'),true);
+  assert.equal(validPrivateTelegramDestination(current,'123456789'),true);
+  assert.equal(validPrivateTelegramDestination(legacy,'-1001234567890'),false);
+  assert.equal(validPrivateTelegramDestination(legacy,'0'),false);
+  assert.equal(validPrivateTelegramDestination(legacy,'9007199254740992'),false);
+  let called=false;
+  await assert.rejects(sendPrivateTelegramReport('test',legacy,'-1001234567890',async()=>{
+    called=true;
+    return new Response(JSON.stringify({ok:true}),{status:200});
+  }),/GSC_TELEGRAM_CONFIG_INVALID/);
+  assert.equal(called,false,'Never send private analytics to a group');
+});
+
+test('GitHub report fails before Google network access without a private recipient',async()=>{
+  const keys=['GITHUB_ACTIONS','GSC_SERVICE_ACCOUNT_JSON','GSC_TELEGRAM_BOT_TOKEN',
+    'GSC_TELEGRAM_CHAT_ID','GSC_SITE_URL'] as const;
+  const original=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
+  try{
+    process.env.GITHUB_ACTIONS='true';
+    process.env.GSC_SERVICE_ACCOUNT_JSON='not-json';
+    process.env.GSC_TELEGRAM_BOT_TOKEN='123456:abcdefghijklmnopqrstuvwxyzABCDEFGH';
+    process.env.GSC_TELEGRAM_CHAT_ID='-1001234567890';
+    await assert.rejects(main(),/GSC_PRIVATE_DELIVERY_NOT_CONFIGURED/);
+  }finally{
+    for(const key of keys){
+      if(original[key]===undefined)delete process.env[key];
+      else process.env[key]=original[key];
+    }
+  }
+});
+
 test('Telegram transport sends privately and never echoes credentials on error',async()=>{
   let stored:any;
   const token='123456:abcdefghijklmnopqrstuvwxyzABCDEFGH';
   const mock=async(_url:string|URL,init?:RequestInit)=>{
+    assert.equal(init?.redirect,'error','Must not follow Bot API redirects containing a token');
     stored=JSON.parse(String(init?.body));
     return new Response(JSON.stringify({ok:true}),{status:200});
   };
