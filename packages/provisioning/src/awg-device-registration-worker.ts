@@ -166,30 +166,18 @@ export async function enqueueFiAwgActiveSubscriptions(
     if(!UUID.test(candidate.entitlement_id)||rev===null)
       throw Error('Invalid canonical VPN subscription record');
     const identity=deriveSubscriptionAwgIdentity(candidate.entitlement_id,identityRoot);
-    // Re-check billing/release at INSERT time: race with expiration, cancellation
-    // or an existing browser-enrolled device never changes an existing binding.
-    const result=await db.query(
-      'INSERT INTO vpn_awg_device_requests '+
-      '(entitlement_id,node_id,peer_public_key,billing_revision) '+
-      "SELECT e.id,'fi-test-01',$2,e.revision FROM entitlements e "+
-      'JOIN provisioning_state v ON '+
-      "v.entitlement_id=e.id AND v.adapter='vpn' "+
-      'AND v.applied_revision=e.revision AND v.last_observed_at IS NOT NULL '+
-      'JOIN vpn_release_flags f ON '+
-      "f.feature='vpn_awg_clients' AND f.enabled=true "+
-      'JOIN vpn_awg_node_pools p ON '+
-      "p.node_id='fi-test-01' AND p.state='verified' "+
-      "AND p.verified_at>clock_timestamp()-interval '1 hour' "+
-      "WHERE e.id=$1::uuid AND e.revision=$3 "+
-      "AND e.product='vpn' AND e.state='ACTIVE' "+
-      'AND e.expires_at>clock_timestamp() '+
-      'AND NOT EXISTS(SELECT 1 FROM vpn_awg_peer_allocations a '+
-      "WHERE a.entitlement_id=e.id AND a.node_id='fi-test-01') "+
-      'ON CONFLICT DO NOTHING',
+    // The RU188 worker has no direct INSERT grant on the public-key queue.
+    // Call the narrow SECURITY DEFINER gateway which rechecks canonical
+    // active billing, signed node freshness and existing peer ownership.
+    const result=await db.query<{queued:boolean}>(
+      'SELECT public.awg_controller_enqueue_fi_subscription('+
+      '$1::uuid,$2::text,$3::bigint) AS queued',
       [candidate.entitlement_id,identity.publicKey,rev],
     );
-    if(result.rowCount===1)queued++;
-    else if(result.rowCount!==0)throw Error('Unexpected subscription enrollment count');
+    if(result.rows.length!==1 ||
+       typeof result.rows[0]?.queued!=='boolean')
+      throw Error('FI subscriber queue authorization response invalid');
+    if(result.rows[0].queued)queued++;
   }
   return queued;
 }
