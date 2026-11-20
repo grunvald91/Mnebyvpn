@@ -153,7 +153,7 @@ function init(){
   }
   let csrf='';
   api('/api/me').then(me=>{
-    const active=(me.accesses??[]).some(a=>
+    const active=(me.access??[]).some(a=>
       a.id===entitlementId&&a.product==='vpn'&&
       a.state==='ACTIVE'&&a.secondsRemaining>0);
     if(!me.fiAwgRegistrationAvailable||!active||typeof me.csrf!=='string')
