@@ -3,7 +3,7 @@ import test from 'node:test';
 import {generateKeyPairSync,verify} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {
-  GSC_ALLOWED_PROPERTIES,GSC_ORIGIN,GSC_URL_PATHS,minusDays,reportPeriods,
+  GSC_ALLOWED_PROPERTIES,GSC_ORIGIN,GSC_URL_PATHS,GSC_EXACT_PAGES_REGEX,minusDays,reportPeriods,
   combineDailyRows,pageMetrics,queryTopic,groupedQuerySamples,buildReport,identifySeoReviewItems,
   assertionForCredentials,getAccessToken,readSearchConsoleReport,
   formatTelegramReport,sendPrivateTelegramReport,validPrivateTelegramDestination,main,
@@ -145,7 +145,7 @@ test('Search Console API reads one approved property and eight static URLs only'
       if(body.dimensions[0]==='query'||body.dimensions[0]==='page'){
         // Not a loose domain-wide contains filter: only approved canonical URLs.
         assert.deepEqual(body.dimensionFilterGroups,[{
-          filterLists:[{dimension:'page',expressions:GSC_URL_PATHS.map(p=>GSC_ORIGIN+p)}]
+          filters:[{dimension:'page',operator:'includingRegex',expression:GSC_EXACT_PAGES_REGEX}]
         }]);
         assert.equal(body.dimensions[0]==='page'?body.rowLimit:1000,
           body.dimensions[0]==='page'?100:1000);
@@ -223,6 +223,23 @@ test('Telegram transport sends privately and never echoes credentials on error',
     return true;
   });
   assert.deepEqual(GSC_ALLOWED_PROPERTIES,['sc-domain:mnebyvpn.site','https://mnebyvpn.site/']);
+});
+
+test('Google Search Analytics RE2 page filter matches the eight canonical URLs only',()=>{
+  const regexp=new RegExp(GSC_EXACT_PAGES_REGEX);
+  assert.ok(GSC_EXACT_PAGES_REGEX.startsWith('^https://'));
+  assert.equal(GSC_EXACT_PAGES_REGEX.charCodeAt(GSC_EXACT_PAGES_REGEX.length-1),36);
+  for(const path of GSC_URL_PATHS)assert.ok(regexp.test(GSC_ORIGIN+path),path);
+  for(const value of [
+    GSC_ORIGIN+'/privacy',
+    GSC_ORIGIN+'/vpn/',
+    GSC_ORIGIN+'/vpn/other',
+    GSC_ORIGIN+'/payment/success',
+    GSC_ORIGIN+'/gemini?token=abc',
+    'https://mnebyvpnXsite/vpn',
+    'http://mnebyvpn.site/vpn',
+    'https://sub.mnebyvpn.site/chatgpt',
+  ])assert.equal(regexp.test(value),false,value);
 });
 
 test('weekly GitHub report auto-attempts with existing secrets and never prints private values',()=>{
