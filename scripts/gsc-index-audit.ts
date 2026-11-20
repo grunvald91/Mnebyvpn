@@ -38,9 +38,9 @@ export function describeIndex(path:string,status:IndexStatus|null,apiError=false
   const verdict=['PASS','FAIL','NEUTRAL'].includes(status.verdict||'')?
     status.verdict as PublicIndexRow['verdict']:'UNKNOWN';
   const expected=GSC_ORIGIN+path;
-  const canonical=typeof status.googleCanonical==='string'&&status.googleCanonical?
+  const canonical:PublicIndexRow['canonical']=typeof status.googleCanonical==='string'&&status.googleCanonical?
     status.googleCanonical===expected?'same':'different':'unknown';
-  const result={...base,verdict,coverage:safeStatus(status.coverageState),
+  const result:PublicIndexRow={...base,verdict,coverage:safeStatus(status.coverageState),
     robots:safeStatus(status.robotsTxtState),fetchStatus:safeStatus(status.pageFetchState),
     indexing:safeStatus(status.indexingState),
     crawl:typeof status.lastCrawlTime==='string'&&
