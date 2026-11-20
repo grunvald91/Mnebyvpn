@@ -188,9 +188,10 @@
       const activeDns=(lastAccount?.access||[]).filter(a=>a.product==='smart_dns'&&a.state==='ACTIVE'&&a.secondsRemaining>0);
       if(activeDns.length){
         const dnsTarget=activeDns[0];
+        const isTrial=isTrialAccess(dnsTarget);
         const dnsSlot=el('journey-dns-setup-slot'),proxySlot=el('journey-proxy-setup-slot');
         const needsDns=!dnsSlot?.children?.length&&(state.personalDnsEnabled||state.appleDnsProfileEnabled);
-        const needsProxy=!proxySlot?.children?.length&&state.telegramProxyBonusEnabled;
+        const needsProxy=!isTrial&&!proxySlot?.children?.length&&state.telegramProxyBonusEnabled;
         const lastDns=lastSetupAttempt.get('dns:'+dnsTarget.id)||0;
         if((needsDns||needsProxy)&&Date.now()-lastDns>30000){
           lastSetupAttempt.set('dns:'+dnsTarget.id,Date.now());
@@ -414,6 +415,9 @@
     if(note&&info.note)note.textContent=info.note;
     updateSetup();
   }
+  function isTrialAccess(access){
+    return Boolean(access&&(lastAccount?.orders||[]).some(o=>o.id===access.sourceOrderId&&o.state==='TRIAL'));
+  }
   function safeSubscriptionUrl(value){
     try{
       const url=new URL(value);
@@ -433,7 +437,9 @@
     if(installGuide)installGuide.hidden=installed;
     const value=state.loggedIn?state.guestSubscriptionUrl:null;
     const valid=typeof value==='string'&&safeSubscriptionUrl(value);
-    const activeDns=(lastAccount?.access||[]).some(a=>a.product==='smart_dns'&&a.state==='ACTIVE'&&a.secondsRemaining>0);
+    const activeDnsItem=(lastAccount?.access||[]).find(a=>a.product==='smart_dns'&&a.state==='ACTIVE'&&a.secondsRemaining>0);
+    const activeDns=Boolean(activeDnsItem);
+    const activeDnsTrial=isTrialAccess(activeDnsItem);
     const dnsSlot=el('journey-dns-setup-slot'),proxySlot=el('journey-proxy-setup-slot');
     const hasDnsContent=Boolean((dnsSlot?.children?.length||0)>0||(proxySlot?.children?.length||0)>0);
     const dnsWrap=el('journey-dns-proxy-setup');
@@ -442,12 +448,14 @@
     const title=el('journey-setup-title');
     if(title){
       title.textContent=valid&&activeDns?'Подключите «3 в 1»':
-        activeDns&&!valid?'Подключите Smart DNS и Прокси':'Подключите VPN';
+        activeDns&&!valid?(activeDnsTrial?'Подключите Smart DNS (24 часа)':'Подключите Smart DNS и Прокси'):'Подключите VPN';
     }
     el('journey-setup-status').textContent=valid?
       (activeDns?'Экосистема «3 в 1» готова: настройте VPN, Smart DNS и Telegram-прокси ниже.':
         'Ваш VPN готов. Установите приложение, добавьте подписку и включите защиту.'):
-      activeDns?'Ваш Smart Доступ готов! Профиль и WebSocket-прокси для Telegram выданы ниже.':
+      activeDns?(activeDnsTrial
+        ?'Ваши 24 часа Smart DNS готовы! Персональный профиль Apple (.mobileconfig) и DoT-адрес выданы ниже.'
+        :'Ваш Smart Доступ готов! Профиль и WebSocket-прокси для Telegram выданы ниже.'):
       'Проверяем активацию на сервере. Если оплата прошла недавно, подключение подготавливается.';
     if(!valid){
       el('journey-url').value='';
@@ -504,7 +512,7 @@
         if(typeof ensurePersonalDnsCredentials==='function'&&(state.personalDnsEnabled||state.appleDnsProfileEnabled)){
           void ensurePersonalDnsCredentials(data.id,{autoIssue:true,targets:[card]}).catch(()=>{});
         }
-        if(typeof ensureProxyCredentials==='function'&&state.telegramProxyBonusEnabled){
+        if(!isTrialAccess(data)&&typeof ensureProxyCredentials==='function'&&state.telegramProxyBonusEnabled){
           void ensureProxyCredentials(data.id,[card]).catch(()=>{});
         }
         return;
@@ -562,13 +570,13 @@
         description.textContent='Подтверждения оплаты пока нет. Если деньги списаны, не создавайте повторный платёж.';
       }
     }
-    async function deliverDnsAndProxyForSetup(dnsId,openSetup){
+    async function deliverDnsAndProxyForSetup(dnsId,openSetup,isTrial=false){
       const dnsSlot=el('journey-dns-setup-slot'),proxySlot=el('journey-proxy-setup-slot');
       const tasks=[];
       if(typeof ensurePersonalDnsCredentials==='function'&&(state.personalDnsEnabled||state.appleDnsProfileEnabled)){
         tasks.push(ensurePersonalDnsCredentials(dnsId,{autoIssue:true,targets:[dnsSlot]}).catch(()=>{}));
       }
-      if(typeof ensureProxyCredentials==='function'&&state.telegramProxyBonusEnabled){
+      if(!isTrial&&typeof ensureProxyCredentials==='function'&&state.telegramProxyBonusEnabled){
         tasks.push(ensureProxyCredentials(dnsId,[proxySlot]).catch(()=>{}));
       }
       await Promise.all(tasks);
@@ -598,13 +606,14 @@
     }
     if(view==='setup'&&activeDns.length){
       const dnsTarget=activeDns[0];
+      const isTrial=isTrialAccess(dnsTarget);
       const dnsSlot=el('journey-dns-setup-slot'),proxySlot=el('journey-proxy-setup-slot');
       const needsDns=!dnsSlot?.children?.length&&(state.personalDnsEnabled||state.appleDnsProfileEnabled);
-      const needsProxy=!proxySlot?.children?.length&&state.telegramProxyBonusEnabled;
+      const needsProxy=!isTrial&&!proxySlot?.children?.length&&state.telegramProxyBonusEnabled;
       const lastDns=lastSetupAttempt.get('dns:'+dnsTarget.id)||0;
       if((needsDns||needsProxy)&&Date.now()-lastDns>30000){
         lastSetupAttempt.set('dns:'+dnsTarget.id,Date.now());
-        void deliverDnsAndProxyForSetup(dnsTarget.id,false);
+        void deliverDnsAndProxyForSetup(dnsTarget.id,false,isTrial);
       }else{
         updateSetup();
       }

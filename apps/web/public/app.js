@@ -6,7 +6,7 @@ const state = {
   loggedIn: false, csrf: '', busy: false, requestId: null, trialOffers: [],
   inviteToken: null, refreshing: false, renewalTargetId: null,
   telegramLoginEnabled:false,emailLoginEnabled:false,emailLinkMode:false,
-  trialStatus:'NONE',trialProduct:'vpn',hasPendingProvisioning:false,guestSubscriptionUrl:null,setupLoading:false,
+  trialStatus:'NONE',trialProduct:'vpn',hasPendingProvisioning:false,lastOrders:[],guestSubscriptionUrl:null,setupLoading:false,
   purchaseIntent:null,telegramProxyBonusEnabled:false,wsProxyEnabled:false,
   appleDnsProfileEnabled:false,personalDnsEnabled:false,paymentProvider:'yookassa',
 };
@@ -530,7 +530,8 @@ function renderAccess(accesses) {
       const cached=readCachedPersonalDns(a.id);
       if(cached)renderPersonalDnsBox(item,cached.hostname,cached.mobileconfig,{entitlementId:a.id,issued:true});
     }
-    if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
+    const isTrialOrder=Boolean(state.lastOrders?.some(o=>o.id===a.sourceOrderId&&o.state==='TRIAL'));
+    if(!isTrialOrder&&a.product==='smart_dns'&&a.state==='ACTIVE'&&
        a.secondsRemaining!==null&&a.secondsRemaining>0&&state.telegramProxyBonusEnabled){
       const open=node('button','button button-secondary setup-button','Telegram-прокси (WebSocket)');
       open.type='button';
@@ -685,6 +686,7 @@ function renderAccount(payload) {
   text('account-name','Мой аккаунт');
   text('account-subtitle','Защищённый вход · '+(payload.identity?.email||'Telegram'));
   const accesses=payload.access||[];
+  state.lastOrders=payload.orders||[];
   state.hasPendingProvisioning=accesses.some(a=>a.state==='PAID_PENDING_PROVISIONING');
   const active=accesses.filter(a=>a.state==='ACTIVE' && a.secondsRemaining>0);
   text('active-count',active.length);
@@ -738,7 +740,7 @@ function renderLoggedOut() {
   // A session that expires or is revoked must not leave stale private data on
   // a shared browser screen. Keep the public catalog and selected product.
   state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;
-  state.hasPendingProvisioning=false;state.trialProduct='vpn';
+  state.hasPendingProvisioning=false;state.lastOrders=[];state.trialProduct='vpn';
   state.telegramProxyBonusEnabled=false;
   state.wsProxyEnabled=false;
   state.appleDnsProfileEnabled=false;
