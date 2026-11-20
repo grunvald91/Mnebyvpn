@@ -26,7 +26,7 @@ export const GSC_URL_PATHS=Object.freeze([
  * not page. An anchored RE2 page filter matches exactly these public URLs.
  */
 export const GSC_EXACT_PAGES_REGEX='^https://mnebyvpn\\.site/(?:'+
-  GSC_URL_PATHS.filter(path=>path!=='/').map(path=>path.slice(1)).join('|')+')?
+  GSC_URL_PATHS.filter(path=>path!=='/').map(path=>path.slice(1)).join('|')+')?'+String.fromCharCode(36);
 const TOKEN_URL='https://oauth2.googleapis.com/token';
 const SCOPE='https://www.googleapis.com/auth/webmasters.readonly';
 const API_BASE='https://www.googleapis.com';
