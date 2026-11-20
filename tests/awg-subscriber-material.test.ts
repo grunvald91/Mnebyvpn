@@ -41,7 +41,7 @@ const sample=()=>({
 });
 
 test('a real FI outbox signed ACK may produce native AWG 3.1 connection material',()=>{
-  const material=verifiedAwgMaterial(sample(),owner,client.pub,header,clock);
+  const material=verifiedAwgMaterial(sample(),owner,client.pub,header,server.pub,clock);
   assert.ok(material);
   assert.equal(material.protocol,'AmneziaWG 3.1');
   assert.equal(material.countryName,'Финляндия');
@@ -80,12 +80,12 @@ test('no profile without verified node, paid revision, local grant and ACK',()=>
   ];
   for(const wrong of failed){
     assert.equal(verifiedAwgMaterial({...sample(),...wrong} as ReturnType<typeof sample>,
-      owner,client.pub,header,clock),null,JSON.stringify(wrong));
+      owner,client.pub,header,server.pub,clock),null,JSON.stringify(wrong));
   }
   assert.equal(verifiedAwgMaterial(sample(),{...owner,revision:12},
-    client.pub,header,clock),null);
+    client.pub,header,server.pub,clock),null);
   assert.equal(verifiedAwgMaterial(sample(),{...owner,expiresAt:new Date(clock-1)},
-    client.pub,header,clock),null);
+    client.pub,header,server.pub,clock),null);
 });
 
 test('reject noncanonical peer keys and invalid local private keys',()=>{
@@ -94,9 +94,10 @@ test('reject noncanonical peer keys and invalid local private keys',()=>{
     if(key!==client.pub) assert.equal(isCanonicalAwgPublicKey(key),false);
   }
   assert.equal(isCanonicalAwgPublicKey(client.pub),true);
-  assert.equal(verifiedAwgMaterial(sample(),owner,'bad',header,clock),null);
-  assert.equal(verifiedAwgMaterial(sample(),owner,client.pub,'bad',clock),null);
-  const material=verifiedAwgMaterial(sample(),owner,client.pub,header,clock)!;
+  assert.equal(verifiedAwgMaterial(sample(),owner,'bad',header,server.pub,clock),null);
+  assert.equal(verifiedAwgMaterial(sample(),owner,client.pub,'bad',server.pub,clock),null);
+  assert.equal(verifiedAwgMaterial(sample(),owner,client.pub,header,keyPair().pub,clock),null);
+  const material=verifiedAwgMaterial(sample(),owner,client.pub,header,server.pub,clock)!;
   assert.throws(()=>renderLocalAwgConfig(material,'not-a-key'));
   assert.throws(()=>renderLocalAwgConfig({...material,endpoint:'bad.example.com:51821'} as unknown as typeof material,client.priv));
 });
@@ -109,7 +110,7 @@ test('database reader is read-only, parameterized, checked against a canonical o
       seen=sql;args=params;return {rows:[sample()]};
     },
   };
-  const material=await loadVerifiedAwgMaterial(pool as never,owner,client.pub,header,clock);
+  const material=await loadVerifiedAwgMaterial(pool as never,owner,client.pub,header,server.pub,clock);
   assert.ok(material);
   assert.deepEqual(args,[owner.entitlementId,client.pub,'vpn_awg_clients','fi-test-01']);
   assert.match(seen,/vpn_release_flags/);
@@ -117,20 +118,21 @@ test('database reader is read-only, parameterized, checked against a canonical o
   assert.match(seen,/vpn_node_enrollment_inventory/);
   assert.match(seen,/vpn_awg_peer_allocations/);
   assert.match(seen,/a\.revision/);
-  assert.ok(!/\b(?:INSERT|UPDATE|DELETE|GRANT|ALTER)\b/i.test(seen));
+  assert.ok(!/^\s*(?:INSERT|UPDATE|DELETE|GRANT|ALTER)\s/mi.test(seen));
   const none=await loadVerifiedAwgMaterial({
     query:async()=>({rows:[]}),
-  } as never,owner,client.pub,header,clock);
+  } as never,owner,client.pub,header,server.pub,clock);
   assert.equal(none,null);
   const duplicates=await loadVerifiedAwgMaterial({
     query:async()=>({rows:[sample(),sample()]}),
-  } as never,owner,client.pub,header,clock);
+  } as never,owner,client.pub,header,server.pub,clock);
   assert.equal(duplicates,null);
 });
 
 test('website AWG material is separate from existing VLESS subscription and private-key free',()=>{
   const site=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
   assert.match(site,/WEB_FI_AWG_MATERIAL_ENABLED==='yes'/);
+  assert.ok(site.includes("WEB_FI_AWG_SERVER_PUBLIC_KEY"));
   assert.ok(site.includes('const awgMatch='));
   assert.ok(site.includes('const subMatch='));
   assert.match(site,/Cache-Control','no-store/);
