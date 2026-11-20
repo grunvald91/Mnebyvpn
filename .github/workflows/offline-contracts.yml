@@ -163,6 +163,12 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0134_stars_ratio_and_3in1_bot.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0135_awg_worker_row_lock_gateway.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0136_awg_device_enrollment_queue.sql >/dev/null
+          # Exact FI217 subscriber backfill privilege and trigger contract.
+          # Disposable CI role only; not a production credential.
+          psql -v ON_ERROR_STOP=1 -c "CREATE ROLE mnebyvpn_awg_delivery NOLOGIN NOINHERIT" >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0137_awg_controller_subscription_enrollment.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0138_awg_worker_provisioning_read.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0139_awg_peer_address_trigger_owner.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0002_billing_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0003_ipv6_claims_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0005_outbox_contract.sql
@@ -217,6 +223,16 @@ jobs:
         run: |
           set -Eeuo pipefail
           node --experimental-strip-types --test tests/ci/awg-device-registration-pg.test.ts
+      - name: Verify FI217 signed worker trigger has scoped definer pool lock
+        env:
+          PGPASSWORD: test
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: test
+          PGDATABASE: mnebyvpn_test
+        run: |
+          set -Eeuo pipefail
+          node --experimental-strip-types --test tests/ci/awg-peer-trigger-owner-pg.test.ts
       - name: Prove signed AWG grant ACK and guarded revoke in disposable PostgreSQL
         env:
           PGPASSWORD: test
