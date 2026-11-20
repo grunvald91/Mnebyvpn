@@ -114,7 +114,7 @@ export function verifiedAwgMaterial(
   return {
     protocol:'AmneziaWG 3.1',nodeId:NODE,
     countryCode:'FI',countryName:'Финляндия',
-    endpoint:HOST+':'+PORT,
+    endpoint:'fi.mnebyvpn.site:51821',
     clientAddress:row.client_ipv4+'/32',
     clientPublicKey,serverPublicKey:row.server_public_key,
     headerProtectionKey,mtu:1280,
