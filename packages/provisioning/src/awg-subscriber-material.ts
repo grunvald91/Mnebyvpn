@@ -63,9 +63,13 @@ type AwgDbRow={
 
 export function isCanonicalAwgPublicKey(value:unknown):value is string{
   if(typeof value!=='string'||!KEY.test(value))return false;
-  const raw=Buffer.from(value,'base64');
-  return raw.length===32&&raw.toString('base64')===value&&
-    raw.some(byte=>byte!==0);
+  // Web-standard primitives work on Android/iOS without Node Buffer.
+  // Reject noncanonical encodings and all-zero low-order X25519 keys.
+  try{
+    const raw=atob(value);
+    return raw.length===32&&btoa(raw)===value&&
+      [...raw].some(char=>char.charCodeAt(0)!==0);
+  }catch{return false;}
 }
 function billRevision(value:unknown):number|null{
   if(typeof value==='number')
