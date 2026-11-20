@@ -12,6 +12,7 @@
 import {sign} from 'node:crypto';
 import {appendFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
+import {createGscOwnerRelaySignature} from '../packages/support/src/gsc-owner-relay.ts';
 
 export const GSC_ORIGIN='https://mnebyvpn.site';
 export const GSC_ALLOWED_PROPERTIES=Object.freeze([
@@ -377,20 +378,42 @@ export async function sendPrivateTelegramReport(
   if(reply.ok!==true)throw Error('GSC_TELEGRAM_DELIVERY_FAILED');
 }
 
+/**
+ * Authenticated HTTPS relay; only the server can resolve the existing owner ID.
+ * The Bot API token stays local and is never transmitted over the network.
+ */
+export async function sendGscReportToExistingOwner(
+  summary:string,botToken:string,fetchImpl:HttpClient=fetch,now=Date.now(),
+):Promise<void>{
+  const timestamp=String(Math.floor(now/1000));
+  const signature=createGscOwnerRelaySignature(botToken,timestamp,summary);
+  const result=await requestJSON(fetchImpl,
+    'https://mnebyvpn.site/api/internal/gsc-report',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'X-Mnebyvpn-Gsc-Ts':timestamp,
+        'X-Mnebyvpn-Gsc-Signature':signature,
+      },
+      body:JSON.stringify({text:summary}),
+    },'OWNER_RELAY');
+  if(result.delivered!==true)throw Error('GSC_OWNER_RELAY_DELIVERY_UNCONFIRMED');
+}
+
 export async function main():Promise<void>{
   const credential=process.env.GSC_SERVICE_ACCOUNT_JSON;
   if(!credential)throw Error('GSC_NOT_CONFIGURED');
   const property=process.env.GSC_SITE_URL||'sc-domain:mnebyvpn.site';
   const githubActions=process.env.GITHUB_ACTIONS==='true';
   const botToken=process.env.GSC_TELEGRAM_BOT_TOKEN||'';
-  const adminChat=process.env.GSC_TELEGRAM_CHAT_ID||'';
-  // Fail closed before contacting Google if private delivery is absent or invalid.
-  if(githubActions&&!validPrivateTelegramDestination(botToken,adminChat))
+  // The operator ID is already provisioned on the website server 188.
+  // Github never needs to read, copy or expose that ID.
+  if(githubActions&&!/^[0-9]{5,20}:[A-Za-z0-9_-]{25,}$/.test(botToken))
     throw Error('GSC_PRIVATE_DELIVERY_NOT_CONFIGURED');
   const input=await readSearchConsoleReport(property,credential);
   if(githubActions){
     // No search statistics go to public GitHub logs, artifacts or summaries.
-    await sendPrivateTelegramReport(formatTelegramReport(input),botToken,adminChat);
+    await sendGscReportToExistingOwner(formatTelegramReport(input),botToken);
     const summary=process.env.GITHUB_STEP_SUMMARY;
     if(summary)appendFileSync(summary,'GSC: отчёт доставлен в приватный Telegram. Данные не публиковались в GitHub.\n',{encoding:'utf8'});
   }else{
