@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
-  germanWebSocketOnly,incySubscriptionHeaders,INCY_SITE_URL,
+  germanWebSocketOnly,keepSupportedAdditionalTransport,
+  incySubscriptionHeaders,INCY_SITE_URL,
   INCY_BOT_URL,INCY_SUPPORT_URL,
 } from '../packages/provisioning/src/incy-subscription-presentation.ts';
 
@@ -37,6 +38,16 @@ test('reject publishing an absent or duplicated WebSocket transport',()=>{
   assert.throws(()=>germanWebSocketOnly(ws+'\n'+ws));
   assert.throws(()=>germanWebSocketOnly('garbage'));
 });
+test('signed DE Reality registry URLs are not advertised; other countries remain',()=>{
+  const de='vless://'+userId+'@de.nodes.example.net:2053?security=reality&'+
+    'type=tcp#'+encodeURIComponent('🇩🇪 MNEBYVPN · Германия · de-node-02 · REALITY');
+  const nl='vless://'+userId+'@nl.nodes.example.net:2053?security=reality&'+
+    'type=tcp#'+encodeURIComponent('🇳🇱 MNEBYVPN · Нидерланды · nl-node-02 · REALITY');
+  assert.equal(keepSupportedAdditionalTransport(de),false);
+  assert.equal(keepSupportedAdditionalTransport(nl),true);
+  assert.equal(keepSupportedAdditionalTransport(ws),true);
+});
+
 test('INCY metadata uses exact paid or trial entitlement expiry in Unix seconds',()=>{
   for(const value of ['2026-11-20T22:25:00.000Z',
     '2026-12-20T19:25:00.000Z','2099-01-01T00:00:00.000Z']){
