@@ -833,6 +833,11 @@ async function processUpdate(update:any){
     return sendSupportFromBot(actor.id,update.update_id,text);
   if(actor.data==='nav:support')
     return supportPromptResponse(actor.id);
+  // Telegram opens https://t.me/MNEBYVPN_bot?start=support as /start support.
+  // Route INCY's support-url directly to the existing support flow, instead
+  // of silently falling back to the home screen. Keep operator inbox private.
+  if(!actor.callbackId&&text==='/start support')
+    return operator?operatorSupportInbox(actor,0):supportPromptResponse(actor.id);
   let action=actor.data??'nav:home';
   if(!actor.callbackId){
     if(text==='/trial'||text==='🆓 Пробный день')action='trial:vpn';
