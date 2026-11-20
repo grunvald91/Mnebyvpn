@@ -26,15 +26,27 @@ export function germanWebSocketOnly(validatedNodeProfile:string):string{
   return uri.toString();
 }
 
+/** Signed additional country entries are rendered by the verified registry.
+ * Germany REALITY routes are currently nonfunctional and must not be offered
+ * to INCY, even if an old signed registry receipt exists for a DE node.
+ * Other independently verified countries are unaffected.
+ */
+export function keepSupportedAdditionalTransport(link:string):boolean{
+  const uri=new URL(link);
+  const label=decodeURIComponent(uri.hash.slice(1));
+  return !(uri.protocol==='vless:' &&
+    uri.searchParams.get('security')==='reality' &&
+    label.startsWith('🇩🇪 MNEBYVPN'));
+}
+
 /** INCY expects a Unix expiration timestamp in SECONDS, not a count of days
  * and not the lifetime of the reusable HTTPS bearer URL. No fabricated
  * traffic totals or free trial expiry: always use authoritative entitlement.
  */
 export function incySubscriptionHeaders(expiresAt:Date):Record<string,string>{
-  const ms=expiresAt?.getTime();
-  if(!(expiresAt instanceof Date)||!Number.isFinite(ms))
+  if(!(expiresAt instanceof Date)||!Number.isFinite(expiresAt.getTime()))
     throw Error('Invalid VPN entitlement expiry');
-  const expire=Math.floor(ms!/1000);
+  const expire=Math.floor(expiresAt.getTime()/1000);
   if(!Number.isSafeInteger(expire)||expire<=0)
     throw Error('Unrepresentable INCY expiry');
   return {
