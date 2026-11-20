@@ -144,9 +144,9 @@ async function main():Promise<void>{
           try{
             const queued=await enqueueFiAwgActiveSubscriptions(
               db,subscriptionIdentityRoot,12);
-            if(queued>0)process.stdout.write('FI_AWG_SUBSCRIPTION_ENROLLMENT_QUEUED\\n');
+            if(queued>0)process.stdout.write('FI_AWG_SUBSCRIPTION_ENROLLMENT_QUEUED\n');
           }catch{
-            process.stderr.write('FI_AWG_SUBSCRIPTION_ENROLLMENT_RETRY\\n');
+            process.stderr.write('FI_AWG_SUBSCRIPTION_ENROLLMENT_RETRY\n');
           }
         }
         // User-submitted PUBLIC keys enter the existing signed grant
