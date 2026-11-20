@@ -124,6 +124,12 @@ export async function main():Promise<void>{
   if(!credential)throw Error('INDEX_GSC_NOT_CONFIGURED');
   const rows=await inspectPublicPages(process.env.GSC_SITE_URL||'sc-domain:mnebyvpn.site',credential);
   const markdown=formatIndexAudit(rows);
+  // Only status of these eight public URLs is logged: never search terms or traffic.
+  for(const row of rows)console.log('PUBLIC_INDEX_PAGE='+row.path+
+    '; verdict='+row.verdict+'; coverage='+row.coverage+
+    '; last_crawl='+row.crawl+'; canonical='+row.canonical+
+    '; robots='+row.robots+'; indexing='+row.indexing+
+    '; fetch='+row.fetchStatus);
   const summary=process.env.GITHUB_STEP_SUMMARY;
   if(summary)appendFileSync(summary,markdown);
   else process.stdout.write(markdown);

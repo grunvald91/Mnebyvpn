@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/gsc-weekly-private-report.yml'
+      # One live check after enhancing fresh-data logic; still weekly otherwise.
+      - 'scripts/gsc-weekly-report.ts'
   workflow_dispatch:
   schedule:
     - cron: '37 5 * * 1' # Weekly Monday, UTC, final Search Console data.
