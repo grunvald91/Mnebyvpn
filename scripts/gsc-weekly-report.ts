@@ -44,6 +44,7 @@ export type GscReportInput={
   property:string;current:{startDate:string;endDate:string};previous:{startDate:string;endDate:string};
   totalsCurrent:GscResponse;totalsPrevious:GscResponse;pagesCurrent:GscResponse;
   pagesPrevious:GscResponse;queryData:GscResponse;
+  fresh?:{startDate:string;endDate:string;totals:GscResponse;pages:GscResponse;queries:GscResponse};
   inspections:Record<string,GscIndexResult|null>;
 };
 
@@ -203,6 +204,17 @@ export function buildReport(input:GscReportInput):string{
     const index=input.inspections[path]?.inspectionResult?.indexStatusResult;
     lines.push(`| \`${path}\` | ${m.hasData?fmtNumber(m.clicks):'нет данных'} | ${m.hasData?fmtNumber(m.impressions):'нет данных'} | ${previousPage.hasData?fmtNumber(previousPage.impressions):'нет данных'} | ${fmtRate(m.ctr)} | ${fmtPosition(m.position)} | ${safeCell(index?.verdict??'не проверено')} |`);
   }
+  if(input.fresh){
+    const freshTotals=combineDailyRows(input.fresh.totals.rows);
+    const freshGroups=groupedQuerySamples(input.fresh.queries.rows);
+    lines.push('','## Новые данные: предварительная статистика','',
+      input.fresh.startDate+' — '+input.fresh.endDate+
+      ' (включая неполные дни; Google может пересчитать).',
+      'Показы: '+(freshTotals.hasData?fmtNumber(freshTotals.impressions):'пока нет данных')+
+      '; клики: '+(freshTotals.hasData?fmtNumber(freshTotals.clicks):'пока нет данных')+'.',
+      'Поисковые темы: '+(freshGroups.length?freshGroups.map(g=>g.topic+' ('+fmtNumber(g.impressions)+')').join(', '):
+        'Google пока не предоставил запросов')+'.');
+  }
   lines.push('',
     '## Запросы по темам (выборка Google)',
     '',
@@ -308,7 +320,19 @@ export async function readSearchConsoleReport(
   const pagesPrevious=await search(requestBody(dates.previous,['page'],100,true));
   // Sampled/possibly anonymized: never infer market demand from this set.
   const queryData=await search(requestBody(dates.current,['query'],1000,true));
-
+  // Newly launched landing pages may be absent from finalized days. Fetch
+  // the three most recent Pacific dates separately; never mix preliminary
+  // metrics with final 28-day totals or describe them as complete.
+  const freshPeriod={
+    startDate:minusDays(dates.current.endDate,-1),
+    endDate:minusDays(dates.current.endDate,-3),
+  };
+  const fresh={
+    ...freshPeriod,
+    totals:await search({...requestBody(freshPeriod,['date'],10),dataState:'all'}),
+    pages:await search({...requestBody(freshPeriod,['page'],100,true),dataState:'all'}),
+    queries:await search({...requestBody(freshPeriod,['query'],300,true),dataState:'all'}),
+  };
   const inspections:Record<string,GscIndexResult|null>={};
   for(const urlPath of GSC_URL_PATHS){
     try{
@@ -320,7 +344,7 @@ export async function readSearchConsoleReport(
       inspections[urlPath]=null; // Do not convert API failures to 'not indexed'.
     }
   }
-  return {property,...dates,totalsCurrent,totalsPrevious,pagesCurrent,pagesPrevious,queryData,inspections};
+  return {property,...dates,totalsCurrent,totalsPrevious,pagesCurrent,pagesPrevious,queryData,fresh,inspections};
 }
 
 
@@ -336,6 +360,20 @@ export function formatTelegramReport(input:GscReportInput):string{
     'Клики: '+(total.hasData?fmtNumber(total.clicks):'нет данных')+
       ' (ранее: '+(previous.hasData?fmtNumber(previous.clicks):'нет данных')+')',
     'CTR: '+fmtRate(total.ctr)+' · позиция: '+fmtPosition(total.position),
+    ...(input.fresh?(()=>{
+      const freshMetrics=combineDailyRows(input.fresh.totals.rows);
+      const freshTopics=groupedQuerySamples(input.fresh.queries.rows);
+      return [
+        '',
+        'Новейшие 3 дня (предварительно, могут измениться):',
+        input.fresh.startDate+' — '+input.fresh.endDate,
+        'Показы: '+(freshMetrics.hasData?fmtNumber(freshMetrics.impressions):'данные отсутствуют')+
+          ', клики: '+(freshMetrics.hasData?fmtNumber(freshMetrics.clicks):'данные отсутствуют'),
+        'Темы поисковых запросов: '+(freshTopics.length?
+          freshTopics.slice(0,5).map(t=>t.topic+' '+fmtNumber(t.impressions)).join('; '):
+          'пока нет данных'),
+      ];
+    })():[]),
     '',
     'Страницы:'
   ];
