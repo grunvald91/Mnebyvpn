@@ -50,7 +50,11 @@ BEGIN
        NEW.created_at IS DISTINCT FROM OLD.created_at OR
        NEW.revision<OLD.revision OR
        (NEW.revision=OLD.revision AND
-         (OLD.state<>'staged' OR NEW.state<>'applied' OR
+         (NOT (
+           (OLD.state='staged' AND NEW.state='applied') OR
+           (OLD.state='revoked' AND NEW.state='revoked' AND
+              OLD.applied_at IS NULL AND NEW.applied_at IS NOT NULL)
+          ) OR
           NEW.billing_revision IS DISTINCT FROM OLD.billing_revision OR
           NEW.expires_at IS DISTINCT FROM OLD.expires_at OR
           NEW.last_signed_at IS DISTINCT FROM OLD.last_signed_at OR
