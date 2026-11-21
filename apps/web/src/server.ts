@@ -6,6 +6,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import {canonicalAlias,requiresNoindex,renderRobots,renderSitemap} from './seo-core.ts';
+import {publicEtag,matchesPublicEtag} from './static-asset-cache.ts';
 import {renderSeoPage} from './seo-pages.ts';
 import { createHash,createHmac,randomBytes,randomUUID,timingSafeEqual } from 'node:crypto';
 import { Pool } from 'pg';
@@ -310,25 +311,6 @@ const landingArtPolicy = [
 
 // Hash immutable source buffers once per process rather than hashing every
 // CSS/JS/image request. Dynamic pages and user-specific responses never use it.
-const publicEtagCache=new WeakMap<Buffer,string>();
-function publicEtag(bytes: Buffer): string {
-  let etag=publicEtagCache.get(bytes);
-  if(!etag){
-    etag='"'+createHash('sha256').update(bytes).digest('hex')+'"';
-    publicEtagCache.set(bytes,etag);
-  }
-  return etag;
-}
-function matchesPublicEtag(req: IncomingMessage, etag: string): boolean {
-  // RFC conditional GET permits weak validators and comma-separated values.
-  if(req.method!=='GET'&&req.method!=='HEAD')return false;
-  const raw=req.headers['if-none-match'];
-  if(typeof raw!=='string')return false;
-  return raw.split(',').some(part=>{
-    const item=part.trim();
-    return item==='*'||item===etag||item==='W/'+etag;
-  });
-}
 function sendArt(req: IncomingMessage, res: ServerResponse) {
   res.setHeader('X-Robots-Tag','noindex, follow');
   // This is static, non-personalized artwork. Keep the main HTML uncached.
@@ -341,7 +323,7 @@ function sendArt(req: IncomingMessage, res: ServerResponse) {
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Content-Security-Policy', landingArtPolicy);
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  if(matchesPublicEtag(req,etag)){
+  if(matchesPublicEtag(req.method,req.headers['if-none-match'],etag)){
     res.writeHead(304).end();return;
   }
   res.writeHead(200).end(landingArtHtml);
@@ -406,7 +388,7 @@ function sendStatic(req: IncomingMessage, res: ServerResponse, data: Buffer, typ
   const etag=publicEtag(data);
   const cache='public, no-cache, must-revalidate';
   res.setHeader('ETag',etag);
-  if(matchesPublicEtag(req,etag)){
+  if(matchesPublicEtag(req.method,req.headers['if-none-match'],etag)){
     send(res,304,'',type,cache);return;
   }
   send(res,200,data,type,cache);
