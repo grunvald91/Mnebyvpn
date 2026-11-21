@@ -403,7 +403,8 @@ test('static website resources revalidate with ETag while personalized responses
 test('marketing copy avoids unmeasured performance and universal unblocking guarantees',()=>{
   const home=file('apps/web/public/index.html');
   const art=file('apps/web/public/landing-art.html');
-  const joined=home+'\n'+art;
+  const appJs=file('apps/web/public/app.js');
+  const joined=home+'\n'+art+'\n'+appJs;
   for(const unsupported of [
     '90% времени','всегда на связи','для любых блокировок',
     'работает без любых ограничений','вне зависимости от любых ограничений',
@@ -439,4 +440,22 @@ test('storefront metadata uses validated live quota and device limits, not chose
   assert.doesNotMatch(art,/parseInt\(String\(bundleOffer\.price\)/);
   assert.doesNotMatch(art,/1 000 000 DNS-запросов \/ '\+selectedDays/);
   assert.match(art,/max-height:calc\(100dvh - 12px\);overflow-y:auto/);
+});
+
+test('legacy cabinet never invents DNS query quota or device count when public catalog fields are absent',()=>{
+  const app=file('apps/web/public/app.js');
+  assert.match(app,/if\(!Number\.isSafeInteger\(queries\)\|\|queries<=0\)return 'квота не указана'/);
+  assert.match(app,/const devices=Number\.isSafeInteger\(plan\?\.deviceLimit\)/);
+  assert.match(app,/лимит устройств уточняется/);
+  assert.doesNotMatch(app,/dnsQuotaQueriesPer30d \|\| 1000000/);
+  assert.doesNotMatch(app,/90% времени|не конфликтует с ними/);
+});
+
+test('trial chooser stays disabled with no authorized trial, even if prices are available',()=>{
+  const art=file('apps/web/public/landing-art.html');
+  assert.match(art,/const trialOpen=Boolean\(\(vpnTrialOn\|\|dnsTrialOn\)\&\&!serverData\?\.trialDisabled\)/);
+  assert.match(art,/trial\.disabled=!trialOpen/);
+  assert.match(art,/if\(!trialOpen\&\&!trialOptions\.hidden\)setTrialChooser\(false\)/);
+  assert.match(art,/trialVpn\.disabled=!trialOpen\|\|!vpnTrialOn/);
+  assert.doesNotMatch(art,/trial\.disabled=false/);
 });

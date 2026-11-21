@@ -369,7 +369,7 @@ footer nav a:first-child{border:0}
               <svg viewBox="0 0 26 34" aria-hidden="true"><path d="M16 0 2 19h9l-3 15L24 13h-9z" fill="currentColor"/></svg>
               <b>Бесплатные 24 часа</b>
             </div>
-            <button class="try" type="button" disabled aria-expanded="false" aria-controls="trial-options">Попробовать</button>
+            <button class="try" type="button" disabled aria-expanded="false" aria-controls="trial-options"><span class="try-text">Попробовать</span></button>
           </div>
           <div class="trial-options" id="trial-options" role="group" aria-label="Выберите пробный продукт" hidden>
             <button type="button" class="trial-choice" id="trial-vpn">VPN <small>24 часа</small></button>
@@ -685,14 +685,19 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
     setText(error,typeof serverData?.error==='string'?serverData.error:'');
     error.hidden=!error.textContent;
 
-    trial.disabled=false;
     const offers=Array.isArray(serverData?.trialOffers)?serverData.trialOffers:[];
-    const vpnTrialOn=(serverData?.trialAvailable&&offers.length===0)||offers.includes('vpn');
+    const vpnTrialOn=offers.includes('vpn');
     const dnsTrialOn=offers.includes('smart_dns');
-    trialVpn.disabled=!vpnTrialOn||Boolean(serverData?.trialDisabled);
+    const trialOpen=Boolean((vpnTrialOn||dnsTrialOn)&&!serverData?.trialDisabled);
+    trial.disabled=!trialOpen;
+    if(!trialOpen&&!trialOptions.hidden)setTrialChooser(false);
+    setText(trial.querySelector?.('.try-text')||trial,trialOpen?'Попробовать':'Недоступно');
+    trialVpn.disabled=!trialOpen||!vpnTrialOn;
     setText(trialVpn.querySelector('small'),trialVpn.disabled?'Пока недоступно':'24 часа');
-    trialDns.dataset.trialMode=dnsTrialOn?'free':'paid';
-    setText(trialDns.querySelector('small'),dnsTrialOn?'24 часа':'После оплаты');
+    trialDns.dataset.trialMode=dnsTrialOn&&trialOpen?'free':'paid';
+    setText(trialDns.querySelector('small'),dnsTrialOn&&trialOpen?'24 часа':'После оплаты');
+    setText(trialDnsStatus,'Telegram-прокси и личный профиль Smart DNS выдаются после подтверждённой оплаты «Smart Доступ» или «3 в 1».'
+      +(vpnTrialOn&&trialOpen?' Сейчас доступен бесплатный VPN на 24 часа.':' Бесплатный VPN сейчас недоступен.'));
     resize();
   };
 
