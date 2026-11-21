@@ -42,7 +42,7 @@ BEGIN
   ) THEN
     INSERT INTO public.owner_vpn_device_seats(entitlement_id,slot_number)
     SELECT NEW.id,s.num FROM generate_series(1,3) AS s(num)
-    ON CONFLICT DO NOTHING;
+    WHERE TRUE ON CONFLICT DO NOTHING;
   END IF;
   RETURN NEW;
 END;
