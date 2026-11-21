@@ -155,14 +155,14 @@
   // HTML has one H1 on the no-JavaScript fallback; only the active view is
   // promoted after progressive enhancement. IDs, links and text stay intact.
   const headingIds=[
-    'legacy-hero-title','journey-title','journey-trial-title','journey-setup-title',
+    'legacy-hero-title','journey-front-heading','journey-title','journey-trial-title','journey-setup-title',
     'journey-order-title','journey-payment-heading','journey-account-title',
-    'contact-support-title',
+    'account-name','contact-support-title',
   ];
   const headingByView={
-    plans:'journey-title','trial-auth':'journey-trial-title',
+    plans:'journey-front-heading','trial-auth':'journey-trial-title',
     setup:'journey-setup-title',checkout:'journey-order-title',
-    payment:'journey-payment-heading',account:'journey-account-title',
+    payment:'journey-payment-heading',account:'account-name',
     support:'contact-support-title',
   };
   function syncPrimaryHeading(next){
@@ -171,7 +171,7 @@
     for(const id of headingIds){
       const node=el(id);
       if(!node)continue;
-      const desired=id===primary?'h1':'h2';
+      const desired=id===primary?'h1':id==='account-name'?'strong':'h2';
       if(node.localName===desired)continue;
       const replacement=document.createElement(desired);
       for(const attr of node.attributes)replacement.setAttribute(attr.name,attr.value);
