@@ -1,84 +1,109 @@
 #!/usr/bin/env node
 /**
- * Summarize an actual, anonymous production Lighthouse run.
- * Never substitutes synthetic data when the site is unreachable.
- * Lab LCP, CLS and TBT are NOT field Core Web Vitals/INP.
+ * Three anonymous production Lighthouse lab runs per profile.
+ * Summarize medians and observed ranges; never present these as field INP/CrUX.
  */
 import {readFileSync,writeFileSync,appendFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 
 const dir=resolve(process.argv[2]||'.');
-const base='https://mnebyvpn.site/';
-const metrics=[
+const site='https://mnebyvpn.site/';
+const metricNames=[
   ['first-contentful-paint','FCP','ms'],
   ['largest-contentful-paint','LCP','ms'],
   ['cumulative-layout-shift','CLS','score'],
   ['total-blocking-time','TBT','ms'],
   ['speed-index','Speed Index','ms'],
 ];
-const summary=[];
+const median=values=>{
+  const ordered=[...values].sort((a,b)=>a-b);
+  return ordered[Math.floor(ordered.length/2)];
+};
+const range=values=>({min:Math.min(...values),max:Math.max(...values)});
+const digits=n=>Math.round(n*1000)/1000;
+const output=[];
+
 for(const device of ['mobile','desktop']){
-  const lhr=JSON.parse(readFileSync(resolve(dir,device+'.json'),'utf8'));
-  if(lhr.runtimeError)throw Error(device+': Lighthouse runtimeError: '+lhr.runtimeError.code);
-  if(lhr.finalDisplayedUrl && !lhr.finalDisplayedUrl.startsWith(base))
-    throw Error(device+': unexpected audited origin '+lhr.finalDisplayedUrl);
-  const perf=lhr.categories?.performance?.score;
-  if(typeof perf!=='number'||!Number.isFinite(perf))throw Error(device+': missing performance score');
-  const measures={};
-  for(const [id,label,unit] of metrics){
-    const value=lhr.audits?.[id]?.numericValue;
-    if(value===undefined||!Number.isFinite(value))
-      throw Error(device+': missing Lighthouse metric '+id);
-    measures[id]={name:label,value:Math.round(value*1000)/1000,unit};
-  }
-  const requests=lhr.audits?.['network-requests']?.details?.items||[];
-  const assets=requests.filter(x=>Number.isFinite(x.transferSize)&&x.transferSize>0)
-    .map(x=>{
+  const samples=[];
+  for(let index=1;index<=3;index++){
+    const lhr=JSON.parse(readFileSync(resolve(dir,device+'-'+index+'.json'),'utf8'));
+    if(lhr.runtimeError)throw Error(device+' #'+index+': Lighthouse '+lhr.runtimeError.code);
+    if(lhr.finalDisplayedUrl!==site || lhr.requestedUrl!==site)
+      throw Error(device+' #'+index+': unexpected audited URL');
+    const perf=lhr.categories?.performance?.score;
+    const seo=lhr.categories?.seo?.score;
+    if(!Number.isFinite(perf)||!Number.isFinite(seo))
+      throw Error(device+' #'+index+': performance or SEO score missing');
+    const metrics={};
+    for(const [id] of metricNames){
+      const value=lhr.audits?.[id]?.numericValue;
+      if(!Number.isFinite(value))throw Error(device+' #'+index+': metric '+id+' missing');
+      metrics[id]=digits(value);
+    }
+    const items=lhr.audits?.['network-requests']?.details?.items??[];
+    const largest=items.filter(x=>Number.isFinite(x.transferSize)&&x.transferSize>0).map(x=>{
       let path='other';
-      try{const url=new URL(x.url);path=url.pathname;}catch{}
+      try{path=new URL(x.url).pathname;}catch{}
       return {path,bytes:Math.round(x.transferSize)};
     }).sort((a,b)=>b.bytes-a.bytes).slice(0,12);
-  const result={
-    device,
-    lighthouseVersion:lhr.lighthouseVersion,
-    requestedUrl:lhr.requestedUrl,
-    auditedUrl:lhr.finalDisplayedUrl||lhr.finalUrl,
-    fetchTime:lhr.fetchTime,
-    performanceScore:Math.round(perf*100),
-    seoScore:typeof lhr.categories?.seo?.score==='number'?Math.round(lhr.categories.seo.score*100):null,
-    metrics:measures,
-    networkRequestCount:requests.length,
-    topTransferredAssets:assets,
-    warnings:lhr.runWarnings||[],
+    samples.push({
+      index,fetchTime:lhr.fetchTime,lighthouseVersion:lhr.lighthouseVersion,
+      performanceScore:Math.round(perf*100),seoScore:Math.round(seo*100),
+      metrics,requestCount:items.length,topTransferredAssets:largest,
+      warnings:lhr.runWarnings||[],
+    });
+  }
+  const metricSummary={};
+  for(const [id,name,unit] of metricNames){
+    const values=samples.map(s=>s.metrics[id]);
+    metricSummary[id]={name,value:digits(median(values)),unit,range:range(values)};
+  }
+  const scores=samples.map(s=>s.performanceScore);
+  const lcpOrdered=[...samples].sort((a,b)=>
+    a.metrics['largest-contentful-paint']-b.metrics['largest-contentful-paint']);
+  const typical=lcpOrdered[1];
+  const summary={
+    device,runCount:samples.length,performanceScore:median(scores),
+    performanceRange:range(scores),
+    seoScore:median(samples.map(s=>s.seoScore)),
+    metrics:metricSummary,
+    networkRequestCount:median(samples.map(s=>s.requestCount)),
+    topTransferredAssets:typical.topTransferredAssets,
+    runs:samples,
     auditType:'production-lab-not-field',
   };
-  summary.push(result);
-  console.log('LIGHTHOUSE_BASELINE_'+device.toUpperCase()+'='+JSON.stringify(result));
+  output.push(summary);
+  console.log('LIGHTHOUSE_MEDIAN_'+device.toUpperCase()+'='+JSON.stringify({
+    device,runCount:3,performanceScore:summary.performanceScore,
+    performanceRange:summary.performanceRange,seoScore:summary.seoScore,
+    metrics:metricSummary,
+    topTransferredAssets:typical.topTransferredAssets,
+  }));
 }
-const output={source:'https://github.com/GoogleChrome/lighthouse',site:base,kind:'real-production-lab',
-  caveat:'Lighthouse lab metrics, not CrUX field data; INP is not measured in this run',
-  summary};
-writeFileSync(resolve(dir,'summary.json'),JSON.stringify(output,null,2)+'\n');
+const full={source:'https://github.com/GoogleChrome/lighthouse',site,
+  kind:'real-production-lab',caveat:'Three laboratory runs; INP and CrUX field data not measured',summary:output};
+writeFileSync(resolve(dir,'summary.json'),JSON.stringify(full,null,2)+'\n');
+const rows=output.map(x=>['|',x.device,'|',x.performanceScore,
+  '('+x.performanceRange.min+'–'+x.performanceRange.max+')','|',x.seoScore,'|',
+  x.metrics['first-contentful-paint'].value,'|',
+  x.metrics['largest-contentful-paint'].value,'|',
+  x.metrics['cumulative-layout-shift'].value,'|',
+  x.metrics['total-blocking-time'].value,'|'].join(' '));
 const lines=[
-  '# MNEBYVPN Lighthouse: production laboratory baseline',
+  '# MNEBYVPN Lighthouse: production laboratory median (3 runs per profile)',
   '',
-  'Anonymous public homepage only; no payments or customer APIs deliberately invoked.',
-  'LCP/CLS here are lab estimates, TBT is a responsiveness proxy, INP is **not measured**.',
+  'Anonymous public homepage only. Median from three independent cold laboratory runs.',
+  'Single-run variation is preserved in summary.json. These are NOT field LCP/CLS or INP.',
   '',
-  '| Device | Performance | SEO | FCP (ms) | LCP (ms) | CLS | TBT (ms) |',
+  '| Device | Performance median (range) | SEO median | FCP ms | LCP ms | CLS | TBT ms |',
   '|---|---:|---:|---:|---:|---:|---:|',
-  ...summary.map(x=>'| '+x.device+' | '+x.performanceScore+' | '+
-    (x.seoScore===null?'n/a':x.seoScore)+' | '+
-    x.metrics['first-contentful-paint'].value+' | '+
-    x.metrics['largest-contentful-paint'].value+' | '+
-    x.metrics['cumulative-layout-shift'].value+' | '+
-    x.metrics['total-blocking-time'].value+' |'),
+  ...rows,
   '',
-  '## Largest transferred assets per device',
-  ...summary.flatMap(x=>['','**'+x.device+'**',
+  '## Largest transferred resources in median-LCP run',
+  ...output.flatMap(x=>['','**'+x.device+'**',
     ...x.topTransferredAssets.map(a=>'- '+a.path+': '+a.bytes+' B')]),
   '',
-  'Full original JSON reports are attached as workflow artifacts.',
+  'Six original Lighthouse reports and full individual measurements are artifacts.',
 ];
 const markdown=lines.join('\n')+'\n';
 writeFileSync(resolve(dir,'summary.md'),markdown);
