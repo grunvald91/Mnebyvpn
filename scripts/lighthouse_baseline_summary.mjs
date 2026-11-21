@@ -21,6 +21,36 @@ const median=values=>{
 };
 const range=values=>({min:Math.min(...values),max:Math.max(...values)});
 const digits=n=>Math.round(n*1000)/1000;
+
+/** Lighthouse 13 insight IDs replace old LCP element/blocking audits.
+ * The values below are lab-only estimates, not measured field improvements.
+ * https://developer.chrome.com/blog/lighthouse-13-0/
+ */
+const pickInsight=(lhr,id)=>{
+  const audit=lhr.audits?.[id];
+  if(!audit)return null;
+  const items=Array.isArray(audit.details?.items)?audit.details.items:[];
+  const node=items.find(item=>item?.type==='node');
+  const phaseTable=items.find(item=>item?.type==='table'&&
+    Array.isArray(item.items)&&item.items.some(row=>typeof row.subpart==='string'));
+  const phases=phaseTable?.items?.filter(row=>
+    typeof row.subpart==='string'&&Number.isFinite(row.duration))
+    .map(row=>({part:row.subpart,durationMs:digits(row.duration)}))||[];
+  const blocking=items.filter(item=>typeof item.url==='string'&&
+    item.url.startsWith('https://mnebyvpn.site/')).slice(0,10)
+    .map(item=>({path:new URL(item.url).pathname,
+      wastedMs:Number.isFinite(item.wastedMs)?digits(item.wastedMs):null,
+      bytes:Number.isFinite(item.totalBytes)?item.totalBytes:null}));
+  return {
+    estimatedLcpSavingsMs:Number.isFinite(audit.metricSavings?.LCP)?
+      digits(audit.metricSavings.LCP):null,
+    estimatedFcpSavingsMs:Number.isFinite(audit.metricSavings?.FCP)?
+      digits(audit.metricSavings.FCP):null,
+    element:node?{selector:node.selector||null,label:node.nodeLabel||null,
+      snippet:node.snippet||null}:null,
+    phases,blocking,
+  };
+};
 const output=[];
 
 for(const device of ['mobile','desktop']){
@@ -51,6 +81,10 @@ for(const device of ['mobile','desktop']){
       performanceScore:Math.round(perf*100),seoScore:Math.round(seo*100),
       metrics,requestCount:items.length,topTransferredAssets:largest,
       warnings:lhr.runWarnings||[],
+      insights:{
+        lcp:pickInsight(lhr,'lcp-breakdown-insight'),
+        renderBlocking:pickInsight(lhr,'render-blocking-insight'),
+      },
     });
   }
   const metricSummary={};
@@ -69,6 +103,7 @@ for(const device of ['mobile','desktop']){
     metrics:metricSummary,
     networkRequestCount:median(samples.map(s=>s.requestCount)),
     topTransferredAssets:typical.topTransferredAssets,
+    insights:typical.insights,
     runs:samples,
     auditType:'production-lab-not-field',
   };
@@ -78,6 +113,7 @@ for(const device of ['mobile','desktop']){
     performanceRange:summary.performanceRange,seoScore:summary.seoScore,
     metrics:metricSummary,
     topTransferredAssets:typical.topTransferredAssets,
+    insights:typical.insights,
   }));
 }
 const full={source:'https://github.com/GoogleChrome/lighthouse',site,
@@ -102,6 +138,25 @@ const lines=[
   '## Largest transferred resources in median-LCP run',
   ...output.flatMap(x=>['','**'+x.device+'**',
     ...x.topTransferredAssets.map(a=>'- '+a.path+': '+a.bytes+' B')]),
+  '',
+  '## LCP element and render-blocking CSS (median-LCP run)',
+  'Lighthouse 13 lab insights only; estimated savings are not measured improvements.',
+  ...output.flatMap(x=>{
+    const lcp=x.insights.lcp,block=x.insights.renderBlocking;
+    return [
+      '',
+      '**'+x.device+'**',
+      lcp?.element
+        ?'- LCP element: '+(lcp.element.selector||lcp.element.label||'unidentified')
+        :'- LCP element: not reported in insight JSON',
+      ...((lcp?.phases)||[]).map(p=>'- LCP phase '+p.part+': '+p.durationMs+' ms'),
+      block?.estimatedLcpSavingsMs!==null&&block?.estimatedLcpSavingsMs!==undefined
+        ?'- Estimated render-blocking LCP savings: '+block.estimatedLcpSavingsMs+' ms'
+        :'- Render-blocking LCP savings: not reported',
+      ...((block?.blocking)||[]).map(a=>'- Blocking stylesheet '+a.path+
+        ': '+(a.wastedMs===null?'unknown':a.wastedMs)+' ms (audit estimate)'),
+    ];
+  }),
   '',
   'Six original Lighthouse reports and full individual measurements are artifacts.',
 ];
