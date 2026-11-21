@@ -172,6 +172,9 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0140_trial_smart_dns_delivery.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0141_owner_manual_sales.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0142_owner_vpn_three_device_seats.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0143_owner_vpn_device_key_requests.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0144_owner_vpn_awg_peer_reservations.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0145_owner_vpn_shared_ipv4_ipam.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0002_billing_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0003_ipv6_claims_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0005_outbox_contract.sql
@@ -196,6 +199,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/tests/0132_yookassa_and_3in1_catalog_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0133_awg_command_outbox_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0134_stars_ratio_and_3in1_bot_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0144_owner_vpn_awg_peer_reservations_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/tests/0145_owner_vpn_shared_ipv4_ipam_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0140_trial_smart_dns_delivery_contract.sql
           # E2E test fixture explicitly simulates a separately deployed, verified node worker.
           psql -v ON_ERROR_STOP=1 -c "UPDATE vpn_release_flags SET enabled=true WHERE feature='paid_vpn_clock_on_node'" >/dev/null

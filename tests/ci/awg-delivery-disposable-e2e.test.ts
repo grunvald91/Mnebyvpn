@@ -144,7 +144,18 @@ test('disposable FI217 controller outbox -> verified node receipt -> CAS revoke'
     assert.equal(before.rows[0].n,0);
     await db.query('UPDATE vpn_release_flags SET enabled=true WHERE feature=$1',[GATE]);
 
+    // A separate reserved owner IP exists before a normal FI subscriber
+    // grant. Legacy IPAM must skip it instead of selecting .2 again.
+    const reservedOwnerIp='10.73.91.2/32';
+    await db.query(
+      'INSERT INTO vpn_awg_ipv4_claims('+
+      'node_id,client_ipv4,entitlement_id,device_slot,peer_public_key,source) '+
+      "VALUES($1,$2::inet,$3,1,$4,'owner_slot')",
+      [FI,reservedOwnerIp,randomUUID(),randomBytes(32).toString('base64')],
+    );
     const staged=await stageAwgGrant(db,input,controller.privateKey,now());
+    assert.equal(staged.command.clientIpv4,'10.73.91.3',
+      'legacy controller must skip IP already claimed by an owner seat');
     assert.equal(staged.staged,true);
     assert.equal(staged.published,false);
     assert.equal(staged.command.op,'grant');
