@@ -507,8 +507,8 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
   const deskScene=$('#desk-scene'),deskVideo=$('#bgv-desktop'),deskPoster=$('.desk-poster');
   const mqlDesk=matchMedia('(min-width: 768px)');
   // Match the iframe's ACTUAL CSS viewport, not the parent window.
-  // The public host embeds this page in a 480px frame even on desktop:
-  // selecting the desktop video there downloaded an invisible ~700 KB MP4.
+  // The host may size its iframe independently of its own viewport.
+  // Only use desktop media when the iframe's desktop CSS is active.
   const isDesktopViewport=()=>mqlDesk.matches;
   const autoplayAllowed=!R&&!navigator.connection?.saveData;
   // An embedded storefront is inactive until the parent explicitly activates
