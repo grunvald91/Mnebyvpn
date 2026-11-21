@@ -1,12 +1,13 @@
 /**
- * Index-only diagnostics for eight PUBLIC canonical MNEBYVPN URLs.
+ * Index-only diagnostics for all approved PUBLIC canonical MNEBYVPN sitemap URLs.
  * Does not export raw Search Console queries, search metrics, tokens or other URLs.
  * Source: https://developers.google.com/webmaster-tools/v1/urlInspection.index/inspect
  */
 import {appendFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
-import {GSC_ALLOWED_PROPERTIES,GSC_ORIGIN,GSC_URL_PATHS,getAccessToken}
+import {GSC_ALLOWED_PROPERTIES,GSC_ORIGIN,getAccessToken}
   from './gsc-weekly-report.ts';
+import {PUBLIC_SEO_PATHS} from '../apps/web/src/seo-core.ts';
 
 type FetchClient=(input:string|URL,init?:RequestInit)=>Promise<Response>;
 type IndexStatus={
@@ -67,7 +68,7 @@ export function describeIndex(path:string,status:IndexStatus|null,apiError=false
 
 export function formatIndexAudit(rows:PublicIndexRow[]):string{
   const lines=[
-    '# Google URL Inspection — восемь публичных страниц MNEBYVPN',
+    '# Google URL Inspection — '+PUBLIC_SEO_PATHS.length+' публичных страниц MNEBYVPN',
     '',
     'Только данные индекса Google. Отсутствие поисковых показов не равно отсутствию индексации.',
     'Не включены: поисковые запросы, клики, показы, ключи и персональные страницы.',
@@ -106,7 +107,7 @@ export async function inspectPublicPages(
   if(site.siteUrl!==property||!['siteOwner','siteFullUser','siteRestrictedUser'].includes(site.permissionLevel||''))
     throw Error('INDEX_PROPERTY_ACCESS_NOT_VERIFIED');
   const rows:PublicIndexRow[]=[];
-  for(const path of GSC_URL_PATHS){
+  for(const path of PUBLIC_SEO_PATHS){
     try{
       const result=await api<{inspectionResult?:{indexStatusResult?:IndexStatus}}>(
         fetchImpl,'https://searchconsole.googleapis.com/v1/urlInspection/index:inspect',

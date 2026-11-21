@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {generateKeyPairSync} from 'node:crypto';
 import {describeIndex,formatIndexAudit,inspectPublicPages} from '../scripts/gsc-index-audit.ts';
-import {GSC_ORIGIN,GSC_URL_PATHS} from '../scripts/gsc-weekly-report.ts';
+import {GSC_ORIGIN} from '../scripts/gsc-weekly-report.ts';
+import {PUBLIC_SEO_PATHS,renderSitemap} from '../apps/web/src/seo-core.ts';
 
 test('GSC public index verdicts do not mistake missing data for noindex',()=>{
   const none=describeIndex('/gemini',null);
@@ -28,13 +29,13 @@ test('GSC public index verdicts do not mistake missing data for noindex',()=>{
 });
 
 test('index audit summary contains only known public URLs, not source private URLs',()=>{
-  const rows=GSC_URL_PATHS.map(path=>describeIndex(path,{
+  const rows=PUBLIC_SEO_PATHS.map(path=>describeIndex(path,{
     verdict:'FAIL',coverageState:'Crawled - currently not indexed',
     googleCanonical:'https://untrusted.example/secret',
   }));
   const markdown=formatIndexAudit(rows);
-  for(const path of GSC_URL_PATHS)assert.ok(markdown.includes('`'+path+'`'));
-  assert.equal(rows.length,8);
+  for(const path of PUBLIC_SEO_PATHS)assert.ok(markdown.includes('`'+path+'`'));
+  assert.equal(rows.length,11);
   assert.ok(!markdown.includes('untrusted.example'));
   assert.ok(!markdown.includes('query='));
   assert.ok(!markdown.includes('GSC_SERVICE_ACCOUNT_JSON'));
@@ -57,7 +58,7 @@ test('index audit uses read-only service account and inspects only approved URLs
       siteUrl:'sc-domain:mnebyvpn.site',permissionLevel:'siteRestrictedUser'});
     if(target.includes('urlInspection')){
       const body=JSON.parse(String(init?.body));
-      assert.ok(GSC_URL_PATHS.some(path=>body.inspectionUrl===GSC_ORIGIN+path));
+      assert.ok(PUBLIC_SEO_PATHS.some(path=>body.inspectionUrl===GSC_ORIGIN+path));
       return json({inspectionResult:{indexStatusResult:{
         verdict:'FAIL',coverageState:'Discovered - currently not indexed',
       }}});
@@ -65,10 +66,19 @@ test('index audit uses read-only service account and inspects only approved URLs
     throw Error('unexpected URL');
   };
   const rows=await inspectPublicPages('sc-domain:mnebyvpn.site',creds,fetchImpl);
-  assert.equal(rows.length,8);
+  assert.equal(rows.length,11);
   assert.equal(rows.every(r=>r.verdict==='FAIL'),true);
-  assert.equal(seen.length,10);
-  assert.equal(seen.filter(x=>x.includes('urlInspection')).length,8);
+  assert.equal(seen.length,13);
+  assert.equal(seen.filter(x=>x.includes('urlInspection')).length,11);
   await assert.rejects(inspectPublicPages('sc-domain:unauthorized.example',creds,fetchImpl),
     /INDEX_PROPERTY_NOT_ALLOWED/);
+});
+
+test('Google index inspection covers exactly the canonical sitemap pages, including legal pages',()=>{
+  const locs=[...renderSitemap(GSC_ORIGIN).matchAll(/<loc>([^<]+)<\/loc>/g)].map(match=>match[1]);
+  assert.deepEqual(locs,PUBLIC_SEO_PATHS.map(path=>GSC_ORIGIN+path));
+  assert.equal(locs.length,11);
+  for(const path of ['/terms','/agreement','/privacy'])
+    assert.ok(PUBLIC_SEO_PATHS.some(allowed=>allowed===path));
+  for(const url of locs)assert.doesNotMatch(url,/\/(?:api|auth|sub|install|payment)\//);
 });

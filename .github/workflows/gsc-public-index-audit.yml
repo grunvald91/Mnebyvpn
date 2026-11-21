@@ -6,6 +6,10 @@ on:
       - '.github/workflows/gsc-public-index-audit.yml'
       - 'scripts/gsc-index-audit.ts'
       - 'scripts/gsc-sitemap-audit.ts'
+      - 'apps/web/src/seo-core.ts'
+      - 'apps/web/src/seo-pages.ts'
+      - 'apps/web/src/seo-diagnostics.ts'
+      - 'tests/gsc-index-audit.test.ts'
   workflow_dispatch:
 permissions:
   contents: read
@@ -20,6 +24,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.16.0'
+      - name: Check public sitemap and index inspection contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types --test tests/gsc-index-audit.test.ts tests/gsc-sitemap-audit.test.ts tests/seo-core.test.ts tests/seo-pages.test.ts
       - name: Public URL index-only inspection (no keyword or traffic exports)
         shell: bash
         env:

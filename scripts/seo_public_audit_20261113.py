@@ -3,6 +3,7 @@
 from html.parser import HTMLParser
 import ssl
 import sys
+import xml.etree.ElementTree as ET
 import urllib.error
 import urllib.request
 
@@ -11,6 +12,7 @@ GUIDE_ROUTES=(
     "/vpn", "/smart-dns", "/chatgpt", "/claude", "/gemini",
     "/google-antigravity", "/telegram-proxy",
 )
+PUBLIC_ROUTES=("/",) + GUIDE_ROUTES + ("/terms", "/agreement", "/privacy")
 ROUTES=(
     "/", "/robots.txt", "/sitemap.xml", "/terms", "/privacy",
     "/agreement", "/landing-art.html", "/payment/success",
@@ -98,10 +100,15 @@ for path in ROUTES:
             if r.status!=200 or not ("Sitemap: https://mnebyvpn.site/sitemap.xml" in body):
                 failures.append(path+": robots unavailable")
         elif path=="/sitemap.xml":
-            if (r.status!=200 or '<urlset' not in body or
-                '<loc>https://mnebyvpn.site/</loc>' not in body or
-                any('<loc>'+ORIGIN+p+'</loc>' not in body for p in GUIDE_ROUTES)):
-                failures.append(path+": sitemap missing public guides")
+            try:
+                root=ET.fromstring(body)
+                ns="{http://www.sitemaps.org/schemas/sitemap/0.9}"
+                locs=[node.text for node in root.findall(ns+"url/"+ns+"loc")]
+                expected=[ORIGIN+p for p in PUBLIC_ROUTES]
+                if r.status!=200 or root.tag!=ns+"urlset" or locs!=expected:
+                    failures.append(path+": sitemap must exactly match 11 public canonical URLs")
+            except ET.ParseError:
+                failures.append(path+": invalid sitemap XML")
         elif path in ("/index.html","/terms.html","/privacy.html","/agreement.html"):
             canonical={"/index.html":"/","/terms.html":"/terms",
                        "/privacy.html":"/privacy","/agreement.html":"/agreement"}[path]
