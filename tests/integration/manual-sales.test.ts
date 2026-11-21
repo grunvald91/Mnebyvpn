@@ -135,7 +135,15 @@ test('owner-only personal DoT: ACTIVE gate, one encrypted hostname, replay, revo
   assert.match(forbidden.text,/Недостаточно прав/);
   assert.equal(await count(),0);
 
-  // Simulate successful reconciliation only in this disposable test database.
+  // Mere ACTIVE in DB is insufficient: the DNS worker must have ACKed
+  // the exact current revision first.
+  const noAck=await showOfflineSale(pool,op,op,orderId!,true,true,key);
+  assert.doesNotMatch(noAck.text,/[a-z0-9]{12}\\.dns\\.mnebyvpn\\.site/);
+  assert.equal(await count(),0);
+  // Simulate successful reconciliation ONLY in disposable PostgreSQL.
+  await pool.query("INSERT INTO provisioning_state(entitlement_id,adapter,applied_revision,last_observed_at) "+
+    "VALUES($1,'smart_dns',1,clock_timestamp()) ON CONFLICT(entitlement_id,adapter) DO UPDATE "+
+    "SET applied_revision=1,last_observed_at=clock_timestamp()",[ent]);
   const first=await showOfflineSale(pool,op,op,orderId!,true,true,key);
   const host=/([a-z0-9]{12}\.dns\.mnebyvpn\.site)/.exec(first.text)?.[1];
   assert.ok(host,first.text);
