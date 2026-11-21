@@ -65,18 +65,23 @@ BEGIN
     AND o.provider='manual_sale' AND o.product='bundle' AND o.state='PAID'
     AND t.plan_id='bundle_30d_3device' AND t.device_limit=3
     AND e.state='ACTIVE' AND e.expires_at>clock_timestamp()
-  -- Lock payment, terms, entitlement and current VPN ACK, together with seat.
+  -- Lock paid order, terms, exact VPN ACK and registered seat until COMMIT.
   FOR SHARE OF o,t,e,p,s;
   IF v_entitlement IS NULL THEN RETURN 'DENY_ACCESS'; END IF;
 
   -- An independently verified and enrolled node is required; a staged node
   -- or revoked identity is never eligible. Still NO network effect.
-  -- Hold both source rows to exclude a node disable/revocation race.
+  -- Lock both verified pool and node identity against concurrent revocation.
   SELECT p.node_id INTO v_verified_node
   FROM public.vpn_awg_node_pools p
   JOIN public.vpn_node_enrollment_inventory n ON n.node_id=p.node_id
   WHERE p.node_id=p_node_id AND p.state='verified'
-    AND p.external_e2e_proof_sha256 ~ '^[a-f0-9]{64}
+    AND p.external_e2e_proof_sha256 ~ '^[a-f0-9]{64}$'
+    AND p.verified_at>clock_timestamp()-interval '1 hour'
+    AND p.verified_at<=clock_timestamp()+interval '30 seconds'
+    AND n.status='enrolled' AND n.endpoint_host=p.endpoint_host
+  FOR SHARE OF p,n;
+  IF v_verified_node IS NULL THEN RETURN 'DENY_NODE'; END IF;
 
   INSERT INTO public.owner_vpn_awg_peer_reservations
     (node_id,entitlement_id,slot_number,peer_public_key,billing_revision)
@@ -111,10 +116,9 @@ END;
 $only_owner$;
 
 
--- Diagnostic only: historical RESERVED entries MUST NOT be treated as live
--- credentials. This view excludes revoked keys, expired/refunded subscriptions,
--- changed billing revisions/ACKs, and disabled or revoked AWG nodes.
--- It never signs, grants or publishes anything.
+-- Historical RESERVED rows are NOT grants. This private diagnostic view
+-- excludes stale, refunded, suspended or expired entitlements, mismatched
+-- key/revision/ACK, and disabled/revoked nodes. No consumer gets privileges.
 CREATE VIEW public.owner_vpn_awg_eligible_peer_reservations AS
 SELECT r.node_id,r.entitlement_id,r.slot_number,r.peer_public_key,
        r.billing_revision,r.created_at
@@ -137,100 +141,13 @@ JOIN public.provisioning_state ps ON ps.entitlement_id=e.id
   AND ps.last_observed_at IS NOT NULL
 JOIN public.vpn_awg_node_pools p ON p.node_id=r.node_id
   AND p.state='verified'
-  AND p.external_e2e_proof_sha256 ~ '^[a-f0-9]{64}
-COMMIT;
-
-    AND p.verified_at>clock_timestamp()-interval '1 hour'
-    AND p.verified_at<=clock_timestamp()+interval '30 seconds'
-    AND n.status='enrolled' AND n.endpoint_host=p.endpoint_host
-  FOR SHARE OF p,n;
-  IF v_verified_node IS NULL THEN RETURN 'DENY_NODE'; END IF;
-
-  INSERT INTO public.owner_vpn_awg_peer_reservations
-    (node_id,entitlement_id,slot_number,peer_public_key,billing_revision)
-  VALUES(p_node_id,v_entitlement,p_slot_number,v_peer_key,v_revision)
-  ON CONFLICT DO NOTHING;
-
-  SELECT * INTO v_existing
-  FROM public.owner_vpn_awg_peer_reservations
-  WHERE node_id=p_node_id AND entitlement_id=v_entitlement
-    AND slot_number=p_slot_number;
-  IF NOT FOUND THEN RETURN 'DENY_CONFLICT'; END IF;
-  IF v_existing.peer_public_key<>v_peer_key OR
-     v_existing.billing_revision<>v_revision THEN
-    RETURN 'DENY_STALE';
-  END IF;
-  -- Caller may safely retry, but this does not indicate an ACK or connection.
-  RETURN 'RESERVED';
-END;
-$reserve_peer$;
-
-REVOKE ALL ON FUNCTION public.owner_vpn_reserve_awg_peer_slot(bigint,uuid,smallint,text)
-  FROM PUBLIC;
-DO $only_owner$
-BEGIN
-  IF EXISTS(SELECT 1 FROM pg_catalog.pg_roles
-            WHERE rolname='mnebyvpn_bot') THEN
-    GRANT EXECUTE ON FUNCTION
-      public.owner_vpn_reserve_awg_peer_slot(bigint,uuid,smallint,text)
-      TO mnebyvpn_bot;
-  END IF;
-END;
-$only_owner$;
-
--- No worker/web role gets access. No live credential, client IP or
--- signed nodekit command is generated.
-COMMIT;
-
+  AND p.external_e2e_proof_sha256 ~ '^[a-f0-9]{64}$'
   AND p.verified_at>clock_timestamp()-interval '1 hour'
   AND p.verified_at<=clock_timestamp()+interval '30 seconds'
 JOIN public.vpn_node_enrollment_inventory n ON n.node_id=p.node_id
   AND n.status='enrolled' AND n.endpoint_host=p.endpoint_host;
 REVOKE ALL ON public.owner_vpn_awg_eligible_peer_reservations FROM PUBLIC;
--- No GRANT to any bot/site/worker: future delivery still requires a
--- fresh row lock, signed grant and independently verified node ACK.
-
--- No worker/web role gets access. No live credential, client IP or
--- signed nodekit command is generated.
-COMMIT;
-
-    AND p.verified_at>clock_timestamp()-interval '1 hour'
-    AND p.verified_at<=clock_timestamp()+interval '30 seconds'
-    AND n.status='enrolled' AND n.endpoint_host=p.endpoint_host
-  FOR SHARE OF p,n;
-  IF v_verified_node IS NULL THEN RETURN 'DENY_NODE'; END IF;
-
-  INSERT INTO public.owner_vpn_awg_peer_reservations
-    (node_id,entitlement_id,slot_number,peer_public_key,billing_revision)
-  VALUES(p_node_id,v_entitlement,p_slot_number,v_peer_key,v_revision)
-  ON CONFLICT DO NOTHING;
-
-  SELECT * INTO v_existing
-  FROM public.owner_vpn_awg_peer_reservations
-  WHERE node_id=p_node_id AND entitlement_id=v_entitlement
-    AND slot_number=p_slot_number;
-  IF NOT FOUND THEN RETURN 'DENY_CONFLICT'; END IF;
-  IF v_existing.peer_public_key<>v_peer_key OR
-     v_existing.billing_revision<>v_revision THEN
-    RETURN 'DENY_STALE';
-  END IF;
-  -- Caller may safely retry, but this does not indicate an ACK or connection.
-  RETURN 'RESERVED';
-END;
-$reserve_peer$;
-
-REVOKE ALL ON FUNCTION public.owner_vpn_reserve_awg_peer_slot(bigint,uuid,smallint,text)
-  FROM PUBLIC;
-DO $only_owner$
-BEGIN
-  IF EXISTS(SELECT 1 FROM pg_catalog.pg_roles
-            WHERE rolname='mnebyvpn_bot') THEN
-    GRANT EXECUTE ON FUNCTION
-      public.owner_vpn_reserve_awg_peer_slot(bigint,uuid,smallint,text)
-      TO mnebyvpn_bot;
-  END IF;
-END;
-$only_owner$;
+-- Even this eligible view is not authorization to sign or publish a peer.
 
 -- No worker/web role gets access. No live credential, client IP or
 -- signed nodekit command is generated.
