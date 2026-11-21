@@ -171,6 +171,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0139_awg_peer_address_trigger_owner.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0140_trial_smart_dns_delivery.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0141_owner_manual_sales.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0142_owner_vpn_three_device_seats.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0002_billing_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0003_ipv6_claims_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/tests/0005_outbox_contract.sql
