@@ -120,12 +120,25 @@ export async function inspectPublicPages(
   return rows;
 }
 
+/**
+ * A technically green check with failed URL Inspection requests is misleading.
+ * Unknown/unindexed pages are normal; only API errors or incomplete coverage
+ * must fail the scheduled audit AFTER writing the diagnostic summary.
+ */
+export function assertIndexAuditComplete(rows:readonly PublicIndexRow[]):void {
+  if(rows.length!==PUBLIC_SEO_PATHS.length||
+     rows.some((r,i)=>r.path!==PUBLIC_SEO_PATHS[i]))
+    throw Error('INDEX_PUBLIC_INSPECTION_INCOMPLETE');
+  const errors=rows.filter(row=>row.verdict==='ERROR').length;
+  if(errors>0)throw Error('INDEX_PUBLIC_INSPECTION_API_ERRORS_'+errors);
+}
+
 export async function main():Promise<void>{
   const credential=process.env.GSC_SERVICE_ACCOUNT_JSON;
   if(!credential)throw Error('INDEX_GSC_NOT_CONFIGURED');
   const rows=await inspectPublicPages(process.env.GSC_SITE_URL||'sc-domain:mnebyvpn.site',credential);
   const markdown=formatIndexAudit(rows);
-  // Only status of these eight public URLs is logged: never search terms or traffic.
+  // Only status of the approved public URLs is logged: never search terms or traffic.
   for(const row of rows)console.log('PUBLIC_INDEX_PAGE='+row.path+
     '; verdict='+row.verdict+'; coverage='+row.coverage+
     '; last_crawl='+row.crawl+'; canonical='+row.canonical+
@@ -135,11 +148,13 @@ export async function main():Promise<void>{
   if(summary)appendFileSync(summary,markdown);
   else process.stdout.write(markdown);
   // Only public-page verdict count; never print arbitrary source strings.
-  console.log('GSC_INDEX_AUDIT=COMPLETED; checked='+rows.length+
+  const apiErrors=rows.filter(r=>r.verdict==='ERROR').length;
+  console.log('GSC_INDEX_AUDIT='+(apiErrors?'PARTIAL':'COMPLETED')+'; checked='+rows.length+
     '; passed='+rows.filter(r=>r.verdict==='PASS').length+
     '; failed='+rows.filter(r=>r.verdict==='FAIL').length+
     '; unknown='+rows.filter(r=>r.verdict==='UNKNOWN'||r.verdict==='NEUTRAL').length+
-    '; api_errors='+rows.filter(r=>r.verdict==='ERROR').length);
+    '; api_errors='+apiErrors);
+  assertIndexAuditComplete(rows);
 }
 if(process.argv[1]&&pathToFileURL(process.argv[1]).href===import.meta.url){
   main().catch(error=>{

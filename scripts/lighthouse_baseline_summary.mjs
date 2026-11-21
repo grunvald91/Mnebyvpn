@@ -31,6 +31,12 @@ const pickInsight=(lhr,id)=>{
   if(!audit)return null;
   const items=Array.isArray(audit.details?.items)?audit.details.items:[];
   const node=items.find(item=>item?.type==='node');
+  // Lighthouse can return a DOM selector with a 0×0 bounding rectangle:
+  // preserve it for debugging but do not claim that it is a visible LCP node.
+  const rect=node?.boundingRect;
+  const geometry=rect&&Number.isFinite(rect.width)&&Number.isFinite(rect.height)
+    ?(rect.width>0&&rect.height>0?'nonzero':'zero-size')
+    :'unverified';
   const phaseTable=items.find(item=>item?.type==='table'&&
     Array.isArray(item.items)&&item.items.some(row=>typeof row.subpart==='string'));
   const phases=phaseTable?.items?.filter(row=>
@@ -47,7 +53,9 @@ const pickInsight=(lhr,id)=>{
     estimatedFcpSavingsMs:Number.isFinite(audit.metricSavings?.FCP)?
       digits(audit.metricSavings.FCP):null,
     element:node?{selector:node.selector||null,nodeLabel:node.nodeLabel||null,
-      snippet:node.snippet||null}:null,
+      snippet:node.snippet||null,geometry,
+      widthPx:Number.isFinite(rect?.width)?rect.width:null,
+      heightPx:Number.isFinite(rect?.height)?rect.height:null}:null,
     phases,blocking,
   };
 };
@@ -82,7 +90,8 @@ for(const device of ['mobile','desktop']){
       metrics,requestCount:items.length,topTransferredAssets:largest,
       warnings:lhr.runWarnings||[],
       insights:{
-        lcp:pickInsight(lhr,'lcp-breakdown-insight'),
+        lcp:pickInsight(lhr,'lcp-breakdown-insight')??
+          pickInsight(lhr,'lcp-phases-insight'),
         renderBlocking:pickInsight(lhr,'render-blocking-insight'),
       },
     });
@@ -147,8 +156,14 @@ const lines=[
       '',
       '**'+x.device+'**',
       lcp?.element
-        ?'- LCP element: '+(lcp.element.selector||lcp.element.nodeLabel||'unidentified')
-        :'- LCP element: not reported in insight JSON',
+        ?'- Lighthouse-reported LCP node: '+
+          (lcp.element.selector||lcp.element.nodeLabel||'unidentified')+
+          (lcp.element.geometry==='zero-size'
+            ?' (0-size geometry in audit; visual LCP element NOT verified)'
+            :lcp.element.geometry==='unverified'
+              ?' (geometry unavailable; visual LCP element NOT verified)'
+              :' (nonzero audit geometry; check screenshots)')
+        :'- LCP node: not reported in insight JSON',
       ...((lcp?.phases)||[]).map(p=>'- LCP phase '+p.part+': '+p.durationMs+' ms'),
       block?.estimatedLcpSavingsMs!==null&&block?.estimatedLcpSavingsMs!==undefined
         ?'- Estimated render-blocking LCP savings: '+block.estimatedLcpSavingsMs+' ms'

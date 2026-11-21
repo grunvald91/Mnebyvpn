@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {generateKeyPairSync} from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import {describeIndex,formatIndexAudit,inspectPublicPages} from '../scripts/gsc-index-audit.ts';
+import {assertIndexAuditComplete,describeIndex,formatIndexAudit,inspectPublicPages} from '../scripts/gsc-index-audit.ts';
 import {GSC_ORIGIN} from '../scripts/gsc-weekly-report.ts';
 import {PUBLIC_SEO_PATHS,renderSitemap} from '../apps/web/src/seo-core.ts';
 
@@ -73,6 +73,21 @@ test('index audit uses read-only service account and inspects only approved URLs
   assert.equal(seen.filter(x=>x.includes('urlInspection')).length,11);
   await assert.rejects(inspectPublicPages('sc-domain:unauthorized.example',creds,fetchImpl),
     /INDEX_PROPERTY_NOT_ALLOWED/);
+});
+
+test('scheduled index audit fails closed on API errors but not on unknown URLs',()=>{
+  const unknown=PUBLIC_SEO_PATHS.map(path=>describeIndex(path,null));
+  assert.doesNotThrow(()=>assertIndexAuditComplete(unknown));
+  const errors=[...unknown];
+  errors[3]=describeIndex(PUBLIC_SEO_PATHS[3],null,true);
+  assert.throws(()=>assertIndexAuditComplete(errors),/INDEX_PUBLIC_INSPECTION_API_ERRORS_1/);
+  assert.throws(()=>assertIndexAuditComplete(unknown.slice(0,-1)),
+    /INDEX_PUBLIC_INSPECTION_INCOMPLETE/);
+  const reordered=[...unknown];
+  [reordered[0],reordered[1]]=[reordered[1],reordered[0]];
+  assert.throws(()=>assertIndexAuditComplete(reordered),
+    /INDEX_PUBLIC_INSPECTION_INCOMPLETE/);
+  assert.match(formatIndexAudit(errors),/URL Inspection API: ошибка проверки/);
 });
 
 test('Google index inspection covers exactly the canonical sitemap pages, including legal pages',()=>{
