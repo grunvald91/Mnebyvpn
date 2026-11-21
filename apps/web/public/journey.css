@@ -1572,11 +1572,11 @@ body.journey-active[data-journey-view="account"] .account-section .eyebrow{
   font:italic 750 10px/1.3 Inter,system-ui,sans-serif;
   letter-spacing:.13em;color:#80dcff;
 }
-body.journey-active[data-journey-view="account"] .account-section .section-head h2{
+body.journey-active[data-journey-view="account"] .account-section .section-head #journey-account-title{
   margin:1px 0;font:italic 850 clamp(23px,7vw,31px)/1.1 Inter,system-ui,sans-serif;
   color:#fff;letter-spacing:-.04em;text-transform:none;
 }
-body.journey-active[data-journey-view="account"] .account-section .section-head h2 span{
+body.journey-active[data-journey-view="account"] .account-section .section-head #journey-account-title span{
   background:linear-gradient(90deg,#36dffa,#a35bff);color:transparent;
   -webkit-background-clip:text;background-clip:text;
 }
@@ -2440,7 +2440,7 @@ body.journey-active[data-journey-view="account"] .metric-card{
     padding:clamp(11px,3.5vw,16px)!important;
     gap:9px!important;
   }
-  body.journey-active[data-journey-view="support"] .contact-support h2{
+  body.journey-active[data-journey-view="support"] .contact-support #contact-support-title{
     font-size:clamp(19px,5.4vw,23px);
     margin-bottom:6px;
   }
@@ -2486,7 +2486,7 @@ body.journey-active[data-journey-view="account"] .metric-card{
   body.journey-active[data-journey-view="support"] .contact-support .eyebrow{
     margin-bottom:4px;
   }
-  body.journey-active[data-journey-view="support"] .contact-support h2{
+  body.journey-active[data-journey-view="support"] .contact-support #contact-support-title{
     margin-bottom:5px;
   }
   body.journey-active[data-journey-view="support"] .contact-support p{
