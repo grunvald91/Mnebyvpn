@@ -65,6 +65,10 @@ const support=supportConfig();
 const dnsAdminId=dnsAdminOwner();
 const ownerLinkKey=ownerDnsKey(process.env.MNEBYDNS_OWNER_LINK_KEY);
 const offlineSalesEnabled=process.env.MNEBYVPN_OFFLINE_SALES_ENABLED==='yes';
+// Owner-only manual-sale DoT issuance is independent of the PUBLIC DNS catalog.
+// Activate only after private gateway, wildcard TLS, worker and SQL audit.
+const offlineDnsIssueEnabled=offlineSalesEnabled&&
+  process.env.MNEBYVPN_OFFLINE_DNS_ISSUE_ENABLED==='yes';
 const bridgeSecret=process.env.SUPPORT_BRIDGE_SECRET??'';
 const supportAuthKey=/^[a-f0-9]{64}$/.test(bridgeSecret)
   ?bridgeSecret:(support?.botToken??'');
@@ -807,7 +811,7 @@ async function processUpdate(update:any){
          Number(listing[1])));
        const show=/^offsale:(show|links):([0-9a-f-]{36})$/.exec(actor.data??'');
        if(show)return oneAction(actor,await showOfflineSale(pool,actor.id,dnsAdminId,
-         show[2],show[1]==='links',personalDnsReady,ownerLinkKey));
+         show[2],show[1]==='links',offlineDnsIssueEnabled,ownerLinkKey));
        return oneAction(actor,offlineSaleMenu());
      }catch{return oneAction(actor,dbUnavailable());}
    }
