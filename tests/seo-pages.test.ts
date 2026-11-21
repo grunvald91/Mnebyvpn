@@ -56,6 +56,9 @@ test('homepage includes Gemini, Antigravity, canonical, organization schema and 
   // Progressive enhancement starts with one visible no-JS heading; interactive views promote their own.
   assert.equal((home.match(/<h1\b/g)??[]).length,1);
   assert.match(home,/<h1 id="legacy-hero-title">VPN без/);
+  assert.match(home,/<section class="journey-landing[^>]*aria-labelledby="journey-front-heading"/);
+  assert.match(home,/<h2 id="journey-front-heading" class="journey-screen-reader-title">/);
+  assert.match(home,/<strong id="account-name">Личный кабинет<\/strong>/);
   for(const id of ['journey-title','journey-trial-title','journey-setup-title','journey-order-title','journey-payment-heading'])
     assert.ok(home.includes('<h2 id="'+id+'">'),id);
 });

@@ -81,6 +81,34 @@ let failed=false;
    - single blocks centered in the available main area;
    - no sideways clipping, logo always links to /#plans;
    - content-heavy screens may scroll, without clipping the legal footer. */
+/* Check the accessibility tree's candidate H1 in the PARENT document.
+   Counting tags alone missed H1 nodes nested in display:none sections. */
+async function auditActiveHeading(page,expected,label){
+  const result=await page.evaluate(()=>{
+    const all=[...document.querySelectorAll('main h1')];
+    const accessible=all.filter(heading=>{
+      for(let node=heading;node;node=node.parentElement){
+        if(node.hidden||node.getAttribute('aria-hidden')==='true')return false;
+        const style=getComputedStyle(node);
+        if(style.display==='none'||style.visibility==='hidden'||style.visibility==='collapse')
+          return false;
+      }
+      return true;
+    }).map(node=>node.id);
+    const primary=accessible.length===1?document.getElementById(accessible[0]):null;
+    return {route:document.body.dataset.journeyView,
+      total:all.length,accessible,
+      headingText:primary?.textContent?.trim()||'',
+      mainSection:primary?.closest('section')?.id||'',
+      accountVisible:primary?.id==='account-name'?
+        primary.getBoundingClientRect().width>5:null};
+  });
+  console.log('PRIMARY_HEADING_'+label+'='+JSON.stringify(result));
+  if(result.total!==1||result.accessible.length!==1||
+    result.accessible[0]!==expected||!result.headingText||
+    (expected==='account-name'&&!result.accountVisible))failed=true;
+  return result;
+}
 async function auditNativeGeometry(page,selector,label){
   const geometry=await page.evaluate(selector=>{
     const main=document.querySelector('body>main');
@@ -143,6 +171,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     return document.body.classList.contains('journey-active')&&btn&&btn.textContent!=='—'
       && !frame?.contentDocument?.querySelector('.cta')?.disabled;
   },{timeout:15000});
+  await auditActiveHeading(page,'journey-front-heading','plans_'+width+'x'+height);
   // The design fades its title and tariff card in over ~1.5 seconds.
   // Capture settled pixels, not an initially transparent card.
   await page.waitForFunction(()=>{
@@ -411,6 +440,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   if(await page.evaluate(()=>document.body.dataset.journeyView!=='plans'))failed=true;
   await page.frameLocator('#journey-front-frame').locator('#trial-vpn').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='trial-auth');
+  await auditActiveHeading(page,'journey-trial-title','trial_'+width+'x'+height);
   const trial=await page.evaluate(()=>{
     const form=document.querySelector('#email-start-form');
     const panel=document.querySelector('#email-auth-panel');
@@ -624,6 +654,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   });
   await page.frameLocator('#journey-front-frame').locator('.top-links a[href="/#account"]').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='account');
+  await auditActiveHeading(page,'account-name','account');
   const cabinet=await page.evaluate(()=>({
     emailShown:document.getElementById('email-auth-panel').getBoundingClientRect().width>0,
     hash:location.hash,
@@ -787,6 +818,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
 
   await page.frameLocator('#journey-front-frame').locator('.top-links a[href="/#account"]').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='account');
+  await auditActiveHeading(page,'account-name','account');
   await page.waitForFunction(()=>{
     const v=document.querySelector('#journey-front-frame')?.contentDocument?.querySelector('#bgv');
     return !v||v.paused;
@@ -859,6 +891,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   await page.frameLocator('#journey-front-frame').locator('.desk-durations .dur-pill[data-d="15"]').click();
   await page.frameLocator('#journey-front-frame').locator('.cta').click();
   await page.waitForFunction(()=>document.body.dataset.journeyView==='checkout');
+  await auditActiveHeading(page,'journey-order-title','checkout');
   const order=await page.evaluate(()=>({
     route:location.hash,
     total:document.querySelector('#journey-order-price')?.textContent,
