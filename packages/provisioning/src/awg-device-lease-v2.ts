@@ -7,7 +7,7 @@
  * V1 is intentionally not modified: old signed leases cannot be replayed as
  * per-slot leases. Only FI217 is certified for this draft contract.
  */
-import {createHash,createPublicKey,randomBytes,sign,verify,type KeyObject}
+import {createHash,randomBytes,sign,verify,type KeyObject}
   from 'node:crypto';
 
 const ID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -137,12 +137,13 @@ export function verifyAwgSlotReceipt(
        !HEX.test(receipt.commandSha256)||!HEX.test(receipt.nonce)||
        !Number.isFinite(milliseconds(receipt.appliedAt))||
        Math.abs(milliseconds(receipt.appliedAt)-timestamp)>45_000||
-       enrolledNodePublicKey?.asymmetricKeyType!=='ed25519')return false;
+       enrolledNodePublicKey?.type!=='public'||
+       enrolledNodePublicKey.asymmetricKeyType!=='ed25519')return false;
     const digest=createHash('sha256').update(awgSlotLeasePayload(command))
       .digest('hex');
     if(digest!==receipt.commandSha256)return false;
     const payload=awgSlotReceiptPayload(receipt);
-    return verify(null,payload,createPublicKey(enrolledNodePublicKey),
+    return verify(null,payload,enrolledNodePublicKey,
       Buffer.from(receipt.signature,'base64url'));
   }catch{return false;}
 }
