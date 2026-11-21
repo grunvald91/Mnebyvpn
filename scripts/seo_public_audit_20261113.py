@@ -3,6 +3,7 @@
 from html.parser import HTMLParser
 import ssl
 import sys
+import time
 import xml.etree.ElementTree as ET
 import urllib.error
 import urllib.request
@@ -50,16 +51,37 @@ opener=urllib.request.build_opener(
     urllib.request.ProxyHandler({}),
     urllib.request.HTTPSHandler(context=ssl.create_default_context()),
 )
+consecutive_transport_errors=0
 for path in ROUTES:
     req=urllib.request.Request(ORIGIN+path,headers={"User-Agent":"MNEBYVPN-own-site-SEO-audit/1.0","Accept":"*/*"})
-    try:
-        r=opener.open(req,timeout=11)
-    except urllib.error.HTTPError as exc:
-        r=exc
-    except Exception as exc:
-        print("PATH="+path+" transport="+type(exc).__name__,flush=True)
+    r=None
+    # A transient edge/runner problem deserves one retry for the homepage,
+    # but never scan 21 URLs for 11 seconds each when the host is unreachable.
+    attempts=2 if path=="/" else 1
+    for attempt in range(1,attempts+1):
+        try:
+            r=opener.open(req,timeout=7)
+            break
+        except urllib.error.HTTPError as exc:
+            # An HTTP 4xx/5xx response is real evidence, not a network failure.
+            r=exc
+            break
+        except Exception as exc:
+            print("PATH="+path+" transport="+type(exc).__name__+
+                  " attempt="+str(attempt)+"/"+str(attempts),flush=True)
+            if attempt<attempts:
+                time.sleep(1)
+    if r is None:
         failures.append(path+": network error")
+        consecutive_transport_errors+=1
+        if path=="/" or consecutive_transport_errors>=3:
+            print("SEO_CRAWLER_TRANSPORT_UNAVAILABLE="+path,flush=True)
+            print("SEO_PUBLIC_CRAWLER_GATE=FAIL_NETWORK",flush=True)
+            # Failure is explicit. Other independent network vantage points
+            # may be healthy, so do not mislabel this as a site SEO defect.
+            sys.exit(2)
         continue
+    consecutive_transport_errors=0
     with r:
         body=r.read(700000).decode("utf-8",errors="replace")
         h=r.headers
