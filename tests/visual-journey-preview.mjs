@@ -159,6 +159,12 @@ async function auditNativeGeometry(page,selector,label){
 for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[390,1000],[1440,900]]){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
   const browserErrors=[];
+  const backdropRequests=[];
+  page.on('request',request=>{
+    const pathname=new URL(request.url()).pathname;
+    if(/^\/(?:bg3|bg-desktop)(?:-poster)?\.(?:mp4|webm|webp)$/.test(pathname))
+      backdropRequests.push(pathname);
+  });
   page.on('pageerror',error=>{
     const message=String(error.message).slice(0,250);
     browserErrors.push(message);
@@ -182,6 +188,20 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       Number(getComputedStyle(card).opacity)>=0.99 &&
       Number(getComputedStyle(heading).opacity)>=0.99;
   },null,{timeout:10000});
+  // The host iframe stays 480px wide on a 1440px desktop. The background
+  // must follow the iframe CSS layout, never the outer window's width.
+  const videoChoice=await page.evaluate(()=>{
+    const doc=document.querySelector('#journey-front-frame')?.contentDocument;
+    const mobile=doc?.querySelector('#bgv'),desktop=doc?.querySelector('#bgv-desktop');
+    return {frameWidth:doc?.documentElement?.clientWidth,
+      mobileSources:mobile?.querySelectorAll('source').length??0,
+      desktopSources:desktop?.querySelectorAll('source').length??0,
+      desktopPosterHasSrc:doc?.querySelector('.desk-poster')?.hasAttribute('src')??false};
+  });
+  console.log('BACKDROP_ASSETS_'+width+'x'+height+'='+JSON.stringify({videoChoice,backdropRequests}));
+  if(videoChoice.frameWidth>=768||videoChoice.desktopSources>0||
+    videoChoice.desktopPosterHasSrc||backdropRequests.some(path=>path.startsWith('/bg-desktop')))
+    failed=true;
   const metrics=await page.evaluate(()=>{
     const frame=document.querySelector('#journey-front-frame');
     const inner=frame.contentDocument;
@@ -564,6 +584,62 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   if(!returned.home||!returned.emailRestored){
     console.error('TRIAL_AUTH_BACK_FAILED',JSON.stringify(returned));failed=true;
   }
+  await page.close();
+}
+
+// The standalone (non-embedded) wide landing must keep its desktop backdrop.
+{
+  const page=await browser.newPage({viewport:{width:1200,height:800}});
+  const media=[];
+  page.on('pageerror',error=>{console.error('STANDALONE_DESKTOP_ERROR',String(error));failed=true;});
+  page.on('request',request=>{
+    const pathname=new URL(request.url()).pathname;
+    if(pathname.startsWith('/bg-desktop'))media.push(pathname);
+  });
+  await page.goto(base+'/landing-art.html',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>{
+    const poster=document.querySelector('.desk-poster');
+    const video=document.querySelector('#bgv-desktop');
+    return poster?.getAttribute('src')==='/bg-desktop-poster.webp' &&
+      video?.querySelectorAll('source').length===2;
+  });
+  const actual=await page.evaluate(()=>({
+    poster:document.querySelector('.desk-poster')?.getAttribute('src'),
+    desktopSources:document.querySelector('#bgv-desktop')?.querySelectorAll('source').length,
+    mobileSources:document.querySelector('#bgv')?.querySelectorAll('source').length,
+    visible:getComputedStyle(document.querySelector('#desk-scene')).display!=='none',
+  }));
+  console.log('STANDALONE_DESKTOP_BACKGROUND='+JSON.stringify({actual,media}));
+  if(!actual.visible||actual.desktopSources!==2||actual.mobileSources!==0||
+    !media.includes('/bg-desktop-poster.webp'))failed=true;
+  await page.close();
+}
+
+// Deep-linked account must not start downloading either video in the hidden iframe.
+{
+  const page=await browser.newPage({viewport:{width:390,height:844}});
+  const media=[];
+  page.on('pageerror',error=>{console.error('ACCOUNT_LANDING_MEDIA_ERROR',String(error));failed=true;});
+  page.on('request',request=>{
+    if(/^\/bg(?:3|-desktop)\.(?:mp4|webm)$/.test(new URL(request.url()).pathname))
+      media.push(new URL(request.url()).pathname);
+  });
+  await page.goto(base+'/#account',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>{
+    const frame=document.querySelector('#journey-front-frame');
+    return document.body.dataset.journeyView==='account' &&
+      frame?.contentDocument?.readyState==='complete';
+  },null,{timeout:12000});
+  await page.waitForTimeout(300);
+  const actual=await page.evaluate(()=>{
+    const doc=document.querySelector('#journey-front-frame')?.contentDocument;
+    return {
+      mobileSources:doc?.querySelector('#bgv')?.querySelectorAll('source').length??-1,
+      desktopSources:doc?.querySelector('#bgv-desktop')?.querySelectorAll('source').length??-1,
+    };
+  });
+  console.log('ACCOUNT_NO_BACKGROUND_DOWNLOAD='+JSON.stringify({actual,media}));
+  if(actual.mobileSources!==0||actual.desktopSources!==0||media.length)failed=true;
   await page.close();
 }
 
