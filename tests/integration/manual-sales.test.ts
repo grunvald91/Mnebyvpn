@@ -413,6 +413,10 @@ test('private three-peer intent per verified AWG node never issues live allocati
   assert.deepEqual(reservations.map(r=>Number(r.slot_number)),[1,2,3]);
   assert.deepEqual(reservations.map(r=>r.peer_public_key),keys);
   assert.ok(reservations.every(r=>r.state==='RESERVED'));
+  const eligible=async()=>Number((await pool.query(
+    'SELECT count(*)::int n FROM owner_vpn_awg_eligible_peer_reservations '+
+    'WHERE node_id=$1 AND entitlement_id=$2',[nodeId,entitlement])).rows[0].n);
+  assert.equal(await eligible(),3,'all 3 seats have current eligibility, but NO live grant');
   assert.equal((await pool.query(
     'SELECT count(*)::int n FROM vpn_awg_peer_allocations WHERE entitlement_id=$1',
     [entitlement])).rows[0].n,0,'no legacy AWG peer issued');
@@ -424,8 +428,13 @@ test('private three-peer intent per verified AWG node never issues live allocati
     "UPDATE owner_vpn_device_seats SET state='REVOKED',revoked_at=clock_timestamp() "+
     "WHERE entitlement_id=$1 AND slot_number=1",[entitlement]);
   assert.equal(await ask(owner,1,nodeId),'DENY_ACCESS','revoked key cannot get new authorization');
+  assert.equal(await eligible(),2,'revoked key must not remain eligible');
   await pool.query("UPDATE vpn_node_enrollment_inventory SET status='revoked' WHERE node_id=$1",[nodeId]);
   assert.equal(await ask(owner,2,nodeId),'DENY_NODE','revoked node cannot receive new reservations');
+  assert.equal(await eligible(),0,'revoked node hides all historical reservations');
+  assert.equal((await pool.query(
+    'SELECT count(*)::int n FROM owner_vpn_awg_peer_reservations WHERE node_id=$1',
+    [nodeId])).rows[0].n,3,'history remains auditable without being eligible');
   await pool.query("UPDATE entitlements SET state='SUSPENDED' WHERE id=$1",[entitlement]);
   assert.equal(await ask(owner,2,nodeId),'DENY_ACCESS','suspension blocks reservations');
 });
