@@ -308,10 +308,31 @@ const landingArtPolicy = [
   "frame-ancestors 'self'",
 ].join('; ');
 
+// Hash immutable source buffers once per process rather than hashing every
+// CSS/JS/image request. Dynamic pages and user-specific responses never use it.
+const publicEtagCache=new WeakMap<Buffer,string>();
+function publicEtag(bytes: Buffer): string {
+  let etag=publicEtagCache.get(bytes);
+  if(!etag){
+    etag='"'+createHash('sha256').update(bytes).digest('hex')+'"';
+    publicEtagCache.set(bytes,etag);
+  }
+  return etag;
+}
+function matchesPublicEtag(req: IncomingMessage, etag: string): boolean {
+  // RFC conditional GET permits weak validators and comma-separated values.
+  if(req.method!=='GET'&&req.method!=='HEAD')return false;
+  const raw=req.headers['if-none-match'];
+  if(typeof raw!=='string')return false;
+  return raw.split(',').some(part=>{
+    const item=part.trim();
+    return item==='*'||item===etag||item==='W/'+etag;
+  });
+}
 function sendArt(req: IncomingMessage, res: ServerResponse) {
   res.setHeader('X-Robots-Tag','noindex, follow');
   // This is static, non-personalized artwork. Keep the main HTML uncached.
-  const etag='"'+createHash('sha256').update(landingArtHtml).digest('hex')+'"';
+  const etag=publicEtag(landingArtHtml);
   res.setHeader('ETag',etag);
   res.setHeader('Cache-Control', 'public, no-cache, must-revalidate');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -320,7 +341,7 @@ function sendArt(req: IncomingMessage, res: ServerResponse) {
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Content-Security-Policy', landingArtPolicy);
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  if(req.headers['if-none-match']?.split(',').some(t=>t.trim()===etag)){
+  if(matchesPublicEtag(req,etag)){
     res.writeHead(304).end();return;
   }
   res.writeHead(200).end(landingArtHtml);
@@ -382,10 +403,10 @@ function send(res: ServerResponse, status: number, body: string|Buffer, type = '
 // reuse unchanged bytes without mixing revisions after an atomic release.
 // Customer HTML, catalog, checkout and all JSON APIs remain no-store.
 function sendStatic(req: IncomingMessage, res: ServerResponse, data: Buffer, type: string) {
-  const etag='"'+createHash('sha256').update(data).digest('hex')+'"';
+  const etag=publicEtag(data);
   const cache='public, no-cache, must-revalidate';
   res.setHeader('ETag',etag);
-  if(req.headers['if-none-match']?.split(',').some(t=>t.trim()===etag)){
+  if(matchesPublicEtag(req,etag)){
     send(res,304,'',type,cache);return;
   }
   send(res,200,data,type,cache);
