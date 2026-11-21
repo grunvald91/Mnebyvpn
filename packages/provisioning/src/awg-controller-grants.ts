@@ -172,9 +172,13 @@ export async function stageAwgGrant(
       throw new AwgControllerError('Stale offline renewal candidate');
     if(old&&old.peer_public_key!==input.peerPublicKey)
       throw new AwgControllerError('Key rotation requires separate approval');
+    // The shared IPAM ledger includes both already-provisioned legacy peers
+    // and dormant owner device seats. Never choose an address based only on
+    // the legacy table, or a real grant could steal a reserved owner address.
+    // The 0145 schema migration MUST be applied before this worker is shipped.
     const used=await tx.query<{client_ipv4:string}>(
-      'SELECT host(client_ipv4) AS client_ipv4 FROM vpn_awg_peer_allocations '+
-      'WHERE node_id=$1 FOR UPDATE',[input.nodeId]);
+      'SELECT host(client_ipv4) AS client_ipv4 FROM vpn_awg_ipv4_claims '+
+      'WHERE node_id=$1',[input.nodeId]);
     const ip=old?.client_ipv4??nextClientAddress(
       pool.subnet_cidr,used.rows.map(row=>row.client_ipv4));
     if(!ip.startsWith(prefix+'.'))
