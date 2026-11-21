@@ -316,7 +316,7 @@ test('desktop and mobile storefront present all 3 RUB products without Stars or 
   assert.match(art,/сетевыми ограничениями|сетевых ограничениях/);
   assert.doesNotMatch(art,/⭐|Prodamus|payform/i);
   assert.doesNotMatch(art,/id="old-bundle"|>499 ₽</);
-  assert.match(art,/133 ₽\/устройство/);
+  assert.doesNotMatch(art,/133 ₽\/устройство/);
   assert.match(art,/send\('trial'\)/);
   assert.doesNotMatch(art,/send\('trial-dns'\)/);
   assert.match(art,/выдаются только после подтверждённой оплаты/i);
@@ -422,7 +422,21 @@ test('promotional duration discounts are computed from live per-product minor-un
   assert.match(art,/data-discount-days="60" hidden/);
   assert.match(art,/data-discount-days="90" hidden/);
   assert.match(art,/const base=findOffer\(selectedProduct,30\)/);
-  assert.match(art,/offerMinor\/baseline/);
+  assert.match(art,/Math\.floor\(\(baseline-offerMinor\)\*100\/baseline\)/);
   assert.match(art,/badge\.hidden=!show/);
   assert.doesNotMatch(art,/−12%|−21%|<em>ХИТ<\/em>/);
+});
+
+test('storefront metadata uses validated live quota and device limits, not chosen term or printed RUB text',()=>{
+  const art=file('apps/web/public/landing-art.html');
+  const journey=file('apps/web/public/journey.js');
+  assert.match(journey,/dnsQuotaQueriesPer30d:plan\?\.dnsQuotaQueriesPer30d\?\?null/);
+  assert.match(journey,/deviceLimit:plan\?\.deviceLimit\?\?null/);
+  assert.match(art,/const dnsQuota=positiveSafeInt\(dnsOffer\?\.dnsQuotaQueriesPer30d\)/);
+  assert.match(art,/dnsQuota\.toLocaleString\('ru-RU'\)\+' DNS-запросов \/ 30 д'/);
+  assert.match(art,/const bundleMinor=positiveSafeInt\(bundleOffer\?\.priceMinor\)/);
+  assert.match(art,/Math\.ceil\(bundleMinor\/\(100\*bundleDevices\)\)/);
+  assert.doesNotMatch(art,/parseInt\(String\(bundleOffer\.price\)/);
+  assert.doesNotMatch(art,/1 000 000 DNS-запросов \/ '\+selectedDays/);
+  assert.match(art,/max-height:calc\(100dvh - 12px\);overflow-y:auto/);
 });

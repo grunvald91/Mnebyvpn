@@ -289,6 +289,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       videoSources:inner.querySelectorAll('video source').length,
       iframeHasTariffs:inner.querySelectorAll('.desk-durations .dur-pill').length===4 && inner.querySelectorAll('.tier').length===3,
       bundlePrice:inner.querySelector('#price-bundle')?.textContent?.trim()||'',
+      bundleUnitMeta:inner.querySelector('#meta-bundle')?.textContent?.trim(),
+      dnsQuotaMeta:inner.querySelector('#meta-smart_dns')?.textContent?.trim(),
       discount60:inner.querySelector('[data-discount-days="60"]')?.textContent?.trim(),
       discount90:inner.querySelector('[data-discount-days="90"]')?.textContent?.trim(),
       cardOpacity:Number(getComputedStyle(inner.querySelector('.card')).opacity),
@@ -307,7 +309,9 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   if(metrics.horizontalOverflow||metrics.innerHorizontalOverflow||browserErrors.length||
     !metrics.iframeHasHeader||!metrics.iframeHasEarth||!metrics.iframeHasTariffs||
     !metrics.bundlePrice.includes('₽')||
-    metrics.discount60!=='−12%'||metrics.discount90!=='−21%'||
+    metrics.discount60!=='−12%'||metrics.discount90!=='−20%'||
+    !metrics.bundleUnitMeta.includes('≈ 133 ₽/устройство')||
+    !/1\D*000\D*000 DNS-запросов \/ 30 д/.test(metrics.dnsQuotaMeta)||
     !metrics.videoPresent||metrics.retryVisible||metrics.cardOpacity<0.99||
     (width<900&&metrics.backdropFilter!=='none')||metrics.canvasPresent||metrics.introFilter!=='none'||
     (width<=390&&(metrics.lockWidth>52||metrics.clearLockGap<20||metrics.cardTop>350))||
@@ -432,6 +436,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       smartPressed:inner.querySelector(selProd).getAttribute('aria-pressed'),
       dur60Pressed:inner.querySelector(selDur).getAttribute('aria-checked'),
       summary:inner.querySelector('#sum').textContent,
+      bundleUnitMeta:inner.querySelector('#meta-bundle')?.textContent?.trim(),
+      dnsQuotaMeta:inner.querySelector('#meta-smart_dns')?.textContent?.trim(),
       discount60:inner.querySelector('[data-discount-days="60"]')?.textContent?.trim(),
       discount90:inner.querySelector('[data-discount-days="90"]')?.textContent?.trim(),
       buyEnabled:!inner.querySelector('.cta').disabled,
@@ -442,7 +448,9 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
   console.log('PRODUCT_SWITCH_'+width+'='+JSON.stringify(switched));
   if(switched.smartPressed!=='true'||switched.dur60Pressed!=='true'||
      !switched.summary.includes('Smart Доступ')||!switched.summary.includes('60')||
-     switched.discount60!=='−10%'||switched.discount90!=='−20%'||
+     switched.discount60!=='−9%'||switched.discount90!=='−19%'||
+     !switched.bundleUnitMeta.includes('≈ 233 ₽/устройство')||
+     !/1\D*000\D*000 DNS-запросов \/ 30 д/.test(switched.dnsQuotaMeta)||
      !switched.buyEnabled||switched.frameLoads!==0||Number(switched.opacity)<0.99)failed=true;
   // Let the iframe finish any deferred parent-height sync from tariff taps.
   await page.waitForTimeout(220);

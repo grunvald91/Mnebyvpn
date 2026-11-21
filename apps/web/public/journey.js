@@ -46,7 +46,8 @@
           price:plan?.rubMinor?formatMoney(plan.rubMinor):'—',
           priceMinor:Number.isSafeInteger(plan?.rubMinor)?plan.rubMinor:null,
           title:plan?.title||'',
-          deviceLimit:plan?.deviceLimit||(product==='bundle'?3:1),
+          deviceLimit:plan?.deviceLimit??null,
+          dnsQuotaQueriesPer30d:plan?.dnsQuotaQueriesPer30d??null,
         });
       }
     }

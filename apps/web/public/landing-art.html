@@ -175,6 +175,7 @@ h1 .l2{margin-left:6px;background:linear-gradient(95deg,#38eeff 5%,#7ebbff 48%,#
 /* Popovers & Mobile Bottom Sheets */
 .dns-popover,.payment-popover,.compare-popover{position:fixed;left:0;right:0;bottom:0;top:auto;transform:none;max-width:100%;margin:0 auto;z-index:40;border-radius:18px 18px 0 0;border:1px solid rgba(92,226,255,.78);background:rgba(8,18,52,.98);box-shadow:0 -12px 40px rgba(0,0,15,.88);padding:12px 14px calc(12px + env(safe-area-inset-bottom,0px));color:#edf5ff;font:400 13px/1.36 Inter,system-ui,Roboto,Arial,sans-serif}
 .dns-popover[hidden],.payment-popover[hidden],.compare-popover[hidden]{display:none!important}
+@media(max-width:767px){.dns-popover,.payment-popover,.compare-popover{max-height:calc(100dvh - 12px);overflow-y:auto;overscroll-behavior:contain}}
 .dns-popover-head,.payment-popover-head{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#fff}
 .dns-popover-head strong,.payment-popover-head strong{font:700 14px/1.2 Inter,system-ui,Roboto,Arial,sans-serif}
 .dns-popover-head button,.payment-popover-head button{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;margin:-8px -8px -8px 0;border-radius:50%;background:rgba(77,110,175,.35);font:500 20px/1 Inter,system-ui,Roboto,Arial,sans-serif}
@@ -408,9 +409,9 @@ footer nav a:first-child{border:0}
           <div class="tier-price-row">
             <strong class="tier-price" id="price-bundle">—</strong>
           </div>
-          <p class="tier-meta" id="meta-bundle">133 ₽/устройство · до 3 устройств</p>
+          <p class="tier-meta" id="meta-bundle">VPN + Smart DNS + Telegram-прокси</p>
           <ul class="tier-list">
-            <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>Smart DNS (до 1 млн · AI и др.)</span></li>
+            <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>Smart DNS (AI и другие сервисы)</span></li>
             <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>Telegram-прокси (direct + ru)</span></li>
             <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>VPN до 3 устр. + Apple (.mobileconfig) / DoT</span></li>
           </ul>
@@ -423,7 +424,7 @@ footer nav a:first-child{border:0}
           <div class="tier-top-row"><h3>Smart Доступ</h3></div>
           <p class="tier-sub">Smart DNS для выбранных ресурсов + прокси Telegram.</p>
           <div class="tier-price-row"><strong class="tier-price" id="price-smart_dns">—</strong></div>
-          <p class="tier-meta" id="meta-smart_dns">1 000 000 DNS-запросов / 30 д</p>
+          <p class="tier-meta" id="meta-smart_dns">Smart DNS + Telegram-прокси</p>
           <ul class="tier-list">
             <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>Smart DNS (ChatGPT, Gemini, Claude и другие)</span></li>
             <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>Telegram-прокси (direct и ru + инструкция)</span></li>
@@ -600,6 +601,10 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
   let selectedProduct='bundle',selectedDays=30,ready=false,serverData=null,resizeQueued=false,lastHeight=0;
   const setText=(el,v)=>{if(el&&el.textContent!==v)el.textContent=v;};
   const findOffer=(product,days)=>(serverData?.offers||[]).find(o=>o.product===product&&o.days===days);
+  const positiveSafeInt=value=>{
+    const n=typeof value==='string'&&value.trim()?Number(value):value;
+    return Number.isSafeInteger(n)&&n>0?n:null;
+  };
 
   const resize=()=>{
     if(resizeQueued)return;
@@ -633,11 +638,21 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
       setText($('#price-'+prod),offer?.available?offer.price:'—');
     }
     const bundleOffer=findOffer('bundle',selectedDays);
-    if(bundleOffer?.available){
-      const rub=parseInt(String(bundleOffer.price).replace(/\s+/g,''),10);
-      if(Number.isFinite(rub)&&rub>0)setText($('#meta-bundle'),Math.round(rub/3)+' ₽/устройство · до 3 устройств');
-    }
-    setText($('#meta-smart_dns'),'1 000 000 DNS-запросов / '+selectedDays+' д');
+    const bundleDevices=positiveSafeInt(bundleOffer?.deviceLimit);
+    const bundleMinor=positiveSafeInt(bundleOffer?.priceMinor);
+    const bundleUnitCost=bundleDevices&&bundleMinor
+      ?'≈ '+Math.ceil(bundleMinor/(100*bundleDevices)).toLocaleString('ru-RU')+' ₽/устройство · '
+      :'';
+    setText($('#meta-bundle'),bundleOffer?.available&&bundleDevices
+      ?bundleUnitCost+(bundleDevices===1?'1 устройство':'до '+bundleDevices+' устройств')
+      :'VPN + Smart DNS + Telegram-прокси');
+
+    // The server's quota field is explicitly per 30 days, NOT per selected plan term.
+    const dnsOffer=findOffer('smart_dns',selectedDays);
+    const dnsQuota=positiveSafeInt(dnsOffer?.dnsQuotaQueriesPer30d);
+    setText($('#meta-smart_dns'),dnsOffer?.available&&dnsQuota
+      ?dnsQuota.toLocaleString('ru-RU')+' DNS-запросов / 30 д'
+      :'Smart DNS + Telegram-прокси');
     // Discount badges are calculated only from live prices for the selected product.
     // Never claim a fixed saving when plans change or baseline is unavailable.
     const base=findOffer(selectedProduct,30);
@@ -647,7 +662,7 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
       const baseline=Number.isSafeInteger(baseMinor)&&baseMinor>0
         ?baseMinor*days/30:0;
       const saving=baseline>0&&Number.isSafeInteger(offerMinor)&&offerMinor>0
-        ?Math.round((1-offerMinor/baseline)*100):0;
+        ?Math.floor((baseline-offerMinor)*100/baseline):0;
       const show=Boolean(base?.available&&offer?.available&&saving>0&&saving<100);
       badge.hidden=!show;
       setText(badge,show?'−'+saving+'%':'');
