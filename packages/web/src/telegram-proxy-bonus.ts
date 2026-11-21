@@ -153,6 +153,8 @@ export async function loadCustomerProxyBonus(
     'AND e.state=$4 AND e.starts_at<=clock_timestamp() '+
     'AND e.expires_at>clock_timestamp() AND o.state=$5 '+
     'AND o.product IN ($3,$6) AND b.state=$4 '+
+    (ownerOnly?'AND o.provider=\'manual_sale\' '+
+      'AND EXISTS(SELECT 1 FROM manual_sales m WHERE m.order_id=o.id) ':'')+
     'AND b.disabled_at IS NULL AND '+
     "b.verified_at>clock_timestamp()-($7::integer * interval '1 minute') LIMIT 1";
   const {rows}=await db.query(sql,[accountId,entitlementId,'smart_dns','ACTIVE','PAID','bundle',maxVerificationAgeMinutes]);
