@@ -35,5 +35,5 @@ test('about script is actually served by website under same-origin CSP',()=>{
   assert.match(index,/<script src="\/about\.js" defer><\/script>/);
   assert.match(server,/const aboutJs = await readFile/);
   assert.match(server,/url\.pathname === '\/about\.js'/);
-  assert.match(server,/send\(res, 200, aboutJs, 'text\/javascript; charset=utf-8'\)/);
+  assert.match(server,/sendStatic\(req,res,aboutJs,'text\/javascript; charset=utf-8'\)/);
 });
