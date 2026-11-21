@@ -372,7 +372,7 @@ test('private three-peer intent per verified AWG node never issues live allocati
     "DO UPDATE SET applied_revision=1,last_observed_at=clock_timestamp()",
     [entitlement]);
   for(let i=0;i<3;i++){
-    const inserted=await pool.query(
+    const inserted: import('pg').QueryResult<{result:string}>=await pool.query<{result:string}>(
       'SELECT public.owner_vpn_request_device_key($1::bigint,$2::uuid,$3::smallint,$4::text) AS result',
       [owner,orderId,i+1,keys[i]]);
     assert.equal(inserted.rows[0].result,'REQUESTED');
