@@ -33,7 +33,7 @@ test('owner three V2 slots: bill-gated stage -> signed ACK x3 -> one-slot revoke
   const owner=882913;
   const label='v2_'+randomUUID().replaceAll('-','').slice(0,13);
   const sale=await registerOfflineSale(pool,owner,owner,
-    'v2-outbox-'+randomUUID().slice(0,10),'@'+label+' 399');
+    String(Date.now()),'@'+label+' 399');
   const orderId=/Заказ: ([0-9a-f-]{36})/.exec(sale.text)?.[1];
   assert.ok(orderId,sale.text);
   const entitlement=(await pool.query(
