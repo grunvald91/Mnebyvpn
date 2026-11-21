@@ -280,7 +280,11 @@ export async function showOfflineSale(
   const buttons:Button[][]=[];
   if(reveal){
     if(ready){
-      const vpn=dnsKey?await issueOwnerOfflineSubscriptionLink(pool,actorId,r.order_id,r.vpn_id,dnsKey):null;
+      // A single provider failure must never hide another service's link.
+      let vpn:Awaited<ReturnType<typeof issueOwnerOfflineSubscriptionLink>>=null;
+      try{
+        if(dnsKey)vpn=await issueOwnerOfflineSubscriptionLink(pool,actorId,r.order_id,r.vpn_id,dnsKey);
+      }catch{/* Fail closed; keep the owner card and other services available. */}
       if(vpn){
         lines.push('\n🔐 VPN (обновляемая подписка):\n'+vpn.link);
         buttons.push([{text:'📋 Скопировать VPN',copy_text:{text:vpn.link}}]);
@@ -296,8 +300,11 @@ export async function showOfflineSale(
     if(dnsReady&&ownerProxyReleaseReady(process.env)){
       const routes=parseOwnerProxyRoutes(process.env.MNEBYVPN_OFFLINE_MTPROXY_ROUTES_JSON);
       if(routes){
-        const bonus=await loadCustomerProxyBonus(pool,r.account_id,r.dns_id,
-          process.env.WEB_DNS_MT_PROXY_BONUS_KEY!,routes,5,true);
+        let bonus:Awaited<ReturnType<typeof loadCustomerProxyBonus>>=null;
+        try{
+          bonus=await loadCustomerProxyBonus(pool,r.account_id,r.dns_id,
+            process.env.WEB_DNS_MT_PROXY_BONUS_KEY!,routes,5,true);
+        }catch{/* Never expose ciphertext or customer secrets in errors. */}
         if(bonus)for(const p of bonus.links){
           lines.push('\n📨 Telegram-прокси ('+p.label+'):\n'+p.url);
           buttons.push([{text:'📋 Прокси · '+p.route,copy_text:{text:p.url}}]);
