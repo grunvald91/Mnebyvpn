@@ -147,7 +147,7 @@ test('website 3-in-1 navigation presents VPN Лайт, Smart Доступ and Э
   assert.match(html,/<img class="brand-avatar" src="\/brand-avatar\.webp"/);
   assert.match(html,/rel="icon" type="image\/webp" href="\/brand-avatar\.webp"/);
   assert.match(server,/url\.pathname === '\/brand-avatar\.webp'/);
-  assert.match(server,/brandAvatar, 'image\/webp'/);
+  assert.match(server,/sendStatic\(req,res,brandAvatar,'image\/webp'\)/);
   const avatar=readFileSync(new URL('../apps/web/public/brand-avatar.webp',import.meta.url));
   assert.equal(avatar.subarray(0,4).toString('ascii'),'RIFF');
   assert.equal(avatar.subarray(8,12).toString('ascii'),'WEBP');
