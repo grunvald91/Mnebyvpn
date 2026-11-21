@@ -295,8 +295,8 @@ footer nav a:first-child{border:0}
 <div class="bg" aria-hidden="true"></div>
 
 <div class="desk-scene" id="desk-scene" aria-hidden="true">
-  <img class="desk-poster" src="/bg-desktop-poster.webp" alt="" decoding="async" fetchpriority="high">
-  <video id="bgv-desktop" class="bgv-desktop" autoplay muted loop playsinline preload="none" poster="/bg-desktop-poster.webp" disablepictureinpicture aria-hidden="true" tabindex="-1"></video>
+  <img class="desk-poster" data-src="/bg-desktop-poster.webp" alt="" decoding="async">
+  <video id="bgv-desktop" class="bgv-desktop" autoplay muted loop playsinline preload="none" disablepictureinpicture aria-hidden="true" tabindex="-1"></video>
   <div class="desk-scrim"></div>
 </div>
 
@@ -504,7 +504,7 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
 // Dual-orientation video controller: never download both desktop and mobile videos.
 (()=>{
   const mobScene=$('#mob-scene'),mobVideo=$('#bgv');
-  const deskScene=$('#desk-scene'),deskVideo=$('#bgv-desktop');
+  const deskScene=$('#desk-scene'),deskVideo=$('#bgv-desktop'),deskPoster=$('.desk-poster');
   const mqlDesk=matchMedia('(min-width: 768px)');
   const isDesktopViewport=()=>{
     if(mqlDesk.matches)return true;
@@ -514,7 +514,10 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
     return false;
   };
   const autoplayAllowed=!R&&!navigator.connection?.saveData;
-  let hostActive=true,mobStarted=false,deskStarted=false;
+  // An embedded storefront is inactive until the parent explicitly activates
+  // it; account/payment deep links must not download background video first.
+  // Standalone /landing-art.html still plays automatically.
+  let hostActive=window.parent===window,mobStarted=false,deskStarted=false,deskPosterStarted=false;
   const playable=()=>hostActive&&!document.hidden;
 
   const ensureMob=()=>{
@@ -524,6 +527,11 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
       const s=document.createElement('source');s.src=src;s.type=type;mobVideo.append(s);
     }
     mobVideo.playbackRate=.85;mobVideo.load();
+  };
+  const ensureDeskPoster=()=>{
+    if(deskPosterStarted||!deskPoster)return;
+    deskPosterStarted=true;
+    deskPoster.src=deskPoster.dataset.src;
   };
   const ensureDesk=()=>{
     if(deskStarted||!deskVideo)return;
@@ -536,6 +544,9 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
 
   const syncPlayback=()=>{
     const isDesk=isDesktopViewport();
+    // Keep the desktop fallback visible even when motion is disabled.
+    // In an embedded mobile iframe, never request this 104 KB poster.
+    if(isDesk)ensureDeskPoster();
     if(!autoplayAllowed||!playable()){
       mobVideo?.pause();deskVideo?.pause();
       mobScene?.classList.remove('vid');deskScene?.classList.remove('vid');
