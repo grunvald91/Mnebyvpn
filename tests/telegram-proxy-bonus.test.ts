@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  parseBonusRoutes,sealProxySecret,openProxySecret,makeBonusLinks,
+  parseBonusRoutes,parseOwnerProxyRoutes,sealProxySecret,openProxySecret,
+  makeBonusLinks,makeOwnerProxyLinks,
   loadCustomerProxyBonus,bonusReleaseReady,ownerProxyReleaseReady,
   parseWsProxyRoutes,wsProxyReleaseReady,makeWsProxyLinks,loadCustomerWsProxy,
 } from '../packages/web/src/telegram-proxy-bonus.ts';
@@ -26,6 +27,31 @@ test('exactly two non-443 distinct public routes are required',()=>{
     JSON.stringify([{...routes[0],port:0},routes[1]]),
     JSON.stringify([{...routes[0],evil:'secret'},routes[1]]),
   ])assert.equal(parseBonusRoutes(malformed),null);
+});
+test('verified owner route is exactly one direct :9446; public still needs two',()=>{
+  const privateRoutes=[routes[0]];
+  assert.deepEqual(parseOwnerProxyRoutes(JSON.stringify(privateRoutes)),privateRoutes);
+  assert.equal(parseBonusRoutes(JSON.stringify(privateRoutes)),null);
+  const links=makeOwnerProxyLinks(raw,'xapi.ozon.ru',privateRoutes);
+  assert.equal(links.length,1);
+  const direct=new URL(links[0].url);
+  assert.equal(direct.hostname,'t.me');
+  assert.equal(direct.pathname,'/proxy');
+  assert.equal(direct.searchParams.get('server'),'89.125.90.101');
+  assert.equal(direct.searchParams.get('port'),'9446');
+  assert.equal(direct.searchParams.get('secret'),'ee'+raw+
+    Buffer.from('xapi.ozon.ru','utf8').toString('hex'));
+  for(const bad of [
+    routes, [routes[1]], [{...routes[0],port:8443}],
+    [{...routes[0],host:'188.120.254.223'}],
+    [{...routes[0],host:'127.0.0.1'}],
+    [{...routes[0],extra:'unsafe'}], [],
+  ]){
+    assert.equal(parseOwnerProxyRoutes(JSON.stringify(bad)),null);
+    assert.throws(()=>makeOwnerProxyLinks(raw,'xapi.ozon.ru',bad as never));
+  }
+  assert.throws(()=>makeBonusLinks(raw,'xapi.ozon.ru',privateRoutes),
+    /Unverified MTProxy routes/);
 });
 test('AES-GCM MTProxy secret is bound to entitlement and username',()=>{
   const box=sealProxySecret(raw,key,id,name);
@@ -60,7 +86,7 @@ test('owner-only Telemt release requires separate route and revoker attestations
     MNEBYVPN_OFFLINE_MTPROXY_ROUTES_VERIFIED:'yes',
     MNEBYVPN_OFFLINE_MTPROXY_REVOKER_VERIFIED:'yes',
     WEB_DNS_MT_PROXY_BONUS_KEY:key,
-    WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON:JSON.stringify(routes),
+    MNEBYVPN_OFFLINE_MTPROXY_ROUTES_JSON:JSON.stringify([routes[0]]),
   };
   assert.equal(ownerProxyReleaseReady({}),false);
   assert.equal(ownerProxyReleaseReady(env),true);
@@ -69,11 +95,32 @@ test('owner-only Telemt release requires separate route and revoker attestations
     'MNEBYVPN_OFFLINE_MTPROXY_ROUTES_VERIFIED',
     'MNEBYVPN_OFFLINE_MTPROXY_REVOKER_VERIFIED',
     'WEB_DNS_MT_PROXY_BONUS_KEY',
-    'WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON',
+    'MNEBYVPN_OFFLINE_MTPROXY_ROUTES_JSON',
   ]){
     assert.equal(ownerProxyReleaseReady({...env,[k]:''}),false,k);
   }
   assert.equal(bonusReleaseReady(env),false,'public sale must remain gated');
+});
+test('owner release never accepts unverified RU or public two-route settings',()=>{
+  const privateEnv={
+    MNEBYVPN_OFFLINE_MTPROXY_ISSUE_ENABLED:'yes',
+    MNEBYVPN_OFFLINE_MTPROXY_ROUTES_VERIFIED:'yes',
+    MNEBYVPN_OFFLINE_MTPROXY_REVOKER_VERIFIED:'yes',
+    WEB_DNS_MT_PROXY_BONUS_KEY:key,
+    MNEBYVPN_OFFLINE_MTPROXY_ROUTES_JSON:JSON.stringify([routes[0]]),
+  };
+  assert.equal(ownerProxyReleaseReady(privateEnv),true);
+  assert.equal(ownerProxyReleaseReady({
+    ...privateEnv,MNEBYVPN_OFFLINE_MTPROXY_ROUTES_JSON:JSON.stringify(routes),
+  }),false);
+  assert.equal(ownerProxyReleaseReady({
+    ...privateEnv,MNEBYVPN_OFFLINE_MTPROXY_ROUTES_JSON:JSON.stringify([routes[1]]),
+  }),false);
+  assert.equal(ownerProxyReleaseReady({
+    ...privateEnv,MNEBYVPN_OFFLINE_MTPROXY_ROUTES_JSON:undefined,
+    WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON:JSON.stringify(routes),
+  }),false);
+  assert.equal(bonusReleaseReady(privateEnv),false);
 });
 test('release fails closed unless real E2E and revocation are both attested',()=>{
   const env={
