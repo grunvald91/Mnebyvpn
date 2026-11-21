@@ -7,6 +7,8 @@ import {pathToFileURL} from 'node:url';
 import {setTimeout as pause} from 'node:timers/promises';
 import {TelemtAdminClient,reconcileDnsProxyBonuses}
   from '../../../packages/web/src/telegram-proxy-provisioning.ts';
+import {createTelemtUnixTransport,OWNER_TELEMT_SSH_SOCKET}
+  from '../../../packages/web/src/telegram-proxy-unix-transport.ts';
 
 async function main():Promise<void>{
   if(process.env.MNEBYVPN_ENV!=='production'||
@@ -17,9 +19,12 @@ async function main():Promise<void>{
   if(!url.startsWith('postgresql://'))throw Error('Canonical PostgreSQL is required');
   const key=process.env.WEB_DNS_MT_PROXY_BONUS_KEY??'';
   const domain=process.env.DNS_MT_PROXY_TLS_DOMAIN??'';
+  if(process.env.DNS_MT_PROXY_TELEMT_SOCKET!==OWNER_TELEMT_SSH_SOCKET)
+    throw Error('Private owner Telemt SSH socket is mandatory');
   const admin=new TelemtAdminClient(
-    process.env.DNS_MT_PROXY_TELEMT_API??'',
-    process.env.DNS_MT_PROXY_TELEMT_AUTH??'');
+    'http://127.0.0.1:9096/',
+    process.env.DNS_MT_PROXY_TELEMT_AUTH??'',
+    createTelemtUnixTransport(OWNER_TELEMT_SSH_SOCKET));
   const db=new Pool({connectionString:url,max:2,connectionTimeoutMillis:3000});
   const abort=new AbortController();
   const stop=()=>abort.abort();
