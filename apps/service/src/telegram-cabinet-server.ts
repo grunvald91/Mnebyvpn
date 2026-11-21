@@ -32,6 +32,7 @@ import {personalDnsTelegramMenu,personalDnsTelegramAction,personalDnsGuide,
 import {approvedPersonalDnsOffer} from '../../../packages/dns-policy/src/smart-dns-offers.ts';
 import {sendPersonalDnsMobileconfig} from '../../../packages/dns-policy/src/personal-dot-profile.ts';
 import {ownerDnsKey,ownerDnsLinksAction,ownerDnsExpiryPrompt,ownerDnsExpiryReply,OWNER_DNS_EXPIRY_PROMPT} from './owner-dns-links.ts';
+import {OFFLINE_SALE_PROMPT,offlineSalePrompt,offlineSaleMenu,registerOfflineSale,listOfflineSales,showOfflineSale} from './manual-sales.ts';
 
 const digest=process.env.TELEGRAM_WEBHOOK_SECRET_SHA256??'';
 if(!/^[a-f0-9]{64}$/.test(digest))
@@ -63,6 +64,7 @@ const personalDnsReady=process.env.MNEBYDNS_PERSONAL_DOT_ENABLED==='yes';
 const support=supportConfig();
 const dnsAdminId=dnsAdminOwner();
 const ownerLinkKey=ownerDnsKey(process.env.MNEBYDNS_OWNER_LINK_KEY);
+const offlineSalesEnabled=process.env.MNEBYVPN_OFFLINE_SALES_ENABLED==='yes';
 const bridgeSecret=process.env.SUPPORT_BRIDGE_SECRET??'';
 const supportAuthKey=/^[a-f0-9]{64}$/.test(bridgeSecret)
   ?bridgeSecret:(support?.botToken??'');
@@ -94,6 +96,7 @@ const main=(id:number)=>msg(
      {text:'💙 Поддержать проект',callback_data:'nav:share'}],
     [{text:'❔ Помощь',callback_data:'nav:help'}],
     ...(id===dnsAdminId ? [[{text:'🛠 Управление Smart DNS',callback_data:'dnsadmin:menu'}]] : []),
+     ...(offlineSalesEnabled&&id===dnsAdminId ? [[{text:'💼 Личные продажи',callback_data:'offsale:menu'}]] : []),
     [{text:support?.operatorId===id?'📥 Входящие заявки':'✉️ Поддержка',
       callback_data:support?.operatorId===id?'support:page:0':'nav:support'}],
     [siteButton],
@@ -129,7 +132,7 @@ function respond(res:ServerResponse,status:number,payload:unknown){
   res.writeHead(status);
   res.end(payload===null?'':JSON.stringify(payload));
 }
-function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string;currentText?:string;replyToSupport?:boolean;replyToDns?:boolean;replyToDnsSearch?:boolean;ownerDnsPrompt?:string}|null{
+function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string;currentText?:string;replyToSupport?:boolean;replyToDns?:boolean;replyToDnsSearch?:boolean;replyToOfflineSale?:boolean;ownerDnsPrompt?:string}|null{
   const cb=update.callback_query;
   if(cb){
     if(!validId(cb.from?.id)||!cb.message||cb.message.chat?.type!=='private'||
@@ -149,9 +152,11 @@ function privateActor(update:any):{id:number;messageId?:number;callbackId?:strin
     typeof replied.text==='string'&&replied.text.startsWith(DNS_ADMIN_PROMPT);
   const replyToDnsSearch=replied?.from?.is_bot===true &&
     typeof replied.text==='string'&&replied.text.startsWith(DNS_ADMIN_SEARCH_PROMPT);
-  const ownerDnsPrompt=replied?.from?.is_bot===true&&typeof replied.text==='string'&&
+  const replyToOfflineSale=replied?.from?.is_bot===true&&
+     typeof replied.text==='string'&&replied.text.startsWith(OFFLINE_SALE_PROMPT);
+   const ownerDnsPrompt=replied?.from?.is_bot===true&&typeof replied.text==='string'&&
     replied.text.startsWith(OWNER_DNS_EXPIRY_PROMPT)?replied.text:undefined;
-  return {id:m.from.id,text:typeof m.text==='string'?m.text:'',replyToSupport,replyToDns,replyToDnsSearch,ownerDnsPrompt};
+  return {id:m.from.id,text:typeof m.text==='string'?m.text:'',replyToSupport,replyToDns,replyToDnsSearch,replyToOfflineSale,ownerDnsPrompt};
 }
 async function packages(id:number){
   if(!store)throw new Error('DB unavailable');
@@ -782,6 +787,30 @@ async function processUpdate(update:any){
   if(!actor)return null;
   const text=actor.text?.trim()??'';
   const operator=support&&actor.id===support.operatorId;
+   const saleAction=actor.data?.startsWith('offsale:')??false;
+   if(saleAction||actor.replyToOfflineSale){
+     if(!offlineSalesEnabled||dnsAdminId===null||actor.id!==dnsAdminId){
+       if(actor.callbackId)return {method:'answerCallbackQuery',
+         callback_query_id:actor.callbackId,text:'Недоступно',show_alert:true};
+       return oneAction(actor,msg('Недостаточно прав.',[[homeButton]]));
+     }
+     if(actor.data==='offsale:new')
+       return {method:'sendMessage',chat_id:actor.id,...offlineSalePrompt()};
+     if(!pool)return oneAction(actor,dbUnavailable());
+     try{
+       if(actor.replyToOfflineSale)
+         return oneAction(actor,await registerOfflineSale(pool,actor.id,dnsAdminId,
+           String(update.update_id),text));
+       if(actor.data==='offsale:menu')return oneAction(actor,offlineSaleMenu());
+       const listing=/^offsale:list:(0|[1-9][0-9]{0,3})$/.exec(actor.data??'');
+       if(listing)return oneAction(actor,await listOfflineSales(pool,actor.id,dnsAdminId,
+         Number(listing[1])));
+       const show=/^offsale:(show|links):([0-9a-f-]{36})$/.exec(actor.data??'');
+       if(show)return oneAction(actor,await showOfflineSale(pool,actor.id,dnsAdminId,
+         show[2],show[1]==='links',personalDnsReady,ownerLinkKey));
+       return oneAction(actor,offlineSaleMenu());
+     }catch{return oneAction(actor,dbUnavailable());}
+   }
   const dnsAction=actor.data?.startsWith('dnsadmin:')??false;
   const ownerLinkAction=actor.data?.startsWith('dnslinks:')??false;
   const dnsTextCommand=text==='/dnsadmin';
