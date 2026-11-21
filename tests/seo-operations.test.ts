@@ -32,7 +32,7 @@ test('SEO crawler discovers only the real seven navigation hrefs in homepage HTM
     'p=Parser()',
     'p.feed(\'<nav class="journey-guide-links"><a href="/vpn">VPN</a><nav><a href="/smart-dns">DNS</a></nav><a href="/claude">Claude</a></nav><nav><a href="/private">Private</a></nav>\')',
     'print(json.dumps(p.guide_links))'
-  ].join('\\n');
+  ].join('\n');
   const result=spawnSync('python3',['-c',parserTest,
     fileURLToPath(new URL('../scripts/seo_public_audit_20261113.py',import.meta.url))],
     {encoding:'utf8',timeout:10000});
