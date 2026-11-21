@@ -3,6 +3,7 @@ import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {
   PUBLIC_SEO_PATHS,canonicalAlias,requiresNoindex,renderRobots,renderSitemap,
+  YANDEX_INDEXNOW_KEY,YANDEX_INDEXNOW_KEY_PATH,
 } from '../apps/web/src/seo-core.ts';
 
 const origin='https://mnebyvpn.site';
@@ -82,4 +83,22 @@ test('homepage visibly associates Cyrillic brand spellings with its canonical si
   assert.match(body,/<p class="hero-lead">«Мне бы VPN»/);
   assert.match(body,/<footer[^>]*>[\s\S]*?«Мне бы VPN»/);
   assert.equal((head.match(/rel="canonical"/g)??[]).length,1);
+});
+
+test('Yandex IndexNow ownership key is a static root-only TXT URL outside sitemap and private routes',()=>{
+  const key=YANDEX_INDEXNOW_KEY;
+  assert.match(key,/^[A-Za-z0-9-]{8,128}$/);
+  assert.equal(YANDEX_INDEXNOW_KEY_PATH,'/'+key+'.txt');
+  assert.ok(!renderSitemap(origin).includes(YANDEX_INDEXNOW_KEY_PATH));
+  assert.equal(requiresNoindex(YANDEX_INDEXNOW_KEY_PATH),false);
+  const server=readFileSync(new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
+  assert.match(server,/url\.pathname === YANDEX_INDEXNOW_KEY_PATH/);
+  assert.match(server,/send\(res,200,YANDEX_INDEXNOW_KEY,'text\/plain; charset=utf-8'/);
+  assert.match(server,/res\.setHeader\('X-Robots-Tag','noindex'\)/);
+  assert.ok(!renderRobots(origin).includes('Disallow: '+YANDEX_INDEXNOW_KEY_PATH));
+});
+
+test('Yandex ownership verification remains visible on the anonymous homepage',()=>{
+  const html=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
+  assert.match(html,/<meta name="yandex-verification" content="51c027d6f72362cf"\s*\/>/);
 });
