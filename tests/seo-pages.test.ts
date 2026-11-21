@@ -124,3 +124,21 @@ test('each guide has three unique, readable diagnostic answers in server-rendere
   assert.ok(css.includes('@media(max-width:860px)'));
   assert.ok(css.includes('.seo-diagnostic-grid'));
 });
+
+test('rendered JS storefront keeps seven semantic guide links visible without moving its full-height art',()=>{
+  const home=readFileSync(new URL('../apps/web/public/index.html',import.meta.url),'utf8');
+  const css=readFileSync(new URL('../apps/web/public/journey.css',import.meta.url),'utf8');
+  const nav=home.match(/<nav class="journey-guide-links"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
+  assert.ok(nav,'missing server-rendered guide navigation');
+  const hrefs=[...nav.matchAll(/<a href="([^"]+)"[^>]*>([^<]+)<\/a>/g)];
+  assert.equal(hrefs.length,SEO_PAGES.length);
+  assert.deepEqual(hrefs.map(x=>x[1]).sort(),SEO_PAGES.map(x=>x.path).sort());
+  for(const [,href,text] of hrefs){
+    assert.ok(text.trim().length>10,'empty or generic anchor text: '+href);
+    assert.ok(!text.includes('Подробнее'),'ambiguous anchor text: '+href);
+  }
+  assert.match(css,/\.journey-guide-links\{display:none\}/);
+  assert.match(css,/body\.journey-active\[data-journey-view="plans"\] \.journey-guide-links\{[\s\S]*?display:block/);
+  assert.match(css,/\.journey-front-stage iframe\{display:block;width:100%;height:100vh;height:100dvh/);
+  assert.match(css,/body\.journey-active \.(?:hero|features)/);
+});
