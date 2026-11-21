@@ -7,7 +7,7 @@ import type {Pool} from 'pg';
 import {issueOwnerOfflineSubscriptionLink} from '../../../packages/provisioning/src/owner-offline-subscriptions.ts';
 import {makePersonalDoTIdentity} from '../../../packages/dns-policy/src/personal-dot-identity.ts';
 import {encryptOwnerDnsLabel,decryptOwnerDnsLabel} from './owner-dns-links.ts';
-import {bonusReleaseReady,loadCustomerProxyBonus,parseBonusRoutes}
+import {ownerProxyReleaseReady,loadCustomerProxyBonus,parseBonusRoutes}
   from '../../../packages/web/src/telegram-proxy-bonus.ts';
 
 export const OFFLINE_SALE_PROMPT='💼 MNEBYVPN — личная продажа';
@@ -293,11 +293,11 @@ export async function showOfflineSale(
         buttons.push([{text:'📋 Скопировать DNS',copy_text:{text:hostname}}]);
       }else lines.push('\nDNS-ключ пока не выдан. Проверьте реестр credentials.');
     }else lines.push('\nDNS-ссылка пока не доступна: DNS не активирован или выдача отключена.');
-    if(dnsReady&&bonusReleaseReady(process.env)){
+    if(dnsReady&&ownerProxyReleaseReady(process.env)){
       const routes=parseBonusRoutes(process.env.WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON);
       if(routes){
         const bonus=await loadCustomerProxyBonus(pool,r.account_id,r.dns_id,
-          process.env.WEB_DNS_MT_PROXY_BONUS_KEY!,routes);
+          process.env.WEB_DNS_MT_PROXY_BONUS_KEY!,routes,5);
         if(bonus)for(const p of bonus.links){
           lines.push('\n📨 Telegram-прокси ('+p.label+'):\n'+p.url);
           buttons.push([{text:'📋 Прокси · '+p.route,copy_text:{text:p.url}}]);
