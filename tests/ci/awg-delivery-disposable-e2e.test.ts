@@ -246,11 +246,12 @@ test('disposable FI217 controller outbox -> verified node receipt -> CAS revoke'
       'SET applied_revision=1,last_observed_at=clock_timestamp()',
       [ownerEntitlement]);
     for(let i=1;i<=3;i++){
-      const r=await db.query<{result:string}>(
-        'SELECT public.owner_vpn_request_device_key('+
-        '$1::bigint,$2::uuid,$3::smallint,$4::text) AS result',
-        [owner,ownerOrder,i,randomBytes(32).toString('base64')]);
-      assert.equal(r.rows[0].result,'REQUESTED');
+      const keyRegistration: import('pg').QueryResult<{result:string}>=
+        await db.query<{result:string}>(
+          'SELECT public.owner_vpn_request_device_key('+
+          '$1::bigint,$2::uuid,$3::smallint,$4::text) AS result',
+          [owner,ownerOrder,i,randomBytes(32).toString('base64')]);
+      assert.equal(keyRegistration.rows[0].result,'REQUESTED');
     }
     await assert.rejects(stageOwnerAwgSlotGrant(db,{
       operatorTelegramId:owner,orderId:ownerOrder!,nodeId:FI,
