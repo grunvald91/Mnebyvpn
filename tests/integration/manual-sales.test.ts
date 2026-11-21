@@ -54,6 +54,11 @@ test('offline 30-day bundle is atomic and never fakes PSP captures or sends to c
     assert.match(blocked.text,/уже существует/);
     const total=await pool.query('SELECT count(*)::int n FROM manual_sales WHERE customer_label=$1',[handle]);
     assert.equal(total.rows[0].n,1);
+    // Suspension is temporary and must not permit a second paid package.
+    await pool.query("UPDATE entitlements SET state='SUSPENDED' WHERE source_order_id=$1 AND product='vpn'",[id]);
+    const stillBlocked=await registerOfflineSale(pool,op,op,'87654322','@'+handle+' 399');
+    assert.match(stillBlocked.text,/уже существует/);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM manual_sales WHERE customer_label=$1',[handle])).rows[0].n,1);
     const view=await showOfflineSale(pool,op,op,id!,true,true,Buffer.alloc(32,7));
     assert.match(view.text,/VPN-ссылка ещё недоступна/);
     assert.doesNotMatch(view.text,/https:\/\/cdn\.servgo\.ru:8443\/sub\//);
