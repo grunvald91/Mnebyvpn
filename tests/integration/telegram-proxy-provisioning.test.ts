@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
-import {reconcileProxyEntitlement,type TelemtAdministrator}
+import {reconcileProxyEntitlement,reconcileDnsProxyBonuses,type TelemtAdministrator}
   from '../../packages/web/src/telegram-proxy-provisioning.ts';
 
 test('MTProxy bonus is created once for PAID DNS only and disabled after refund',async()=>{
@@ -55,6 +55,9 @@ test('MTProxy bonus is created once for PAID DNS only and disabled after refund'
       [id])).rows[0].n,0);
 
     await client.query("UPDATE orders SET state='PAID' WHERE id=$1",[order]);
+    // Restricted owner workflow MUST NOT provision ordinary paid DNS users.
+    assert.equal(await reconcileProxyEntitlement(db,admin,id,key,domain,true),'skipped');
+    assert.equal(ensured,0);
     assert.equal(await reconcileProxyEntitlement(db,admin,id,key,domain),'activated');
     assert.equal(ensured,1);
     const {rows}=await client.query(
@@ -75,9 +78,36 @@ test('MTProxy bonus is created once for PAID DNS only and disabled after refund'
     assert.ok(done.disabled_at);
     assert.equal(done.verified_at,null);
     assert.equal(await reconcileProxyEntitlement(db,admin,id,key,domain),'skipped');
+    // A manual sale explicitly adds the entitlement to the restricted scope.
+    await client.query("UPDATE orders SET state='PAID',provider='manual_sale' WHERE id=$1",[order]);
+    await client.query(
+      "INSERT INTO manual_sales(order_id,operator_telegram_id,request_key,customer_label,declared_amount_minor) "+
+      "VALUES($1,899977,'proxy-test-1','testproxy_1',20000)",[order]);
+    assert.equal(await reconcileProxyEntitlement(db,admin,id,key,domain,true),'activated');
+    assert.equal(ensured,2);
   }finally{
     await client.query('ROLLBACK');
     client.release();
     await pool.end();
   }
+});
+
+test('owner-only batch never scans unrelated customer entitlements',async()=>{
+  const calls:string[]=[];
+  const mock={
+    async query(sql:string){
+      calls.push(sql);
+      return {rows:[]};
+    },
+  };
+  const admin:TelemtAdministrator={
+    async get(){throw Error('must not contact Telemt without manual customers');},
+    async ensure(){throw Error('must not contact Telemt without manual customers');},
+    async disable(){throw Error('must not contact Telemt without manual customers');},
+  };
+  const report=await reconcileDnsProxyBonuses(mock as unknown as Pool,admin,
+    'b'.repeat(64),'xapi.ozon.ru',50,true);
+  assert.deepEqual(report,{activated:0,disabled:0,pending:0,skipped:0,failed:0});
+  assert.equal(calls.length,1);
+  assert.match(calls[0],/EXISTS\(SELECT 1 FROM manual_sales m WHERE m.order_id=o.id\)/);
 });

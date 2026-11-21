@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseBonusRoutes,sealProxySecret,openProxySecret,makeBonusLinks,
-  loadCustomerProxyBonus,bonusReleaseReady,
+  loadCustomerProxyBonus,bonusReleaseReady,ownerProxyReleaseReady,
   parseWsProxyRoutes,wsProxyReleaseReady,makeWsProxyLinks,loadCustomerWsProxy,
 } from '../packages/web/src/telegram-proxy-bonus.ts';
 
@@ -54,6 +54,27 @@ test('two Telegram links include host, port and correct EE FakeTLS domain',()=>{
     assert.equal(tg.searchParams.get('secret'),url.searchParams.get('secret'));
   }
 });
+test('owner-only Telemt release requires separate route and revoker attestations',()=>{
+  const env={
+    MNEBYVPN_OFFLINE_MTPROXY_ISSUE_ENABLED:'yes',
+    MNEBYVPN_OFFLINE_MTPROXY_ROUTES_VERIFIED:'yes',
+    MNEBYVPN_OFFLINE_MTPROXY_REVOKER_VERIFIED:'yes',
+    WEB_DNS_MT_PROXY_BONUS_KEY:key,
+    WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON:JSON.stringify(routes),
+  };
+  assert.equal(ownerProxyReleaseReady({}),false);
+  assert.equal(ownerProxyReleaseReady(env),true);
+  for(const k of [
+    'MNEBYVPN_OFFLINE_MTPROXY_ISSUE_ENABLED',
+    'MNEBYVPN_OFFLINE_MTPROXY_ROUTES_VERIFIED',
+    'MNEBYVPN_OFFLINE_MTPROXY_REVOKER_VERIFIED',
+    'WEB_DNS_MT_PROXY_BONUS_KEY',
+    'WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON',
+  ]){
+    assert.equal(ownerProxyReleaseReady({...env,[k]:''}),false,k);
+  }
+  assert.equal(bonusReleaseReady(env),false,'public sale must remain gated');
+});
 test('release fails closed unless real E2E and revocation are both attested',()=>{
   const env={
     WEB_DNS_MT_PROXY_BONUS_ENABLED:'yes',
@@ -80,7 +101,7 @@ test('customer secret delivery is backed by paid, active, owned DNS entitlement 
     assert.match(sql,/o\.product IN \(\$3,\$6\)/);
     assert.match(sql,/e\.expires_at>clock_timestamp\(\)/);
     assert.match(sql,/b\.verified_at/);
-    assert.deepEqual(values,[id,other,'smart_dns','ACTIVE','PAID','bundle']);
+    assert.deepEqual(values,[id,other,'smart_dns','ACTIVE','PAID','bundle',10080]);
     return {rows:[{
       entitlement_id:other,telemt_username:name,secret_box:box,
       tls_domain:'media.bandbook.site',expires_at:new Date('2026-12-12T00:00:00Z'),
