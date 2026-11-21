@@ -5,7 +5,7 @@
  * Command delivery and nodekit runtime activation require separate E2E.
  */
 import {createHash,createPublicKey,verify,type KeyObject} from 'node:crypto';
-import type {Pool} from 'pg';
+import type {Pool,PoolClient} from 'pg';
 import {
   awgSlotLeasePayload,awgSlotReceiptPayload,signAwgSlotLease,
   verifyAwgSlotReceipt,type AwgSlotLeaseV2,type AwgSlotReceiptV2,
@@ -111,7 +111,7 @@ const authorizingSql=
   'FOR SHARE OF c,r,s,e,o,t,ps,p,n';
 
 async function authorizedSource(
-  tx:Awaited<ReturnType<Database['connect']>>,
+  tx:PoolClient,
   nodeId:string,entitlementId:string,slotNumber:Slot,now:Date,
 ):Promise<Source|null>{
   const r=await tx.query<Source>(authorizingSql,
@@ -119,7 +119,7 @@ async function authorizedSource(
   return r.rows[0]??null;
 }
 async function enabled(
-  tx:Awaited<ReturnType<Database['connect']>>,
+  tx:PoolClient,
 ):Promise<boolean>{
   const r=await tx.query<{enabled:boolean}>(
     "SELECT enabled FROM public.vpn_release_flags "+
@@ -127,7 +127,7 @@ async function enabled(
   return r.rows[0]?.enabled===true;
 }
 async function allocation(
-  tx:Awaited<ReturnType<Database['connect']>>,
+  tx:PoolClient,
   nodeId:string,entitlementId:string,slotNumber:Slot,
 ):Promise<Allocation|null>{
   const r=await tx.query<Allocation>(
