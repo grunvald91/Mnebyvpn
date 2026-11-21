@@ -91,6 +91,16 @@ export async function runAwgDeliveryLoop(
   }
 }
 
+/** Guarded, serial V1 then V2 delivery; never reaches V2 when disabled. */
+export async function deliverAwgCycle(
+  legacy:Deliver,ownerV2:Deliver,v2Enabled:boolean,
+):Promise<DeliveryResult>{
+  const v1=await legacy();
+  if(!v2Enabled)return v1;
+  const slots=await ownerV2();
+  return slots.status==='acknowledged'?slots:v1;
+}
+
 async function main():Promise<void>{
   if(process.env.MNEBYVPN_ENV!=='production'||
      process.env.MNEBYVPN_AWG_DELIVERY_WORKER!=='enabled')
@@ -175,10 +185,11 @@ async function main():Promise<void>{
           // Queue failure does not suppress an already-approved grant revoke.
           process.stderr.write('FI_AWG_DEVICE_QUEUE_RETRY\\n');
         }
-        const legacy=await deliverNextAwgCommand(db,signing,config);
-        if(!ownerV2Delivery)return legacy;
-        const ownerSlots=await deliverNextAwgSlotCommand(db,signing,config);
-        return ownerSlots.status==='acknowledged'?ownerSlots:legacy;
+        return deliverAwgCycle(
+          ()=>deliverNextAwgCommand(db,signing,config),
+          ()=>deliverNextAwgSlotCommand(db,signing,config),
+          ownerV2Delivery,
+        );
       },
       abort.signal,undefined,(status)=>{
         if(status==='acknowledged')process.stdout.write('AWG_DELIVERY_ACKNOWLEDGED\n');
