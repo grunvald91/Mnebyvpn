@@ -27,7 +27,9 @@ test('production Lighthouse summary uses three real run medians, never a single 
             {type:'table',items:[{subpart:'timeToFirstByte',duration:660},
               {subpart:'elementRenderDelay',duration:702}]},
             {type:'node',selector:'main > section.hero > h1',
-              nodeLabel:'Homepage heading',snippet:'<h1>'},
+              nodeLabel:'Homepage heading',snippet:'<h1>',
+              boundingRect:device==='mobile'
+                ?{width:0,height:0}:{width:112,height:112}},
           ]}},
           'render-blocking-insight':{metricSavings:{LCP:1150,FCP:1150},
             details:{type:'table',items:[
@@ -55,6 +57,9 @@ test('production Lighthouse summary uses three real run medians, never a single 
     assert.match(result.stdout,/LIGHTHOUSE_MEDIAN_MOBILE=/);
     const mobileInsight=summary.summary[0].insights;
     assert.equal(mobileInsight.lcp.element.selector,'main > section.hero > h1');
+    assert.equal(mobileInsight.lcp.element.geometry,'zero-size');
+    assert.equal(mobileInsight.lcp.element.widthPx,0);
+    assert.equal(mobileInsight.lcp.element.heightPx,0);
     assert.deepEqual(mobileInsight.lcp.phases,[
       {part:'timeToFirstByte',durationMs:660},
       {part:'elementRenderDelay',durationMs:702},
@@ -63,8 +68,11 @@ test('production Lighthouse summary uses three real run medians, never a single 
     assert.deepEqual(mobileInsight.renderBlocking.blocking.map((x:{path:string})=>x.path),
       ['/journey.css','/neo.css']);
     assert.equal(summary.summary[1].insights.lcp.element.nodeLabel,'Homepage heading');
-    assert.match(readFileSync(join(dir,'summary.md'),'utf8'),
-      /Blocking stylesheet \/journey\.css: 1518 ms \(audit estimate\)/);
+    assert.equal(summary.summary[1].insights.lcp.element.geometry,'nonzero');
+    const markdown=readFileSync(join(dir,'summary.md'),'utf8');
+    assert.match(markdown,/Blocking stylesheet \/journey\.css: 1518 ms \(audit estimate\)/);
+    assert.match(markdown,/0-size geometry in audit; visual LCP element NOT verified/);
+    assert.match(markdown,/nonzero audit geometry; check screenshots/);
 
     unlinkSync(join(dir,'mobile-3.json'));
     const incomplete=spawnSync(process.execPath,[script,dir],{encoding:'utf8',timeout:10000});
