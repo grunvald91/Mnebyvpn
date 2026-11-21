@@ -424,6 +424,50 @@ test('private three-peer intent per verified AWG node never issues live allocati
     'SELECT count(*)::int n FROM vpn_awg_command_outbox WHERE entitlement_id=$1',
     [entitlement])).rows[0].n,0,'no signed AWG command sent');
 
+  // The legacy AWG allocator and three owner seats MUST share one IPv4
+  // uniqueness domain. Simulate one existing legacy peer on this /24 node.
+  const oldPeer=key();
+  await pool.query(
+    'INSERT INTO vpn_awg_peer_allocations('+
+    'node_id,entitlement_id,peer_public_key,client_ipv4,revision,expires_at) '+
+    "VALUES($1,$2,$3,'10.73.247.2/32'::inet,1,clock_timestamp()+interval '1 day')",
+    [nodeId,entitlement,oldPeer]);
+  const allocate=(actor:number,slot:number)=>pool.query(
+    'SELECT public.owner_vpn_allocate_awg_slot_ipv4('+
+    '$1::bigint,$2::uuid,$3::smallint,$4::text) AS result',
+    [actor,orderId,slot,nodeId]).then(x=>x.rows[0].result as string);
+  assert.equal(await allocate(other,1),'DENY_ACCESS','foreign owner cannot reserve an IP');
+  assert.equal(await allocate(owner,4),'DENY_INPUT','no fourth AWG IP slot');
+  const addresses=await Promise.all([allocate(owner,1),allocate(owner,2),allocate(owner,3)]);
+  assert.deepEqual(addresses,['ALLOCATED','ALLOCATED','ALLOCATED']);
+  assert.equal(await allocate(owner,1),'ALREADY_ALLOCATED','replay must not allocate a new IP');
+
+  const assigned=(await pool.query(
+    'SELECT device_slot,host(client_ipv4) AS address,source '+
+    'FROM vpn_awg_ipv4_claims WHERE node_id=$1 ORDER BY device_slot',
+    [nodeId])).rows;
+  assert.equal(assigned.length,4,'one old peer plus three private slots');
+  assert.deepEqual(assigned.map(x=>Number(x.device_slot)),[0,1,2,3]);
+  assert.equal(assigned[0].address,'10.73.247.2','preserve old legacy address');
+  assert.equal(assigned[0].source,'legacy');
+  assert.deepEqual(assigned.slice(1).map(x=>x.address).sort(),
+    ['10.73.247.3','10.73.247.4','10.73.247.5']);
+  assert.ok(assigned.slice(1).every(x=>x.source==='owner_slot'));
+
+  await assert.rejects(pool.query(
+    'INSERT INTO vpn_awg_ipv4_claims('+
+    'node_id,client_ipv4,entitlement_id,device_slot,peer_public_key,source) '+
+    "VALUES($1,'10.73.247.3/32'::inet,$2,0,$3,'legacy')",
+    [nodeId,randomUUID(),key()]),{code:'23505'},
+    'legacy allocation cannot steal an owner address');
+  await assert.rejects(pool.query(
+    'DELETE FROM vpn_awg_ipv4_claims WHERE node_id=$1 AND device_slot=1',
+    [nodeId]),/AWG IPv4 binding is immutable and retained/,
+    'even a privileged delete cannot recycle an old private IP');
+  assert.equal((await pool.query(
+    'SELECT count(*)::int n FROM vpn_awg_command_outbox WHERE entitlement_id=$1',
+    [entitlement])).rows[0].n,0,'dormant owner IP claims never enqueue node commands');
+
   await pool.query(
     "UPDATE owner_vpn_device_seats SET state='REVOKED',revoked_at=clock_timestamp() "+
     "WHERE entitlement_id=$1 AND slot_number=1",[entitlement]);
