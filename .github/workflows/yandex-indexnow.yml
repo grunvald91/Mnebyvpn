@@ -1,0 +1,22 @@
+name: MNEBYVPN notify Yandex IndexNow (public SEO changes only)
+on:
+  # Trigger manually after production confirms the IndexNow ownership key.
+  # Google URL Inspection remains separate, read-only and daily.
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Prove IndexNow sends only public canonical pages
+        run: node --experimental-strip-types --test tests/yandex-indexnow.test.ts tests/seo-core.test.ts
+      - name: Confirm public TXT ownership and notify Yandex about new pages
+        run: node --experimental-strip-types scripts/yandex-indexnow.ts
