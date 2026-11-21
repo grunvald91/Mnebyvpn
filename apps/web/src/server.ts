@@ -5,7 +5,7 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import {canonicalAlias,requiresNoindex,renderRobots,renderSitemap} from './seo-core.ts';
+import {canonicalAlias,requiresNoindex,renderRobots,renderSitemap,YANDEX_INDEXNOW_KEY,YANDEX_INDEXNOW_KEY_PATH} from './seo-core.ts';
 import {renderSeoPage} from './seo-pages.ts';
 import { createHash,createHmac,randomBytes,randomUUID,timingSafeEqual } from 'node:crypto';
 import {representationEtag,selectStaticRepresentation} from './static-encoding.ts';
@@ -750,6 +750,14 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/sitemap.xml') {
     send(res,200,renderSitemap(publicOrigin),'application/xml; charset=utf-8');return;
+  }
+  // IndexNow ownership proof: public static TXT only. Never includes user data.
+  if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === YANDEX_INDEXNOW_KEY_PATH) {
+    res.setHeader('X-Robots-Tag','noindex');
+    // Keep all explicitly public 300-second caching restricted to guide pages.
+    // The IndexNow ownership file is small and can be read on demand.
+    send(res,200,YANDEX_INDEXNOW_KEY,'text/plain; charset=utf-8');
+    return;
   }
   const alias=(req.method === 'GET' || req.method === 'HEAD')?canonicalAlias(url.pathname):null;
   if(alias){
