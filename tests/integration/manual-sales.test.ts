@@ -138,7 +138,7 @@ test('owner-only personal DoT: ACTIVE gate, one encrypted hostname, replay, revo
   // Mere ACTIVE in DB is insufficient: the DNS worker must have ACKed
   // the exact current revision first.
   const noAck=await showOfflineSale(pool,op,op,orderId!,true,true,key);
-  assert.doesNotMatch(noAck.text,/[a-z0-9]{12}\\.dns\\.mnebyvpn\\.site/);
+  assert.doesNotMatch(noAck.text,/[a-z0-9]{12}\.dns\.mnebyvpn\.site/);
   assert.equal(await count(),0);
   // Simulate successful reconciliation ONLY in disposable PostgreSQL.
   await pool.query("INSERT INTO provisioning_state(entitlement_id,adapter,applied_revision,last_observed_at) "+
