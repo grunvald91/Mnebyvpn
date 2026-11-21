@@ -4,6 +4,7 @@ import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {registerOfflineSale,showOfflineSale} from '../../apps/service/src/manual-sales.ts';
 import {issueOwnerOfflineSubscriptionLink} from '../../packages/provisioning/src/owner-offline-subscriptions.ts';
+import {sealProxySecret} from '../../packages/web/src/telegram-proxy-bonus.ts';
 
 const pool=new Pool({
   host:process.env.PGHOST??'localhost',port:Number(process.env.PGPORT??5432),
@@ -175,4 +176,80 @@ test('owner-only personal DoT: ACTIVE gate, one encrypted hostname, replay, revo
   const revoked=await showOfflineSale(pool,op,op,orderId!,true,true,key);
   assert.doesNotMatch(revoked.text,new RegExp(host.replaceAll('.','\\.')));
   assert.equal(await count(),1);
+});
+
+
+test('private owner sale exposes only the direct verified Telemt link, hides stale and revoked',async()=>{
+  const op=891188,other=op+1,key='b'.repeat(64);
+  const handle='mtp_'+randomUUID().replace(/-/g,'').slice(0,9);
+  const result=await registerOfflineSale(pool,op,op,'88991188','@'+handle+' 399');
+  const orderId=/Заказ: ([0-9a-f-]{36})/.exec(result.text)?.[1];
+  assert.ok(orderId,result.text);
+  const entry=(await pool.query(
+    "SELECT id,account_id FROM entitlements WHERE source_order_id=$1 AND product='smart_dns'",
+    [orderId])).rows[0];
+  assert.ok(entry);
+  const ent=entry.id as string;
+  const username='dns_'+randomBytes(12).toString('hex');
+  const secret=randomBytes(16).toString('hex');
+  const box=sealProxySecret(secret,key,ent,username);
+  await pool.query("UPDATE entitlements SET state='ACTIVE' WHERE id=$1",[ent]);
+  await pool.query(
+    "INSERT INTO provisioning_state(entitlement_id,adapter,applied_revision,last_observed_at) "+
+    "VALUES($1,'smart_dns',1,clock_timestamp()) ON CONFLICT(entitlement_id,adapter) "+
+    "DO UPDATE SET applied_revision=1,last_observed_at=clock_timestamp()",[ent]);
+  await pool.query(
+    "INSERT INTO dns_mtproxy_bonus_credentials(entitlement_id,telemt_username,secret_box,"+
+    "tls_domain,state,verified_at) VALUES($1,$2,$3,'xapi.ozon.ru','ACTIVE',clock_timestamp())",
+    [ent,username,box]);
+
+  const keys=[
+    'MNEBYVPN_OFFLINE_MTPROXY_ISSUE_ENABLED',
+    'MNEBYVPN_OFFLINE_MTPROXY_ROUTES_VERIFIED',
+    'MNEBYVPN_OFFLINE_MTPROXY_REVOKER_VERIFIED',
+    'MNEBYVPN_OFFLINE_MTPROXY_ROUTES_JSON',
+    'WEB_DNS_MT_PROXY_BONUS_KEY',
+    'WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON',
+    'WEB_DNS_MT_PROXY_BONUS_ENABLED',
+  ] as const;
+  const backup=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
+  try{
+    Object.assign(process.env,{
+      MNEBYVPN_OFFLINE_MTPROXY_ISSUE_ENABLED:'yes',
+      MNEBYVPN_OFFLINE_MTPROXY_ROUTES_VERIFIED:'yes',
+      MNEBYVPN_OFFLINE_MTPROXY_REVOKER_VERIFIED:'yes',
+      MNEBYVPN_OFFLINE_MTPROXY_ROUTES_JSON:
+        '[{"route":"direct","host":"89.125.90.101","port":9446}]',
+      WEB_DNS_MT_PROXY_BONUS_KEY:key,
+    });
+    delete process.env.WEB_DNS_MT_PROXY_BONUS_ENABLED;
+    // No independent owner private link is visible in ordinary client flows.
+    const forbidden=await showOfflineSale(pool,other,op,orderId!,true,false,null);
+    assert.match(forbidden.text,/Недостаточно прав/);
+    const view=await showOfflineSale(pool,op,op,orderId!,true,false,null);
+    const url=/https:\/\/t\.me\/proxy\?[^\s]+/.exec(view.text)?.[0];
+    assert.ok(url,view.text);
+    const parsed=new URL(url);
+    assert.equal(parsed.searchParams.get('server'),'89.125.90.101');
+    assert.equal(parsed.searchParams.get('port'),'9446');
+    assert.equal(parsed.searchParams.get('secret'),
+      'ee'+secret+Buffer.from('xapi.ozon.ru').toString('hex'));
+    assert.doesNotMatch(view.text,/188\.120\.254\.223/);
+    assert.equal((await showOfflineSale(pool,op,op,orderId!,true,false,null)).text,view.text);
+
+    await pool.query(
+      "UPDATE dns_mtproxy_bonus_credentials SET verified_at=clock_timestamp()-interval '6 minutes' "+
+      "WHERE entitlement_id=$1",[ent]);
+    assert.doesNotMatch((await showOfflineSale(pool,op,op,orderId!,true,false,null)).text,
+      /https:\/\/t\.me\/proxy\?/);
+    await pool.query(
+      "UPDATE dns_mtproxy_bonus_credentials SET state='DISABLED',verified_at=NULL,"+
+      "disabled_at=clock_timestamp() WHERE entitlement_id=$1",[ent]);
+    assert.doesNotMatch((await showOfflineSale(pool,op,op,orderId!,true,false,null)).text,
+      /https:\/\/t\.me\/proxy\?/);
+  }finally{
+    for(const k of keys){
+      const v=backup[k];if(v===undefined)delete process.env[k];else process.env[k]=v;
+    }
+  }
 });
