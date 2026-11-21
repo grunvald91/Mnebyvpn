@@ -15,7 +15,7 @@ permissions:
 jobs:
   production-baseline:
     runs-on: ubuntu-24.04
-    timeout-minutes: 17
+    timeout-minutes: 22
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,21 +64,23 @@ jobs:
           for device in mobile desktop; do
             flags=()
             if [[ "$device" == desktop ]]; then flags+=(--preset=desktop); fi
-            success=no
-            for attempt in 1 2; do
-              echo "LIGHTHOUSE_RUN_START device=$device attempt=$attempt"
-              if timeout 210s "$RUNNER_TEMP/mnebyvpn-lighthouse-tools/node_modules/.bin/lighthouse" "$target" \
-                --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' \
-                --only-categories=performance,seo \
-                --output=json --quiet \
-                --output-path="$RUNNER_TEMP/mnebyvpn-lighthouse/$device.json" "${flags[@]}"; then
-                success=yes
-                break
-              fi
-              echo "LIGHTHOUSE_ATTEMPT_FAILED device=$device attempt=$attempt"
-              sleep 2
+            for sample in 1 2 3; do
+              success=no
+              for attempt in 1 2; do
+                echo "LIGHTHOUSE_RUN_START device=$device sample=$sample attempt=$attempt"
+                if timeout 210s "$RUNNER_TEMP/mnebyvpn-lighthouse-tools/node_modules/.bin/lighthouse" "$target" \
+                  --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' \
+                  --only-categories=performance,seo \
+                  --output=json --quiet \
+                  --output-path="$RUNNER_TEMP/mnebyvpn-lighthouse/$device-$sample.json" "${flags[@]}"; then
+                  success=yes
+                  break
+                fi
+                echo "LIGHTHOUSE_ATTEMPT_FAILED device=$device sample=$sample attempt=$attempt"
+                sleep 2
+              done
+              [[ "$success" == yes ]] || { echo "LIGHTHOUSE_AUDIT_FAILED device=$device sample=$sample";exit 2; }
             done
-            [[ "$success" == yes ]] || { echo "LIGHTHOUSE_AUDIT_FAILED device=$device";exit 2; }
           done
           node scripts/lighthouse_baseline_summary.mjs "$RUNNER_TEMP/mnebyvpn-lighthouse"
       - name: Preserve baseline reports for independent review
@@ -87,8 +89,8 @@ jobs:
         with:
           name: mnebyvpn-production-lighthouse-mobile-desktop
           path: |
-            ${{ runner.temp }}/mnebyvpn-lighthouse/mobile.json
-            ${{ runner.temp }}/mnebyvpn-lighthouse/desktop.json
+            ${{ runner.temp }}/mnebyvpn-lighthouse/mobile-*.json
+            ${{ runner.temp }}/mnebyvpn-lighthouse/desktop-*.json
             ${{ runner.temp }}/mnebyvpn-lighthouse/summary.json
             ${{ runner.temp }}/mnebyvpn-lighthouse/summary.md
           if-no-files-found: warn
