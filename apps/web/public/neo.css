@@ -79,8 +79,8 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .coming-item p span{font-size:12px;color:#b8c6e3;line-height:1.5}
 .coming-status{font-size:11px;color:#ccb2ff;white-space:nowrap;align-self:flex-start;border:1px solid rgba(165,116,243,.36);border-radius:40px;padding:3px 8px}
 .account-section{padding:40px 0 56px}
-.account-section .section-head h2{font-size:30px}
-.account-section .section-head h2::first-letter{color:#fff}
+.account-section .section-head #journey-account-title{font-size:30px}
+.account-section .section-head #journey-account-title::first-letter{color:#fff}
 .account-panel{border:1px solid rgba(67,170,241,.38);background:linear-gradient(130deg,rgba(10,29,60,.9),rgba(20,18,59,.93));box-shadow:inset 0 1px rgba(255,255,255,.05),0 15px 28px rgba(0,0,0,.14)}
 .login-prompt{padding:35px}
 .login-prompt .prompt-symbol{display:none}
@@ -147,7 +147,7 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
   .coming-item p span{font-size:10px;line-height:1.35}
   .coming-status{display:none}
   .account-section{padding:22px 0 32px}
-  .account-section .section-head h2{font-size:19px}
+  .account-section .section-head #journey-account-title{font-size:19px}
   .account-panel{border-radius:18px}
   .account-toolbar{padding:10px 12px}
   .login-prompt{padding:13px}
@@ -268,7 +268,7 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 /* Contact form: unobtrusive, readable and usable on small screens. */
 .contact-support{display:grid;grid-template-columns:1fr 1.1fr;gap:34px;align-items:center;margin:20px auto;padding:25px 29px;border:1px solid rgba(113,191,237,.27);border-radius:24px;background:linear-gradient(130deg,rgba(12,36,67,.75),rgba(27,19,66,.8))}
 .contact-support .eyebrow{margin:0 0 9px}
-.contact-support h2{font-size:clamp(22px,3vw,31px);line-height:1.15;letter-spacing:-.7px;margin:0 0 12px}
+.contact-support #contact-support-title{font-size:clamp(22px,3vw,31px);line-height:1.15;letter-spacing:-.7px;margin:0 0 12px}
 .contact-support p{font-size:13px;line-height:1.5;color:#bfd1e7;margin:0 0 12px}
 .contact-support .contact-support-note{font-size:11px;color:#9bacc9}
 .contact-support-form{display:flex;flex-direction:column;gap:8px}
@@ -282,7 +282,7 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .support-trap{position:absolute!important;left:-10000px!important;width:1px!important;height:1px!important;overflow:hidden!important}
 @media(max-width:680px){
  .contact-support{display:block;padding:17px 16px;border-radius:19px;margin-top:14px}
- .contact-support h2{font-size:20px;margin:0 0 8px}
+ .contact-support #contact-support-title{font-size:20px;margin:0 0 8px}
  .contact-support p{font-size:11px;margin-bottom:9px}
  .contact-support .contact-support-note{font-size:10px}
  .contact-support-form{margin-top:12px}
