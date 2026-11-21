@@ -53,8 +53,11 @@ test('homepage includes Gemini, Antigravity, canonical, organization schema and 
   assert.ok(home.includes('"Organization"'));
   assert.ok(home.includes('"WebSite"'));
   for(const page of SEO_PAGES)assert.ok(home.includes('href="'+page.path+'"'),page.path);
-  // Different client-only views retain their original headings and styling.
-  assert.ok((home.match(/<h1\b/g)??[]).length>=2);
+  // Progressive enhancement starts with one visible no-JS heading; interactive views promote their own.
+  assert.equal((home.match(/<h1\b/g)??[]).length,1);
+  assert.match(home,/<h1 id="legacy-hero-title">VPN без/);
+  for(const id of ['journey-title','journey-trial-title','journey-setup-title','journey-order-title','journey-payment-heading'])
+    assert.ok(home.includes('<h2 id="'+id+'">'),id);
 });
 
 test('SEO-specific CSS has no inline scripts, and routes have an external stylesheet',()=>{
