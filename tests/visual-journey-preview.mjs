@@ -811,10 +811,11 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       retryVisible:getComputedStyle(doc.querySelector('#front-retry')).display!=='none',
       retryTopLevel:doc.querySelector('#front-retry').getAttribute('target')==='_top',
       purchaseDisabled:doc.querySelector('.cta').disabled,
+      trialDisabled:doc.querySelector('.try').disabled,
     };
   });
   console.log('CATALOG_FAILURE_FALLBACK='+JSON.stringify(result));
-  if(result.loading||!result.retryVisible||!result.retryTopLevel||!result.purchaseDisabled)failed=true;
+  if(result.loading||!result.retryVisible||!result.retryTopLevel||!result.purchaseDisabled||!result.trialDisabled)failed=true;
   // A recovered mobile connection should update the iframe without a full
   // page reload, preserving the selected product and pending account intent.
   catalogUnavailable=false;
@@ -828,10 +829,37 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     const doc=document.querySelector('#journey-front-frame').contentDocument;
     return {price:doc.querySelector('#price-bundle').textContent,
       retryHidden:doc.querySelector('#front-retry').hidden,
-      buyDisabled:doc.querySelector('.cta').disabled};
+      buyDisabled:doc.querySelector('.cta').disabled,
+      trialDisabled:doc.querySelector('.try').disabled};
   });
   console.log('CATALOG_RETRY_WITHOUT_RELOAD='+JSON.stringify(recovered));
-  if(!recovered.retryHidden||recovered.buyDisabled||!recovered.price.includes('₽'))failed=true;
+  if(!recovered.retryHidden||recovered.buyDisabled||recovered.trialDisabled||!recovered.price.includes('₽'))failed=true;
+  await page.close();
+}
+// A published price never unlocks a trial unless the server advertises one.
+{
+  const page=await browser.newPage({viewport:{width:320,height:700}});
+  await page.route('**/api/plans',route=>route.fulfill({
+    status:200,contentType:'application/json',
+    body:JSON.stringify({plans,checkoutEnabled:true,loginEnabled:true,
+      telegramLoginEnabled:true,emailLoginEnabled:true,trialOffers:[]}),
+  }));
+  await page.goto(base,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>{
+    const doc=document.querySelector('#journey-front-frame')?.contentDocument;
+    return doc?.querySelector('#price-bundle')?.textContent?.includes('₽')&&
+      !doc.querySelector('.cta').disabled;
+  },null,{timeout:15000});
+  const trialUnavailable=await page.evaluate(()=>{
+    const doc=document.querySelector('#journey-front-frame').contentDocument;
+    return {disabled:doc.querySelector('.try').disabled,
+      label:doc.querySelector('.try').textContent.trim(),
+      chooserHidden:doc.querySelector('#trial-options').hidden,
+      hasPaidOffers:doc.querySelector('#price-bundle').textContent.includes('₽')};
+  });
+  console.log('TRIAL_UNAVAILABLE_BUT_CATALOG_LIVE='+JSON.stringify(trialUnavailable));
+  if(!trialUnavailable.disabled||trialUnavailable.label!=='Недоступно'||
+     !trialUnavailable.chooserHidden||!trialUnavailable.hasPaidOffers)failed=true;
   await page.close();
 }
 // Verify the original owner video loads on normal connections and stays
