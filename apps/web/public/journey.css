@@ -2538,6 +2538,31 @@ body.journey-active[data-journey-view="account"] .metric-card{
 .journey-dns-link-grid a{padding:13px 9px;border:1px solid rgba(100,200,239,.33);border-radius:11px;text-align:center;background:rgba(14,43,75,.62);font-size:13px;color:#d6f9ff;font-weight:750}
 .journey-dns-link-grid a:hover,.journey-dns-link-grid a:focus-visible{border-color:#65e8fb;background:rgba(29,81,121,.8)}
 .journey-dns-links .journey-secondary{margin-bottom:0}
+/* On the JS storefront the existing .seo-home is hidden. Keep a compact,
+   genuinely visible and crawlable set of guide links BELOW the full-height art
+   frame; no overlay, fake off-screen SEO text or checkout-screen intrusion. */
+.journey-guide-links{display:none}
+body.journey-active[data-journey-view="plans"] .journey-guide-links{
+  display:block;
+  padding:14px clamp(14px,4vw,22px) 20px;
+  border-top:1px solid rgba(102,189,236,.24);
+  background:#080e23;
+}
+.journey-guide-links h2{margin:0 0 4px;font-size:15px;line-height:1.3;font-weight:750;color:#edf8ff}
+.journey-guide-links p{margin:0 0 10px;font-size:11px;line-height:1.4;color:#b3c7dc}
+.journey-guide-links-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.journey-guide-links-list a{
+  display:flex;align-items:center;min-height:32px;
+  padding:7px 9px;border-radius:10px;border:1px solid rgba(97,177,219,.27);
+  font-size:11px;font-weight:600;line-height:1.35;color:#c5eafa;
+  background:rgba(31,59,91,.32);overflow-wrap:anywhere;
+}
+.journey-guide-links-list a:hover{border-color:rgba(114,226,241,.7);color:#fff}
+.journey-guide-links-list a:focus-visible{outline:2px solid #7de7f2;outline-offset:2px}
+@media(max-width:359px){
+  .journey-guide-links-list{gap:5px}
+  .journey-guide-links-list a{padding:6px 7px;font-size:10.5px}
+}
 .journey-front-stage[hidden],.journey-duration-grid button[hidden],.journey-dns-links[hidden]{display:none!important}
 
 /* Personal DNS & Telegram Proxy automatic delivery containers inside account */
