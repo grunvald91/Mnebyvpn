@@ -90,7 +90,7 @@ export async function registerOfflineSale(
     const existing=await client.query(
       "SELECT 1 FROM manual_sales m JOIN entitlements e ON e.source_order_id=m.order_id "+
       "WHERE m.operator_telegram_id=$1 AND m.customer_label=$2 AND e.product='vpn' "+
-      "AND e.state IN ('ACTIVE','PAID_PENDING_PROVISIONING','PROVISIONING_FAILED') "+
+      "AND e.state IN ('ACTIVE','PAID_PENDING_PROVISIONING','PROVISIONING_FAILED','SUSPENDED') "+
       "AND (e.expires_at IS NULL OR e.expires_at>clock_timestamp()) LIMIT 1",
       [String(operatorId),input.customerLabel]);
     if(existing.rowCount) {
