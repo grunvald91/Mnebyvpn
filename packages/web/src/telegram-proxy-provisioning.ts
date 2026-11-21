@@ -143,6 +143,7 @@ export function validateProxyProvisionConfig(key:string,domain:string){
  * remote API failures and are safely retried with the exact same secret. */
 export async function reconcileProxyEntitlement(
   db:Pool,admin:TelemtAdministrator,entitlementId:string,key:string,domain:string,
+  ownerOnly=false,
 ):Promise<SyncResult>{
   if(!uuid.test(entitlementId))throw Error('Invalid entitlement');
   validateProxyProvisionConfig(key,domain);
@@ -159,7 +160,9 @@ export async function reconcileProxyEntitlement(
           b.state AS bonus_state,b.verified_at
          FROM entitlements e JOIN orders o ON o.id=e.source_order_id
          LEFT JOIN dns_mtproxy_bonus_credentials b ON b.entitlement_id=e.id
-         WHERE e.id=$1 AND e.product='smart_dns' AND o.account_id=e.account_id LIMIT 1`,
+         WHERE e.id=$1 AND e.product='smart_dns' AND o.account_id=e.account_id
+           ${ownerOnly?"AND EXISTS(SELECT 1 FROM manual_sales m WHERE m.order_id=o.id)":''}
+           LIMIT 1`,
       [entitlementId]);
     const entry=rows[0] as Candidate|undefined;
     if(!entry)return 'skipped';
@@ -231,6 +234,7 @@ export async function reconcileProxyEntitlement(
 
 export async function reconcileDnsProxyBonuses(
   db:Pool,admin:TelemtAdministrator,key:string,domain:string,max=50,
+  ownerOnly=false,
 ):Promise<ProxyReconcileReport>{
   validateProxyProvisionConfig(key,domain);
   if(!Number.isSafeInteger(max)||max<1||max>200)throw Error('Invalid batch size');
@@ -238,7 +242,9 @@ export async function reconcileDnsProxyBonuses(
     `SELECT e.id::text AS id FROM entitlements e
       JOIN orders o ON o.id=e.source_order_id AND o.account_id=e.account_id
       LEFT JOIN dns_mtproxy_bonus_credentials b ON b.entitlement_id=e.id
-      WHERE e.product='smart_dns' AND (
+      WHERE e.product='smart_dns'
+        ${ownerOnly?"AND EXISTS(SELECT 1 FROM manual_sales m WHERE m.order_id=o.id)":''}
+        AND (
         (e.state='ACTIVE' AND e.starts_at<=clock_timestamp()
           AND e.expires_at>clock_timestamp() AND o.state='PAID'
           AND (b.entitlement_id IS NULL OR b.state<>'ACTIVE' OR
@@ -250,7 +256,7 @@ export async function reconcileDnsProxyBonuses(
   const totals:ProxyReconcileReport={activated:0,disabled:0,pending:0,skipped:0,failed:0};
   for(const row of rows as {id:string}[]){
     try{
-      const outcome=await reconcileProxyEntitlement(db,admin,row.id,key,domain);
+      const outcome=await reconcileProxyEntitlement(db,admin,row.id,key,domain,ownerOnly);
       totals[outcome]++;
     }catch{totals.failed++;}
   }
