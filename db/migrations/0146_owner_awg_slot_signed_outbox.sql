@@ -48,8 +48,15 @@ BEGIN
        NEW.peer_public_key IS DISTINCT FROM OLD.peer_public_key OR
        NEW.client_ipv4 IS DISTINCT FROM OLD.client_ipv4 OR
        NEW.created_at IS DISTINCT FROM OLD.created_at OR
-       NEW.revision<=OLD.revision THEN
-      RAISE EXCEPTION 'AWG V2 slot binding is immutable and revision must increase';
+       NEW.revision<OLD.revision OR
+       (NEW.revision=OLD.revision AND
+         (OLD.state<>'staged' OR NEW.state<>'applied' OR
+          NEW.billing_revision IS DISTINCT FROM OLD.billing_revision OR
+          NEW.expires_at IS DISTINCT FROM OLD.expires_at OR
+          NEW.last_signed_at IS DISTINCT FROM OLD.last_signed_at OR
+          NEW.last_command_sha256 IS DISTINCT FROM OLD.last_command_sha256))
+       THEN
+      RAISE EXCEPTION 'AWG V2 slot binding is immutable and revision must increase except for signed ACK';
     END IF;
   END IF;
   IF NOT EXISTS(
