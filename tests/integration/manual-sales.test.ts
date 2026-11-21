@@ -237,6 +237,16 @@ test('private owner sale exposes only the direct verified Telemt link, hides sta
     assert.doesNotMatch(view.text,/188\.120\.254\.223/);
     assert.equal((await showOfflineSale(pool,op,op,orderId!,true,false,null)).text,view.text);
 
+    // A valid-looking but incorrect decryption key MUST fail closed without
+    // crashing the entire owner's sale card (VPN/DNS remain inspectable).
+    process.env.WEB_DNS_MT_PROXY_BONUS_KEY='f'.repeat(64);
+    const cryptoFailure=await showOfflineSale(pool,op,op,orderId!,true,false,null);
+    assert.match(cryptoFailure.text,/Личная продажа/);
+    assert.match(cryptoFailure.text,/Smart DNS:/);
+    assert.match(cryptoFailure.text,/Telegram-прокси: ожидается подтверждение Telemt/);
+    assert.doesNotMatch(cryptoFailure.text,/https:\/\/t\.me\/proxy\?/);
+    process.env.WEB_DNS_MT_PROXY_BONUS_KEY=key;
+
     await pool.query(
       "UPDATE dns_mtproxy_bonus_credentials SET verified_at=clock_timestamp()-interval '6 minutes' "+
       "WHERE entitlement_id=$1",[ent]);
