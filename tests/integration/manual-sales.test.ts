@@ -424,6 +424,8 @@ test('private three-peer intent per verified AWG node never issues live allocati
     "UPDATE owner_vpn_device_seats SET state='REVOKED',revoked_at=clock_timestamp() "+
     "WHERE entitlement_id=$1 AND slot_number=1",[entitlement]);
   assert.equal(await ask(owner,1,nodeId),'DENY_ACCESS','revoked key cannot get new authorization');
+  await pool.query("UPDATE vpn_node_enrollment_inventory SET status='revoked' WHERE node_id=$1",[nodeId]);
+  assert.equal(await ask(owner,2,nodeId),'DENY_NODE','revoked node cannot receive new reservations');
   await pool.query("UPDATE entitlements SET state='SUSPENDED' WHERE id=$1",[entitlement]);
   assert.equal(await ask(owner,2,nodeId),'DENY_ACCESS','suspension blocks reservations');
 });
