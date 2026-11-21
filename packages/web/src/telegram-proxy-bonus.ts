@@ -106,9 +106,11 @@ type BonusRow={
  * This never creates or enables users in Telemt. */
 export async function loadCustomerProxyBonus(
   db:Pick<Pool,'query'>,accountId:string,entitlementId:string,
-  keyHex:string,routes:ProxyBonusRoute[],
+  keyHex:string,routes:ProxyBonusRoute[],maxVerificationAgeMinutes=7*24*60,
 ):Promise<{expiresAt:string;links:ProxyBonusLink[]}|null>{
   if(!uuid.test(accountId)||!uuid.test(entitlementId))return null;
+  if(!Number.isSafeInteger(maxVerificationAgeMinutes)||
+     maxVerificationAgeMinutes<1||maxVerificationAgeMinutes>7*24*60)return null;
   const sql='SELECT e.id AS entitlement_id,e.expires_at,b.telemt_username,'+
     'b.secret_box,b.tls_domain FROM entitlements e '+
     'JOIN orders o ON o.id=e.source_order_id AND o.account_id=e.account_id '+
@@ -118,13 +120,22 @@ export async function loadCustomerProxyBonus(
     'AND e.expires_at>clock_timestamp() AND o.state=$5 '+
     'AND o.product IN ($3,$6) AND b.state=$4 '+
     'AND b.disabled_at IS NULL AND '+
-    "b.verified_at>clock_timestamp()-interval '7 days' LIMIT 1";
-  const {rows}=await db.query(sql,[accountId,entitlementId,'smart_dns','ACTIVE','PAID','bundle']);
+    "b.verified_at>clock_timestamp()-($7::integer * interval '1 minute') LIMIT 1";
+  const {rows}=await db.query(sql,[accountId,entitlementId,'smart_dns','ACTIVE','PAID','bundle',maxVerificationAgeMinutes]);
   const row=(rows as BonusRow[])[0];
   if(!row)return null;
   const secret=openProxySecret(row.secret_box,keyHex,row.entitlement_id,row.telemt_username);
   return {expiresAt:row.expires_at.toISOString(),
     links:makeBonusLinks(secret,row.tls_domain,routes)};
+}
+/** Owner-only private-sale release; does not enable public DNS/MTProxy offers.
+ * Requires documented gateway, end-to-end route and runtime revoke verification. */
+export function ownerProxyReleaseReady(env:NodeJS.ProcessEnv):boolean{
+  return env.MNEBYVPN_OFFLINE_MTPROXY_ISSUE_ENABLED==='yes' &&
+    env.MNEBYVPN_OFFLINE_MTPROXY_ROUTES_VERIFIED==='yes' &&
+    env.MNEBYVPN_OFFLINE_MTPROXY_REVOKER_VERIFIED==='yes' &&
+    hexKey.test(env.WEB_DNS_MT_PROXY_BONUS_KEY??'') &&
+    parseBonusRoutes(env.WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON)!==null;
 }
 export function bonusReleaseReady(env:NodeJS.ProcessEnv):boolean{
   return env.WEB_DNS_MT_PROXY_BONUS_ENABLED==='yes' &&
