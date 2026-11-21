@@ -8,6 +8,7 @@ import { readFile } from 'node:fs/promises';
 import {canonicalAlias,requiresNoindex,renderRobots,renderSitemap} from './seo-core.ts';
 import {renderSeoPage} from './seo-pages.ts';
 import { createHash,createHmac,randomBytes,randomUUID,timingSafeEqual } from 'node:crypto';
+import {representationEtag,selectStaticRepresentation} from './static-encoding.ts';
 import { Pool } from 'pg';
 import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
   from '../../../packages/support/src/telegram-relay.ts';
@@ -394,13 +395,19 @@ function send(res: ServerResponse, status: number, body: string|Buffer, type = '
 // reuse unchanged bytes without mixing revisions after an atomic release.
 // Customer HTML, catalog, checkout and all JSON APIs remain no-store.
 function sendStatic(req: IncomingMessage, res: ServerResponse, data: Buffer, type: string) {
-  const etag=contentEtag(data);
+  // Public CSS and JS are the render-blocking assets in the production
+  // Lighthouse report. Keep body bytes and ETag variant-specific; cache only
+  // static representations, never session or checkout content.
+  const representation=selectStaticRepresentation(data,type,req.headers['accept-encoding']);
+  const etag=representationEtag(contentEtag(data),representation.encoding);
   const cache='public, no-cache, must-revalidate';
   res.setHeader('ETag',etag);
+  if(representation.vary)res.setHeader('Vary','Accept-Encoding');
+  if(representation.encoding)res.setHeader('Content-Encoding',representation.encoding);
   if(req.headers['if-none-match']?.split(',').some(t=>t.trim()===etag)){
     send(res,304,'',type,cache);return;
   }
-  send(res,200,data,type,cache);
+  send(res,200,representation.body,type,cache);
 }
 function json(res: ServerResponse, status: number, data: unknown) {
   send(res, status, JSON.stringify(data));

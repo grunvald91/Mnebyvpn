@@ -13,7 +13,9 @@ test('ETag hashes are memoized per immutable Buffer, and private HTML remains no
   assert.match(server,/staticEtags\.get\(data\)/);
   assert.match(server,/staticEtags\.set\(data,tag\)/);
   assert.match(server,/const etag=contentEtag\(landingArtHtml\)/);
-  assert.match(server,/const etag=contentEtag\(data\)/);
+  assert.match(server,/const etag=representationEtag\(contentEtag\(data\),representation\.encoding\)/);
+  assert.match(server,/res\.setHeader\('Vary','Accept-Encoding'\)/);
+  assert.match(server,/res\.setHeader\('Content-Encoding',representation\.encoding\)/);
   assert.match(server,/send\(res, 200, page, 'text\/html; charset=utf-8'\)/);
   assert.match(server,/function send\(res: ServerResponse, status: number, body: string\|Buffer, type = 'application\/json; charset=utf-8', cacheControl = 'no-store'\)/);
 });
