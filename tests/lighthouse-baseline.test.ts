@@ -23,6 +23,17 @@ test('production Lighthouse summary uses three real run medians, never a single 
           'total-blocking-time':{numericValue:29+i*8},
           'speed-index':{numericValue:3900+i*100},
           'network-requests':{details:{items:[{url:homepage+'bg3.mp4',transferSize:166000}]}},
+          'lcp-breakdown-insight':{details:{type:'list',items:[
+            {type:'table',items:[{subpart:'timeToFirstByte',duration:660},
+              {subpart:'elementRenderDelay',duration:702}]},
+            {type:'node',selector:'main > section.hero > h1',
+              nodeLabel:'Homepage heading',snippet:'<h1>'},
+          ]}},
+          'render-blocking-insight':{metricSavings:{LCP:1150,FCP:1150},
+            details:{type:'table',items:[
+              {url:homepage+'journey.css',totalBytes:108604,wastedMs:1518},
+              {url:homepage+'neo.css',totalBytes:32195,wastedMs:1068},
+            ]}},
         };
         const lhr={lighthouseVersion:'13.6.0',requestedUrl:homepage,finalDisplayedUrl:homepage,
           fetchTime:'2026-11-21T11:39:00Z',
@@ -42,6 +53,18 @@ test('production Lighthouse summary uses three real run medians, never a single 
     assert.equal(summary.summary[1].performanceScore,98);
     assert.equal(summary.summary[1].metrics['largest-contentful-paint'].value,550);
     assert.match(result.stdout,/LIGHTHOUSE_MEDIAN_MOBILE=/);
+    const mobileInsight=summary.summary[0].insights;
+    assert.equal(mobileInsight.lcp.element.selector,'main > section.hero > h1');
+    assert.deepEqual(mobileInsight.lcp.phases,[
+      {part:'timeToFirstByte',durationMs:660},
+      {part:'elementRenderDelay',durationMs:702},
+    ]);
+    assert.equal(mobileInsight.renderBlocking.estimatedLcpSavingsMs,1150);
+    assert.deepEqual(mobileInsight.renderBlocking.blocking.map((x:{path:string})=>x.path),
+      ['/journey.css','/neo.css']);
+    assert.equal(summary.summary[1].insights.lcp.element.nodeLabel,'Homepage heading');
+    assert.match(readFileSync(join(dir,'summary.md'),'utf8'),
+      /Blocking stylesheet \/journey\.css: 1518 ms \(audit estimate\)/);
 
     unlinkSync(join(dir,'mobile-3.json'));
     const incomplete=spawnSync(process.execPath,[script,dir],{encoding:'utf8',timeout:10000});
