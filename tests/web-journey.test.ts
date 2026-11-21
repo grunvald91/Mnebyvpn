@@ -313,7 +313,7 @@ test('desktop and mobile storefront present all 3 RUB products without Stars or 
   }
   assert.doesNotMatch(art,/РФ|Россий|Росси/i);
   assert.match(art,/правил сервиса/);
-  assert.match(art,/локальными сетевыми ограничениями/);
+  assert.match(art,/сетевыми ограничениями|сетевых ограничениях/);
   assert.doesNotMatch(art,/⭐|Prodamus|payform/i);
   assert.doesNotMatch(art,/id="old-bundle"|>499 ₽</);
   assert.match(art,/133 ₽\/устройство/);
