@@ -59,7 +59,11 @@ function validIp(ip:string):boolean {
   return !!m&&String(octet)===m[1]&&octet>=2&&octet<=254&&octet!==253;
 }
 function validDraft(d:AwgSlotLeaseV2Draft,now:number):boolean{
-  if(!d||typeof d!=='object'||d.nodeId!=='fi-test-01'||
+  const fields=['nodeId','op','entitlementId','slotNumber','revision',
+    'peerPublicKey','clientIpv4','expiresAt','issuedAt','nonce'];
+  if(!d||typeof d!=='object'||Object.keys(d).length!==fields.length||
+     fields.some(field=>!Object.prototype.hasOwnProperty.call(d,field))||
+     d.nodeId!=='fi-test-01'||
      (d.op!=='grant'&&d.op!=='revoke')||
      typeof d.entitlementId!=='string'||!ID.test(d.entitlementId)||
      !Number.isInteger(d.slotNumber)||d.slotNumber<1||d.slotNumber>3||
