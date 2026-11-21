@@ -40,6 +40,16 @@ test('offline 30-day bundle is atomic and never fakes PSP captures or sends to c
     assert.ok(ents.rows.every(x=>x.state==='PAID_PENDING_PROVISIONING'));
     assert.equal(ents.rows[0].dns_query_quota_per_30d,'1000000');
     assert.equal(ents.rows[1].dns_query_quota_per_30d,null);
+    // Each 3-device owner order reserves exactly three separate device seats,
+    // but DOES NOT pretend they are independent signed AWG peers yet.
+    const seats=await pool.query(
+      "SELECT s.slot_number,s.state,s.peer_public_key,s.registered_at "+
+      "FROM owner_vpn_device_seats s "+
+      "JOIN entitlements e ON e.id=s.entitlement_id "+
+      "WHERE e.source_order_id=$1 ORDER BY s.slot_number",[id]);
+    assert.deepEqual(seats.rows.map(x=>Number(x.slot_number)),[1,2,3]);
+    assert.ok(seats.rows.every(x=>x.state==='EMPTY'&&x.peer_public_key===null&&
+      x.registered_at===null));
     assert.ok(ents.rows.every(x=>
       x.expires_at.getTime()-x.starts_at.getTime()===2592000_000));
     const outbox=await pool.query('SELECT count(*)::int n FROM reconcile_outbox WHERE entitlement_id IN '+
@@ -55,6 +65,23 @@ test('offline 30-day bundle is atomic and never fakes PSP captures or sends to c
     assert.match(blocked.text,/уже существует/);
     const total=await pool.query('SELECT count(*)::int n FROM manual_sales WHERE customer_label=$1',[handle]);
     assert.equal(total.rows[0].n,1);
+    const seatsOnReplay=await pool.query(
+      'SELECT count(*)::int n FROM owner_vpn_device_seats s '+
+      'JOIN entitlements e ON e.id=s.entitlement_id '+
+      'WHERE e.source_order_id=$1',[id]);
+    assert.equal(seatsOnReplay.rows[0].n,3,'replay must not duplicate reserved device seats');
+    const seatGuard=await pool.connect();
+    try{
+      await seatGuard.query('BEGIN');
+      await seatGuard.query('SAVEPOINT impossible_fourth_device');
+      const vpnEntitlement=(await seatGuard.query(
+        "SELECT id FROM entitlements WHERE source_order_id=$1 AND product='vpn'",[id])).rows[0].id;
+      await assert.rejects(seatGuard.query(
+        "INSERT INTO owner_vpn_device_seats(entitlement_id,slot_number) VALUES($1,4)",
+        [vpnEntitlement]),{code:'23514'});
+      await seatGuard.query('ROLLBACK TO SAVEPOINT impossible_fourth_device');
+      await seatGuard.query('ROLLBACK');
+    }finally{seatGuard.release();}
     // Suspension is temporary and must not permit a second paid package.
     await pool.query("UPDATE entitlements SET state='SUSPENDED' WHERE source_order_id=$1 AND product='vpn'",[id]);
     const stillBlocked=await registerOfflineSale(pool,op,op,'87654322','@'+handle+' 399');
