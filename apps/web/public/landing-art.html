@@ -546,7 +546,7 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
     const isDesk=isDesktopViewport();
     // Keep the desktop fallback visible even when motion is disabled.
     // In an embedded mobile iframe, never request this 104 KB poster.
-    if(isDesk)ensureDeskPoster();
+    if(isDesk&&hostActive)ensureDeskPoster();
     if(!autoplayAllowed||!playable()){
       mobVideo?.pause();deskVideo?.pause();
       mobScene?.classList.remove('vid');deskScene?.classList.remove('vid');
