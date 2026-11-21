@@ -139,7 +139,7 @@ test('website 3-in-1 navigation presents VPN Лайт, Smart Доступ and Э
   assert.match(server,/url\.pathname === '\/neo\.css'/);
   assert.match(neoCss,/\.portal-art/);
   assert.match(neoCss,/@media\(max-width:680px\)/);
-  assert.match(html,/<h1>VPN без<span> лишних шагов<\/span><\/h1>/);
+  assert.match(html,/<h1 id="legacy-hero-title">VPN без<span> лишних шагов<\/span><\/h1>/);
   assert.match(html,/<p class="hero-lead">/);
   assert.match(neoCss,/\.hero\{display:block;position:relative;min-height:82px;padding:10px 0 5px/);
   assert.match(neoCss,/\.portal-avatar/);
