@@ -76,8 +76,9 @@ for path in ROUTES:
               " xml_urlset="+str("<urlset" in body),flush=True)
         if path in ("/","/terms","/privacy","/agreement"):
             expected="https://mnebyvpn.site"+path
-            if r.status!=200 or not meta.description or meta.canonical!=expected:
-                failures.append(path+": canonical/description/status")
+            if (r.status!=200 or not meta.description or meta.canonical!=expected or
+                (path=="/" and (meta.h1!=1 or '<h1 id="legacy-hero-title">' not in body))):
+                failures.append(path+": canonical/description/status/home heading")
         elif path in GUIDE_ROUTES:
             expected=ORIGIN+path
             if (r.status!=200 or "text/html" not in h.get("Content-Type","") or
