@@ -46,7 +46,7 @@ const pickInsight=(lhr,id)=>{
       digits(audit.metricSavings.LCP):null,
     estimatedFcpSavingsMs:Number.isFinite(audit.metricSavings?.FCP)?
       digits(audit.metricSavings.FCP):null,
-    element:node?{selector:node.selector||null,label:node.nodeLabel||null,
+    element:node?{selector:node.selector||null,nodeLabel:node.nodeLabel||null,
       snippet:node.snippet||null}:null,
     phases,blocking,
   };
@@ -147,7 +147,7 @@ const lines=[
       '',
       '**'+x.device+'**',
       lcp?.element
-        ?'- LCP element: '+(lcp.element.selector||lcp.element.label||'unidentified')
+        ?'- LCP element: '+(lcp.element.selector||lcp.element.nodeLabel||'unidentified')
         :'- LCP element: not reported in insight JSON',
       ...((lcp?.phases)||[]).map(p=>'- LCP phase '+p.part+': '+p.durationMs+' ms'),
       block?.estimatedLcpSavingsMs!==null&&block?.estimatedLcpSavingsMs!==undefined
