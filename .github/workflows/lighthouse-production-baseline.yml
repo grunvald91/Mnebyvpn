@@ -1,0 +1,95 @@
+name: MNEBYVPN Lighthouse production performance baseline
+
+on:
+  push:
+    paths:
+      - '.github/workflows/lighthouse-production-baseline.yml'
+      - 'scripts/lighthouse_baseline_summary.mjs'
+  workflow_dispatch:
+  schedule:
+    - cron: '42 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  production-baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 17
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate report script and public HTTPS reachability
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check scripts/lighthouse_baseline_summary.mjs
+          mkdir -p "$RUNNER_TEMP/mnebyvpn-lighthouse"
+          # Fail as a network check, not as a misleading performance score.
+          # GET is intentional: the public website does not accept HEAD for /.
+          ok=no
+          for attempt in 1 2; do
+            code="$(curl --noproxy '*' -sS --connect-timeout 8 --max-time 20 \
+              -o /dev/null -w '%{http_code}' https://mnebyvpn.site/ || true)"
+            echo "LIGHTHOUSE_PUBLIC_HTTPS_ATTEMPT_${attempt}=${code:-transport_error}"
+            if [[ "$code" == 200 ]]; then ok=yes;break;fi
+            sleep 2
+          done
+          if [[ "$ok" != yes ]]; then
+            echo 'LIGHTHOUSE_NETWORK_UNAVAILABLE=true'
+            exit 2
+          fi
+      - name: Install pinned official Lighthouse CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/mnebyvpn-lighthouse-tools" --no-save lighthouse@13.6.0
+          if command -v google-chrome >/dev/null 2>&1; then
+            echo "CHROME_PATH=$(command -v google-chrome)" >> "$GITHUB_ENV"
+          elif command -v chromium >/dev/null 2>&1; then
+            echo "CHROME_PATH=$(command -v chromium)" >> "$GITHUB_ENV"
+          else
+            echo 'CHROME_BINARY_UNAVAILABLE=true'
+            exit 2
+          fi
+      - name: Audit production homepage on mobile and desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          target='https://mnebyvpn.site/'
+          for device in mobile desktop; do
+            flags=()
+            if [[ "$device" == desktop ]]; then flags+=(--preset=desktop); fi
+            success=no
+            for attempt in 1 2; do
+              echo "LIGHTHOUSE_RUN_START device=$device attempt=$attempt"
+              if timeout 210s "$RUNNER_TEMP/mnebyvpn-lighthouse-tools/node_modules/.bin/lighthouse" "$target" \
+                --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' \
+                --only-categories=performance,seo \
+                --output=json --quiet \
+                --output-path="$RUNNER_TEMP/mnebyvpn-lighthouse/$device.json" "${flags[@]}"; then
+                success=yes
+                break
+              fi
+              echo "LIGHTHOUSE_ATTEMPT_FAILED device=$device attempt=$attempt"
+              sleep 2
+            done
+            [[ "$success" == yes ]] || { echo "LIGHTHOUSE_AUDIT_FAILED device=$device";exit 2; }
+          done
+          node scripts/lighthouse_baseline_summary.mjs "$RUNNER_TEMP/mnebyvpn-lighthouse"
+      - name: Preserve baseline reports for independent review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnebyvpn-production-lighthouse-mobile-desktop
+          path: |
+            ${{ runner.temp }}/mnebyvpn-lighthouse/mobile.json
+            ${{ runner.temp }}/mnebyvpn-lighthouse/desktop.json
+            ${{ runner.temp }}/mnebyvpn-lighthouse/summary.json
+            ${{ runner.temp }}/mnebyvpn-lighthouse/summary.md
+          if-no-files-found: warn
+          retention-days: 14
