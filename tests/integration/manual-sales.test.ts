@@ -290,3 +290,86 @@ test('private owner sale exposes only the direct verified Telemt link, hides sta
     }
   }
 });
+
+
+test('two separate owner sales: one stable VPN subscription per buyer, no customer Telegram start',async()=>{
+  const owner=991177;
+  const key=randomBytes(32);
+  const tag=randomUUID().replace(/-/g,'').slice(0,11);
+  // Synthetic CI amounts, NOT real amounts paid by actual customers.
+  const inputs=[
+    {handle:'buyer_a_'+tag,amount:101,requestId:'77110001'},
+    {handle:'buyer_b_'+tag,amount:102,requestId:'77110002'},
+  ];
+  const orders:string[]=[];
+  const vpnEntitlements:string[]=[];
+  const dnsEntitlements:string[]=[];
+  for(const entry of inputs){
+    const res=await registerOfflineSale(pool,owner,owner,entry.requestId,
+      '@'+entry.handle+' '+entry.amount);
+    assert.match(res.text,/Личная продажа записана/);
+    const orderId=/Заказ: ([0-9a-f-]{36})/.exec(res.text)?.[1];
+    assert.ok(orderId,res.text);
+    orders.push(orderId);
+    const rows=(await pool.query(
+      'SELECT product,id,account_id FROM entitlements '+
+      'WHERE source_order_id=$1 ORDER BY product',[orderId])).rows;
+    assert.deepEqual(rows.map(r=>r.product),['smart_dns','vpn']);
+    assert.equal(rows[0].account_id,rows[1].account_id);
+    dnsEntitlements.push(String(rows[0].id));
+    vpnEntitlements.push(String(rows[1].id));
+    const count=(await pool.query(
+      'SELECT count(*)::int n FROM owner_vpn_device_seats '+
+      'WHERE entitlement_id=$1',[rows[1].id])).rows[0].n;
+    assert.equal(count,3,'three reserved seats do not mean three links');
+    const account=(await pool.query(
+      'SELECT telegram_user_id FROM accounts WHERE id=$1',
+      [rows[0].account_id])).rows[0];
+    assert.equal(account.telegram_user_id,null,
+      'customer never had to start the Telegram bot');
+    const noAck=await issueOwnerOfflineSubscriptionLink(
+      pool,owner,orderId,rows[1].id,key);
+    assert.equal(noAck,null,'never publish VPN without provisioning ACK');
+  }
+  assert.equal(new Set(orders).size,2);
+  assert.equal(new Set(vpnEntitlements).size,2);
+  assert.equal(new Set(dnsEntitlements).size,2);
+  const links:string[]=[];
+  for(let i=0;i<2;i++){
+    const entitlementId=vpnEntitlements[i],orderId=orders[i];
+    await pool.query("UPDATE entitlements SET state='ACTIVE' WHERE id=$1",
+      [entitlementId]);
+    await pool.query(
+      "INSERT INTO provisioning_state(entitlement_id,adapter,applied_revision,last_observed_at) "+
+      "VALUES($1,'vpn',1,clock_timestamp()) "+
+      "ON CONFLICT(entitlement_id,adapter) DO UPDATE "+
+      "SET applied_revision=1,last_observed_at=clock_timestamp()",
+      [entitlementId]);
+    const issued=await issueOwnerOfflineSubscriptionLink(
+      pool,owner,orderId,entitlementId,key);
+    assert.ok(issued);
+    assert.match(issued.link,/^https:\/\/cdn\.servgo\.ru:8443\/sub\/[A-Za-z0-9_-]{43}$/);
+    links.push(issued.link);
+    const replay=await issueOwnerOfflineSubscriptionLink(
+      pool,owner,orderId,entitlementId,key);
+    assert.equal(replay?.link,issued.link,'same buyer gets same VPN URL');
+    const wrong=await issueOwnerOfflineSubscriptionLink(
+      pool,owner,orders[1-i],entitlementId,key);
+    assert.equal(wrong,null,'cross-buyer order+entitlement binding');
+    const details=await showOfflineSale(pool,owner,owner,orderId,true,false,key);
+    assert.ok(details.text.includes(issued.link));
+    assert.equal(details.text.split(issued.link).length-1,1,
+      'owner card prints only one VPN URL');
+    const stranger=await showOfflineSale(pool,owner+1,owner,orderId,true,true,key);
+    assert.match(stranger.text,/Недостаточно прав/);
+  }
+  assert.notEqual(links[0],links[1],
+    'each buyer must have a different persistent subscription bearer');
+  for(let i=0;i<2;i++){
+    const count=(await pool.query(
+      'SELECT count(*)::int n FROM vpn_subscription_links '+
+      'WHERE entitlement_id=$1',[vpnEntitlements[i]])).rows[0].n;
+    assert.equal(count,1,
+      'repeated reads must not create three device-specific VPN subscription links');
+  }
+});
