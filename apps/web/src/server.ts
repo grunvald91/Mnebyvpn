@@ -308,10 +308,22 @@ const landingArtPolicy = [
   "frame-ancestors 'self'",
 ].join('; ');
 
+// Public assets are immutable Buffers loaded during startup. Compute each
+// content hash once, rather than hashing 100KB of CSS on every request.
+// WeakMap does not retain any retired asset Buffers after a future reload.
+const staticEtags=new WeakMap<Buffer,string>();
+function contentEtag(data: Buffer): string {
+  let tag=staticEtags.get(data);
+  if(!tag){
+    tag='"'+createHash('sha256').update(data).digest('hex')+'"';
+    staticEtags.set(data,tag);
+  }
+  return tag;
+}
 function sendArt(req: IncomingMessage, res: ServerResponse) {
   res.setHeader('X-Robots-Tag','noindex, follow');
   // This is static, non-personalized artwork. Keep the main HTML uncached.
-  const etag='"'+createHash('sha256').update(landingArtHtml).digest('hex')+'"';
+  const etag=contentEtag(landingArtHtml);
   res.setHeader('ETag',etag);
   res.setHeader('Cache-Control', 'public, no-cache, must-revalidate');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -382,7 +394,7 @@ function send(res: ServerResponse, status: number, body: string|Buffer, type = '
 // reuse unchanged bytes without mixing revisions after an atomic release.
 // Customer HTML, catalog, checkout and all JSON APIs remain no-store.
 function sendStatic(req: IncomingMessage, res: ServerResponse, data: Buffer, type: string) {
-  const etag='"'+createHash('sha256').update(data).digest('hex')+'"';
+  const etag=contentEtag(data);
   const cache='public, no-cache, must-revalidate';
   res.setHeader('ETag',etag);
   if(req.headers['if-none-match']?.split(',').some(t=>t.trim()===etag)){
