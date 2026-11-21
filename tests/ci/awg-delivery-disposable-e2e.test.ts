@@ -25,6 +25,15 @@ import {awgControllerPayload,stageAwgGrant,stageAwgRevoke,
 import {acknowledgeAwgCommand,nodeAwgReceiptPayload,
   type NodeAwgReceipt} from '../../packages/provisioning/src/awg-controller-outbox.ts';
 import {deliverNextAwgCommand} from '../../packages/provisioning/src/awg-trusted-ssh-delivery.ts';
+import {registerOfflineSale} from '../../apps/service/src/manual-sales.ts';
+import {
+  stageOwnerAwgSlotGrant,stageOwnerAwgSlotRevoke,
+} from '../../packages/provisioning/src/awg-slot-v2-outbox.ts';
+import {
+  awgSlotLeasePayload,awgSlotReceiptPayload,type AwgSlotLeaseV2,
+} from '../../packages/provisioning/src/awg-device-lease-v2.ts';
+import {deliverNextAwgSlotCommand}
+  from '../../packages/provisioning/src/awg-slot-v2-ssh-delivery.ts';
 
 const FI='fi-test-01';
 const HOST='fi.mnebyvpn.site';
@@ -144,7 +153,18 @@ test('disposable FI217 controller outbox -> verified node receipt -> CAS revoke'
     assert.equal(before.rows[0].n,0);
     await db.query('UPDATE vpn_release_flags SET enabled=true WHERE feature=$1',[GATE]);
 
+    // A separate reserved owner IP exists before a normal FI subscriber
+    // grant. Legacy IPAM must skip it instead of selecting .2 again.
+    const reservedOwnerIp='10.73.91.2/32';
+    await db.query(
+      'INSERT INTO vpn_awg_ipv4_claims('+
+      'node_id,client_ipv4,entitlement_id,device_slot,peer_public_key,source) '+
+      "VALUES($1,$2::inet,$3,1,$4,'owner_slot')",
+      [FI,reservedOwnerIp,randomUUID(),randomBytes(32).toString('base64')],
+    );
     const staged=await stageAwgGrant(db,input,controller.privateKey,now());
+    assert.equal(staged.command.clientIpv4,'10.73.91.3',
+      'legacy controller must skip IP already claimed by an owner seat');
     assert.equal(staged.staged,true);
     assert.equal(staged.published,false);
     assert.equal(staged.command.op,'grant');
@@ -206,6 +226,114 @@ test('disposable FI217 controller outbox -> verified node receipt -> CAS revoke'
     await assert.rejects(acknowledgeAwgCommand(db,{
       outboxId:(grant as {outboxId:string}).outboxId,receipt:receipts[0],
     }),/Receipt does not match claimed command/);
+    // V2 integration uses the SAME disposable FI identity and the same pinned
+    // SSH fixture. No new real node, SSH connection or subscription is created.
+    const owner=887431;
+    const sale=await registerOfflineSale(db,owner,owner,'99880015',
+      '@v2buyer_'+randomBytes(7).toString('hex')+' 399');
+    const ownerOrder=/Заказ: ([0-9a-f-]{36})/.exec(sale.text)?.[1];
+    assert.ok(ownerOrder,sale.text);
+    const ownerEntitlement=(await db.query(
+      "SELECT id FROM entitlements WHERE source_order_id=$1 AND product='vpn'",
+      [ownerOrder])).rows[0].id as string;
+    await db.query("UPDATE entitlements SET state='ACTIVE' WHERE id=$1",
+      [ownerEntitlement]);
+    await db.query(
+      'INSERT INTO provisioning_state('+
+      'entitlement_id,adapter,applied_revision,last_observed_at) '+
+      "VALUES($1,'vpn',1,clock_timestamp()) "+
+      'ON CONFLICT(entitlement_id,adapter) DO UPDATE '+
+      'SET applied_revision=1,last_observed_at=clock_timestamp()',
+      [ownerEntitlement]);
+    for(let i=1;i<=3;i++){
+      const keyRegistration: import('pg').QueryResult<{result:string}>=
+        await db.query<{result:string}>(
+          'SELECT public.owner_vpn_request_device_key('+
+          '$1::bigint,$2::uuid,$3::smallint,$4::text) AS result',
+          [owner,ownerOrder,i,randomBytes(32).toString('base64')]);
+      assert.equal(keyRegistration.rows[0].result,'REQUESTED');
+    }
+    await assert.rejects(stageOwnerAwgSlotGrant(db,{
+      operatorTelegramId:owner,orderId:ownerOrder!,nodeId:FI,
+      slotNumber:1,expectedRevision:0,
+    },controller.privateKey,now()),/V2 release/);
+    await db.query(
+      "UPDATE vpn_release_flags SET enabled=true WHERE feature='owner_awg_slot_v2'");
+    const ownerGrants=await Promise.all(([1,2,3] as const).map(
+      slotNumber=>stageOwnerAwgSlotGrant(db,{
+        operatorTelegramId:owner,orderId:ownerOrder!,nodeId:FI,
+        slotNumber,expectedRevision:0,
+      },controller.privateKey,now())));
+    assert.deepEqual(ownerGrants.map(x=>x.command.slotNumber),[1,2,3]);
+    assert.equal(new Set(ownerGrants.map(x=>x.command.clientIpv4)).size,3);
+    const verifiedSlots:AwgSlotLeaseV2[]=[];
+    const runnerV2=(executable:string,args:string[],options:{input:string})=>{
+      assert.equal(executable,'/usr/bin/ssh');
+      assert(args.includes('HostKeyAlias=fi.mnebyvpn.site'));
+      assert(args.includes('StrictHostKeyChecking=yes'));
+      assert(args.includes('BatchMode=yes'));
+      assert(args.includes('PasswordAuthentication=no'));
+      assert(args.includes('root@217.11.167.91'));
+      assert(args.some(x=>x.includes('awg_slot_runtime.py --node-id fi-test-01')));
+      const command=JSON.parse(options.input) as AwgSlotLeaseV2;
+      assert.equal(command.entitlementId,ownerEntitlement);
+      assert.equal(verify(null,awgSlotLeasePayload(command),controller.publicKey,
+        Buffer.from(command.signature,'base64url')),true);
+      verifiedSlots.push(command);
+      const unsigned={
+        nodeId:command.nodeId,op:command.op,
+        entitlementId:command.entitlementId,slotNumber:command.slotNumber,
+        revision:command.revision,
+        commandSha256:createHash('sha256').update(awgSlotLeasePayload(command))
+          .digest('hex'),
+        appliedAt:new Date().toISOString(),nonce:randomBytes(32).toString('hex'),
+      };
+      const receipt={...unsigned,
+        signature:sign(null,awgSlotReceiptPayload(unsigned),node.privateKey)
+          .toString('base64url')};
+      return {status:0,stdout:JSON.stringify({
+        node_receipt:receipt,active:true,
+        signed_command_verified:true,published:false,
+      }),stderr:'',error:undefined};
+    };
+    for(let i=0;i<3;i++){
+      const result=await deliverNextAwgSlotCommand(
+        db,controller.privateKey,
+        {sshIdentityFile:sshKey,pinnedKnownHostsFile:hostPin},
+        now(),runnerV2);
+      assert.equal(result.status,'acknowledged');
+    }
+    assert.deepEqual(verifiedSlots.map(x=>x.slotNumber),[1,2,3]);
+    assert.equal((await db.query(
+      "SELECT count(*)::int n FROM owner_vpn_awg_slot_command_outbox "+
+      "WHERE entitlement_id=$1 AND state='applied'",
+      [ownerEntitlement])).rows[0].n,3);
+    await db.query(
+      "UPDATE vpn_release_flags SET enabled=false WHERE feature='owner_awg_slot_v2'");
+    await db.query("UPDATE entitlements SET state='SUSPENDED' WHERE id=$1",
+      [ownerEntitlement]);
+    await stageOwnerAwgSlotRevoke(db,{
+      nodeId:FI,entitlementId:ownerEntitlement,
+      slotNumber:2,expectedRevision:1,
+    },controller.privateKey,now());
+    const revokedSlot=await deliverNextAwgSlotCommand(
+      db,controller.privateKey,
+      {sshIdentityFile:sshKey,pinnedKnownHostsFile:hostPin},
+      now(),runnerV2);
+    assert.equal(revokedSlot.status,'acknowledged');
+    assert.equal(verifiedSlots.at(-1)?.op,'revoke');
+    assert.equal(verifiedSlots.at(-1)?.slotNumber,2);
+    const ownerState=(await db.query(
+      'SELECT slot_number,state,revision FROM owner_vpn_awg_slot_allocations '+
+      'WHERE entitlement_id=$1 ORDER BY slot_number',
+      [ownerEntitlement])).rows;
+    assert.deepEqual(ownerState.map(x=>x.state),['applied','revoked','applied']);
+    assert.deepEqual(ownerState.map(x=>x.revision),[1,2,1]);
+    assert.equal((await db.query(
+      'SELECT count(*)::int n FROM vpn_awg_command_outbox '+
+      'WHERE entitlement_id=$1',[ownerEntitlement])).rows[0].n,0,
+      'owner V2 deliveries must not modify V1 outbox');
+
     const published=await db.query(
       'SELECT count(*)::int AS n FROM vpn_additional_node_receipts '+
       'WHERE entitlement_id=$1',[entitlement]);

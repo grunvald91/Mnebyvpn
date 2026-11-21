@@ -290,3 +290,214 @@ test('private owner sale exposes only the direct verified Telemt link, hides sta
     }
   }
 });
+
+
+test('three owner device public keys register without AWG grants; no fourth, key reuse or cross-owner',async()=>{
+  const owner=877341,other=877342;
+  const label='seats_'+randomUUID().replaceAll('-','').slice(0,10);
+  const r=await registerOfflineSale(pool,owner,owner,'1299760','@'+label+' 399');
+  const orderId=/Заказ: ([0-9a-f-]{36})/.exec(r.text)?.[1];
+  assert.ok(orderId,r.text);
+  const entitlement=(await pool.query(
+    "SELECT id FROM entitlements WHERE source_order_id=$1 AND product='vpn'",
+    [orderId])).rows[0].id as string;
+  const key=()=>randomBytes(32).toString('base64');
+  const [a,b,c,d]=[key(),key(),key(),key()];
+  const request=(actor:number,slot:number,k:string)=>pool.query(
+    'SELECT public.owner_vpn_request_device_key($1::bigint,$2::uuid,$3::smallint,$4::text) AS result',
+    [actor,orderId,slot,k]).then(x=>x.rows[0].result as string);
+  assert.equal(await request(owner,1,a),'DENY_ACCESS','not even first key before VPN ACK');
+  assert.equal(await request(other,1,a),'DENY_ACCESS');
+  assert.equal(await request(owner,4,a),'DENY_INPUT');
+  assert.equal(await request(owner,1,'not-a-key'),'DENY_INPUT');
+
+  await pool.query("UPDATE entitlements SET state='ACTIVE' WHERE id=$1",[entitlement]);
+  await pool.query(
+    "INSERT INTO provisioning_state(entitlement_id,adapter,applied_revision,last_observed_at) "+
+    "VALUES($1,'vpn',1,clock_timestamp()) ON CONFLICT(entitlement_id,adapter) "+
+    "DO UPDATE SET applied_revision=1,last_observed_at=clock_timestamp()",
+    [entitlement]);
+  const simultaneous=await Promise.all([request(owner,1,a),request(owner,1,a)]);
+  assert.deepEqual(simultaneous.sort(),['ALREADY_REQUESTED','REQUESTED']);
+  assert.equal(await request(owner,1,a),'ALREADY_REQUESTED');
+  assert.equal(await request(owner,2,a),'DENY_KEY_IN_USE');
+  assert.equal(await request(owner,2,b),'REQUESTED');
+  assert.equal(await request(owner,3,c),'REQUESTED');
+  assert.equal(await request(owner,3,d),'DENY_BOUND');
+  assert.equal(await request(other,2,b),'DENY_ACCESS');
+  const rows=(await pool.query(
+    'SELECT slot_number,peer_public_key,state FROM owner_vpn_device_seats '+
+    'WHERE entitlement_id=$1 ORDER BY slot_number',[entitlement])).rows;
+  assert.deepEqual(rows.map(x=>Number(x.slot_number)),[1,2,3]);
+  assert.deepEqual(rows.map(x=>x.peer_public_key),[a,b,c]);
+  assert.ok(rows.every(x=>x.state==='REQUESTED'));
+  assert.equal((await pool.query(
+    'SELECT count(*)::int n FROM vpn_awg_peer_allocations WHERE entitlement_id=$1',
+    [entitlement])).rows[0].n,0,'a REQUESTED seat is never a live AWG peer');
+  assert.equal((await pool.query(
+    'SELECT count(*)::int n FROM vpn_awg_command_outbox WHERE entitlement_id=$1',
+    [entitlement])).rows[0].n,0,'no automatic signed AWG commands');
+
+  await pool.query(
+    "UPDATE owner_vpn_device_seats SET state='REVOKED',revoked_at=clock_timestamp() "+
+    "WHERE entitlement_id=$1 AND slot_number=1",[entitlement]);
+  assert.equal(await request(owner,1,a),'DENY_REVOKED');
+  assert.equal(await request(owner,1,d),'DENY_REVOKED');
+  await pool.query("UPDATE entitlements SET state='SUSPENDED' WHERE id=$1",[entitlement]);
+  assert.equal(await request(owner,2,b),'DENY_ACCESS','suspended subscription denies access');
+});
+
+
+test('private three-peer intent per verified AWG node never issues live allocations',async()=>{
+  const owner=895144,other=895145;
+  const label='three_'+randomUUID().replaceAll('-','').slice(0,9);
+  const sale=await registerOfflineSale(pool,owner,owner,'89514401','@'+label+' 399');
+  const orderId=/Заказ: ([0-9a-f-]{36})/.exec(sale.text)?.[1];
+  assert.ok(orderId,sale.text);
+  const entitlement=(await pool.query(
+    "SELECT id FROM entitlements WHERE source_order_id=$1 AND product='vpn'",
+    [orderId])).rows[0].id as string;
+  const nodeId='seat-'+randomUUID().replaceAll('-','').slice(0,8);
+  const nodeHost=nodeId+'.example.net';
+  const ask=(actor:number,slot:number,node:string)=>pool.query(
+    'SELECT public.owner_vpn_reserve_awg_peer_slot($1::bigint,$2::uuid,$3::smallint,$4::text) AS result',
+    [actor,orderId,slot,node]).then(x=>x.rows[0].result as string);
+  const key=()=>randomBytes(32).toString('base64');
+  const keys=[key(),key(),key()];
+  assert.equal(await ask(owner,1,nodeId),'DENY_ACCESS','no access before VPN ACK');
+  await pool.query("UPDATE entitlements SET state='ACTIVE' WHERE id=$1",[entitlement]);
+  await pool.query(
+    "INSERT INTO provisioning_state(entitlement_id,adapter,applied_revision,last_observed_at) "+
+    "VALUES($1,'vpn',1,clock_timestamp()) ON CONFLICT(entitlement_id,adapter) "+
+    "DO UPDATE SET applied_revision=1,last_observed_at=clock_timestamp()",
+    [entitlement]);
+  for(let i=0;i<3;i++){
+    const inserted: import('pg').QueryResult<{result:string}>=await pool.query<{result:string}>(
+      'SELECT public.owner_vpn_request_device_key($1::bigint,$2::uuid,$3::smallint,$4::text) AS result',
+      [owner,orderId,i+1,keys[i]]);
+    assert.equal(inserted.rows[0].result,'REQUESTED');
+  }
+  assert.equal(await ask(owner,1,nodeId),'DENY_NODE','unapproved node is not reservable');
+  assert.equal(await ask(other,1,nodeId),'DENY_ACCESS');
+  assert.equal(await ask(owner,4,nodeId),'DENY_INPUT');
+
+  await pool.query(
+    "INSERT INTO vpn_node_enrollment_inventory(node_id,endpoint_host,identity_public_spki) "+
+    "VALUES($1,$2,$3)",[nodeId,nodeHost,randomBytes(44).toString('base64url')]);
+  await pool.query(
+    "UPDATE vpn_node_enrollment_inventory SET status='approved',approved_at=clock_timestamp() "+
+    "WHERE node_id=$1",[nodeId]);
+  await pool.query(
+    "INSERT INTO vpn_node_enrollment_challenges(challenge_id,node_id,nonce_sha256,"+
+    "issued_at,expires_at,consumed_at) VALUES($1,$2,$3,"+
+    "clock_timestamp()-interval '1 second',clock_timestamp()+interval '2 minutes',clock_timestamp())",
+    [randomUUID(),nodeId,randomBytes(32).toString('hex')]);
+  await pool.query(
+    "UPDATE vpn_node_enrollment_inventory SET status='enrolled',enrolled_at=clock_timestamp() "+
+    "WHERE node_id=$1",[nodeId]);
+  await pool.query(
+    "INSERT INTO vpn_awg_node_pools(node_id,endpoint_host,server_public_key,subnet_cidr,"+
+    "state,external_e2e_proof_sha256,verified_at) "+
+    "VALUES($1,$2,$3,'10.73.247.0/24','staged',$4,clock_timestamp())",
+    [nodeId,nodeHost,key(),randomBytes(32).toString('hex')]);
+  assert.equal(await ask(owner,1,nodeId),'DENY_NODE','staged node must not qualify');
+  await pool.query("UPDATE vpn_awg_node_pools SET state='verified' WHERE node_id=$1",[nodeId]);
+
+  const first=await Promise.all([ask(owner,1,nodeId),ask(owner,2,nodeId),ask(owner,3,nodeId)]);
+  assert.deepEqual(first,['RESERVED','RESERVED','RESERVED']);
+  assert.equal(await ask(owner,1,nodeId),'RESERVED','same slot is idempotent');
+  const reservations=(await pool.query(
+    'SELECT slot_number,peer_public_key,state FROM owner_vpn_awg_peer_reservations '+
+    'WHERE node_id=$1 AND entitlement_id=$2 ORDER BY slot_number',
+    [nodeId,entitlement])).rows;
+  assert.deepEqual(reservations.map(r=>Number(r.slot_number)),[1,2,3]);
+  assert.deepEqual(reservations.map(r=>r.peer_public_key),keys);
+  assert.ok(reservations.every(r=>r.state==='RESERVED'));
+  const eligible=async()=>Number((await pool.query(
+    'SELECT count(*)::int n FROM owner_vpn_awg_eligible_peer_reservations '+
+    'WHERE node_id=$1 AND entitlement_id=$2',[nodeId,entitlement])).rows[0].n);
+  assert.equal(await eligible(),3,'all 3 seats have current eligibility, but NO live grant');
+  assert.equal((await pool.query(
+    'SELECT count(*)::int n FROM vpn_awg_peer_allocations WHERE entitlement_id=$1',
+    [entitlement])).rows[0].n,0,'no legacy AWG peer issued');
+  assert.equal((await pool.query(
+    'SELECT count(*)::int n FROM vpn_awg_command_outbox WHERE entitlement_id=$1',
+    [entitlement])).rows[0].n,0,'no signed AWG command sent');
+
+  // The legacy AWG allocator and three owner seats MUST share one IPv4
+  // uniqueness domain. Simulate one existing legacy peer on this /24 node.
+  const oldPeer=key();
+  await pool.query(
+    'INSERT INTO vpn_awg_peer_allocations('+
+    'node_id,entitlement_id,peer_public_key,client_ipv4,revision,expires_at) '+
+    "VALUES($1,$2,$3,'10.73.247.2/32'::inet,1,clock_timestamp()+interval '1 day')",
+    [nodeId,entitlement,oldPeer]);
+  const allocate=(actor:number,slot:number)=>pool.query(
+    'SELECT public.owner_vpn_allocate_awg_slot_ipv4('+
+    '$1::bigint,$2::uuid,$3::smallint,$4::text) AS result',
+    [actor,orderId,slot,nodeId]).then(x=>x.rows[0].result as string);
+  assert.equal(await allocate(other,1),'DENY_ACCESS','foreign owner cannot reserve an IP');
+  assert.equal(await allocate(owner,4),'DENY_INPUT','no fourth AWG IP slot');
+  const addresses=await Promise.all([allocate(owner,1),allocate(owner,2),allocate(owner,3)]);
+  assert.deepEqual(addresses,['ALLOCATED','ALLOCATED','ALLOCATED']);
+  assert.equal(await allocate(owner,1),'ALREADY_ALLOCATED','replay must not allocate a new IP');
+
+  const assigned=(await pool.query(
+    'SELECT device_slot,host(client_ipv4) AS address,source '+
+    'FROM vpn_awg_ipv4_claims WHERE node_id=$1 ORDER BY device_slot',
+    [nodeId])).rows;
+  assert.equal(assigned.length,4,'one old peer plus three private slots');
+  assert.deepEqual(assigned.map(x=>Number(x.device_slot)),[0,1,2,3]);
+  assert.equal(assigned[0].address,'10.73.247.2','preserve old legacy address');
+  assert.equal(assigned[0].source,'legacy');
+  assert.deepEqual(assigned.slice(1).map(x=>x.address).sort(),
+    ['10.73.247.3','10.73.247.4','10.73.247.5']);
+  assert.ok(assigned.slice(1).every(x=>x.source==='owner_slot'));
+
+  await assert.rejects(pool.query(
+    'INSERT INTO vpn_awg_ipv4_claims('+
+    'node_id,client_ipv4,entitlement_id,device_slot,peer_public_key,source) '+
+    "VALUES($1,'10.73.247.3/32'::inet,$2,0,$3,'legacy')",
+    [nodeId,randomUUID(),key()]),{code:'23505'},
+    'legacy allocation cannot steal an owner address');
+  await assert.rejects(pool.query(
+    'DELETE FROM vpn_awg_ipv4_claims WHERE node_id=$1 AND device_slot=1',
+    [nodeId]),/AWG IPv4 binding is immutable and retained/,
+    'even a privileged delete cannot recycle an old private IP');
+  assert.equal((await pool.query(
+    'SELECT count(*)::int n FROM vpn_awg_command_outbox WHERE entitlement_id=$1',
+    [entitlement])).rows[0].n,0,'dormant owner IP claims never enqueue node commands');
+
+  await pool.query(
+    "UPDATE owner_vpn_device_seats SET state='REVOKED',revoked_at=clock_timestamp() "+
+    "WHERE entitlement_id=$1 AND slot_number=1",[entitlement]);
+  assert.equal(await ask(owner,1,nodeId),'DENY_ACCESS','revoked key cannot get new authorization');
+  assert.equal(await eligible(),2,'revoked key must not remain eligible');
+  // Hold a concurrent node revocation while a reservation request arrives:
+  // a correct FOR SHARE on enrollment MUST wait for COMMIT and then deny.
+  const revoker=await pool.connect();
+  try{
+    await revoker.query('BEGIN');
+    await revoker.query(
+      "UPDATE vpn_node_enrollment_inventory SET status='revoked' WHERE node_id=$1",
+      [nodeId]);
+    let resolved=false;
+    const inFlight=ask(owner,2,nodeId).then(value=>{resolved=true;return value;});
+    await new Promise<void>(done=>setTimeout(done,100));
+    const returnedBeforeRevocationCommitted=resolved;
+    await revoker.query('COMMIT');
+    assert.equal(returnedBeforeRevocationCommitted,false,
+      'reservation must wait for the node revocation row lock');
+    assert.equal(await inFlight,'DENY_NODE','revoked node rejects the in-flight request');
+  }finally{
+    await revoker.query('ROLLBACK').catch(()=>{});
+    revoker.release();
+  }
+  assert.equal(await ask(owner,2,nodeId),'DENY_NODE','revoked node cannot receive new reservations');
+  assert.equal(await eligible(),0,'revoked node hides all historical reservations');
+  assert.equal((await pool.query(
+    'SELECT count(*)::int n FROM owner_vpn_awg_peer_reservations WHERE node_id=$1',
+    [nodeId])).rows[0].n,3,'history remains auditable without being eligible');
+  await pool.query("UPDATE entitlements SET state='SUSPENDED' WHERE id=$1",[entitlement]);
+  assert.equal(await ask(owner,2,nodeId),'DENY_ACCESS','suspension blocks reservations');
+});

@@ -13,6 +13,8 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {pathToFileURL} from 'node:url';
 import {Pool} from 'pg';
 import {deliverNextAwgCommand} from '../../../packages/provisioning/src/awg-trusted-ssh-delivery.ts';
+import {deliverNextAwgSlotCommand}
+  from '../../../packages/provisioning/src/awg-slot-v2-ssh-delivery.ts';
 import {stageDueOfflineAwgMaintenance} from '../../../packages/provisioning/src/awg-offline-maintenance.ts';
 import {stageNextFiAwgDevice,enqueueFiAwgActiveSubscriptions}
   from '../../../packages/provisioning/src/awg-device-registration-worker.ts';
@@ -89,6 +91,16 @@ export async function runAwgDeliveryLoop(
   }
 }
 
+/** Guarded, serial V1 then V2 delivery; never reaches V2 when disabled. */
+export async function deliverAwgCycle(
+  legacy:Deliver,ownerV2:Deliver,v2Enabled:boolean,
+):Promise<DeliveryResult>{
+  const v1=await legacy();
+  if(!v2Enabled)return v1;
+  const slots=await ownerV2();
+  return slots.status==='acknowledged'?slots:v1;
+}
+
 async function main():Promise<void>{
   if(process.env.MNEBYVPN_ENV!=='production'||
      process.env.MNEBYVPN_AWG_DELIVERY_WORKER!=='enabled')
@@ -107,6 +119,9 @@ async function main():Promise<void>{
   // RU188 owns one additional peer identity per canonical entitlement,
   // NOT a second subscription, token, purchase or access controller.
   const subscriptionIdentityRoot=process.env.AWG_INCY_SUBSCRIPTION_SEED??'';
+  // Independent opt-in for private owner V2 delivery; default strictly OFF.
+  // No V2 command is automatically staged by this worker.
+  const ownerV2Delivery=process.env.MNEBYVPN_AWG_SLOT_V2_DELIVERY==='enabled';
   const db=new Pool({connectionString:url,max:1,connectionTimeoutMillis:3000,
                      idleTimeoutMillis:12000});
   const abort=new AbortController();
@@ -120,6 +135,14 @@ async function main():Promise<void>{
     );
     if(!checked.rows[0]?.outbox||!checked.rows[0]?.inventory)
       throw Error('AWG outbox and enrolled-node schema are not ready');
+    if(ownerV2Delivery){
+      const slotTables=await db.query(
+        "SELECT to_regclass('public.owner_vpn_awg_slot_allocations')::text AS allocation, "+
+        "to_regclass('public.owner_vpn_awg_slot_command_outbox')::text AS outbox"
+      );
+      if(!slotTables.rows[0]?.allocation||!slotTables.rows[0]?.outbox)
+        throw Error('Private AWG V2 slot delivery migration 0146 missing');
+    }
     // Autonomous grant refresh/revoke is independent of client connections.
     // Keep deliveries moving even if a maintenance cycle fails; the next
     // cycle retries while the FI node keeps honoring its local signed ledger.
@@ -162,7 +185,11 @@ async function main():Promise<void>{
           // Queue failure does not suppress an already-approved grant revoke.
           process.stderr.write('FI_AWG_DEVICE_QUEUE_RETRY\\n');
         }
-        return deliverNextAwgCommand(db,signing,config);
+        return deliverAwgCycle(
+          ()=>deliverNextAwgCommand(db,signing,config),
+          ()=>deliverNextAwgSlotCommand(db,signing,config),
+          ownerV2Delivery,
+        );
       },
       abort.signal,undefined,(status)=>{
         if(status==='acknowledged')process.stdout.write('AWG_DELIVERY_ACKNOWLEDGED\n');

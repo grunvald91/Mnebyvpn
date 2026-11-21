@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {runAwgDeliveryLoop} from '../apps/service/src/awg-controller-delivery-worker.ts';
+import {runAwgDeliveryLoop,deliverAwgCycle} from '../apps/service/src/awg-controller-delivery-worker.ts';
 
 test('delivery loop handles one command at a time and shuts down',async()=>{
   const stop=new AbortController();
@@ -52,4 +52,26 @@ test('aborted controller never attempts delivery',async()=>{
   stop.abort();
   await runAwgDeliveryLoop(async()=>{throw Error('unexpected');},
     stop.signal,async()=>{throw Error('unexpected');});
+});
+
+
+test('owner V2 delivery is strictly opt-in and serial after legacy worker',async()=>{
+  const events:string[]=[];
+  const legacy=async()=>{events.push('legacy');return {status:'acknowledged' as const,
+    outboxId:'11'};};
+  const owner=async()=>{events.push('owner');return {status:'acknowledged' as const,
+    outboxId:'12'};};
+  assert.deepEqual(await deliverAwgCycle(legacy,owner,false),
+    {status:'acknowledged',outboxId:'11'});
+  assert.deepEqual(events,['legacy'],'disabled flag must never call V2 transport');
+  assert.deepEqual(await deliverAwgCycle(legacy,owner,true),
+    {status:'acknowledged',outboxId:'12'});
+  assert.deepEqual(events,['legacy','legacy','owner']);
+  const idle=async()=>({status:'idle' as const});
+  assert.deepEqual(await deliverAwgCycle(legacy,idle,true),
+    {status:'acknowledged',outboxId:'11'},'idle V2 must not hide V1 ACK');
+  await assert.rejects(
+    deliverAwgCycle(legacy,async()=>{
+      throw Error('V2 transport failure must propagate');
+    },true),/V2 transport failure/);
 });
