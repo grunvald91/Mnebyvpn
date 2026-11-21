@@ -57,9 +57,9 @@ jobs:
             curl --noproxy '*' -fsS --connect-timeout 8 --max-time 25 \
               -H 'Accept-Encoding: br' -D "$scratch/encoded.headers" \
               -o "$scratch/encoded" "$url"
-            codec="$(awk 'tolower($1)=="content-encoding:" {gsub(/\\r/,"",$2); print tolower($2)}' "$scratch/encoded.headers" | tail -n1)"
-            etag="$(awk 'tolower($1)=="etag:" {gsub(/\\r/,"",$2); print $2}' "$scratch/encoded.headers" | tail -n1)"
-            vary="$(awk 'tolower($1)=="vary:" {gsub(/\\r/,""); print tolower($0)}' "$scratch/encoded.headers" | tail -n1)"
+            codec="$(awk 'tolower($1)=="content-encoding:" {gsub(/\r/,"",$2); print tolower($2)}' "$scratch/encoded.headers" | tail -n1)"
+            etag="$(awk 'tolower($1)=="etag:" {gsub(/\r/,"",$2); print $2}' "$scratch/encoded.headers" | tail -n1)"
+            vary="$(awk 'tolower($1)=="vary:" {gsub(/\r/,""); print tolower($0)}' "$scratch/encoded.headers" | tail -n1)"
             [[ "$codec" == br ]] || { echo "PUBLIC_STATIC_ENCODING_FAIL=$file codec=${codec:-none}"; exit 2; }
             [[ "$vary" == *accept-encoding* ]] || { echo "PUBLIC_STATIC_VARY_FAIL=$file"; exit 2; }
             [[ -n "$etag" ]] || { echo "PUBLIC_STATIC_ETAG_MISSING=$file"; exit 2; }
