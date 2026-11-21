@@ -39,7 +39,8 @@ BEGIN
   IF v_pool IS NULL OR NOT NEW.client_ipv4 << v_pool
      OR host(NEW.client_ipv4)=host(network(v_pool))
      OR host(NEW.client_ipv4)=host(broadcast(v_pool))
-     OR host(NEW.client_ipv4)=host(network(v_pool)::inet+1) THEN
+     OR (NEW.source='owner_slot' AND
+         host(NEW.client_ipv4)=host(network(v_pool)::inet+1)) THEN
     RAISE EXCEPTION 'AWG IPv4 claim outside subscriber pool';
   END IF;
   IF NEW.source='owner_slot' AND
