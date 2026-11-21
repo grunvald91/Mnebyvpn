@@ -344,7 +344,7 @@ footer nav a:first-child{border:0}
           </span>
           <span class="hero-chip">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 4L3 11l6 2 2 6 4-4 4 3 2-14z"/></svg>
-            <span><strong>Telegram-прокси</strong> — всегда на связи</span>
+            <span><strong>Telegram-прокси</strong> — для Telegram</span>
           </span>
         </div>
       </div>
@@ -357,9 +357,9 @@ footer nav a:first-child{border:0}
         </div>
         <div class="desk-durations" role="radiogroup" aria-label="Срок подписки">
           <button class="dur-pill" type="button" role="radio" data-d="15" aria-checked="false" tabindex="-1">15 д</button>
-          <button class="dur-pill" type="button" role="radio" data-d="30" aria-checked="true" tabindex="0">30 д<em>ХИТ</em></button>
-          <button class="dur-pill" type="button" role="radio" data-d="60" aria-checked="false" tabindex="-1">60 д<em>−12%</em></button>
-          <button class="dur-pill" type="button" role="radio" data-d="90" aria-checked="false" tabindex="-1">90 д<em>−21%</em></button>
+          <button class="dur-pill" type="button" role="radio" data-d="30" aria-checked="true" tabindex="0">30 д</button>
+          <button class="dur-pill" type="button" role="radio" data-d="60" aria-checked="false" tabindex="-1">60 д<em data-discount-days="60" hidden></em></button>
+          <button class="dur-pill" type="button" role="radio" data-d="90" aria-checked="false" tabindex="-1">90 д<em data-discount-days="90" hidden></em></button>
         </div>
 
         <div class="trial-slot" id="trial-slot">
@@ -388,8 +388,8 @@ footer nav a:first-child{border:0}
           <div class="tier-price-row"><strong class="tier-price" id="price-vpn">—</strong></div>
           <p class="tier-meta" id="meta-vpn">1 устройство</p>
           <ul class="tier-list">
-            <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>Доступ ко всему, где есть ограничения</span></li>
-            <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>Весь трафик устройства в туннеле</span></li>
+            <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>VPN для приложений при сетевых ограничениях</span></li>
+            <li><span class="ico ico-ok" aria-hidden="true">✓</span><span>Маршруты определяются настройками VPN-клиента</span></li>
             <li class="no"><span class="ico ico-no" aria-hidden="true">✕</span><span>Без Smart DNS и Telegram-прокси</span></li>
           </ul>
           <button class="tier-pick" type="button" data-pick="vpn" aria-pressed="false" aria-label="Выбрать тариф VPN Лайт">Выбрать</button>
@@ -398,15 +398,14 @@ footer nav a:first-child{border:0}
         <article class="tier featured is-selected" data-card-product="bundle">
           <span class="tier-check" aria-hidden="true">✓</span>
           <div class="tier-head">
-            <span class="tier-badge">ВЫГОДНЕЕ · 3 В 1</span>
+            <span class="tier-badge">3 ТЕХНОЛОГИИ · 1 ДОСТУП</span>
             <span class="info-wrap">
               <button class="info-circle" id="dns-info-open" type="button" aria-label="Как работают Smart DNS, VPN и Telegram-прокси" aria-haspopup="dialog" aria-expanded="false" aria-controls="dns-info-dialog">i</button>
             </span>
           </div>
           <div class="tier-top-row"><h3>Экосистема «3 в 1»</h3></div>
-          <p class="tier-sub">DNS и TG-прокси без тормозов; VPN — для любых блокировок.</p>
+          <p class="tier-sub">Smart DNS и Telegram-прокси для своих задач; VPN — если DNS недостаточно.</p>
           <div class="tier-price-row">
-            <s class="tier-old" id="old-bundle" hidden>499 ₽</s>
             <strong class="tier-price" id="price-bundle">—</strong>
           </div>
           <p class="tier-meta" id="meta-bundle">133 ₽/устройство · до 3 устройств</p>
@@ -422,7 +421,7 @@ footer nav a:first-child{border:0}
           <span class="tier-check" aria-hidden="true">✓</span>
           <div class="tier-head"><span class="tier-badge">Без постоянного VPN</span></div>
           <div class="tier-top-row"><h3>Smart Доступ</h3></div>
-          <p class="tier-sub">Зарубежные сервисы (AI и другие) + Telegram без туннеля.</p>
+          <p class="tier-sub">Smart DNS для выбранных ресурсов + прокси Telegram.</p>
           <div class="tier-price-row"><strong class="tier-price" id="price-smart_dns">—</strong></div>
           <p class="tier-meta" id="meta-smart_dns">1 000 000 DNS-запросов / 30 д</p>
           <ul class="tier-list">
@@ -460,12 +459,12 @@ footer nav a:first-child{border:0}
     <strong id="dns-modal-title">Зачем нужны 3 технологии в одном доступе</strong>
     <button id="dns-info-close" type="button" aria-label="Закрыть информацию о Smart DNS">×</button>
   </div>
-  <p><strong>Smart DNS</strong> — открывает сервисы, которые <b>сами не пускают подключения из вашего региона</b>, не замедляя обычные сайты.</p>
+  <p><strong>Smart DNS</strong> — DNS и маршруты для выбранных сайтов. Доступ зависит от сети, аккаунта и правил сервиса.</p>
   <div class="dns-popover-tags" aria-label="Примеры сервисов">
     <span>ChatGPT</span><span>Gemini</span><span>Claude</span><span>Google Antigravity</span>
     <span>Grok</span><span>TikTok</span><span>Telegram</span><span>и другие</span>
   </div>
-  <p class="dns-popover-caution"><strong>VPN</strong> — нужен, чтобы открыть ресурсы с локальными сетевыми ограничениями. <strong>Telegram-прокси</strong> — позволяет Telegram работать вне зависимости от любых ограничений. После оплаты в кабинете сразу выдаются конфиг Apple (.mobileconfig), DoT-адрес для Android/роутера и ссылки прокси.</p>
+  <p class="dns-popover-caution"><strong>VPN</strong> — когда DNS недостаточно. <strong>Telegram-прокси</strong> — отдельное соединение Telegram; доступность зависит от сети. После подтверждения оплаты в кабинете доступны профиль Apple (.mobileconfig), DoT-адрес и ссылки прокси.</p>
   <button class="dns-request" type="button" id="dns-request-domain">Добавить свой домен через поддержку</button>
 </div>
 
@@ -484,16 +483,16 @@ footer nav a:first-child{border:0}
   <table class="cmp-table">
     <thead><tr><th scope="col">Возможность</th><th scope="col">VPN Лайт</th><th scope="col">Smart Доступ</th><th scope="col">Экосистема «3 в 1» ★</th></tr></thead>
     <tbody>
-      <tr><td>Smart DNS (куда не пускают по региону: AI и другие)</td><td>—</td><td>✓</td><td>✓</td></tr>
+      <tr><td>Smart DNS (запросы и маршруты выбранных ресурсов)</td><td>—</td><td>✓</td><td>✓</td></tr>
       <tr><td>Профиль Apple (.mobileconfig) + DoT для Android</td><td>—</td><td>✓</td><td>✓</td></tr>
-      <tr><td>Telegram-прокси (работает без любых ограничений)</td><td>—</td><td>✓</td><td>✓</td></tr>
+      <tr><td>Telegram-прокси (доступность зависит от сети)</td><td>—</td><td>✓</td><td>✓</td></tr>
       <tr><td>VPN-туннель (при локальных ограничениях доступа)</td><td>1 устройство</td><td>—</td><td>до 3 устройств</td></tr>
     </tbody>
   </table>
   <div class="cmp-steps">
-    <div class="cmp-step"><strong>01. Оплата в 1 клик (ЮKassa)</strong><p>Разовая оплата по СБП или картой без автосписаний.</p></div>
+    <div class="cmp-step"><strong>01. Разовая оплата (ЮKassa)</strong><p>Разовая оплата по СБП или картой без автосписаний.</p></div>
     <div class="cmp-step"><strong>02. Apple (.mobileconfig) и DoT</strong><p>Сразу после оплаты в кабинете появятся профиль Apple, DoT-адрес и ссылки VPN.</p></div>
-    <div class="cmp-step"><strong>03. Telegram-прокси</strong><p>Нажмите на готовую ссылку direct/ru — Telegram работает параллельно без конфликтов.</p></div>
+    <div class="cmp-step"><strong>03. Telegram-прокси</strong><p>Добавьте выданную ссылку direct/ru в Telegram. Совместимость с VPN зависит от настроек клиента.</p></div>
   </div>
 </div>
 
@@ -639,8 +638,20 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
       if(Number.isFinite(rub)&&rub>0)setText($('#meta-bundle'),Math.round(rub/3)+' ₽/устройство · до 3 устройств');
     }
     setText($('#meta-smart_dns'),'1 000 000 DNS-запросов / '+selectedDays+' д');
-    const oldBundle=$('#old-bundle');
-    if(oldBundle)oldBundle.hidden=selectedDays!==30;
+    // Discount badges are calculated only from live prices for the selected product.
+    // Never claim a fixed saving when plans change or baseline is unavailable.
+    const base=findOffer(selectedProduct,30);
+    for(const badge of document.querySelectorAll('[data-discount-days]')){
+      const days=Number(badge.dataset.discountDays),offer=findOffer(selectedProduct,days);
+      const baseMinor=base?.priceMinor,offerMinor=offer?.priceMinor;
+      const baseline=Number.isSafeInteger(baseMinor)&&baseMinor>0
+        ?baseMinor*days/30:0;
+      const saving=baseline>0&&Number.isSafeInteger(offerMinor)&&offerMinor>0
+        ?Math.round((1-offerMinor/baseline)*100):0;
+      const show=Boolean(base?.available&&offer?.available&&saving>0&&saving<100);
+      badge.hidden=!show;
+      setText(badge,show?'−'+saving+'%':'');
+    }
 
     deskCards.forEach(c=>c.classList.toggle('is-selected',c.dataset.cardProduct===selectedProduct));
     deskPicks.forEach(b=>{

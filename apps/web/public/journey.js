@@ -44,6 +44,7 @@
           product,days,
           available:Boolean(plan),
           price:plan?.rubMinor?formatMoney(plan.rubMinor):'—',
+          priceMinor:Number.isSafeInteger(plan?.rubMinor)?plan.rubMinor:null,
           title:plan?.title||'',
           deviceLimit:plan?.deviceLimit||(product==='bundle'?3:1),
         });
