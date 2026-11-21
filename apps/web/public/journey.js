@@ -151,6 +151,34 @@
         'Чтобы проверить оплату, войдите в аккаунт, которым оформляли заказ. Возврат на сайт сам по себе не подтверждает платёж.';
     }
   }
+  // Keep exactly one primary heading in each interactive view. The source
+  // HTML has one H1 on the no-JavaScript fallback; only the active view is
+  // promoted after progressive enhancement. IDs, links and text stay intact.
+  const headingIds=[
+    'legacy-hero-title','journey-title','journey-trial-title','journey-setup-title',
+    'journey-order-title','journey-payment-heading','journey-account-title',
+    'contact-support-title',
+  ];
+  const headingByView={
+    plans:'journey-title','trial-auth':'journey-trial-title',
+    setup:'journey-setup-title',checkout:'journey-order-title',
+    payment:'journey-payment-heading',account:'journey-account-title',
+    support:'contact-support-title',
+  };
+  function syncPrimaryHeading(next){
+    const primary=headingByView[next];
+    if(!primary)return;
+    for(const id of headingIds){
+      const node=el(id);
+      if(!node)continue;
+      const desired=id===primary?'h1':'h2';
+      if(node.localName===desired)continue;
+      const replacement=document.createElement(desired);
+      for(const attr of node.attributes)replacement.setAttribute(attr.name,attr.value);
+      replacement.replaceChildren(...node.childNodes);
+      node.replaceWith(replacement);
+    }
+  }
   function setView(next,writeHash=false){
     if(!allViews.has(next))return;
     if(view==='trial-auth'&&next!=='trial-auth'){
@@ -172,6 +200,7 @@
     if(orderView)orderView.hidden=next!=='checkout';
     if(paymentIntro)paymentIntro.hidden=next!=='payment';
     if(trialAuth)trialAuth.hidden=next!=='trial-auth';
+    syncPrimaryHeading(next);
     if(next==='trial-auth')mountTrialEmail();
     if(next==='checkout')updateOrder();
     if(next==='payment')updatePaymentAction();
