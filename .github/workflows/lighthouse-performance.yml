@@ -1,0 +1,106 @@
+name: Lighthouse performance — mobile and desktop (isolated baseline)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/web/public/**'
+      - 'apps/web/src/static-asset-cache.ts'
+      - 'tests/performance-fixture-server.mjs'
+      - 'scripts/summarize-lighthouse.mjs'
+      - '.github/workflows/lighthouse-performance.yml'
+  workflow_dispatch:
+  schedule:
+    # Every Monday 07:17 Moscow time. Lab measurements, not field CWV.
+    - cron: '17 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  lab:
+    name: Cold mobile and desktop Lighthouse with real public assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned Lighthouse CLI in isolated tool directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/mnebyvpn-perf-tools" --no-save --no-fund --no-audit lighthouse@13.6.0
+          test -x "$RUNNER_TEMP/mnebyvpn-perf-tools/node_modules/.bin/lighthouse"
+          command -v google-chrome
+          google-chrome --version
+      - name: Measure genuine frontend with disposable offline test catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tests/performance-fixture-server.mjs > "$RUNNER_TEMP/mnebyvpn-perf-fixture.log" 2>&1 &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            if grep -q '^PERF_FIXTURE_URL=' "$RUNNER_TEMP/mnebyvpn-perf-fixture.log"; then break; fi
+            sleep 1
+          done
+          url="$(sed -n 's/^PERF_FIXTURE_URL=//p' "$RUNNER_TEMP/mnebyvpn-perf-fixture.log" | tail -1)"
+          test -n "$url"
+          curl --fail --silent --max-time 5 "$url" -o /dev/null
+          echo "LIGHTHOUSE_TARGET=localhost_synthetic_catalog"
+          cli="$RUNNER_TEMP/mnebyvpn-perf-tools/node_modules/.bin/lighthouse"
+          common=(--only-categories=performance --throttling-method=simulate --quiet --output=json
+            '--chrome-flags=--headless --no-sandbox --disable-dev-shm-usage')
+          timeout 180 "$cli" "$url" "${common[@]}" \
+            --form-factor=mobile --max-wait-for-load=45000 \
+            --output-path="$RUNNER_TEMP/mnebyvpn-lighthouse-mobile-lab.json"
+          timeout 180 "$cli" "$url" "${common[@]}" \
+            --preset=desktop --max-wait-for-load=45000 \
+            --output-path="$RUNNER_TEMP/mnebyvpn-lighthouse-desktop-lab.json"
+          node scripts/summarize-lighthouse.mjs \
+            "$RUNNER_TEMP/mnebyvpn-lighthouse-mobile-lab.json" \
+            "$RUNNER_TEMP/mnebyvpn-lighthouse-desktop-lab.json"
+      - name: Optional public URL audit (separate from synthetic CI baseline)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/mnebyvpn-lighthouse-mobile-public.json"
+          cli="$RUNNER_TEMP/mnebyvpn-perf-tools/node_modules/.bin/lighthouse"
+          if ! timeout 170 "$cli" 'https://mnebyvpn.site/' \
+            --only-categories=performance --form-factor=mobile --throttling-method=simulate \
+            --quiet --output=json --max-wait-for-load=45000 \
+            '--chrome-flags=--headless --no-sandbox --disable-dev-shm-usage' \
+            --output-path="$report"; then
+            echo 'PUBLIC_LIGHTHOUSE_UNAVAILABLE=true (network/tool error; NOT a successful public audit)'
+            echo 'Public Lighthouse: unavailable; see job logs. Local lab results remain separate.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          node - "$report" <<'NODE'
+          const fs=require('node:fs');
+          const r=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+          if(r.runtimeError||!Number.isFinite(r.categories?.performance?.score))
+            throw Error('Invalid public Lighthouse report');
+          const a=id=>r.audits?.[id]?.numericValue;
+          const summary={score:Math.round(r.categories.performance.score*100),
+            lcpMs:a('largest-contentful-paint'),cls:a('cumulative-layout-shift'),
+            tbtMs:a('total-blocking-time'),fcpMs:a('first-contentful-paint')};
+          console.log('PUBLIC_LIGHTHOUSE_MOBILE='+JSON.stringify(summary));
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            '\\nPublic Lighthouse mobile (remote lab, not field CrUX): \`'+JSON.stringify(summary)+'\`\\n');
+          NODE
+      - name: Preserve the actual Lighthouse JSON reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnebyvpn-lighthouse-reports
+          path: |
+            ${{ runner.temp }}/mnebyvpn-lighthouse-*.json
+            ${{ runner.temp }}/mnebyvpn-perf-fixture.log
+          if-no-files-found: warn
+          retention-days: 14
