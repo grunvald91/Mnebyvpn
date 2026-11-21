@@ -308,15 +308,21 @@ const landingArtPolicy = [
   "frame-ancestors 'self'",
 ].join('; ');
 
-function sendArt(res: ServerResponse) {
+function sendArt(req: IncomingMessage, res: ServerResponse) {
   res.setHeader('X-Robots-Tag','noindex, follow');
-  res.setHeader('Cache-Control', 'no-store');
+  // This is static, non-personalized artwork. Keep the main HTML uncached.
+  const etag='"'+createHash('sha256').update(landingArtHtml).digest('hex')+'"';
+  res.setHeader('ETag',etag);
+  res.setHeader('Cache-Control', 'public, no-cache, must-revalidate');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Content-Security-Policy', landingArtPolicy);
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  if(req.headers['if-none-match']?.split(',').some(t=>t.trim()===etag)){
+    res.writeHead(304).end();return;
+  }
   res.writeHead(200).end(landingArtHtml);
 }
 
@@ -371,6 +377,18 @@ function send(res: ServerResponse, status: number, body: string|Buffer, type = '
   res.setHeader('Content-Security-Policy', policy);
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.writeHead(status).end(body);
+}
+// Public static assets use strong ETags and revalidation, so browsers can
+// reuse unchanged bytes without mixing revisions after an atomic release.
+// Customer HTML, catalog, checkout and all JSON APIs remain no-store.
+function sendStatic(req: IncomingMessage, res: ServerResponse, data: Buffer, type: string) {
+  const etag='"'+createHash('sha256').update(data).digest('hex')+'"';
+  const cache='public, no-cache, must-revalidate';
+  res.setHeader('ETag',etag);
+  if(req.headers['if-none-match']?.split(',').some(t=>t.trim()===etag)){
+    send(res,304,'',type,cache);return;
+  }
+  send(res,200,data,type,cache);
 }
 function json(res: ServerResponse, status: number, data: unknown) {
   send(res, status, JSON.stringify(data));
@@ -748,7 +766,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     send(res, 200, page, 'text/html; charset=utf-8'); return;
   }
   if (req.method === 'GET' && url.pathname === '/landing-art.html') {
-    sendArt(res); return;
+    sendArt(req,res); return;
   }
   if ((req.method === 'GET'||req.method === 'HEAD') && url.pathname === '/bg3.webm') {
     sendBackgroundVideo(req, res, bg3Webm, 'video/webm'); return;
@@ -782,32 +800,32 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     send(res,200,legalCss,'text/css; charset=utf-8');return;
   }
   if (req.method === 'GET' && url.pathname === '/site.css') {
-    send(res, 200, css, 'text/css; charset=utf-8'); return;
+    sendStatic(req,res,css,'text/css; charset=utf-8'); return;
   }
   if (req.method === 'GET' && url.pathname === '/neo.css') {
-    send(res, 200, neoCss, 'text/css; charset=utf-8'); return;
+    sendStatic(req,res,neoCss,'text/css; charset=utf-8'); return;
   }
   if (req.method === 'GET' && url.pathname === '/brand-avatar.webp') {
-    send(res, 200, brandAvatar, 'image/webp'); return;
+    sendStatic(req,res,brandAvatar,'image/webp'); return;
   }
   if (req.method === 'GET' && url.pathname === '/world-neon.webp') {
-    send(res, 200, worldNeon, 'image/webp'); return;
+    sendStatic(req,res,worldNeon,'image/webp'); return;
   }
   if (req.method === 'GET' && url.pathname === '/landing-earth.webp') {
     res.setHeader('Cache-Control','public, max-age=86400');
     send(res, 200, landingEarth, 'image/webp'); return;
   }
   if (req.method === 'GET' && url.pathname === '/app.js') {
-    send(res, 200, js, 'text/javascript; charset=utf-8'); return;
+    sendStatic(req,res,js,'text/javascript; charset=utf-8'); return;
   }
   if(req.method==='GET' && url.pathname==='/journey.css'){
-    send(res,200,journeyCss,'text/css; charset=utf-8');return;
+    sendStatic(req,res,journeyCss,'text/css; charset=utf-8');return;
   }
   if(req.method==='GET' && url.pathname==='/journey.js'){
-    send(res,200,journeyJs,'text/javascript; charset=utf-8');return;
+    sendStatic(req,res,journeyJs,'text/javascript; charset=utf-8');return;
   }
   if (req.method === 'GET' && url.pathname === '/about.js') {
-    send(res, 200, aboutJs, 'text/javascript; charset=utf-8'); return;
+    sendStatic(req,res,aboutJs,'text/javascript; charset=utf-8'); return;
   }
   if(req.method==='GET' && url.pathname==='/vpn-install.js'){
     send(res,200,vpnInstallJs,'text/javascript; charset=utf-8');return;
