@@ -94,20 +94,25 @@ function setSelection(product, days) {
   renderPlan();
 }
 function formatDnsQuota(plan) {
-  const queries = Number(plan?.dnsQuotaQueriesPer30d || 1000000);
-  return 'до ' + queries.toLocaleString('ru-RU') + ' DNS-запросов / 30 д';
+  const raw=plan?.dnsQuotaQueriesPer30d;
+  const queries=typeof raw==='string'&&raw.trim()?Number(raw):raw;
+  if(!Number.isSafeInteger(queries)||queries<=0)return 'квота не указана';
+  return 'до '+queries.toLocaleString('ru-RU')+' DNS-запросов / 30 д';
 }
 function renderPlan() {
   const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
   const webCheckout=Boolean(plan&&state.checkoutEnabled);
   text('selected-plan-name',plan?.title||productNames[state.product]+' · '+state.days+' дней');
   text('selected-duration',state.days+' дней');
-  const devices=plan?.deviceLimit||(state.product==='bundle'?3:1);
+  const devices=Number.isSafeInteger(plan?.deviceLimit)&&plan.deviceLimit>0?plan.deviceLimit:null;
+  const deviceLimitLabel=devices
+    ?(devices===1?'1 устройство':'до '+devices+' устройств')
+    :'лимит устройств уточняется';
   text('selected-quota',state.product==='vpn'
-    ? 'VPN (' + devices + ' устройство)'
-    : state.product==='smart_dns'
-      ? 'Smart DNS (' + formatDnsQuota(plan) + ') + Telegram-прокси'
-      : 'Smart DNS + Telegram-прокси + VPN (до ' + devices + ' устройств)');
+    ?'VPN ('+deviceLimitLabel+')'
+    :state.product==='smart_dns'
+      ?'Smart DNS ('+formatDnsQuota(plan)+') + Telegram-прокси'
+      :'Smart DNS + Telegram-прокси + VPN ('+deviceLimitLabel+')');
   text('selected-price',plan?.rubMinor?formatMoney(plan.rubMinor):'—');
   text('price-unit',plan?.rubMinor?'₽ за период':'Цена не опубликована');
   document.querySelectorAll('[data-days]').forEach(button=>{
@@ -117,7 +122,7 @@ function renderPlan() {
   text('price-description',plan?(state.renewalTargetId?
     'Срок прибавится к выбранному доступу после подтверждения оплаты.':
     state.product==='bundle'
-      ? '90% времени сайты работают через Smart DNS и Telegram-прокси; VPN до 3 устройств не конфликтует с ними.'
+      ? 'Smart DNS и Telegram-прокси дополняют VPN. Доступность и совместная работа зависят от сети, устройства и настроек клиента.'
       : state.product==='smart_dns'
         ? 'Умная маршрутизация сайтов + автоматическая выдача Telegram-прокси и профиля Apple/Android.'
         : 'Базовый защищённый VPN-туннель на 1 устройство.'):
