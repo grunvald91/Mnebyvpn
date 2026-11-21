@@ -29,6 +29,24 @@ for(const filename of sources){
     throw new Error('LIGHTHOUSE_REQUIRED_METRIC_MISSING: '+JSON.stringify(item));
   results.push(item);
   console.log('LIGHTHOUSE_LAB_BASELINE='+JSON.stringify(item));
+  // Keep the first audit actionable instead of reducing it to a score.
+  const tasks=lhr.audits?.['long-tasks']?.details?.items??[];
+  const largestTasks=tasks.filter(t=>Number.isFinite(t.duration))
+    .sort((a,b)=>b.duration-a.duration).slice(0,5)
+    .map(t=>({durationMs:Math.round(t.duration),url:String(t.url??'').slice(0,150)}));
+  const auditNames=['bootup-time','mainthread-work-breakdown','render-blocking-insight',
+    'lcp-breakdown-insight','lcp-discovery-insight','unused-javascript',
+    'unused-css-rules','network-requests'];
+  const diagnostics=auditNames.map(id=>{
+    const audit=lhr.audits?.[id];
+    return audit?{id,title:audit.title,score:audit.score,
+      savingsMs:audit.details?.overallSavingsMs??null,
+      numericValue:audit.numericValue??null,
+      items:audit.details?.items?.length??0}:null;
+  }).filter(Boolean);
+  console.log('LIGHTHOUSE_LAB_DIAGNOSTICS='+JSON.stringify({
+    scope:item.scope,largestTasks,audits:diagnostics,
+  }));
 }
 const summary=[
   '## Lighthouse — isolated synthetic storefront (lab)',
