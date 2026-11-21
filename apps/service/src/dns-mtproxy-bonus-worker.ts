@@ -1,5 +1,6 @@
 /** Opt-in private Telemt reconciliation (same node as direct-ozon admin API).
- * Keep disabled until the localhost API, canonical DB and routes are tested.
+ * Gate to verified direct-ozon via SSH loopback bridge; NEVER scan general
+ * customer entitlements before public E2E and revocation checks.
  */
 import {Pool} from 'pg';
 import {pathToFileURL} from 'node:url';
@@ -9,7 +10,8 @@ import {TelemtAdminClient,reconcileDnsProxyBonuses}
 
 async function main():Promise<void>{
   if(process.env.MNEBYVPN_ENV!=='production'||
-     process.env.DNS_MT_PROXY_BONUS_WORKER!=='enabled')
+     process.env.DNS_MT_PROXY_BONUS_WORKER!=='enabled'||
+     process.env.DNS_MT_PROXY_OWNER_ONLY!=='yes')
     throw Error('MTProxy provisioning worker not activated');
   const url=process.env.DATABASE_URL??'';
   if(!url.startsWith('postgresql://'))throw Error('Canonical PostgreSQL is required');
@@ -26,7 +28,7 @@ async function main():Promise<void>{
     await db.query('SELECT 1 FROM dns_mtproxy_bonus_credentials LIMIT 1');
     while(!abort.signal.aborted){
       try{
-        const done=await reconcileDnsProxyBonuses(db,admin,key,domain);
+        const done=await reconcileDnsProxyBonuses(db,admin,key,domain,50,true);
         // Strictly aggregate statuses; never log customer details or secrets.
         if(Object.values(done).some(Boolean))
           console.info('MNEBYVPN_DNS_MTPROXY_RECONCILE',JSON.stringify(done));
