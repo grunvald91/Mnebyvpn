@@ -11,6 +11,8 @@ on:
       - 'apps/web/src/seo-diagnostics.ts'
       - 'tests/gsc-index-audit.test.ts'
   workflow_dispatch:
+  schedule:
+    - cron: '23 5 * * *' # Daily read-only checks for 11 canonical public URLs, UTC
 permissions:
   contents: read
 jobs:
