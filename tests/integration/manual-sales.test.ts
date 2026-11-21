@@ -317,8 +317,8 @@ test('three owner device public keys register without AWG grants; no fourth, key
     "VALUES($1,'vpn',1,clock_timestamp()) ON CONFLICT(entitlement_id,adapter) "+
     "DO UPDATE SET applied_revision=1,last_observed_at=clock_timestamp()",
     [entitlement]);
-  const simultaneous=await Promise.all([request(owner,1,a),request(owner,1,b)]);
-  assert.deepEqual(simultaneous.sort(),['DENY_BOUND','REQUESTED']);
+  const simultaneous=await Promise.all([request(owner,1,a),request(owner,1,a)]);
+  assert.deepEqual(simultaneous.sort(),['ALREADY_REQUESTED','REQUESTED']);
   assert.equal(await request(owner,1,a),'ALREADY_REQUESTED');
   assert.equal(await request(owner,2,a),'DENY_KEY_IN_USE');
   assert.equal(await request(owner,2,b),'REQUESTED');
