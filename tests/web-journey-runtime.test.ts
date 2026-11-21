@@ -10,9 +10,9 @@ const entitlementId='22222222-2222-4222-8222-222222222222';
 function browser(url:string,loggedIn:boolean){
   const map=new Map<string,any>();
   const actions:{setup:string[];dns?:string[];proxy?:string[];trials:number;purchase:number}={setup:[],trials:0,purchase:0};
-  const headingIds=new Set(['legacy-hero-title','journey-title','journey-trial-title',
+  const headingIds=new Set(['legacy-hero-title','journey-front-heading','journey-title','journey-trial-title',
     'journey-setup-title','journey-order-title','journey-payment-heading',
-    'journey-account-title','contact-support-title']);
+    'journey-account-title','account-name','contact-support-title']);
   const make=(id:string,tagName='DIV')=>{
     const handlers=new Map<string,()=>void>();
     let href='';
@@ -37,7 +37,7 @@ function browser(url:string,loggedIn:boolean){
   };
   const el=(id:string)=>{
     if(id==='orders-list'||id==='journey-history')return null;
-    if(!map.has(id))map.set(id,make(id,id==='legacy-hero-title'?'H1':headingIds.has(id)?'H2':'DIV'));
+    if(!map.has(id))map.set(id,make(id,id==='legacy-hero-title'?'H1':id==='account-name'?'STRONG':headingIds.has(id)?'H2':'DIV'));
     return map.get(id);
   };
   const days=[15,30,60,90].map(n=>({ ...make('days-'+n),dataset:{journeyDays:String(n)}}));
@@ -184,18 +184,28 @@ test('anonymous checkout never calls the payment provider',async()=>{
 
 test('only the visible route has H1; all other route headings are H2',()=>{
   const b=browser('https://mnebyvpn.site/#plans',true);
-  const titles=['legacy-hero-title','journey-title','journey-trial-title','journey-setup-title',
-    'journey-order-title','journey-payment-heading','journey-account-title','contact-support-title'];
+  const titles=['legacy-hero-title','journey-front-heading','journey-title','journey-trial-title','journey-setup-title',
+    'journey-order-title','journey-payment-heading','journey-account-title','account-name','contact-support-title'];
   const expectations:Record<string,string>={
-    plans:'journey-title','trial-auth':'journey-trial-title',
+    plans:'journey-front-heading','trial-auth':'journey-trial-title',
     setup:'journey-setup-title',checkout:'journey-order-title',
-    payment:'journey-payment-heading',account:'journey-account-title',
+    payment:'journey-payment-heading',account:'account-name',
     support:'contact-support-title',
   };
   for(const [view,primary] of Object.entries(expectations)){
     b.window.MnebyvpnJourney.show(view);
     const active=titles.filter(id=>b.map.get(id)?.tagName==='H1');
     assert.deepEqual(active,[primary],view);
-    for(const id of titles)assert.equal(b.map.get(id)?.tagName,id===primary?'H1':'H2',id);
+    for(const id of titles)assert.equal(b.map.get(id)?.tagName,id===primary?'H1':id==='account-name'?'STRONG':'H2',id);
   }
+});
+
+test('account name remains updatable and reverts to strong off the account view',()=>{
+  const b=browser('https://mnebyvpn.site/#account',true);
+  assert.equal(b.map.get('account-name').tagName,'H1');
+  b.map.get('account-name').textContent='Мой аккаунт';
+  b.window.MnebyvpnJourney.show('plans');
+  assert.equal(b.map.get('account-name').tagName,'STRONG');
+  assert.equal(b.map.get('account-name').textContent,'Мой аккаунт');
+  assert.equal(b.map.get('journey-front-heading').tagName,'H1');
 });
