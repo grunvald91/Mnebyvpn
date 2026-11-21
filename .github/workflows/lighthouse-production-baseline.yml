@@ -43,6 +43,34 @@ jobs:
             echo 'LIGHTHOUSE_NETWORK_UNAVAILABLE=true'
             exit 2
           fi
+      - name: Verify compressed public CSS/JS and representation-specific ETags
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          trap 'rm -rf "$scratch"' EXIT
+          for file in site.css neo.css journey.css app.js journey.js; do
+            url="https://mnebyvpn.site/$file"
+            curl --noproxy '*' -fsS --connect-timeout 8 --max-time 25 \
+              -H 'Accept-Encoding: identity' -D "$scratch/plain.headers" \
+              -o "$scratch/plain" "$url"
+            curl --noproxy '*' -fsS --connect-timeout 8 --max-time 25 \
+              -H 'Accept-Encoding: br' -D "$scratch/encoded.headers" \
+              -o "$scratch/encoded" "$url"
+            codec="$(awk 'tolower($1)=="content-encoding:" {gsub(/\\r/,"",$2); print tolower($2)}' "$scratch/encoded.headers" | tail -n1)"
+            etag="$(awk 'tolower($1)=="etag:" {gsub(/\\r/,"",$2); print $2}' "$scratch/encoded.headers" | tail -n1)"
+            vary="$(awk 'tolower($1)=="vary:" {gsub(/\\r/,""); print tolower($0)}' "$scratch/encoded.headers" | tail -n1)"
+            [[ "$codec" == br ]] || { echo "PUBLIC_STATIC_ENCODING_FAIL=$file codec=${codec:-none}"; exit 2; }
+            [[ "$vary" == *accept-encoding* ]] || { echo "PUBLIC_STATIC_VARY_FAIL=$file"; exit 2; }
+            [[ -n "$etag" ]] || { echo "PUBLIC_STATIC_ETAG_MISSING=$file"; exit 2; }
+            node -e 'const fs=require("node:fs"),z=require("node:zlib");const [raw,packed]=process.argv.slice(1).map(x=>fs.readFileSync(x));if(!z.brotliDecompressSync(packed).equals(raw))process.exit(2)' \
+              "$scratch/plain" "$scratch/encoded"
+            code="$(curl --noproxy '*' -sS --connect-timeout 8 --max-time 25 \
+              -H 'Accept-Encoding: br' -H "If-None-Match: $etag" \
+              -o /dev/null -w '%{http_code}' "$url")"
+            [[ "$code" == 304 ]] || { echo "PUBLIC_STATIC_NOT_MODIFIED_FAIL=$file status=$code";exit 2; }
+            echo "PUBLIC_STATIC_OK=$file compression=br etag_304=yes"
+          done
       - name: Install pinned official Lighthouse CLI
         shell: bash
         run: |
