@@ -5,6 +5,11 @@ import {SEO_PAGES} from './seo-pages.ts';
  */
 export const PUBLIC_SEO_PATHS = ['/', ...SEO_PAGES.map(page=>page.path), '/terms', '/agreement', '/privacy'] as const;
 
+// Yandex IndexNow: publicly verifiable proof-of-site key, not a customer secret.
+// Keep the root key file stable across deployments; only submit changed public URLs.
+export const YANDEX_INDEXNOW_KEY='4b8ae209cc8f9e8d1686ff11706ef6fb3a94464db59dac96';
+export const YANDEX_INDEXNOW_KEY_PATH='/'+YANDEX_INDEXNOW_KEY+'.txt';
+
 const aliasTargets: Readonly<Record<string,string>> = Object.freeze({
   '/index.html': '/',
   '/terms.html': '/terms',
