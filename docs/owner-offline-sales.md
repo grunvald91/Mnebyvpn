@@ -53,8 +53,15 @@
 - Smart DNS: отдельный персональный DoT hostname, созданный атомарно
   вместе с зашифрованным материалом; повторное открытие показывает
   тот же hostname без перевыпуска. Требуется
-  `MNEBYDNS_PERSONAL_DOT_ENABLED=yes` и
-  `MNEBYDNS_OWNER_LINK_KEY` (уже существующий 32-byte hex ключ).
+  отдельный закрытый переключатель
+  `MNEBYVPN_OFFLINE_DNS_ISSUE_ENABLED=yes` и
+  `MNEBYDNS_OWNER_LINK_KEY` (существующий 32-byte hex ключ).
+  Он **не активирует публичные тарифы/пробные DNS** через
+  `MNEBYDNS_PERSONAL_DOT_ENABLED`. До выдачи требуются
+  `PAID` личный заказ, `ACTIVE` Smart DNS, подтверждение текущей
+  версии `provisioning_state` адаптером `smart_dns` и проверенный
+  рабочий шлюз DoT. Повторный просмотр не меняет адрес.
+  При отзыве запись остаётся в реестре, но адрес больше не показывается.
 - Telegram Proxy: ссылки только после действительного Telemt ACTIVE;
   используется существующий приватный `WEB_DNS_MT_PROXY_BONUS_KEY`
   и две проверенные маршрутизации `WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON`.

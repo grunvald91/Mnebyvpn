@@ -106,3 +106,73 @@ test('owner offline VPN bearer is stable, scoped to ledger, ACK, revocation and 
   const linksAfter=await pool.query('SELECT count(*)::int n FROM vpn_subscription_links WHERE entitlement_id=$1',[ent]);
   assert.equal(linksAfter.rows[0].n,1);
 });
+
+
+test('owner-only personal DoT: ACTIVE gate, one encrypted hostname, replay, revoke',async()=>{
+  const op=891177,other=op+1,key=randomBytes(32);
+  const handle='dot_'+randomUUID().replace(/-/g,'').slice(0,9);
+  const result=await registerOfflineSale(pool,op,op,'88991177','@'+handle+' 399');
+  const orderId=/Заказ: ([0-9a-f-]{36})/.exec(result.text)?.[1];
+  assert.ok(orderId,result.text);
+  const ent=(await pool.query(
+    "SELECT id FROM entitlements WHERE source_order_id=$1 AND product='smart_dns'",
+    [orderId])).rows[0].id as string;
+  const count=async()=>Number((await pool.query(
+    'SELECT count(*) AS n FROM personal_dns_credentials WHERE entitlement_id=$1',
+    [ent])).rows[0].n);
+
+  // The owner-only switch must not issue a credential before worker activation.
+  const pending=await showOfflineSale(pool,op,op,orderId!,true,true,key);
+  assert.match(pending.text,/DNS-ссылка пока не доступна/);
+  assert.equal(await count(),0);
+
+  await pool.query("UPDATE entitlements SET state='ACTIVE' WHERE id=$1",[ent]);
+  // A disabled flag may not issue even an otherwise ACTIVE DNS entitlement.
+  const disabled=await showOfflineSale(pool,op,op,orderId!,true,false,key);
+  assert.match(disabled.text,/DNS-ссылка пока не доступна/);
+  assert.equal(await count(),0);
+  const forbidden=await showOfflineSale(pool,other,op,orderId!,true,true,key);
+  assert.match(forbidden.text,/Недостаточно прав/);
+  assert.equal(await count(),0);
+
+  // Mere ACTIVE in DB is insufficient: the DNS worker must have ACKed
+  // the exact current revision first.
+  const noAck=await showOfflineSale(pool,op,op,orderId!,true,true,key);
+  assert.doesNotMatch(noAck.text,/[a-z0-9]{12}\.dns\.mnebyvpn\.site/);
+  assert.equal(await count(),0);
+  // Simulate successful reconciliation ONLY in disposable PostgreSQL.
+  await pool.query("INSERT INTO provisioning_state(entitlement_id,adapter,applied_revision,last_observed_at) "+
+    "VALUES($1,'smart_dns',1,clock_timestamp()) ON CONFLICT(entitlement_id,adapter) DO UPDATE "+
+    "SET applied_revision=1,last_observed_at=clock_timestamp()",[ent]);
+  const first=await showOfflineSale(pool,op,op,orderId!,true,true,key);
+  const host=/([a-z0-9]{12}\.dns\.mnebyvpn\.site)/.exec(first.text)?.[1];
+  assert.ok(host,first.text);
+  const label=host.slice(0,12);
+  const record=await pool.query(
+    'SELECT token_sha256,query_limit_per_30d,revoked_at FROM personal_dns_credentials '+
+    'WHERE entitlement_id=$1',[ent]);
+  assert.equal(record.rowCount,1);
+  assert.equal(record.rows[0].token_sha256,
+    createHash('sha256').update(label,'ascii').digest('hex'));
+  assert.equal(Number(record.rows[0].query_limit_per_30d),1000000);
+  const material=await pool.query('SELECT dns_label_ciphertext FROM manual_sales WHERE order_id=$1',[orderId]);
+  assert.ok(material.rows[0].dns_label_ciphertext);
+  assert.ok(!String(material.rows[0].dns_label_ciphertext).includes(label));
+
+  const responses=await Promise.all([
+    showOfflineSale(pool,op,op,orderId!,true,true,key),
+    showOfflineSale(pool,op,op,orderId!,true,true,key),
+  ]);
+  for(const item of responses)assert.match(item.text,new RegExp(host.replaceAll('.','\\.')));
+  assert.equal(await count(),1,'refresh/parallel delivery must not create another DoT credential');
+
+  const wrongKey=await showOfflineSale(pool,op,op,orderId!,true,true,randomBytes(32));
+  assert.doesNotMatch(wrongKey.text,new RegExp(host.replaceAll('.','\\.')));
+  assert.match(wrongKey.text,/DNS-ключ пока не выдан/);
+
+  // Once revoked, pressing refresh must never reactivate or reveal the bearer.
+  await pool.query('UPDATE personal_dns_credentials SET revoked_at=clock_timestamp() WHERE entitlement_id=$1',[ent]);
+  const revoked=await showOfflineSale(pool,op,op,orderId!,true,true,key);
+  assert.doesNotMatch(revoked.text,new RegExp(host.replaceAll('.','\\.')));
+  assert.equal(await count(),1);
+});

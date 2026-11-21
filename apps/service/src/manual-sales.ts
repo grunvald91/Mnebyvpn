@@ -165,7 +165,7 @@ type SaleRow={
  order_id:string;account_id:string;customer_label:string;
  declared_amount_minor:string|number;recorded_at:Date;receipt_reference:string|null;
  vpn_id:string;vpn_state:string;vpn_expires:Date|null;vpn_ready:boolean;
- dns_id:string;dns_state:string;dns_expires:Date|null;
+ dns_id:string;dns_state:string;dns_expires:Date|null;dns_ready:boolean;
 };
 async function loadSale(pool:Pool,ownerId:number,orderId:string):Promise<SaleRow|null>{
   if(!UUID.test(orderId))return null;
@@ -175,11 +175,14 @@ async function loadSale(pool:Pool,ownerId:number,orderId:string):Promise<SaleRow
     'v.id vpn_id,v.state vpn_state,v.expires_at vpn_expires,'+
     "COALESCE(v.state='ACTIVE' AND v.expires_at>clock_timestamp() "+
     "AND pv.applied_revision=v.revision AND pv.last_observed_at IS NOT NULL,false) vpn_ready,"+
-    'd.id dns_id,d.state dns_state,d.expires_at dns_expires '+
+    'd.id dns_id,d.state dns_state,d.expires_at dns_expires,'+
+    "COALESCE(d.state='ACTIVE' AND d.expires_at>clock_timestamp() "+
+    "AND pd.applied_revision=d.revision AND pd.last_observed_at IS NOT NULL,false) dns_ready "+
     'FROM manual_sales m JOIN orders o ON o.id=m.order_id '+
     "JOIN entitlements v ON v.source_order_id=o.id AND v.product='vpn' "+
     "JOIN entitlements d ON d.source_order_id=o.id AND d.product='smart_dns' "+
     "LEFT JOIN provisioning_state pv ON pv.entitlement_id=v.id AND pv.adapter='vpn' "+
+    "LEFT JOIN provisioning_state pd ON pd.entitlement_id=d.id AND pd.adapter='smart_dns' "+
     'WHERE m.operator_telegram_id=$1 AND m.order_id=$2 AND o.provider=$3 AND o.state=$4',
     [String(ownerId),orderId,'manual_sale','PAID']);
   return (rows[0] as SaleRow|undefined)??null;
@@ -208,9 +211,13 @@ async function ownerDnsHostname(pool:Pool,ownerId:number,orderId:string,
     await c.query('BEGIN');
     const {rows}=await c.query(
       "SELECT m.dns_label_ciphertext,e.id,e.state,e.expires_at "+
-      "FROM manual_sales m JOIN entitlements e ON e.source_order_id=m.order_id "+
+      "FROM manual_sales m "+
+      "JOIN orders o ON o.id=m.order_id AND o.provider='manual_sale' AND o.state='PAID' "+
+      "JOIN entitlements e ON e.source_order_id=o.id AND e.account_id=o.account_id "+
+      "JOIN provisioning_state p ON p.entitlement_id=e.id AND p.adapter='smart_dns' "+
+      "AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL "+
       "WHERE m.operator_telegram_id=$1 AND m.order_id=$2 AND e.id=$3 "+
-      "AND e.product='smart_dns' FOR UPDATE OF m",
+      "AND e.product='smart_dns' FOR UPDATE OF m,e",
       [String(ownerId),orderId,dnsId]);
     const r=rows[0];
     if(!r||r.state!=='ACTIVE'||!r.expires_at||
@@ -261,15 +268,14 @@ export async function showOfflineSale(
   if(!r)return page('Продажа не найдена.',[[back]]);
   const money=Number(r.declared_amount_minor)/100;
   const ready=r.vpn_ready===true;
-  const dnsReady=r.dns_state==='ACTIVE'&&r.dns_expires!==null&&
-    new Date(r.dns_expires).getTime()>Date.now();
+  const dnsReady=r.dns_ready===true;
   const lines=[
     '💼 Личная продажа · @'+r.customer_label,
     '«3 в 1» · 30 дней · до 3 устройств',
     'Сумма по записи владельца: '+money+' ₽',
     'Чек: '+(r.receipt_reference??'не отмечен — оформить отдельно'),
     'VPN: '+(ready?'подтверждён сервером':r.vpn_state),
-    'Smart DNS: '+(dnsReady?'активен':r.dns_state),
+    'Smart DNS: '+(dnsReady?'подтверждён обработчиком':r.dns_state),
   ];
   const buttons:Button[][]=[];
   if(reveal){
