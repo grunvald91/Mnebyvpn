@@ -110,6 +110,86 @@ BEGIN
 END;
 $only_owner$;
 
+
+-- Diagnostic only: historical RESERVED entries MUST NOT be treated as live
+-- credentials. This view excludes revoked keys, expired/refunded subscriptions,
+-- changed billing revisions/ACKs, and disabled or revoked AWG nodes.
+-- It never signs, grants or publishes anything.
+CREATE VIEW public.owner_vpn_awg_eligible_peer_reservations AS
+SELECT r.node_id,r.entitlement_id,r.slot_number,r.peer_public_key,
+       r.billing_revision,r.created_at
+FROM public.owner_vpn_awg_peer_reservations r
+JOIN public.owner_vpn_device_seats s
+  ON s.entitlement_id=r.entitlement_id AND s.slot_number=r.slot_number
+  AND s.state='REQUESTED' AND s.revoked_at IS NULL
+  AND s.peer_public_key=r.peer_public_key
+JOIN public.entitlements e ON e.id=r.entitlement_id
+  AND e.product='vpn' AND e.state='ACTIVE'
+  AND e.revision=r.billing_revision AND e.expires_at>clock_timestamp()
+JOIN public.orders o ON o.id=e.source_order_id
+  AND o.account_id=e.account_id AND o.provider='manual_sale'
+  AND o.product='bundle' AND o.state='PAID'
+JOIN public.manual_sales m ON m.order_id=o.id
+JOIN public.order_terms t ON t.order_id=o.id
+  AND t.plan_id='bundle_30d_3device' AND t.device_limit=3
+JOIN public.provisioning_state ps ON ps.entitlement_id=e.id
+  AND ps.adapter='vpn' AND ps.applied_revision=e.revision
+  AND ps.last_observed_at IS NOT NULL
+JOIN public.vpn_awg_node_pools p ON p.node_id=r.node_id
+  AND p.state='verified'
+  AND p.external_e2e_proof_sha256 ~ '^[a-f0-9]{64}
+COMMIT;
+
+    AND p.verified_at>clock_timestamp()-interval '1 hour'
+    AND p.verified_at<=clock_timestamp()+interval '30 seconds'
+    AND n.status='enrolled' AND n.endpoint_host=p.endpoint_host
+  FOR SHARE OF p,n;
+  IF v_verified_node IS NULL THEN RETURN 'DENY_NODE'; END IF;
+
+  INSERT INTO public.owner_vpn_awg_peer_reservations
+    (node_id,entitlement_id,slot_number,peer_public_key,billing_revision)
+  VALUES(p_node_id,v_entitlement,p_slot_number,v_peer_key,v_revision)
+  ON CONFLICT DO NOTHING;
+
+  SELECT * INTO v_existing
+  FROM public.owner_vpn_awg_peer_reservations
+  WHERE node_id=p_node_id AND entitlement_id=v_entitlement
+    AND slot_number=p_slot_number;
+  IF NOT FOUND THEN RETURN 'DENY_CONFLICT'; END IF;
+  IF v_existing.peer_public_key<>v_peer_key OR
+     v_existing.billing_revision<>v_revision THEN
+    RETURN 'DENY_STALE';
+  END IF;
+  -- Caller may safely retry, but this does not indicate an ACK or connection.
+  RETURN 'RESERVED';
+END;
+$reserve_peer$;
+
+REVOKE ALL ON FUNCTION public.owner_vpn_reserve_awg_peer_slot(bigint,uuid,smallint,text)
+  FROM PUBLIC;
+DO $only_owner$
+BEGIN
+  IF EXISTS(SELECT 1 FROM pg_catalog.pg_roles
+            WHERE rolname='mnebyvpn_bot') THEN
+    GRANT EXECUTE ON FUNCTION
+      public.owner_vpn_reserve_awg_peer_slot(bigint,uuid,smallint,text)
+      TO mnebyvpn_bot;
+  END IF;
+END;
+$only_owner$;
+
+-- No worker/web role gets access. No live credential, client IP or
+-- signed nodekit command is generated.
+COMMIT;
+
+  AND p.verified_at>clock_timestamp()-interval '1 hour'
+  AND p.verified_at<=clock_timestamp()+interval '30 seconds'
+JOIN public.vpn_node_enrollment_inventory n ON n.node_id=p.node_id
+  AND n.status='enrolled' AND n.endpoint_host=p.endpoint_host;
+REVOKE ALL ON public.owner_vpn_awg_eligible_peer_reservations FROM PUBLIC;
+-- No GRANT to any bot/site/worker: future delivery still requires a
+-- fresh row lock, signed grant and independently verified node ACK.
+
 -- No worker/web role gets access. No live credential, client IP or
 -- signed nodekit command is generated.
 COMMIT;
