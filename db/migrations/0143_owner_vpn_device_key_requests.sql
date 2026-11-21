@@ -57,7 +57,10 @@ BEGIN
     AND o.provider='manual_sale' AND o.product='bundle' AND o.state='PAID'
     AND t.plan_id='bundle_30d_3device' AND t.device_limit=3
     AND e.state='ACTIVE' AND e.expires_at>clock_timestamp()
-  FOR SHARE OF e;
+  -- Lock the PAID order, immutable terms and exact VPN ACK alongside the
+  -- entitlement: concurrent refund, revision or ACK invalidation must not
+  -- race between authorization and the seat UPDATE.
+  FOR SHARE OF o,t,e,p;
   IF v_entitlement_id IS NULL THEN RETURN 'DENY_ACCESS'; END IF;
 
   SELECT s.state,s.peer_public_key INTO v_state,v_existing_key
