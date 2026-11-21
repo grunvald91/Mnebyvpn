@@ -372,3 +372,30 @@ test('cabinet uses the same branded styling and pauses hidden landing video',()=
   assert.match(journey,/type:'visual',active:view==='plans'/);
   assert.match(journey,/syncVisual\(\);/);
 });
+
+
+test('mobile storefront downloads only the background media matching its own CSS viewport',()=>{
+  const art=file('apps/web/public/landing-art.html');
+  assert.match(art,/const isDesktopViewport=\(\)=>mqlDesk\.matches/);
+  assert.doesNotMatch(art,/window\.parent\.innerWidth/);
+  assert.match(art,/let hostActive=window\.parent===window/);
+  assert.match(art,/class="desk-poster" data-src="\/bg-desktop-poster\.webp"/);
+  assert.doesNotMatch(art,/class="desk-poster" src=/);
+  assert.doesNotMatch(art,/id="bgv-desktop"[^>]*poster=/);
+  assert.match(art,/if\(isDesk&&hostActive\)ensureDeskPoster\(\)/);
+  assert.match(index,/class="journey-world-image"[^>]*loading="lazy" fetchpriority="low"/);
+});
+
+test('static website resources revalidate with ETag while personalized responses stay no-store',()=>{
+  assert.match(server,/function sendStatic\(req: IncomingMessage, res: ServerResponse/);
+  assert.match(server,/const cache='public, no-cache, must-revalidate'/);
+  assert.match(server,/req\.headers\['if-none-match'\]/);
+  assert.match(server,/send\(res,304,'',type,cache\)/);
+  assert.match(server,/function sendArt\(req: IncomingMessage, res: ServerResponse\)/);
+  assert.match(server,/res\.setHeader\('X-Robots-Tag','noindex, follow'\)/);
+  assert.match(server,/function send\(res: ServerResponse, status: number, body: string\|Buffer, type = 'application\/json; charset=utf-8', cacheControl = 'no-store'\)/);
+  for(const name of ['css','neoCss','journeyCss','js','journeyJs','aboutJs','brandAvatar','worldNeon'])
+    assert.ok(server.includes('sendStatic(req,res,'+name+','),name);
+  // Authenticated/personalized HTML must never pass through a public cache.
+  assert.match(server,/send\(res, 200, page, 'text\/html; charset=utf-8'\)/);
+});
