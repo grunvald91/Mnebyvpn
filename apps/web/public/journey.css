@@ -36,7 +36,7 @@ body.journey-active[data-journey-view="account"] .purchase-result{margin:12px 24
 .journey-landing{max-width:580px}
 .journey-kicker{font-size:11px;letter-spacing:1.7px;font-weight:800;color:#70e9ef;text-transform:uppercase;margin:0 0 12px}
 .journey-intro{text-align:center;margin-bottom:26px}
-.journey-intro h1,.journey-setup h1{font-size:clamp(28px,5.6vw,43px);letter-spacing:-1.45px;line-height:1.14;margin:0 0 12px}
+.journey-intro #journey-title,.journey-setup #journey-setup-title{font-size:clamp(28px,5.6vw,43px);letter-spacing:-1.45px;line-height:1.14;margin:0 0 12px}
 .journey-intro p:not(.journey-kicker),.journey-setup>p:not(.journey-kicker){color:#b9cbe4;font-size:14px;line-height:1.6}
 .journey-checkout{border:1px solid rgba(87,181,242,.34);border-radius:24px;background:linear-gradient(135deg,rgba(12,39,67,.78),rgba(24,20,70,.79));box-shadow:0 22px 75px rgba(0,0,0,.22);padding:24px}
 .journey-checkout h2,.journey-setup h2{font-size:17px;letter-spacing:-.3px;margin:0 0 18px}
@@ -98,7 +98,7 @@ body.journey-active[data-journey-view="account"] .purchase-result{margin:12px 24
 /* Separate, honest payment return screen: never equate navigation with settlement. */
 .journey-payment-intro{display:none;max-width:680px;margin:0 auto;padding-top:34px;text-align:center}
 body.journey-active[data-journey-view="payment"] .journey-payment-intro{display:block}
-.journey-payment-intro h1{font-size:clamp(24px,5vw,36px);margin:7px 0 12px;letter-spacing:-.8px}
+.journey-payment-intro #journey-payment-heading{font-size:clamp(24px,5vw,36px);margin:7px 0 12px;letter-spacing:-.8px}
 .journey-payment-intro p:not(.journey-kicker){max-width:560px;margin:0 auto 14px;color:#c3d4eb;font-size:13px;line-height:1.6}
 .journey-payment-cabinet{display:inline-block;font-size:13px;text-decoration:underline;text-underline-offset:4px;color:#9ce9f9}
 body.journey-active .journey-payment-intro[hidden]{display:none}
@@ -162,7 +162,7 @@ body.journey-active .journey-kicker{
   letter-spacing:2px;
   margin-bottom:14px;
 }
-body.journey-active .journey-intro h1{
+body.journey-active .journey-intro #journey-title{
   font-weight:900;
   font-size:clamp(41px,5vw,69px);
   line-height:1.09;
@@ -170,7 +170,7 @@ body.journey-active .journey-intro h1{
   margin:0 0 15px;
   text-wrap:balance;
 }
-body.journey-active .journey-intro h1 span{
+body.journey-active .journey-intro #journey-title span{
   display:block;
   color:transparent;
   background:linear-gradient(94deg,#23edfa 5%,#74aaff 43%,#bd74ff 94%);
@@ -327,7 +327,7 @@ body.journey-active[data-journey-view="plans"] .footer-links button{
   body.journey-active .journey-kicker{
     font-size:10px;letter-spacing:1.5px;margin:0 0 7px;
   }
-  body.journey-active .journey-intro h1{
+  body.journey-active .journey-intro #journey-title{
     font-size:clamp(30px,8vw,39px);
     letter-spacing:-1.4px;
     margin:0 0 7px;
@@ -356,11 +356,11 @@ body.journey-active[data-journey-view="plans"] .footer-links button{
 }
 @media(max-width:400px){
   body.journey-active .header .brand-text{display:none}
-  body.journey-active .journey-intro h1{font-size:32px}
+  body.journey-active .journey-intro #journey-title{font-size:32px}
 }
 @media(max-height:730px) and (max-width:700px){
   body.journey-active .journey-landing{gap:8px;padding:7px 0}
-  body.journey-active .journey-intro h1{font-size:29px;margin-bottom:4px}
+  body.journey-active .journey-intro #journey-title{font-size:29px;margin-bottom:4px}
   body.journey-active .journey-checkout h2{margin-bottom:8px}
   body.journey-active .journey-duration-grid button{min-height:56px}
   body.journey-active .journey-checkout{padding:12px}
@@ -427,17 +427,17 @@ body.journey-active[data-journey-view="plans"] .journey-checkout{
   -webkit-backdrop-filter:blur(13px);
   box-shadow:0 0 27px rgba(15,193,245,.17),0 13px 42px rgba(103,34,204,.18),inset 0 1px rgba(255,255,255,.1);
 }
-body.journey-active .journey-intro h1,
+body.journey-active .journey-intro #journey-title,
 body.journey-active .journey-checkout h2,
 body.journey-active #journey-buy,
-body.journey-active .journey-trial-auth h1,
+body.journey-active .journey-trial-auth #journey-trial-title,
 body.journey-active .journey-trial-method h2{
   font-family:"Trebuchet MS","Arial Narrow",system-ui,sans-serif;
   font-style:italic;
   font-weight:900;
   text-shadow:0 2px 15px rgba(35,175,242,.11);
 }
-body.journey-active .journey-intro h1 span{
+body.journey-active .journey-intro #journey-title span{
   text-transform:uppercase;
   letter-spacing:-1.2px;
   filter:drop-shadow(0 0 13px rgba(102,93,245,.2));
@@ -554,7 +554,7 @@ body.journey-active .journey-trial-auth-card{
   box-shadow:0 14px 46px rgba(0,0,0,.28),0 0 25px rgba(49,157,230,.12);
   padding:clamp(18px,4vw,30px);
 }
-body.journey-active .journey-trial-auth h1{
+body.journey-active .journey-trial-auth #journey-trial-title{
   font-size:clamp(28px,6.3vw,43px);
   line-height:1.15;
   letter-spacing:-1.1px;
@@ -636,8 +636,8 @@ body.journey-active .journey-trial-auth .journey-back{margin-top:3px}
     top:45%;
     opacity:.82;
   }
-  body.journey-active .journey-intro h1{line-height:1.1}
-  body.journey-active .journey-intro h1 span{letter-spacing:-.6px}
+  body.journey-active .journey-intro #journey-title{line-height:1.1}
+  body.journey-active .journey-intro #journey-title span{letter-spacing:-.6px}
   body.journey-active .journey-checkout h2::before{height:17px;width:6px}
   body.journey-active .journey-trial-cta{margin-top:7px;gap:6px 11px}
   body.journey-active .journey-trial{min-height:28px;padding:5px 11px;font-size:11px}
@@ -704,13 +704,13 @@ body.journey-active[data-journey-view="plans"] .brand-text{
 body.journey-active[data-journey-view="plans"] .journey-intro{
   z-index:2;
 }
-body.journey-active[data-journey-view="plans"] .journey-intro h1{
+body.journey-active[data-journey-view="plans"] .journey-intro #journey-title{
   font-family:"Trebuchet MS","Arial",system-ui,sans-serif;
   font-weight:900;
   font-style:italic;
   text-shadow:0 3px 17px rgba(2,8,30,.68),0 0 32px rgba(14,81,168,.16);
 }
-body.journey-active[data-journey-view="plans"] .journey-intro h1 span{
+body.journey-active[data-journey-view="plans"] .journey-intro #journey-title span{
   background:linear-gradient(90deg,#22eafa 0%,#61b4ff 35%,#bf7cf9 89%);
   -webkit-background-clip:text;
   background-clip:text;
@@ -814,7 +814,7 @@ body.journey-active[data-journey-view="plans"] .footer-links button{
   body.journey-active[data-journey-view="plans"] .journey-landing{
     gap:clamp(7px,1.4vh,13px);
   }
-  body.journey-active[data-journey-view="plans"] .journey-intro h1{
+  body.journey-active[data-journey-view="plans"] .journey-intro #journey-title{
     font-size:clamp(31px,8.4vw,42px);
     line-height:1.08;
   }
@@ -860,13 +860,13 @@ body.journey-active[data-journey-view="plans"] .journey-intro::before{
   background:radial-gradient(ellipse at 50% 50%,rgba(4,15,43,.77) 0%,rgba(4,13,37,.57) 50%,transparent 77%);
   pointer-events:none;
 }
-body.journey-active[data-journey-view="plans"] .journey-intro h1 span{
+body.journey-active[data-journey-view="plans"] .journey-intro #journey-title span{
   background:linear-gradient(93deg,#28e9ff 3%,#65acff 50%,#c279fc 97%);
   -webkit-background-clip:text;
   background-clip:text;
   filter:drop-shadow(0 2px 5px rgba(1,5,30,.64));
 }
-body.journey-active[data-journey-view="plans"] .journey-intro h1{
+body.journey-active[data-journey-view="plans"] .journey-intro #journey-title{
   text-shadow:0 3px 14px rgba(1,8,29,.78);
 }
 body.journey-active[data-journey-view="plans"] .journey-checkout{
@@ -1000,7 +1000,7 @@ body.journey-active[data-journey-view="plans"] .footer-links button:hover{
   body.journey-active[data-journey-view="plans"] .journey-payment-link{
     width:100%;
   }
-  body.journey-active[data-journey-view="plans"] .journey-intro h1{
+  body.journey-active[data-journey-view="plans"] .journey-intro #journey-title{
     text-shadow:0 0 21px rgba(1,10,31,.76);
   }
 }
@@ -1053,12 +1053,12 @@ body.journey-active[data-journey-view="plans"] #journey-buy{
   body.journey-active[data-journey-view="plans"] .journey-intro::before{
     display:none;
   }
-  body.journey-active[data-journey-view="plans"] .journey-intro h1,
+  body.journey-active[data-journey-view="plans"] .journey-intro #journey-title,
   body.journey-active[data-journey-view="plans"] .journey-intro>p{
     text-shadow:0 2px 15px rgba(2,8,29,.78),0 0 30px rgba(5,18,39,.65);
   }
 }
-body.journey-active[data-journey-view="plans"] .journey-intro h1 span{
+body.journey-active[data-journey-view="plans"] .journey-intro #journey-title span{
   background:linear-gradient(95deg,#19eaff 0%,#66b7ff 43%,#cf82ff 96%);
   -webkit-background-clip:text;
   background-clip:text;
@@ -1138,7 +1138,7 @@ body.journey-active .journey-order-card{
     linear-gradient(125deg,#16e7ff,rgba(81,138,255,.72),#ca52fa) border-box;
   box-shadow:0 0 36px rgba(14,193,246,.27),0 0 45px rgba(133,54,239,.21),inset 0 1px rgba(255,255,255,.12);
 }
-body.journey-active .journey-order-card h1{
+body.journey-active .journey-order-card #journey-order-title{
   margin:0 0 9px;font-family:"Trebuchet MS",system-ui,sans-serif;
   font-size:clamp(26px,6vw,38px);font-style:italic;font-weight:900;letter-spacing:-1px
 }
@@ -1773,7 +1773,7 @@ body.journey-active:not([data-journey-view="plans"]) .footer-links button{
   body.journey-active[data-journey-view="trial-auth"] .journey-trial-method h2{
     font-size:15px;
   }
-  body.journey-active[data-journey-view="trial-auth"] .journey-trial-auth h1{
+  body.journey-active[data-journey-view="trial-auth"] .journey-trial-auth #journey-trial-title{
     font-size:clamp(25px,7vw,31px);
   }
   body.journey-active[data-journey-view="trial-auth"] .journey-trial-explain{
@@ -1880,7 +1880,7 @@ body.journey-active[data-journey-view="trial-auth"] .journey-kicker{
   letter-spacing:1.2px;
   margin:0 0 5px;
 }
-body.journey-active[data-journey-view="trial-auth"] .journey-trial-auth h1{
+body.journey-active[data-journey-view="trial-auth"] .journey-trial-auth #journey-trial-title{
   font-size:clamp(24px,6.5vw,30px);
   line-height:1.08;
   margin:0 0 8px;
@@ -2150,7 +2150,7 @@ body.journey-active[data-journey-view="payment"] .journey-payment-card{
     linear-gradient(120deg,#2ce1f9,rgba(82,134,249,.5),#a34feb) border-box;
   box-shadow:0 9px 30px rgba(1,5,18,.33),0 0 18px rgba(63,188,247,.1);
 }
-body.journey-active[data-journey-view="payment"] .journey-payment-intro h1{
+body.journey-active[data-journey-view="payment"] .journey-payment-intro #journey-payment-heading{
   margin:7px 0 10px;color:#f6fbff;
   font:italic 850 clamp(22px,6vw,27px)/1.12 Inter,system-ui,Roboto,Arial,sans-serif;
 }
@@ -2182,7 +2182,7 @@ body.journey-active .journey-setup{
   margin:0 auto;
 }
 body.journey-active .journey-setup .journey-kicker{margin:0 0 6px;font-size:10px}
-body.journey-active .journey-setup h1{
+body.journey-active .journey-setup #journey-setup-title{
   margin:0 0 8px;
   font:italic 850 clamp(23px,6vw,28px)/1.12 Inter,system-ui,Roboto,Arial,sans-serif;
 }
