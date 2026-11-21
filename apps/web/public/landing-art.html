@@ -506,13 +506,10 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
   const mobScene=$('#mob-scene'),mobVideo=$('#bgv');
   const deskScene=$('#desk-scene'),deskVideo=$('#bgv-desktop'),deskPoster=$('.desk-poster');
   const mqlDesk=matchMedia('(min-width: 768px)');
-  const isDesktopViewport=()=>{
-    if(mqlDesk.matches)return true;
-    try{
-      if(window.parent!==window&&window.parent.innerWidth>=768)return true;
-    }catch{}
-    return false;
-  };
+  // Match the iframe's ACTUAL CSS viewport, not the parent window.
+  // The public host embeds this page in a 480px frame even on desktop:
+  // selecting the desktop video there downloaded an invisible ~700 KB MP4.
+  const isDesktopViewport=()=>mqlDesk.matches;
   const autoplayAllowed=!R&&!navigator.connection?.saveData;
   // An embedded storefront is inactive until the parent explicitly activates
   // it; account/payment deep links must not download background video first.
