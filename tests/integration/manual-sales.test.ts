@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test,{after} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
@@ -11,6 +11,7 @@ const pool=new Pool({
   database:process.env.PGDATABASE??'mnebyvpn_test',
   max:3,connectionTimeoutMillis:1500,
 });
+after(async()=>pool.end());
 test('offline 30-day bundle is atomic and never fakes PSP captures or sends to customers',async()=>{
   const op=887766,tag=randomUUID().replace(/-/g,'').slice(0,9);
   const handle='buyer_'+tag;
@@ -56,7 +57,7 @@ test('offline 30-day bundle is atomic and never fakes PSP captures or sends to c
     const view=await showOfflineSale(pool,op,op,id!,true,true,Buffer.alloc(32,7));
     assert.match(view.text,/VPN-ссылка ещё недоступна/);
     assert.doesNotMatch(view.text,/https:\/\/cdn\.servgo\.ru:8443\/sub\//);
-  }finally{await pool.end();}
+  }finally{/* Shared PostgreSQL pool closes once after all fixtures. */}
 });
 
 
