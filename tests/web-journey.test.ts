@@ -214,7 +214,7 @@ test('real Earth backdrop is explicitly served by the production HTTP router',()
   assert.match(index,/src="\/world-neon\.webp"/);
   assert.match(server,/readFile\(new URL\('\.\.\/public\/world-neon\.webp'/);
   assert.match(server,/url\.pathname === '\/world-neon\.webp'/);
-  assert.match(server,/send\(res, 200, worldNeon, 'image\/webp'\)/);
+  assert.match(server,/sendStatic\(req,res,worldNeon,'image\/webp'\)/);
   const image=readFileSync(new URL('../apps/web/public/world-neon.webp',import.meta.url));
   assert.ok(image.byteLength>10000);
   assert.equal(image.subarray(0,4).toString('ascii'),'RIFF');
