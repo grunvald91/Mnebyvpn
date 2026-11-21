@@ -312,10 +312,10 @@ test('desktop and mobile storefront present all 3 RUB products without Stars or 
     assert.ok(art.includes(service));
   }
   assert.doesNotMatch(art,/РФ|Россий|Росси/i);
-  assert.match(art,/из вашего региона/);
+  assert.match(art,/правил сервиса/);
   assert.match(art,/локальными сетевыми ограничениями/);
   assert.doesNotMatch(art,/⭐|Prodamus|payform/i);
-  assert.match(art,/499 ₽/);
+  assert.doesNotMatch(art,/id="old-bundle"|>499 ₽</);
   assert.match(art,/133 ₽\/устройство/);
   assert.match(art,/send\('trial'\)/);
   assert.doesNotMatch(art,/send\('trial-dns'\)/);
@@ -398,4 +398,31 @@ test('static website resources revalidate with ETag while personalized responses
     assert.ok(server.includes('sendStatic(req,res,'+name+','),name);
   // Authenticated/personalized HTML must never pass through a public cache.
   assert.match(server,/send\(res, 200, page, 'text\/html; charset=utf-8'\)/);
+});
+
+test('marketing copy avoids unmeasured performance and universal unblocking guarantees',()=>{
+  const home=file('apps/web/public/index.html');
+  const art=file('apps/web/public/landing-art.html');
+  const joined=home+'\n'+art;
+  for(const unsupported of [
+    '90% времени','всегда на связи','для любых блокировок',
+    'работает без любых ограничений','вне зависимости от любых ограничений',
+    'без тормозов','без конфликтов','Доступ ко всему, где есть ограничения',
+    'сами не пускают подключения из вашего региона','Оплата в 1 клик',
+    'ВЫГОДНЕЕ · 3 В 1'
+  ]) assert.ok(!joined.includes(unsupported),'unsupported claim: '+unsupported);
+  for(const required of ['зависит от сети','зависит от устройства','правил сервиса'])
+    assert.ok(joined.includes(required),required);
+});
+
+test('promotional duration discounts are computed from live per-product minor-unit prices',()=>{
+  const art=file('apps/web/public/landing-art.html');
+  const js=file('apps/web/public/journey.js');
+  assert.match(js,/priceMinor:Number\.isSafeInteger\(plan\?\.rubMinor\)\?plan\.rubMinor:null/);
+  assert.match(art,/data-discount-days="60" hidden/);
+  assert.match(art,/data-discount-days="90" hidden/);
+  assert.match(art,/const base=findOffer\(selectedProduct,30\)/);
+  assert.match(art,/offerMinor\/baseline/);
+  assert.match(art,/badge\.hidden=!show/);
+  assert.doesNotMatch(art,/−12%|−21%|<em>ХИТ<\/em>/);
 });
