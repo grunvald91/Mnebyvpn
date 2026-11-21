@@ -78,6 +78,10 @@ for path in ROUTES:
             expected="https://mnebyvpn.site"+path
             if r.status!=200 or not meta.description or meta.canonical!=expected:
                 failures.append(path+": canonical/description/status")
+            # The live site may still serve the previous heading structure until
+            # production deployment. The source H1 contract is checked in unit CI.
+            if path=="/":
+                print("HOME_LIVE_H1_COUNT="+str(meta.h1),flush=True)
         elif path in GUIDE_ROUTES:
             expected=ORIGIN+path
             if (r.status!=200 or "text/html" not in h.get("Content-Type","") or

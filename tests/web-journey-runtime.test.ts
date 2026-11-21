@@ -10,21 +10,34 @@ const entitlementId='22222222-2222-4222-8222-222222222222';
 function browser(url:string,loggedIn:boolean){
   const map=new Map<string,any>();
   const actions:{setup:string[];dns?:string[];proxy?:string[];trials:number;purchase:number}={setup:[],trials:0,purchase:0};
-  const make=(id:string)=>{
+  const headingIds=new Set(['legacy-hero-title','journey-title','journey-trial-title',
+    'journey-setup-title','journey-order-title','journey-payment-heading',
+    'journey-account-title','contact-support-title']);
+  const make=(id:string,tagName='DIV')=>{
     const handlers=new Map<string,()=>void>();
     let href='';
-    return {
-      id,handlers,style:{},dataset:{},hidden:false,disabled:false,textContent:'',value:'',href:'',
+    const node:any={
+      id,tagName,localName:tagName.toLowerCase(),handlers,
+      attributes:id?[{name:'id',value:id}]:[],childNodes:[],
+      style:{},dataset:{},hidden:false,disabled:false,textContent:'',value:'',href:'',
       classList:{add:()=>{},remove:()=>{},toggle:()=>{},contains:()=>false},
       addEventListener:(event:string,cb:()=>void)=>handlers.set(event,cb),
-      removeAttribute:()=>{},setAttribute:()=>{},getAttribute:()=>null,
+      removeAttribute:()=>{},getAttribute:()=>null,
       append:()=>{},querySelector:()=>null,querySelectorAll:()=>[],focus:()=>{},
       scrollIntoView:()=>{},
     };
+    node.setAttribute=(name:string,value:string)=>{
+      const old=node.attributes.find((x:any)=>x.name===name);
+      if(old)old.value=value;else node.attributes.push({name,value});
+      if(name==='id')node.id=value;
+    };
+    node.replaceChildren=(...children:any[])=>{node.childNodes=children;};
+    node.replaceWith=(replacement:any)=>{map.set(node.id,replacement);};
+    return node;
   };
   const el=(id:string)=>{
     if(id==='orders-list'||id==='journey-history')return null;
-    if(!map.has(id))map.set(id,make(id));
+    if(!map.has(id))map.set(id,make(id,id==='legacy-hero-title'?'H1':headingIds.has(id)?'H2':'DIV'));
     return map.get(id);
   };
   const days=[15,30,60,90].map(n=>({ ...make('days-'+n),dataset:{journeyDays:String(n)}}));
@@ -48,6 +61,7 @@ function browser(url:string,loggedIn:boolean){
   const document={
     body:{dataset:{},classList:{add:()=>{}}},
     getElementById:el,
+    createElement:(tag:string)=>make('',tag.toUpperCase()),
     querySelector:(q:string)=>q==='.journey-header-account'?header:
       q==='.journey-back'?back:null,
   };
@@ -166,4 +180,22 @@ test('anonymous checkout never calls the payment provider',async()=>{
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(b.actions.purchase,0);
   assert.equal(b.map.get('journey-order').hidden,true);
+});
+
+test('only the visible route has H1; all other route headings are H2',()=>{
+  const b=browser('https://mnebyvpn.site/#plans',true);
+  const titles=['legacy-hero-title','journey-title','journey-trial-title','journey-setup-title',
+    'journey-order-title','journey-payment-heading','journey-account-title','contact-support-title'];
+  const expectations:Record<string,string>={
+    plans:'journey-title','trial-auth':'journey-trial-title',
+    setup:'journey-setup-title',checkout:'journey-order-title',
+    payment:'journey-payment-heading',account:'journey-account-title',
+    support:'contact-support-title',
+  };
+  for(const [view,primary] of Object.entries(expectations)){
+    b.window.MnebyvpnJourney.show(view);
+    const active=titles.filter(id=>b.map.get(id)?.tagName==='H1');
+    assert.deepEqual(active,[primary],view);
+    for(const id of titles)assert.equal(b.map.get(id)?.tagName,id===primary?'H1':'H2',id);
+  }
 });
