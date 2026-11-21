@@ -16,11 +16,12 @@ function validDomain(s:string):boolean {
     s.split('.').every(part=>part.length>=1&&part.length<=63&&
       !part.startsWith('-')&&!part.endsWith('-'));
 }
-export function parseBonusRoutes(raw:string|undefined):ProxyBonusRoute[]|null{
+function parseRoutes(raw:string|undefined,allowSingleDirect=false):ProxyBonusRoute[]|null{
   if(!raw)return null;
   try{
     const input:unknown=JSON.parse(raw);
-    if(!Array.isArray(input)||input.length!==2)return null;
+    if(!Array.isArray(input)||(input.length!==2&&
+       !(allowSingleDirect&&input.length===1)))return null;
     const routes:ProxyBonusRoute[]=[];
     for(const entry of input){
       if(!entry||typeof entry!=='object'||Array.isArray(entry))return null;
@@ -32,10 +33,20 @@ export function parseBonusRoutes(raw:string|undefined):ProxyBonusRoute[]|null{
         Number(e.port)>65535||Number(e.port)===443)return null;
       routes.push({route:e.route,host:e.host,port:e.port as number});
     }
-    if(routes[0].route===routes[1].route||
-       (routes[0].host===routes[1].host&&routes[0].port===routes[1].port))return null;
+    if(routes.length===1&&routes[0].route!=='direct')return null;
+    if(routes.length===2&&(routes[0].route===routes[1].route||
+       (routes[0].host===routes[1].host&&routes[0].port===routes[1].port)))return null;
     return routes.sort((a,b)=>a.route==='direct'?-1:1);
   }catch{return null;}
+}
+/** Public catalog requires both established routes; unchanged. */
+export function parseBonusRoutes(raw:string|undefined):ProxyBonusRoute[]|null{
+  return parseRoutes(raw,false);
+}
+/** Private owner pilot accepts ONE directly verified Telemt endpoint.
+ * An unproven RU fallback must never be supplied as a working client route. */
+export function parseOwnerProxyRoutes(raw:string|undefined):ProxyBonusRoute[]|null{
+  return parseRoutes(raw,true);
 }
 function keyOf(value:string):Buffer{
   if(!hexKey.test(value))throw new Error('MTProxy credential key unavailable');
@@ -77,11 +88,11 @@ export function openProxySecret(
   return raw.toLowerCase();
 }
 export function makeBonusLinks(
-  secret:string,tlsDomain:string,routes:ProxyBonusRoute[],
+  secret:string,tlsDomain:string,routes:ProxyBonusRoute[],ownerOnly=false,
 ):ProxyBonusLink[]{
-  if(!hexSecret.test(secret)||!validDomain(tlsDomain)||routes.length!==2)
+  if(!hexSecret.test(secret)||!validDomain(tlsDomain))
     throw new Error('Invalid MTProxy profile');
-  const checked=parseBonusRoutes(JSON.stringify(routes));
+  const checked=(ownerOnly?parseOwnerProxyRoutes:parseBonusRoutes)(JSON.stringify(routes));
   if(!checked)throw new Error('Unverified MTProxy routes');
   const fakeTlsSecret='ee'+secret.toLowerCase()+
     Buffer.from(tlsDomain,'ascii').toString('hex');
@@ -107,6 +118,7 @@ type BonusRow={
 export async function loadCustomerProxyBonus(
   db:Pick<Pool,'query'>,accountId:string,entitlementId:string,
   keyHex:string,routes:ProxyBonusRoute[],maxVerificationAgeMinutes=7*24*60,
+  ownerOnly=false,
 ):Promise<{expiresAt:string;links:ProxyBonusLink[]}|null>{
   if(!uuid.test(accountId)||!uuid.test(entitlementId))return null;
   if(!Number.isSafeInteger(maxVerificationAgeMinutes)||
@@ -120,13 +132,15 @@ export async function loadCustomerProxyBonus(
     'AND e.expires_at>clock_timestamp() AND o.state=$5 '+
     'AND o.product IN ($3,$6) AND b.state=$4 '+
     'AND b.disabled_at IS NULL AND '+
-    "b.verified_at>clock_timestamp()-($7::integer * interval '1 minute') LIMIT 1";
+    "b.verified_at>clock_timestamp()-($7::integer * interval '1 minute') "+
+    (ownerOnly?'AND EXISTS (SELECT 1 FROM manual_sales m WHERE m.order_id=o.id) ':'')+
+    'LIMIT 1';
   const {rows}=await db.query(sql,[accountId,entitlementId,'smart_dns','ACTIVE','PAID','bundle',maxVerificationAgeMinutes]);
   const row=(rows as BonusRow[])[0];
   if(!row)return null;
   const secret=openProxySecret(row.secret_box,keyHex,row.entitlement_id,row.telemt_username);
   return {expiresAt:row.expires_at.toISOString(),
-    links:makeBonusLinks(secret,row.tls_domain,routes)};
+    links:makeBonusLinks(secret,row.tls_domain,routes,ownerOnly)};
 }
 /** Owner-only private-sale release; does not enable public DNS/MTProxy offers.
  * Requires documented gateway, end-to-end route and runtime revoke verification. */
@@ -135,7 +149,7 @@ export function ownerProxyReleaseReady(env:NodeJS.ProcessEnv):boolean{
     env.MNEBYVPN_OFFLINE_MTPROXY_ROUTES_VERIFIED==='yes' &&
     env.MNEBYVPN_OFFLINE_MTPROXY_REVOKER_VERIFIED==='yes' &&
     hexKey.test(env.WEB_DNS_MT_PROXY_BONUS_KEY??'') &&
-    parseBonusRoutes(env.WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON)!==null;
+    parseOwnerProxyRoutes(env.WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON)!==null;
 }
 export function bonusReleaseReady(env:NodeJS.ProcessEnv):boolean{
   return env.WEB_DNS_MT_PROXY_BONUS_ENABLED==='yes' &&
