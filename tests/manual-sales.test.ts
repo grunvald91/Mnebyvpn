@@ -16,7 +16,7 @@ test('offline sale requires explicit actual amount; @username is only a label',(
     assert.equal(parseSaleInput(s),null,s);
   }
   assert.match(offlineSalePrompt().text,/фактически_получено/);
-  assert.match(offlineSaleMenu().text,/от первого подключения/);
+  assert.match(offlineSaleMenu().text,/не с первого подключения/);
 });
 test('non-owner, unknown owner and hostile request cannot create any sale or reveal links',async()=>{
   let calls=0;
