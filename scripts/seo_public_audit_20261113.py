@@ -26,8 +26,17 @@ class Meta(HTMLParser):
         self.title=self.description=self.canonical=self.robots=""
         self.in_title=False
         self.h1=0
+        self.guide_links=[]
+        self.guide_nav_depth=0
     def handle_starttag(self,tag,attrs):
         d=dict(attrs)
+        if tag=="nav":
+            if self.guide_nav_depth:
+                self.guide_nav_depth+=1
+            elif "journey-guide-links" in d.get("class","").split():
+                self.guide_nav_depth=1
+        if tag=="a" and self.guide_nav_depth:
+            self.guide_links.append(d.get("href",""))
         if tag=="title":self.in_title=True
         if tag=="h1":self.h1+=1
         if tag=="meta" and d.get("name")=="description":
@@ -38,6 +47,8 @@ class Meta(HTMLParser):
             self.canonical=d.get("href","")
     def handle_endtag(self,tag):
         if tag=="title":self.in_title=False
+        if tag=="nav" and self.guide_nav_depth:
+            self.guide_nav_depth-=1
     def handle_data(self,s):
         if self.in_title:self.title+=s
 
@@ -104,6 +115,11 @@ for path in ROUTES:
             # production deployment. The source H1 contract is checked in unit CI.
             if path=="/":
                 print("HOME_LIVE_H1_COUNT="+str(meta.h1),flush=True)
+                print("HOME_PUBLIC_GUIDE_LINKS="+str(len(meta.guide_links))+
+                      "/"+str(len(GUIDE_ROUTES)),flush=True)
+                if (len(meta.guide_links)!=len(GUIDE_ROUTES) or
+                    set(meta.guide_links)!=set(GUIDE_ROUTES)):
+                    failures.append(path+": missing, duplicated or unexpected guide links")
         elif path in GUIDE_ROUTES:
             expected=ORIGIN+path
             if (r.status!=200 or "text/html" not in h.get("Content-Type","") or

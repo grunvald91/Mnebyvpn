@@ -20,6 +20,26 @@ test('ETag hashes are memoized per immutable Buffer, and private HTML remains no
   assert.match(server,/function send\(res: ServerResponse, status: number, body: string\|Buffer, type = 'application\/json; charset=utf-8', cacheControl = 'no-store'\)/);
 });
 
+test('SEO crawler discovers only the real seven navigation hrefs in homepage HTML',()=>{
+  assert.match(audit,/HOME_PUBLIC_GUIDE_LINKS=/);
+  assert.match(audit,/set\(meta\.guide_links\)!=set\(GUIDE_ROUTES\)/);
+  const parserTest=[
+    'import sys,json',
+    'source=open(sys.argv[1],encoding="utf-8").read().split("failures=[]")[0]',
+    'scope={}',
+    'exec(source,scope)',
+    'Parser=scope["Meta"]',
+    'p=Parser()',
+    'p.feed(\'<nav class="journey-guide-links"><a href="/vpn">VPN</a><nav><a href="/smart-dns">DNS</a></nav><a href="/claude">Claude</a></nav><nav><a href="/private">Private</a></nav>\')',
+    'print(json.dumps(p.guide_links))'
+  ].join('\n');
+  const result=spawnSync('python3',['-c',parserTest,
+    fileURLToPath(new URL('../scripts/seo_public_audit_20261113.py',import.meta.url))],
+    {encoding:'utf8',timeout:10000});
+  assert.equal(result.status,0,result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout),['/vpn','/smart-dns','/claude']);
+});
+
 test('SEO crawler fails fast and honestly when GitHub runner cannot reach HTTPS',()=>{
   assert.match(audit,/SEO_PUBLIC_CRAWLER_GATE=FAIL_NETWORK/);
   assert.match(audit,/SEO_CRAWLER_TRANSPORT_UNAVAILABLE=/);
