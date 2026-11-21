@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {generateKeyPairSync} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {describeIndex,formatIndexAudit,inspectPublicPages} from '../scripts/gsc-index-audit.ts';
 import {GSC_ORIGIN} from '../scripts/gsc-weekly-report.ts';
 import {PUBLIC_SEO_PATHS,renderSitemap} from '../apps/web/src/seo-core.ts';
@@ -81,4 +82,12 @@ test('Google index inspection covers exactly the canonical sitemap pages, includ
   for(const path of ['/terms','/agreement','/privacy'])
     assert.ok(PUBLIC_SEO_PATHS.some(allowed=>allowed===path));
   for(const url of locs)assert.doesNotMatch(url,/\/(?:api|auth|sub|install|payment)\//);
+});
+
+test('Google public index audit has daily read-only checks for 11 sitemap URLs',()=>{
+  const workflow=readFileSync(new URL('../.github/workflows/gsc-public-index-audit.yml',import.meta.url),'utf8');
+  assert.match(workflow,/schedule:\s*\n\s*- cron: '23 5 \* \* \*'/);
+  assert.match(workflow,/GSC_SERVICE_ACCOUNT_JSON: \$\{\{ secrets\.GSC_SERVICE_ACCOUNT_JSON \}\}/);
+  assert.match(workflow,/node --experimental-strip-types scripts\/gsc-index-audit\.ts/);
+  assert.ok(!workflow.includes('TELEGRAM_BOT_TOKEN'));
 });
