@@ -178,6 +178,31 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       && !frame?.contentDocument?.querySelector('.cta')?.disabled;
   },{timeout:15000});
   await auditActiveHeading(page,'journey-front-heading','plans_'+width+'x'+height);
+  // Verify the JS-rendered top-level DOM (not merely raw HTML or iframe
+  // content): all guide links remain readable in the scrollable page.
+  const helpLinks=await page.evaluate(()=>{
+    const frame=document.querySelector('#journey-front-stage')?.getBoundingClientRect();
+    const nav=document.querySelector('.journey-guide-links');
+    const box=nav?.getBoundingClientRect();
+    const links=[...nav?.querySelectorAll('a[href]')||[]];
+    return {visible:!!nav&&getComputedStyle(nav).display!=='none',
+      frameHeight:frame?.height,navTop:box?.top,navLeft:box?.left,navRight:box?.right,
+      viewportHeight:innerHeight,viewportWidth:innerWidth,
+      outerScrollHeight:document.documentElement.scrollHeight,
+      hrefs:links.map(a=>a.getAttribute('href')),
+      allVisible:links.every(a=>getComputedStyle(a).display!=='none'&&
+        a.getBoundingClientRect().width>0),
+      horizontalOverflow:document.documentElement.scrollWidth>innerWidth+2};
+  });
+  console.log('SEO_GUIDE_RENDERED_'+width+'x'+height+'='+JSON.stringify(helpLinks));
+  const required=['/vpn','/smart-dns','/chatgpt','/claude','/gemini','/google-antigravity','/telegram-proxy'];
+  if(!helpLinks.visible||!helpLinks.allVisible||helpLinks.horizontalOverflow||
+    helpLinks.hrefs.length!==required.length||
+    !required.every(path=>helpLinks.hrefs.includes(path))||
+    Math.abs(helpLinks.frameHeight-helpLinks.viewportHeight)>4||
+    Math.abs(helpLinks.navTop-helpLinks.viewportHeight)>8||
+    helpLinks.navLeft<0||helpLinks.navRight>helpLinks.viewportWidth+2||
+    (width<=390&&helpLinks.outerScrollHeight>helpLinks.viewportHeight+340))failed=true;
   // The design fades its title and tariff card in over ~1.5 seconds.
   // Capture settled pixels, not an initially transparent card.
   await page.waitForFunction(()=>{
@@ -284,7 +309,9 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     (width<900&&metrics.backdropFilter!=='none')||metrics.canvasPresent||metrics.introFilter!=='none'||
     (width<=390&&(metrics.lockWidth>52||metrics.clearLockGap<20||metrics.cardTop>350))||
     !metrics.paymentNotesRemoved||!metrics.paymentInfoVisible||!metrics.sellerRemoved||
-    (width<=390&&metrics.height>=700&&metrics.outerScrollHeight>metrics.height+2)||
+    // Only the guide nav may add height BELOW the unchanged 100dvh storefront.
+    // The iframe height, content bounds and horizontal overflow are checked separately.
+    (width<=390&&metrics.height>=700&&metrics.outerScrollHeight>metrics.height+340)||
     !metrics.headerSingleRow||!metrics.headerNavGrouped||!metrics.topButtonsUnwrapped||!metrics.headerFits||
     !metrics.legalSingleRow||metrics.frontTop>12||
     (width<=390&&(metrics.iframeBottomGap>12||!metrics.fullFrameBackground||
@@ -292,7 +319,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     !metrics.trialVisible||metrics.selected!=='true'||
     (width<900&&metrics.frameWidth>480)||metrics.frameWidth<Math.min(360,width)||
     Math.abs(metrics.frameHeight-metrics.artBottom)>28||
-    (width<=390&&metrics.outerScrollHeight>metrics.height+280)||
+    (width<=390&&metrics.outerScrollHeight>metrics.height+340)||
     !metrics.price.includes('₽'))failed=true;
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('VISUAL_JPEG_'+width+'_BEGIN');
