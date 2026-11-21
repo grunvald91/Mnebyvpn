@@ -429,7 +429,26 @@ test('private three-peer intent per verified AWG node never issues live allocati
     "WHERE entitlement_id=$1 AND slot_number=1",[entitlement]);
   assert.equal(await ask(owner,1,nodeId),'DENY_ACCESS','revoked key cannot get new authorization');
   assert.equal(await eligible(),2,'revoked key must not remain eligible');
-  await pool.query("UPDATE vpn_node_enrollment_inventory SET status='revoked' WHERE node_id=$1",[nodeId]);
+  // Hold a concurrent node revocation while a reservation request arrives:
+  // a correct FOR SHARE on enrollment MUST wait for COMMIT and then deny.
+  const revoker=await pool.connect();
+  try{
+    await revoker.query('BEGIN');
+    await revoker.query(
+      "UPDATE vpn_node_enrollment_inventory SET status='revoked' WHERE node_id=$1",
+      [nodeId]);
+    let resolved=false;
+    const inFlight=ask(owner,2,nodeId).then(value=>{resolved=true;return value;});
+    await new Promise<void>(done=>setTimeout(done,100));
+    const returnedBeforeRevocationCommitted=resolved;
+    await revoker.query('COMMIT');
+    assert.equal(returnedBeforeRevocationCommitted,false,
+      'reservation must wait for the node revocation row lock');
+    assert.equal(await inFlight,'DENY_NODE','revoked node rejects the in-flight request');
+  }finally{
+    await revoker.query('ROLLBACK').catch(()=>{});
+    revoker.release();
+  }
   assert.equal(await ask(owner,2,nodeId),'DENY_NODE','revoked node cannot receive new reservations');
   assert.equal(await eligible(),0,'revoked node hides all historical reservations');
   assert.equal((await pool.query(
