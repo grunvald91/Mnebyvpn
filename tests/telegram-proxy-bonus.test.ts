@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  parseBonusRoutes,sealProxySecret,openProxySecret,makeBonusLinks,
+  parseBonusRoutes,parseOwnerProxyRoutes,sealProxySecret,openProxySecret,makeBonusLinks,
   loadCustomerProxyBonus,bonusReleaseReady,ownerProxyReleaseReady,
   parseWsProxyRoutes,wsProxyReleaseReady,makeWsProxyLinks,loadCustomerWsProxy,
 } from '../packages/web/src/telegram-proxy-bonus.ts';
@@ -26,6 +26,22 @@ test('exactly two non-443 distinct public routes are required',()=>{
     JSON.stringify([{...routes[0],port:0},routes[1]]),
     JSON.stringify([{...routes[0],evil:'secret'},routes[1]]),
   ])assert.equal(parseBonusRoutes(malformed),null);
+});
+test('owner pilot permits exactly one verified direct endpoint; public routes unchanged',()=>{
+  const onlyDirect=[routes[0]];
+  assert.equal(parseBonusRoutes(JSON.stringify(onlyDirect)),null);
+  assert.deepEqual(parseOwnerProxyRoutes(JSON.stringify(onlyDirect)),onlyDirect);
+  assert.equal(parseOwnerProxyRoutes(JSON.stringify([routes[1]])),null);
+  assert.equal(parseOwnerProxyRoutes(JSON.stringify([{...routes[0],port:443}])),null);
+  assert.equal(parseOwnerProxyRoutes(JSON.stringify([{...routes[0],evil:true}])),null);
+  assert.equal(parseOwnerProxyRoutes(JSON.stringify([{...routes[0]},{...routes[0]}])),null);
+  assert.throws(()=>makeBonusLinks(raw,'xapi.ozon.ru',onlyDirect));
+  const links=makeBonusLinks(raw,'xapi.ozon.ru',onlyDirect,true);
+  assert.equal(links.length,1);
+  assert.equal(new URL(links[0].url).searchParams.get('server'),'89.125.90.101');
+  assert.equal(new URL(links[0].url).searchParams.get('port'),'9446');
+  assert.equal(new URL(links[0].url).searchParams.get('secret'),
+    'ee'+raw+Buffer.from('xapi.ozon.ru','ascii').toString('hex'));
 });
 test('AES-GCM MTProxy secret is bound to entitlement and username',()=>{
   const box=sealProxySecret(raw,key,id,name);
@@ -64,6 +80,8 @@ test('owner-only Telemt release requires separate route and revoker attestations
   };
   assert.equal(ownerProxyReleaseReady({}),false);
   assert.equal(ownerProxyReleaseReady(env),true);
+  assert.equal(ownerProxyReleaseReady({...env,WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON:JSON.stringify([routes[0]])}),true);
+  assert.equal(ownerProxyReleaseReady({...env,WEB_DNS_MT_PROXY_BONUS_ROUTES_JSON:JSON.stringify([routes[1]])}),false);
   for(const k of [
     'MNEBYVPN_OFFLINE_MTPROXY_ISSUE_ENABLED',
     'MNEBYVPN_OFFLINE_MTPROXY_ROUTES_VERIFIED',
@@ -117,6 +135,29 @@ test('customer secret delivery is backed by paid, active, owned DNS entitlement 
   assert.equal(called,1);
 });
 
+test('owner-only buyer link refuses ordinary paid DNS order and requires current Telemt ACK',async()=>{
+  const encrypted=sealProxySecret(raw,key,other,name);
+  const single=[routes[0]];
+  let calls=0;
+  const db={async query(sql:string,vals:unknown[]){
+    calls++;
+    assert.match(sql,/EXISTS \(SELECT 1 FROM manual_sales m WHERE m.order_id=o.id\)/);
+    assert.deepEqual(vals,[id,other,'smart_dns','ACTIVE','PAID','bundle',5]);
+    return {rows:[]};
+  }};
+  assert.equal(await loadCustomerProxyBonus(db as never,id,other,key,single,5,true),null);
+  assert.equal(calls,1);
+  const readyDb={async query(sql:string){
+    assert.match(sql,/manual_sales/);
+    return {rows:[{
+      entitlement_id:other,telemt_username:name,secret_box:encrypted,
+      tls_domain:'xapi.ozon.ru',expires_at:new Date('2026-12-10T00:00:00Z'),
+    }]};
+  }};
+  const response=await loadCustomerProxyBonus(readyDb as never,id,other,key,single,5,true);
+  assert.equal(response?.links.length,1);
+  assert.equal(response?.links[0].route,'direct');
+});
 test('WebSocket proxy validates routes, encodes 0x70 marked token and enforces paid smart_dns ownership',async()=>{
   const wsRoutes=[
     {route:'ru' as const,server:'bandbook.site/6omdaevzovf3lisy',secret:raw},
