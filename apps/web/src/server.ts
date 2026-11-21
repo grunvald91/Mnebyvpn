@@ -754,8 +754,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   // IndexNow ownership proof: public static TXT only. Never includes user data.
   if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === YANDEX_INDEXNOW_KEY_PATH) {
     res.setHeader('X-Robots-Tag','noindex');
-    send(res,200,YANDEX_INDEXNOW_KEY,'text/plain; charset=utf-8',
-      'public, max-age=300, must-revalidate');
+    // Keep all explicitly public 300-second caching restricted to guide pages.
+    // The IndexNow ownership file is small and can be read on demand.
+    send(res,200,YANDEX_INDEXNOW_KEY,'text/plain; charset=utf-8');
     return;
   }
   const alias=(req.method === 'GET' || req.method === 'HEAD')?canonicalAlias(url.pathname):null;
