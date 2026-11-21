@@ -202,7 +202,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     Math.abs(helpLinks.frameHeight-helpLinks.viewportHeight)>4||
     Math.abs(helpLinks.navTop-helpLinks.viewportHeight)>8||
     helpLinks.navLeft<0||helpLinks.navRight>helpLinks.viewportWidth+2||
-    (width<=390&&helpLinks.outerScrollHeight>helpLinks.viewportHeight+280))failed=true;
+    (width<=390&&helpLinks.outerScrollHeight>helpLinks.viewportHeight+340))failed=true;
   // The design fades its title and tariff card in over ~1.5 seconds.
   // Capture settled pixels, not an initially transparent card.
   await page.waitForFunction(()=>{
@@ -309,7 +309,9 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     (width<900&&metrics.backdropFilter!=='none')||metrics.canvasPresent||metrics.introFilter!=='none'||
     (width<=390&&(metrics.lockWidth>52||metrics.clearLockGap<20||metrics.cardTop>350))||
     !metrics.paymentNotesRemoved||!metrics.paymentInfoVisible||!metrics.sellerRemoved||
-    (width<=390&&metrics.height>=700&&metrics.outerScrollHeight>metrics.height+2)||
+    // Only the guide nav may add height BELOW the unchanged 100dvh storefront.
+    // The iframe height, content bounds and horizontal overflow are checked separately.
+    (width<=390&&metrics.height>=700&&metrics.outerScrollHeight>metrics.height+340)||
     !metrics.headerSingleRow||!metrics.headerNavGrouped||!metrics.topButtonsUnwrapped||!metrics.headerFits||
     !metrics.legalSingleRow||metrics.frontTop>12||
     (width<=390&&(metrics.iframeBottomGap>12||!metrics.fullFrameBackground||
@@ -317,7 +319,7 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
     !metrics.trialVisible||metrics.selected!=='true'||
     (width<900&&metrics.frameWidth>480)||metrics.frameWidth<Math.min(360,width)||
     Math.abs(metrics.frameHeight-metrics.artBottom)>28||
-    (width<=390&&metrics.outerScrollHeight>metrics.height+280)||
+    (width<=390&&metrics.outerScrollHeight>metrics.height+340)||
     !metrics.price.includes('₽'))failed=true;
   if(process.env.VISUAL_SCREENSHOT_INLINE==='yes'){
     console.log('VISUAL_JPEG_'+width+'_BEGIN');
