@@ -271,7 +271,8 @@ export async function showOfflineSale(
   const dnsReady=r.dns_ready===true;
   const lines=[
     '💼 Личная продажа · @'+r.customer_label,
-    '«3 в 1» · 30 дней · до 3 устройств',
+    '«3 в 1» · 30 дней · до 3 устройств (по тарифу)',
+    'VPN: одна обновляемая подписка; отдельная активация 3 ключей будет позже.',
     'Сумма по записи владельца: '+money+' ₽',
     'Чек: '+(r.receipt_reference??'не отмечен — оформить отдельно'),
     'VPN: '+(ready?'подтверждён сервером':r.vpn_state),
@@ -286,7 +287,7 @@ export async function showOfflineSale(
         if(dnsKey)vpn=await issueOwnerOfflineSubscriptionLink(pool,actorId,r.order_id,r.vpn_id,dnsKey);
       }catch{/* Fail closed; keep the owner card and other services available. */}
       if(vpn){
-        lines.push('\n🔐 VPN (обновляемая подписка):\n'+vpn.link);
+        lines.push('\n🔐 VPN (одна обновляемая ссылка):\n'+vpn.link);
         buttons.push([{text:'📋 Скопировать VPN',copy_text:{text:vpn.link}}]);
       }else lines.push('\nVPN-ссылка пока не выдана: проверьте ключ владельца, отзыв и состояние узла.');
     }else lines.push('\nVPN-ссылка ещё недоступна: узел не подтвердил активацию.');
