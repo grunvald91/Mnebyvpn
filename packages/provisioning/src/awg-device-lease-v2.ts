@@ -123,7 +123,10 @@ export function verifyAwgSlotReceipt(
 ):boolean {
   try{
     const timestamp=now.getTime();
-    if(!Number.isFinite(timestamp)||!validDraft(command,timestamp)||
+    if(!command||typeof command!=='object'||Object.keys(command).length!==11||
+       typeof command.signature!=='string'||!SIG.test(command.signature))return false;
+    const {signature:controllerSignature,...unsigned}=command;
+    if(!Number.isFinite(timestamp)||!validDraft(unsigned,timestamp)||
        !receipt||typeof receipt!=='object'||
        Object.keys(receipt).length!==9||
        !SIG.test(receipt.signature)||
