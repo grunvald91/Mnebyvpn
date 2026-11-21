@@ -4,7 +4,7 @@
  */
 import {randomUUID} from 'node:crypto';
 import type {Pool} from 'pg';
-import {issueSubscriptionLinkForAccount} from '../../../packages/provisioning/src/subscription-links.ts';
+import {issueOwnerOfflineSubscriptionLink} from '../../../packages/provisioning/src/owner-offline-subscriptions.ts';
 import {makePersonalDoTIdentity} from '../../../packages/dns-policy/src/personal-dot-identity.ts';
 import {encryptOwnerDnsLabel,decryptOwnerDnsLabel} from './owner-dns-links.ts';
 import {bonusReleaseReady,loadCustomerProxyBonus,parseBonusRoutes}
@@ -90,7 +90,7 @@ export async function registerOfflineSale(
     const existing=await client.query(
       "SELECT 1 FROM manual_sales m JOIN entitlements e ON e.source_order_id=m.order_id "+
       "WHERE m.operator_telegram_id=$1 AND m.customer_label=$2 AND e.product='vpn' "+
-      "AND e.state IN ('ACTIVE','PAID_PENDING_PROVISIONING','PROVISIONING_FAILED') "+
+      "AND e.state IN ('ACTIVE','PAID_PENDING_PROVISIONING','PROVISIONING_FAILED','SUSPENDED') "+
       "AND (e.expires_at IS NULL OR e.expires_at>clock_timestamp()) LIMIT 1",
       [String(operatorId),input.customerLabel]);
     if(existing.rowCount) {
@@ -274,11 +274,11 @@ export async function showOfflineSale(
   const buttons:Button[][]=[];
   if(reveal){
     if(ready){
-      const vpn=await issueSubscriptionLinkForAccount(pool,r.account_id,r.vpn_id);
+      const vpn=dnsKey?await issueOwnerOfflineSubscriptionLink(pool,actorId,r.order_id,r.vpn_id,dnsKey):null;
       if(vpn){
         lines.push('\n🔐 VPN (обновляемая подписка):\n'+vpn.link);
         buttons.push([{text:'📋 Скопировать VPN',copy_text:{text:vpn.link}}]);
-      }else lines.push('\nVPN-ссылка пока не выдана: ожидается подтверждение узла.');
+      }else lines.push('\nVPN-ссылка пока не выдана: проверьте ключ владельца, отзыв и состояние узла.');
     }else lines.push('\nVPN-ссылка ещё недоступна: узел не подтвердил активацию.');
     if(dnsReady&&dnsEnabled&&dnsKey){
       const hostname=await ownerDnsHostname(pool,actorId,r.order_id,r.dns_id,dnsKey);
@@ -302,7 +302,7 @@ export async function showOfflineSale(
     lines.push('\n⚠️ Ссылки предназначены только владельцу. Не публикуйте их.');
   }
   buttons.push([{text:reveal?'🔄 Обновить ссылки':'🔑 Получить ссылки',
-    callback_data:'offsale:'+(reveal?'links:':'links:')+r.order_id}]);
+    callback_data:'offsale:links:'+r.order_id}]);
   buttons.push([{text:'📋 Все продажи',callback_data:'offsale:list:0'}],[home]);
   return page(lines.join('\n'),buttons);
 }
