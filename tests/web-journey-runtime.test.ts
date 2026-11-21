@@ -32,7 +32,7 @@ function browser(url:string,loggedIn:boolean){
       if(name==='id')node.id=value;
     };
     node.replaceChildren=(...children:any[])=>{node.childNodes=children;};
-    node.replaceWith=(replacement:any)=>{map.set(node.id,replacement);};
+    node.replaceWith=(replacement:any)=>{replacement.textContent=node.textContent;map.set(node.id,replacement);};
     return node;
   };
   const el=(id:string)=>{
