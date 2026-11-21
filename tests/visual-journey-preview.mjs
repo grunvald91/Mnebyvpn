@@ -188,8 +188,8 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       Number(getComputedStyle(card).opacity)>=0.99 &&
       Number(getComputedStyle(heading).opacity)>=0.99;
   },null,{timeout:10000});
-  // The host iframe stays 480px wide on a 1440px desktop. The background
-  // must follow the iframe CSS layout, never the outer window's width.
+  // Parent layout may expand the iframe on desktop. Select the media that
+  // matches its real CSS viewport, never blindly use the outer window width.
   const videoChoice=await page.evaluate(()=>{
     const doc=document.querySelector('#journey-front-frame')?.contentDocument;
     const mobile=doc?.querySelector('#bgv'),desktop=doc?.querySelector('#bgv-desktop');
@@ -199,9 +199,16 @@ for(const [width,height] of [[320,700],[360,700],[390,700],[360,740],[390,844],[
       desktopPosterHasSrc:doc?.querySelector('.desk-poster')?.hasAttribute('src')??false};
   });
   console.log('BACKDROP_ASSETS_'+width+'x'+height+'='+JSON.stringify({videoChoice,backdropRequests}));
-  if(videoChoice.frameWidth>=768||videoChoice.desktopSources>0||
-    videoChoice.desktopPosterHasSrc||backdropRequests.some(path=>path.startsWith('/bg-desktop')))
-    failed=true;
+  const desktopScene=videoChoice.frameWidth>=768;
+  if(desktopScene){
+    if(videoChoice.desktopSources!==2||videoChoice.mobileSources!==0||
+      !videoChoice.desktopPosterHasSrc||
+      !backdropRequests.some(path=>path.startsWith('/bg-desktop')))failed=true;
+  }else{
+    if(videoChoice.mobileSources!==2||videoChoice.desktopSources!==0||
+      videoChoice.desktopPosterHasSrc||
+      backdropRequests.some(path=>path.startsWith('/bg-desktop')))failed=true;
+  }
   const metrics=await page.evaluate(()=>{
     const frame=document.querySelector('#journey-front-frame');
     const inner=frame.contentDocument;
