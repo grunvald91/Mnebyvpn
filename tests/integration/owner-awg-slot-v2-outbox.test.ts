@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,generateKeyPairSync,randomBytes,randomUUID,sign}
   from 'node:crypto';
-import {Pool} from 'pg';
+import {Client,Pool} from 'pg';
 import {registerOfflineSale}
   from '../../apps/service/src/manual-sales.ts';
 import {awgSlotLeasePayload,awgSlotReceiptPayload,
@@ -18,15 +18,25 @@ import {stageOwnerAwgSlotGrant,stageOwnerAwgSlotRevoke,
 
 const NODE='fi-test-01' as const;
 const HOST='fi.mnebyvpn.site';
-const pool=new Pool({
-  host:'127.0.0.1',port:5432,user:'test',password:'test',
-  database:'mnebyvpn_test',max:3,connectionTimeoutMillis:3000,
-});
 const pubKey=()=>randomBytes(32).toString('base64');
 
 test('owner three V2 slots: bill-gated stage -> signed ACK x3 -> one-slot revoke',async()=>{
   assert.equal(process.env.PGDATABASE,'mnebyvpn_test',
     'Refuse non-disposable PostgreSQL');
+  // Clone the disposable CI template database to ensure the synthetic FI
+  // identity/keys never leak into other integration and controller tests.
+  // NEVER use credentials/hosts from production env for this fixture.
+  const isolatedDb='mnebyvpn_v2_'+randomBytes(6).toString('hex');
+  const admin=new Client({
+    host:'127.0.0.1',port:5432,user:'test',password:'test',
+    database:'postgres',connectionTimeoutMillis:3000,
+  });
+  await admin.connect();
+  await admin.query('CREATE DATABASE '+isolatedDb+' TEMPLATE mnebyvpn_test');
+  const pool=new Pool({
+    host:'127.0.0.1',port:5432,user:'test',password:'test',
+    database:isolatedDb,max:3,connectionTimeoutMillis:3000,
+  });
   const controller=generateKeyPairSync('ed25519');
   const node=generateKeyPairSync('ed25519');
   const nodeSpki=node.publicKey.export({format:'der',type:'spki'}).toString('base64url');
@@ -196,5 +206,7 @@ test('owner three V2 slots: bill-gated stage -> signed ACK x3 -> one-slot revoke
   }finally{
     await setGate(false).catch(()=>{});
     await pool.end();
+    await admin.query('DROP DATABASE '+isolatedDb+' WITH (FORCE)');
+    await admin.end();
   }
 });
