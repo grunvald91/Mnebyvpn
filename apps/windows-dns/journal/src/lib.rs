@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
 #[cfg(windows)]
 use std::path::Path;
@@ -56,17 +57,33 @@ impl Record {
 }
 
 fn validate_snapshot(snapshot: &Snapshot) -> Result<(), String> {
-    if snapshot.interface_guid.is_empty() || snapshot.interface_guid.len() > 64 {
+    let fields: Vec<_> = snapshot.interface_guid.split('-').collect();
+    if fields.len() != 5
+        || fields.iter().zip([8, 4, 4, 4, 12]).any(|(part, len)| {
+            part.len() != len || !part.bytes().all(|ch| ch.is_ascii_hexdigit())
+        })
+    {
         return Err("Invalid interface GUID in recovery record".into());
     }
     if !snapshot.eligible_physical_adapter {
         return Err("Recovery record was not captured for an eligible adapter".into());
     }
-    for mode in [&snapshot.ipv4, &snapshot.ipv6] {
+    for (mode, is_ipv6) in [(&snapshot.ipv4, false), (&snapshot.ipv6, true)] {
         match mode {
             SourceMode::Unknown => return Err("Recovery record contains unknown DNS mode".into()),
             SourceMode::Static(values) => {
-                if values.is_empty() || values.len() > 32 || values.iter().any(|v| v.is_empty() || v.len() > 255) {
+                if values.is_empty() || values.len() > 32
+                    || values.iter().any(|value| {
+                        if value.len() > 255 {
+                            return true;
+                        }
+                        if is_ipv6 {
+                            value.parse::<Ipv6Addr>().is_err()
+                        } else {
+                            value.parse::<Ipv4Addr>().is_err()
+                        }
+                    })
+                {
                     return Err("Invalid static DNS snapshot".into());
                 }
             }
@@ -102,10 +119,10 @@ impl FileJournal {
         }
     }
 
-    fn load(&self) -> Result<Option<Snapshot>, String> {
-        self.no_staging_file()?;
-        let path = self.record_path();
-        let metadata = match fs::symlink_metadata(&path) {
+    /// Validate one bounded regular file independently. We do not interpret an
+    /// absent file as an empty recovery journal until BOTH filenames are checked.
+    fn read_valid_record(&self, path: &std::path::Path) -> Result<Option<Snapshot>, String> {
+        let metadata = match fs::symlink_metadata(path) {
             Ok(meta) => meta,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(format!("Recovery journal metadata error: {err}")),
@@ -113,7 +130,7 @@ impl FileJournal {
         if !metadata.file_type().is_file() || metadata.len() > MAX_RECORD_BYTES {
             return Err("Recovery journal is not a regular bounded file".into());
         }
-        let mut file = File::open(&path).map_err(|e| e.to_string())?;
+        let file = File::open(path).map_err(|e| e.to_string())?;
         let mut bytes = Vec::new();
         file.take(MAX_RECORD_BYTES + 1)
             .read_to_end(&mut bytes)
@@ -125,6 +142,29 @@ impl FileJournal {
             .map_err(|e| format!("Recovery journal corrupted: {e}"))?;
         record.validate()?;
         Ok(Some(record.snapshot))
+    }
+
+    fn load(&self) -> Result<Option<Snapshot>, String> {
+        let committed = self.read_valid_record(&self.record_path())?;
+        let staging = self.read_valid_record(&self.staging_path())?;
+
+        match (committed, staging) {
+            (None, None) => Ok(None),
+            (Some(snapshot), None) => Ok(Some(snapshot)),
+            (None, Some(_)) => Err(
+                "Only a staging journal exists: interrupted save; manual recovery review required"
+                    .into(),
+            ),
+            (Some(snapshot), Some(staged)) if snapshot == staged => {
+                // Crash after hard-link commit but before staging cleanup:
+                // allow recovery using the VALID committed copy, while save()
+                // will continue to refuse a second activation.
+                Ok(Some(snapshot))
+            }
+            (Some(_), Some(_)) => {
+                Err("Staging and committed recovery records differ; manual review required".into())
+            }
+        }
     }
 
     fn save(&mut self, snapshot: &Snapshot) -> Result<(), String> {
@@ -169,6 +209,13 @@ impl FileJournal {
     fn clear(&mut self) -> Result<(), String> {
         if self.load()?.is_none() {
             return Err("Cannot clear journal: no recovery record exists".into());
+        }
+        // If power was lost after the hard-link commit, delete staging FIRST.
+        // A crash during cleanup must leave the committed recovery record readable.
+        match fs::remove_file(self.staging_path()) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("Cannot remove recovery staging file: {error}")),
         }
         fs::remove_file(self.record_path())
             .map_err(|e| format!("Cannot remove verified recovery record: {e}"))
@@ -270,6 +317,49 @@ mod tests {
         assert!(journal.read().is_err());
         assert!(journal.save_before_changes(&original()).is_err());
         assert!(journal.staging_path().exists());
+    }
+
+    #[test]
+    fn interrupted_post_commit_cleanup_still_allows_verified_restore() {
+        let (_dir, mut journal) = journal();
+        let snapshot = original();
+        journal.save_before_changes(&snapshot).unwrap();
+        // Simulate crash after hard_link(staging, committed), before staging removal.
+        fs::hard_link(journal.record_path(), journal.staging_path()).unwrap();
+        let reopened = FileJournal::new(journal.directory.clone());
+        assert_eq!(reopened.read().unwrap(), Some(snapshot.clone()));
+        assert!(journal.save_before_changes(&snapshot).is_err());
+        journal.clear_after_verified_restore().unwrap();
+        assert!(!journal.record_path().exists());
+        assert!(!journal.staging_path().exists());
+    }
+
+    #[test]
+    fn mismatched_staging_and_committed_files_block_recovery() {
+        let (_dir, mut journal) = journal();
+        journal.save_before_changes(&original()).unwrap();
+        let mut different = original();
+        different.ipv6 = SourceMode::Automatic;
+        let staged_record = serde_json::to_vec(&Record::new(&different).unwrap()).unwrap();
+        fs::write(journal.staging_path(), staged_record).unwrap();
+        assert!(journal.read().is_err());
+        assert!(journal.clear_after_verified_restore().is_err());
+        assert!(journal.record_path().exists());
+    }
+
+    #[test]
+    fn ipv4_ipv6_and_guid_validation_rejects_malformed_snapshot() {
+        let (_dir, mut journal) = journal();
+        let mut snapshot = original();
+        snapshot.interface_guid = "not-a-windows-guid".to_owned();
+        assert!(journal.save_before_changes(&snapshot).is_err());
+        snapshot = original();
+        snapshot.ipv4 = SourceMode::Static(vec!["not-an-ip".to_owned()]);
+        assert!(journal.save_before_changes(&snapshot).is_err());
+        snapshot = original();
+        snapshot.ipv6 = SourceMode::Static(vec!["1.1.1.1".to_owned()]);
+        assert!(journal.save_before_changes(&snapshot).is_err());
+        assert!(journal.read().unwrap().is_none());
     }
 
     #[test]
