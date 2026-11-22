@@ -70,6 +70,7 @@ test('INCY metadata uses exact paid or trial entitlement expiry in Unix seconds'
       'base64:'+Buffer.from('Оплата и продление: mnebyvpn.site').toString('base64'));
     assert.equal(h['support-url'],INCY_SUPPORT_URL);
     assert.equal(h['premium-url'],INCY_RENEW_URL);
+    assert.equal(h['announce-url'],undefined);
     assert.notEqual(h['premium-url'],h['support-url']);
     assert.equal(new URL(h['premium-url']).origin,new URL(h['profile-web-page-url']).origin);
     assert.equal(h['support-url'],'https://t.me/MNEBYVPN_bot?start=support');
@@ -101,7 +102,7 @@ test('expired INCY subscription keeps website and support with no network secret
   assert.equal(headers['profile-web-page-url'],INCY_SITE_URL);
   assert.equal(headers['premium-url'],INCY_RENEW_URL);
   assert.equal(headers['support-url'],INCY_SUPPORT_URL);
-  assert.equal(headers['announce-url'],INCY_RENEW_URL);
+  assert.equal(headers['announce-url'],undefined);
   assert.match(Buffer.from(headers['announce'].slice(7),'base64').toString('utf8'),
     /истёк/);
   assert.equal(headers['subscription-userinfo'].split('expire=')[1],
@@ -110,7 +111,7 @@ test('expired INCY subscription keeps website and support with no network secret
     .toString('utf8');
   assert.ok(decoded.includes('#profile-web-page-url: '+INCY_SITE_URL));
   assert.ok(decoded.includes('#support-url: '+INCY_SUPPORT_URL));
-  assert.ok(decoded.includes('#announce-url: '+INCY_RENEW_URL));
+  assert.ok(!decoded.includes('#announce-url:'));
   assert.doesNotMatch(decoded,/vless:\/\/|vmess:\/\/|trojan:\/\/|awg:\/\/|amneziawg:\/\/|\[Interface\]/);
 });
 
@@ -121,7 +122,7 @@ test('INCY body fallback shows website and renewal while preserving signed node 
   assert.equal(lines[0],'#profile-title: MNEBYVPN');
   assert.ok(lines.includes('#profile-web-page-url: '+INCY_SITE_URL));
   assert.ok(lines.includes('#support-url: '+INCY_SUPPORT_URL));
-  assert.ok(lines.includes('#announce-url: '+INCY_RENEW_URL));
+  assert.ok(!lines.some(line=>line.startsWith('#announce-url:')));
   const announce=lines.find(line=>line.startsWith('#announce: base64:'));
   assert.ok(announce);
   assert.match(Buffer.from(announce!.slice('#announce: base64:'.length),'base64')
@@ -138,9 +139,9 @@ test('INCY body fallback shows website and renewal while preserving signed node 
   assert.throws(()=>incyEncodeActiveSubscription('#support-url: bad',null));
 });
 
-test('active INCY metadata provides non-Premium announcement link to payment',()=>{
+test('active INCY metadata keeps the website action separate from announcements',()=>{
   const h=incySubscriptionHeaders(new Date('2026-12-20T20:00:00Z'));
-  assert.equal(h['announce-url'],INCY_RENEW_URL);
+  assert.equal(h['announce-url'],undefined);
   assert.match(Buffer.from(h.announce.slice(7),'base64').toString('utf8'),
     /Оплата и продление/);
   const karing=incySubscriptionHeaders(new Date('2026-12-20T20:00:00Z'),'karing');
