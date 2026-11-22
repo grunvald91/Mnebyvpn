@@ -4,35 +4,38 @@
 use super::{decode_status, encode_status, MAX_FRAME};
 use mnebydns_core::{now_ms, ServiceReport};
 use std::ffi::{c_void, OsStr};
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::io::AsRawHandle;
-use std::ptr::null_mut;
+use std::ptr::{null, null_mut};
 use std::sync::{Arc, RwLock};
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, LocalFree, ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE,
+    CloseHandle, GetLastError, LocalFree, ERROR_IO_PENDING, ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE,
 };
 use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
 use windows_sys::Win32::Security::{
     GetTokenInformation, IsWellKnownSid, TokenUser, WinLocalSystemSid, SECURITY_ATTRIBUTES,
     TOKEN_QUERY, TOKEN_USER,
 };
-use windows_sys::Win32::Storage::FileSystem::{FlushFileBuffers, WriteFile};
+use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
+use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, GetOverlappedResultEx, OVERLAPPED};
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeServerProcessId,
     WaitNamedPipeW, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
 };
 use windows_sys::Win32::System::Threading::{
-    OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+    CreateEventW, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 
 const PIPE_NAME: &str = r"\\.\pipe\mnebydns-status-v1";
-const PIPE_ACCESS_OUTBOUND: u32 = 0x0000_0002;
+const PIPE_ACCESS_DUPLEX: u32 = 0x0000_0003;
 const FIRST_INSTANCE: u32 = 0x0008_0000; // FILE_FLAG_FIRST_PIPE_INSTANCE
-                                         // SDDL: local SYSTEM/Admins may manage; interactive users can read only.
-                                         // Remote connections are separately rejected by PIPE_REJECT_REMOTE_CLIENTS.
-const PIPE_SDDL: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GR;;;IU)";
+const FILE_FLAG_OVERLAPPED: u32 = 0x4000_0000;
+const PIPE_SDDL: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)";
 const CLIENT_WAIT_MS: u32 = 500;
+const CLIENT_IO_MS: u32 = 1_000;
+const STATUS_ACK: u8 = 0x06; // This is only a delivery acknowledgement, never a command.
+
 
 struct Handle(windows_sys::Win32::Foundation::HANDLE);
 impl Drop for Handle {
@@ -134,7 +137,10 @@ pub fn read_service_status() -> Result<ServiceReport, String> {
     if unsafe { WaitNamedPipeW(pipe_name.as_ptr(), CLIENT_WAIT_MS) } == 0 {
         return Err("Служба Windows недоступна: защищённый канал не найден".into());
     }
-    let file = std::fs::File::open(PIPE_NAME)
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(PIPE_NAME)
         .map_err(|err| format!("Не удалось открыть канал службы: {err}"))?;
     validate_server_is_local_system(file.as_raw_handle().cast())?;
     let mut buf = Vec::new();
@@ -143,12 +149,120 @@ pub fn read_service_status() -> Result<ServiceReport, String> {
     reader
         .read_until(b'\n', &mut buf)
         .map_err(|err| format!("Ошибка чтения статуса службы: {err}"))?;
-    decode_status(&buf, now_ms())
+    let report = decode_status(&buf, now_ms())?;
+    // Acknowledge only an authenticated, decoded status frame. The server does
+    // not flush synchronously: it waits at most CLIENT_IO_MS for this byte.
+    let mut writer = &file;
+    writer
+        .write_all(&[STATUS_ACK])
+        .map_err(|err| format!("Не удалось подтвердить статус службы: {err}"))?;
+    Ok(report)
 }
 
-/// A single persistent named pipe instance. FIRST_INSTANCE prevents unprivileged
-/// name squatting; if another process already owns it, the server fails closed.
-/// This is diagnostics ONLY: the wire protocol offers no mutation commands.
+/// Create a manual-reset event for each overlapped operation. The operation
+/// must finish or be cancelled AND reaped before its OVERLAPPED storage drops.
+fn new_event() -> Result<Handle, String> {
+    let event = Handle(unsafe { CreateEventW(null(), 1, 0, null()) });
+    if event.0.is_null() {
+        return Err(format!("CreateEventW failed: {}", unsafe { GetLastError() }));
+    }
+    Ok(event)
+}
+
+fn wait_for_connection(pipe: windows_sys::Win32::Foundation::HANDLE) -> Result<(), String> {
+    let event = new_event()?;
+    let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
+    overlapped.hEvent = event.0;
+    let connected = unsafe { ConnectNamedPipe(pipe, &mut overlapped) };
+    if connected != 0 {
+        return Ok(());
+    }
+    match unsafe { GetLastError() } {
+        ERROR_PIPE_CONNECTED => Ok(()),
+        ERROR_IO_PENDING => {
+            let mut transferred = 0;
+            if unsafe { GetOverlappedResult(pipe, &overlapped, &mut transferred, 1) } == 0 {
+                Err(format!("Named pipe connection failed: {}", unsafe { GetLastError() }))
+            } else {
+                Ok(())
+            }
+        }
+        error => Err(format!("Named pipe connection failed: {error}")),
+    }
+}
+
+/// Only used after a client connects. A timed-out overlapped request is
+/// cancelled and reaped before freeing memory or reusing the pipe instance.
+fn bounded_io(
+    pipe: windows_sys::Win32::Foundation::HANDLE,
+    name: &str,
+    operation: impl FnOnce(*mut OVERLAPPED, &mut u32) -> i32,
+) -> Result<u32, String> {
+    let event = new_event()?;
+    let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
+    overlapped.hEvent = event.0;
+    let mut transferred = 0u32;
+    let completed = operation(&mut overlapped, &mut transferred);
+    if completed != 0 {
+        return Ok(transferred);
+    }
+    let error = unsafe { GetLastError() };
+    if error != ERROR_IO_PENDING {
+        return Err(format!("{name} failed: {error}"));
+    }
+    if unsafe {
+        GetOverlappedResultEx(pipe, &overlapped, &mut transferred, CLIENT_IO_MS, 0)
+    } != 0
+    {
+        return Ok(transferred);
+    }
+    let error = unsafe { GetLastError() };
+    // Even on timeout, the kernel may still reference both OVERLAPPED and the
+    // I/O buffer. Cancel and reap the request before either is dropped.
+    unsafe {
+        CancelIoEx(pipe, &overlapped);
+        GetOverlappedResult(pipe, &overlapped, &mut transferred, 1);
+    }
+    Err(format!("{name} did not complete: {error}"))
+}
+
+fn serve_one_client(
+    pipe: windows_sys::Win32::Foundation::HANDLE,
+    current: &Arc<RwLock<ServiceReport>>,
+) -> Result<(), String> {
+    let data = {
+        let report = current
+            .read()
+            .map_err(|_| "DNS service status lock poisoned".to_owned())?;
+        encode_status(&report)?
+    };
+    let sent = bounded_io(pipe, "Pipe status write", |overlapped, count| unsafe {
+        WriteFile(
+            pipe,
+            data.as_ptr().cast(),
+            data.len() as u32,
+            count,
+            overlapped,
+        )
+    })?;
+    if sent != data.len() as u32 {
+        return Err("Incomplete status frame write".into());
+    }
+    // The client sends ACK only after consuming and validating the entire
+    // status frame. This replaces an unbounded FlushFileBuffers call.
+    let mut ack = 0u8;
+    let read = bounded_io(pipe, "Pipe status ACK", |overlapped, count| unsafe {
+        ReadFile(pipe, (&mut ack as *mut u8).cast(), 1, count, overlapped)
+    })?;
+    if read != 1 || ack != STATUS_ACK {
+        return Err("Client did not acknowledge the status frame".into());
+    }
+    Ok(())
+}
+
+/// One reusable local-only named pipe with a per-client I/O deadline. A client
+/// that connects and refuses to read cannot monopolize the service forever.
+/// Requests are delivery acknowledgements only; no DNS mutations are exposed.
 pub fn serve_local_status(current: Arc<RwLock<ServiceReport>>) -> Result<(), String> {
     let desc = private_pipe_descriptor()?;
     let mut attributes = SECURITY_ATTRIBUTES {
@@ -160,7 +274,7 @@ pub fn serve_local_status(current: Arc<RwLock<ServiceReport>>) -> Result<(), Str
     let pipe = Handle(unsafe {
         CreateNamedPipeW(
             name.as_ptr(),
-            PIPE_ACCESS_OUTBOUND | FIRST_INSTANCE,
+            PIPE_ACCESS_DUPLEX | FIRST_INSTANCE | FILE_FLAG_OVERLAPPED,
             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
             1,
             4096,
@@ -176,35 +290,11 @@ pub fn serve_local_status(current: Arc<RwLock<ServiceReport>>) -> Result<(), Str
     }
 
     loop {
-        let connected = unsafe { ConnectNamedPipe(pipe.0, null_mut()) };
-        if connected == 0 && unsafe { GetLastError() } != ERROR_PIPE_CONNECTED {
-            return Err(format!("Named pipe connect failed: {}", unsafe {
-                GetLastError()
-            }));
+        if let Err(error) = wait_for_connection(pipe.0) {
+            return Err(error);
         }
-        let response = current
-            .read()
-            .map_err(|_| "DNS service status lock poisoned".to_owned())
-            .and_then(|report| encode_status(&report));
-        if let Ok(data) = response {
-            let mut sent = 0u32;
-            let wrote = unsafe {
-                WriteFile(
-                    pipe.0,
-                    data.as_ptr().cast(),
-                    data.len() as u32,
-                    &mut sent,
-                    null_mut(),
-                )
-            };
-            if wrote != 0 && sent == data.len() as u32 {
-                // Flush waits for the reader to receive bytes; currently this
-                // one-way status channel may be DoS'd by a connected client.
-                // The service's DNS protection / recovery does not depend on it.
-                unsafe {
-                    FlushFileBuffers(pipe.0);
-                }
-            }
+        if let Err(error) = serve_one_client(pipe.0, &current) {
+            eprintln!("Diagnostic pipe request rejected: {error}");
         }
         unsafe {
             DisconnectNamedPipe(pipe.0);
