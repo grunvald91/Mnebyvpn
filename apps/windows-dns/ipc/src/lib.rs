@@ -29,12 +29,17 @@ pub fn decode_status(raw: &[u8], current_ms: u64) -> Result<ServiceReport, Strin
     if status.schema_version != 1 {
         return Err("Unsupported IPC schema version".into());
     }
-    if current_ms.checked_sub(status.updated_at_ms)
-        .filter(|age| *age <= MAX_STATUS_AGE_MS).is_none()
+    if current_ms
+        .checked_sub(status.updated_at_ms)
+        .filter(|age| *age <= MAX_STATUS_AGE_MS)
+        .is_none()
     {
         return Err("IPC status is outdated or has an invalid timestamp".into());
     }
-    if !matches!(status.recovery_state.as_deref(), Some("pending" | "clear" | "unreadable")) {
+    if !matches!(
+        status.recovery_state.as_deref(),
+        Some("pending" | "clear" | "unreadable")
+    ) {
         return Err("Service returned an unknown recovery state".into());
     }
     Ok(status)
@@ -74,7 +79,13 @@ mod tests {
     fn schema_one_round_trips() {
         let report = sample();
         let encoded = encode_status(&report).unwrap();
-        assert_eq!(decode_status(&encoded, 1400).unwrap().recovery_state.as_deref(), Some("clear"));
+        assert_eq!(
+            decode_status(&encoded, 1400)
+                .unwrap()
+                .recovery_state
+                .as_deref(),
+            Some("clear")
+        );
     }
 
     #[test]
@@ -83,7 +94,7 @@ mod tests {
         let encoded = encode_status(&report).unwrap();
         assert!(decode_status(&encoded, 16_100).is_err());
         assert!(decode_status(&encoded, 999).is_err());
-        assert!(decode_status(&encoded[..encoded.len()-1], 1000).is_err());
+        assert!(decode_status(&encoded[..encoded.len() - 1], 1000).is_err());
         let mut garbage = encoded;
         garbage[0] = b'!';
         assert!(decode_status(&garbage, 1000).is_err());

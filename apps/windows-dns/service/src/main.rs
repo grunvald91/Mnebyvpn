@@ -3,6 +3,7 @@
 //! Not registered automatically. IPC/authentication is a future release gate.
 
 use mnebydns_core::{now_ms, probe_loopback, ServiceReport};
+use mnebydns_ipc::serve_local_status;
 use mnebydns_journal::ProtectedJournal;
 use std::error::Error;
 use std::ffi::OsString;
@@ -12,7 +13,6 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, RwLock,
 };
-use mnebydns_ipc::serve_local_status;
 use std::thread;
 use std::time::Duration;
 use windows_service::service::{

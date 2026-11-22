@@ -102,14 +102,8 @@ fn parse_reply(packet: &[u8], id: u16, requested_type: u16) -> Result<u16, &'sta
     if packet.len() < question_end || &packet[12..12 + QUERY_NAME.len()] != QUERY_NAME {
         return Err("DNS-ответ содержит другой вопрос");
     }
-    let qtype = u16::from_be_bytes([
-        packet[12 + QUERY_NAME.len()],
-        packet[13 + QUERY_NAME.len()],
-    ]);
-    let qclass = u16::from_be_bytes([
-        packet[14 + QUERY_NAME.len()],
-        packet[15 + QUERY_NAME.len()],
-    ]);
+    let qtype = u16::from_be_bytes([packet[12 + QUERY_NAME.len()], packet[13 + QUERY_NAME.len()]]);
+    let qclass = u16::from_be_bytes([packet[14 + QUERY_NAME.len()], packet[15 + QUERY_NAME.len()]]);
     if qtype != requested_type || qclass != 1 {
         return Err("DNS-ответ содержит другой тип вопроса");
     }
@@ -130,13 +124,15 @@ fn parse_reply(packet: &[u8], id: u16, requested_type: u16) -> Result<u16, &'sta
         let record_class = u16::from_be_bytes([packet[cursor + 2], packet[cursor + 3]]);
         let data_len = u16::from_be_bytes([packet[cursor + 8], packet[cursor + 9]]) as usize;
         cursor += 10;
-        let data_end = cursor.checked_add(data_len).ok_or("Некорректная длина DNS-ответа")?;
+        let data_end = cursor
+            .checked_add(data_len)
+            .ok_or("Некорректная длина DNS-ответа")?;
         if data_end > packet.len() {
             return Err("Обрезанные данные DNS-ответа");
         }
-        if record_type == requested_type && record_class == 1
-            && ((requested_type == 1 && data_len == 4)
-                || (requested_type == 28 && data_len == 16))
+        if record_type == requested_type
+            && record_class == 1
+            && ((requested_type == 1 && data_len == 4) || (requested_type == 28 && data_len == 16))
         {
             matching_records += 1;
         }

@@ -6,16 +6,15 @@ use std::fs;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::fs::MetadataExt;
 use std::path::Path;
-use std::ptr::{null_mut};
+use std::ptr::null_mut;
 use std::slice;
 use windows_sys::Win32::Foundation::{GetLastError, LocalFree, ERROR_ALREADY_EXISTS};
-use windows_sys::Win32::Security::{
-    ACL, DACL_SECURITY_INFORMATION, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
-    SECURITY_ATTRIBUTES,
-};
 use windows_sys::Win32::Security::Authorization::{
-    ConvertStringSecurityDescriptorToSecurityDescriptorW, GetNamedSecurityInfoW,
-    SE_FILE_OBJECT,
+    ConvertStringSecurityDescriptorToSecurityDescriptorW, GetNamedSecurityInfoW, SE_FILE_OBJECT,
+};
+use windows_sys::Win32::Security::{
+    GetSecurityDescriptorControl, GetSecurityDescriptorDacl, ACL, DACL_SECURITY_INFORMATION,
+    SECURITY_ATTRIBUTES,
 };
 use windows_sys::Win32::Storage::FileSystem::CreateDirectoryW;
 
@@ -27,7 +26,9 @@ struct SecurityDescriptor(*mut c_void);
 impl Drop for SecurityDescriptor {
     fn drop(&mut self) {
         if !self.0.is_null() {
-            unsafe { LocalFree(self.0); }
+            unsafe {
+                LocalFree(self.0);
+            }
         }
     }
 }
@@ -40,10 +41,18 @@ fn descriptor_from_sddl() -> Result<SecurityDescriptor, String> {
     let text = wide(std::ffi::OsStr::new(SDDL));
     let mut pointer = null_mut();
     let success = unsafe {
-        ConvertStringSecurityDescriptorToSecurityDescriptorW(text.as_ptr(), 1, &mut pointer, null_mut())
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            text.as_ptr(),
+            1,
+            &mut pointer,
+            null_mut(),
+        )
     };
     if success == 0 || pointer.is_null() {
-        return Err(format!("Failed to create protected security descriptor: {}", unsafe { GetLastError() }));
+        return Err(format!(
+            "Failed to create protected security descriptor: {}",
+            unsafe { GetLastError() }
+        ));
     }
     Ok(SecurityDescriptor(pointer))
 }
@@ -125,7 +134,10 @@ pub fn create_or_verify_private_directory(path: &Path) -> Result<(), String> {
         let wide_path = wide(path.as_os_str());
         let created = unsafe { CreateDirectoryW(wide_path.as_ptr(), &mut attributes) };
         if created == 0 && unsafe { GetLastError() } != ERROR_ALREADY_EXISTS {
-            return Err(format!("Cannot create private recovery directory: {}", unsafe { GetLastError() }));
+            return Err(format!(
+                "Cannot create private recovery directory: {}",
+                unsafe { GetLastError() }
+            ));
         }
     }
     verify_directory(path, &expected)

@@ -11,9 +11,9 @@ use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, Ipv6Addr};
-use std::path::PathBuf;
 #[cfg(windows)]
 use std::path::Path;
+use std::path::PathBuf;
 
 #[cfg(windows)]
 mod windows_acl;
@@ -59,9 +59,10 @@ impl Record {
 fn validate_snapshot(snapshot: &Snapshot) -> Result<(), String> {
     let fields: Vec<_> = snapshot.interface_guid.split('-').collect();
     if fields.len() != 5
-        || fields.iter().zip([8, 4, 4, 4, 12]).any(|(part, len)| {
-            part.len() != len || !part.bytes().all(|ch| ch.is_ascii_hexdigit())
-        })
+        || fields
+            .iter()
+            .zip([8, 4, 4, 4, 12])
+            .any(|(part, len)| part.len() != len || !part.bytes().all(|ch| ch.is_ascii_hexdigit()))
     {
         return Err("Invalid interface GUID in recovery record".into());
     }
@@ -72,7 +73,8 @@ fn validate_snapshot(snapshot: &Snapshot) -> Result<(), String> {
         match mode {
             SourceMode::Unknown => return Err("Recovery record contains unknown DNS mode".into()),
             SourceMode::Static(values) => {
-                if values.is_empty() || values.len() > 32
+                if values.is_empty()
+                    || values.len() > 32
                     || values.iter().any(|value| {
                         if value.len() > 255 {
                             return true;
@@ -179,7 +181,9 @@ impl FileJournal {
         if let Err(error) = file.write_all(&bytes).and_then(|_| file.sync_all()) {
             // Keep a failed staging record in place to block all further mutations
             // until an administrator investigates; never erase evidence blindly.
-            return Err(format!("Recovery record not durable; operation blocked: {error}"));
+            return Err(format!(
+                "Recovery record not durable; operation blocked: {error}"
+            ));
         }
         drop(file);
 
@@ -384,17 +388,35 @@ mod tests {
         assert!(journal.read().unwrap().is_none());
     }
 
-    struct MockBackend { fail_v6: bool }
+    struct MockBackend {
+        fail_v6: bool,
+    }
     impl NetworkBackend for MockBackend {
-        fn capture(&mut self, _: &str) -> Result<Snapshot, String> { Ok(original()) }
-        fn apply_ipv4_loopback(&mut self, _: &str) -> Result<(), String> { Ok(()) }
-        fn apply_ipv6_loopback(&mut self, _: &str) -> Result<(), String> {
-            if self.fail_v6 { Err("IPv6 failure".into()) } else { Ok(()) }
+        fn capture(&mut self, _: &str) -> Result<Snapshot, String> {
+            Ok(original())
         }
-        fn verify_active(&mut self, _: &str) -> Result<(), String> { Ok(()) }
-        fn restore_ipv4(&mut self, _: &Snapshot) -> Result<(), String> { Ok(()) }
-        fn restore_ipv6(&mut self, _: &Snapshot) -> Result<(), String> { Ok(()) }
-        fn verify_restored(&mut self, _: &Snapshot) -> Result<(), String> { Ok(()) }
+        fn apply_ipv4_loopback(&mut self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn apply_ipv6_loopback(&mut self, _: &str) -> Result<(), String> {
+            if self.fail_v6 {
+                Err("IPv6 failure".into())
+            } else {
+                Ok(())
+            }
+        }
+        fn verify_active(&mut self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn restore_ipv4(&mut self, _: &Snapshot) -> Result<(), String> {
+            Ok(())
+        }
+        fn restore_ipv6(&mut self, _: &Snapshot) -> Result<(), String> {
+            Ok(())
+        }
+        fn verify_restored(&mut self, _: &Snapshot) -> Result<(), String> {
+            Ok(())
+        }
     }
 
     #[test]

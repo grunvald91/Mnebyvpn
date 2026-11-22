@@ -21,6 +21,7 @@ pub fn inspect() -> DnsDiagnosticState {
         local: probe_loopback(),
         service,
         service_error,
-        caution: "Ответ локального DNS не подтверждает TLS, зарубежный IP или Smart DNS-маршрутизацию.",
+        caution:
+            "Ответ локального DNS не подтверждает TLS, зарубежный IP или Smart DNS-маршрутизацию.",
     }
 }

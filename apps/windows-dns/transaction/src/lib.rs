@@ -69,10 +69,14 @@ pub fn restore<B: NetworkBackend, J: RecoveryJournal>(
         ));
     }
     if let Err(error) = v4 {
-        return Err(format!("IPv4 restore failed: {error}; recovery journal kept"));
+        return Err(format!(
+            "IPv4 restore failed: {error}; recovery journal kept"
+        ));
     }
     if let Err(error) = v6 {
-        return Err(format!("IPv6 restore failed: {error}; recovery journal kept"));
+        return Err(format!(
+            "IPv6 restore failed: {error}; recovery journal kept"
+        ));
     }
     backend.verify_restored(&original).map_err(|error| {
         format!("DNS restore verification failed: {error}; recovery journal kept")
@@ -101,7 +105,9 @@ pub fn activate<B: NetworkBackend, J: RecoveryJournal>(
         .and_then(|_| backend.verify_active(requested_guid));
     if let Err(error) = applied {
         return match restore(backend, journal) {
-            Ok(()) => Err(format!("DNS activation failed, original settings restored: {error}")),
+            Ok(()) => Err(format!(
+                "DNS activation failed, original settings restored: {error}"
+            )),
             Err(recovery_error) => Err(format!(
                 "DNS activation failed: {error}; RECOVERY REQUIRED: {recovery_error}"
             )),
