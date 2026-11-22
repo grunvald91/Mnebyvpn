@@ -26,7 +26,7 @@ test('only observed canonical page/query pairs, correctly weighted position',()=
   assert.equal(result[0].position,9.4);
   assert.equal(result[1].position,12);
   const lines=formatPrivatePageQueryLines(rows,site,pages);
-  assert.ok(lines.some(x=>x.includes('150 показов, 3 кликов')));
+  assert.ok(lines.some(x=>x.includes('показы: 150; клики: 3')));
   assert.ok(lines.some(x=>x.includes('поз. 9.4')));
   assert.ok(!lines.join(' ').includes('другой хост'));
 });
