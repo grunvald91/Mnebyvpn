@@ -888,9 +888,18 @@ mod tests {
         ] {
             assert!(known_pseudo_interface(name, ""), "{name}");
         }
-        assert!(known_pseudo_interface("Ethernet 2", "Microsoft Kernel Debug Network Adapter"));
-        assert!(!known_pseudo_interface("Ethernet", "Intel(R) Ethernet Controller"));
-        assert!(!known_pseudo_interface("Wi-Fi", "Qualcomm Atheros Wireless Adapter"));
+        assert!(known_pseudo_interface(
+            "Ethernet 2",
+            "Microsoft Kernel Debug Network Adapter"
+        ));
+        assert!(!known_pseudo_interface(
+            "Ethernet",
+            "Intel(R) Ethernet Controller"
+        ));
+        assert!(!known_pseudo_interface(
+            "Wi-Fi",
+            "Qualcomm Atheros Wireless Adapter"
+        ));
     }
 
     #[test]
