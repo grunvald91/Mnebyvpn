@@ -79,7 +79,7 @@ unsafe fn socket_address_to_ip(address: &SOCKET_ADDRESS) -> Option<IpAddr> {
 
 unsafe fn collect_dns_servers(
     mut current: *mut IP_ADAPTER_DNS_SERVER_ADDRESS_XP,
-) -> (Vec<String>, Vec<String>) {
+) -> Result<(Vec<String>, Vec<String>), String> {
     let mut ipv4 = Vec::new();
     let mut ipv6 = Vec::new();
     let mut count = 0usize;
@@ -99,13 +99,21 @@ unsafe fn collect_dns_servers(
         current = (*current).Next;
         count += 1;
     }
-    (ipv4, ipv6)
+    if !current.is_null() {
+        return Err("Список DNS-серверов адаптера неполный".to_owned());
+    }
+    Ok((ipv4, ipv6))
 }
 
 /// Enumerates interfaces and their effective DNS addresses. Read-only; no elevation required.
 pub fn list_adapters() -> Result<Vec<AdapterInfo>, String> {
     let mut requested_bytes = INITIAL_BUFFER_BYTES;
+    let mut retries = 0usize;
     loop {
+        if retries >= 5 {
+            return Err("Конфигурация адаптеров изменялась во время чтения; попробуйте ещё раз".to_owned());
+        }
+        retries += 1;
         if requested_bytes > MAX_BUFFER_BYTES {
             return Err("Список сетевых адаптеров превышает допустимый размер".to_owned());
         }
@@ -122,7 +130,7 @@ pub fn list_adapters() -> Result<Vec<AdapterInfo>, String> {
             )
         };
         if status == ERROR_BUFFER_OVERFLOW {
-            requested_bytes = actual_bytes as usize;
+            requested_bytes = (actual_bytes as usize).max(requested_bytes.saturating_mul(2));
             continue;
         }
         if status != 0 {
@@ -138,7 +146,7 @@ pub fn list_adapters() -> Result<Vec<AdapterInfo>, String> {
                 let mut guid = GUID::default();
                 if ConvertInterfaceLuidToGuid(&adapter.Luid, &mut guid) == 0 {
                     let (kind, is_tunnel, likely_physical_type) = adapter_kind(adapter.IfType);
-                    let (dns_ipv4, dns_ipv6) = collect_dns_servers(adapter.FirstDnsServerAddress);
+                    let (dns_ipv4, dns_ipv6) = collect_dns_servers(adapter.FirstDnsServerAddress)?;
                     let operational = adapter.OperStatus == 1; // IfOperStatusUp.
                     let is_loopback = adapter.IfType == IF_TYPE_SOFTWARE_LOOPBACK;
                     let likely_physical = operational && likely_physical_type && !is_tunnel && !is_loopback;
@@ -166,9 +174,14 @@ pub fn list_adapters() -> Result<Vec<AdapterInfo>, String> {
                         dns_ipv6,
                         note,
                     });
+                } else {
+                    return Err("Не удалось определить GUID сетевого адаптера".to_owned());
                 }
                 current = adapter.Next;
                 count += 1;
+            }
+            if !current.is_null() {
+                return Err("Список сетевых адаптеров неполный".to_owned());
             }
         }
         result.sort_by_key(|adapter| (
