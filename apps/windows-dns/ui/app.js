@@ -312,6 +312,9 @@ get('tray-button').addEventListener('click', hideToTray);
 get('settings-tray').addEventListener('click', hideToTray);
 
 let systemDnsLoading = false;
+let systemDnsPollGeneration = 0;
+const SYSTEM_DNS_POLL_INTERVAL_MS = 2000;
+const SYSTEM_DNS_POLL_MAX_ATTEMPTS = 24;
 
 async function refreshSystemDns() {
   if (typeof invoke !== 'function') {
@@ -341,10 +344,25 @@ async function refreshSystemDns() {
       details.push('Локальный DNS IPv6: ' + (report.probe.ipv6.ok ? 'OK' : 'ошибка'));
     }
     get('system-dns-message').textContent = details.join(' · ') || 'Статус службы получен.';
+    return state;
   } catch (error) {
     get('system-dns-state').textContent = 'Служба недоступна';
     get('system-dns-message').textContent = 'Не удалось получить состояние системного DNS: ' + String(error);
+    return null;
   }
+}
+
+// UAC returns before the elevated helper finishes. Poll only after a user
+// action, with a strict deadline; never keep a hidden window busy indefinitely.
+async function watchSystemDnsAction(action, generation) {
+  const expected = action === 'Enable' ? 'active' : 'disabled';
+  for (let attempt = 0; attempt < SYSTEM_DNS_POLL_MAX_ATTEMPTS; attempt += 1) {
+    await new Promise(resolve => window.setTimeout(resolve, SYSTEM_DNS_POLL_INTERVAL_MS));
+    if (generation !== systemDnsPollGeneration || document.visibilityState === 'hidden') return;
+    const state = await refreshSystemDns();
+    if (generation !== systemDnsPollGeneration || state === expected || state === 'error') return;
+  }
+  get('system-dns-message').textContent = 'Операция ещё не подтверждена. Проверьте UAC и нажмите «Обновить состояние».';
 }
 
 async function requestSystemDns(action) {
@@ -355,11 +373,12 @@ async function requestSystemDns(action) {
     return;
   }
   systemDnsLoading = true;
+  const generation = ++systemDnsPollGeneration;
   for (const id of ['enable-system-dns', 'disable-system-dns', 'restore-system-dns']) get(id).disabled = true;
   try {
     const message = await invoke('launch_system_dns_action', { action, host });
     get('system-dns-message').textContent = message;
-    window.setTimeout(refreshSystemDns, 1800);
+    void watchSystemDnsAction(action, generation);
   } catch (error) {
     get('system-dns-message').textContent = 'Не удалось запустить управление DNS: ' + String(error);
   } finally {
