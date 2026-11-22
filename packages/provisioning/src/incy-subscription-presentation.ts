@@ -73,11 +73,13 @@ export function incySubscriptionHeaders(expiresAt:Date,client:string|null=null):
     // INCY's optional "Premium" action must lead to the actual website
     // tariffs, not duplicate the Telegram support bot link.
     'premium-url':INCY_RENEW_URL,
-    // The website action must come from profile-web-page-url. Do not map
-    // the same URL to announce-url: INCY treats that as an announcement link.
+    // Keep the existing non-Premium payment action. INCY renders announce-url
+    // as its fixed "Канал / Бот" button; profile-web-page-url remains the
+    // separate website metadata field.
     ...(client==='karing'?{}:{
       'announce':'base64:'+Buffer.from(
         'Оплата и продление VPN: mnebyvpn.site','utf8').toString('base64'),
+      'announce-url':INCY_RENEW_URL,
     }),
   };
 }
@@ -91,6 +93,7 @@ export function incyExpiredSubscriptionHeaders(expiresAt:Date):Record<string,str
     ...incySubscriptionHeaders(expiresAt),
     'announce':'base64:'+Buffer.from(
       'Срок VPN истёк. Продлите доступ на mnebyvpn.site','utf8').toString('base64'),
+    'announce-url':INCY_RENEW_URL,
   };
 }
 
@@ -105,6 +108,7 @@ export function incyExpiredSubscriptionBody():string{
     '#profile-update-interval: 1',
     '#announce: base64:'+Buffer.from(
       'Срок VPN истёк. Продлите доступ на mnebyvpn.site','utf8').toString('base64'),
+    '#announce-url: '+INCY_RENEW_URL,
   ].join('\n')+'\n','utf8').toString('base64')+'\n';
 }
 
@@ -126,6 +130,7 @@ export function incyEncodeActiveSubscription(
     '#profile-update-interval: 1',
     '#announce: base64:'+Buffer.from(
       'Оплата и продление VPN: mnebyvpn.site','utf8').toString('base64'),
+    '#announce-url: '+INCY_RENEW_URL,
   ];
   return Buffer.from([...lines,verifiedProfile].join('\n')+'\n','utf8')
     .toString('base64')+'\n';

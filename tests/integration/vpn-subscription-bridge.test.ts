@@ -97,13 +97,13 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const fullBody=Buffer.from(encodedResponse.trim(),'base64').toString('utf8').trim();
    assert.ok(fullBody.includes('#profile-web-page-url: https://mnebyvpn.site'));
    assert.ok(fullBody.includes('#support-url: https://t.me/MNEBYVPN_bot?start=support'));
-   assert.ok(!fullBody.includes('#announce-url:'));
+   assert.ok(fullBody.includes('#announce-url: https://mnebyvpn.site/#plans'));
    const decoded=fullBody.split('\n').filter(line=>!line.startsWith('#')).join('\n');
    const displayedWs=germanWebSocketOnly(profile);
    assert.equal(decoded,displayedWs);
    assert.equal(response.headers.get('profile-web-page-url'),'https://mnebyvpn.site');
    assert.equal(response.headers.get('premium-url'),'https://mnebyvpn.site/#plans');
-   assert.equal(response.headers.get('announce-url'),null);
+   assert.equal(response.headers.get('announce-url'),'https://mnebyvpn.site/#plans');
    assert.equal(response.headers.get('homepage'),'https://mnebyvpn.site');
    assert.equal(Buffer.from((response.headers.get('profile-description')??'').replace(/^base64:/,''),'base64').toString('utf8'),
      'Оплата и продление: mnebyvpn.site');
@@ -256,7 +256,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.equal(expired.headers.get('support-url'),
      'https://t.me/MNEBYVPN_bot?start=support');
    assert.equal(expired.headers.get('profile-web-page-url'),'https://mnebyvpn.site');
-   assert.equal(expired.headers.get('announce-url'),null);
+   assert.equal(expired.headers.get('announce-url'),'https://mnebyvpn.site/#plans');
    assert.equal(expired.headers.get('cache-control'),'no-store');
    const expiredText=Buffer.from((await expired.text()).trim(),'base64')
      .toString('utf8');
