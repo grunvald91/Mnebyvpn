@@ -2,6 +2,7 @@
 :root { font-family: "Segoe UI", system-ui, sans-serif; color: #ecf7f5; background: #09131a; }
 body { margin: 0; min-width: 320px; }
 button { font: inherit; cursor: pointer; }
+button:disabled { opacity: .6; cursor: progress; }
 button:focus-visible { outline: 2px solid #80efe0; outline-offset: 3px; }
 .app { max-width: 640px; margin: 0 auto; padding: 22px; min-height: 100vh; display: flex; flex-direction: column; gap: 22px; }
 .brandbar,.detailhead,.item,footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -20,7 +21,7 @@ h2 { margin: 0; font-size: 17px; }
 .hint { color: #a7c1c3; font-size: 14px; line-height: 1.55; max-width: 390px; margin: 0 auto 23px; }
 .primary,.secondary { border: 0; width: 100%; min-height: 48px; border-radius: 12px; font-weight: 650; }
 .primary { background:#6bdfd0; color:#072321; }
-.secondary { background: #233d44; color:#effaf8; margin-top: 18px; }
+.secondary { background: #233d44; color:#effaf8; margin-top: 12px; }
 .primary:hover,.secondary:hover { filter: brightness(1.08); }
 .hero .muted { line-height:1.4; margin: 13px auto 0; }
 .detail { border: 1px solid #24434a; border-radius: 17px; padding: 18px; margin-top: 15px; }
@@ -28,6 +29,7 @@ h2 { margin: 0; font-size: 17px; }
 .item { border-bottom: 1px solid #244047; padding: 14px 0; font-size: 13px; }
 .item:last-child { border: 0; padding-bottom: 0; }
 .item span { color:#abc0c4; } .item strong { font-weight: 560; text-align:right; }
+.good {color:#8bdccd;} .bad {color:#f3ab9f;}
 footer { margin-top: auto; font-size: 11px; color: #8fa8ad; }
 @media (max-width:420px) { .app{ padding:14px; gap:15px; } .hero{padding:21px 13px;} .brand {font-size:20px;} .version{font-size:10px;} .item{align-items:flex-start;} }
 @media (prefers-reduced-motion: no-preference) { button { transition: background-color .14s ease, filter .14s ease; } }

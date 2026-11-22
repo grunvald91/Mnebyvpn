@@ -1,3 +1,5 @@
+mod diagnostics;
+
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -6,12 +8,19 @@ use tauri::{
 
 #[tauri::command]
 fn get_ui_mode() -> &'static str {
-    "Прототип интерфейса: DNS Windows не изменяется"
+    "Диагностика: только чтение. Настройки DNS Windows не изменяются"
 }
 
 #[tauri::command]
 fn hide_to_tray(window: tauri::WebviewWindow) -> Result<(), String> {
     window.hide().map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+async fn inspect_dns() -> Result<diagnostics::DnsDiagnosticState, String> {
+    tauri::async_runtime::spawn_blocking(diagnostics::inspect)
+        .await
+        .map_err(|error| format!("Диагностика не выполнена: {error}"))
 }
 
 fn show_main(app: &tauri::AppHandle) {
@@ -30,7 +39,11 @@ fn hide_main(app: &tauri::AppHandle) {
 
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![get_ui_mode, hide_to_tray])
+        .invoke_handler(tauri::generate_handler![
+            get_ui_mode,
+            hide_to_tray,
+            inspect_dns
+        ])
         .setup(|app| {
             let open = MenuItem::with_id(app, "open", "Открыть мнебыDNS", true, None::<&str>)?;
             let hide = MenuItem::with_id(app, "hide", "Скрыть окно", true, None::<&str>)?;
@@ -38,7 +51,7 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&open, &hide, &quit])?;
 
             let mut tray = TrayIconBuilder::new()
-                .tooltip("мнебыDNS — прототип")
+                .tooltip("мнебыDNS — диагностика")
                 .menu(&menu)
                 .show_menu_on_left_click(false);
 
@@ -66,7 +79,6 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Closing the UI must not stop the application or any future DNS service.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();

@@ -1,60 +1,43 @@
 # мнебыDNS for Windows (Rust/Tauri 2)
 
-Experimental desktop **UI with a real Windows tray**, not yet a DNS-switching client. No DNS settings, VPN interfaces, subscriptions or production infrastructure are changed by this program.
+**Stage 2: read-only integration with localhost DNSProxy and an independent Windows health-service source.** The previous tray implementation remains: close = hide; left-click tray = open; right-click = menu/open/hide/exit. No changes to system DNS, VPN or real subscriptions are made by this stage.
 
-## What works
+## Implemented
 
-- Closing the main window hides it in the Windows notification area instead of exiting.
-- Left-click on the tray icon reopens and focuses the main window.
-- Right-click tray menu: Open, Hide, Exit.
-- "Свернуть в трей" button uses a read-only (with respect to networking) Rust/Tauri command.
-- UI is vanilla HTML/CSS/JS without React, Node.js, Electron or a dev web server at runtime.
-- No tokens, personalized DoT hostnames or other subscriptions are checked into this public repository.
+- Rust DNS probe (shared crate `dns-core/`), bounded UDP queries to 127.0.0.1:53 (A) and [::1]:53 (AAAA), with explicit response checks, timeouts and unit tests.
+- UI calls a Rust Tauri asynchronous command (off UI thread), renders actual local results and a sober warning about what this does **not** test.
+- Separate Rust Windows service **source** (`service/`) polls the same local DNS endpoints and publishes a read-only status record to `%ProgramData%\mnebyDNS\health-v1.json`.
+- UI can read a service report if present and fresh (15 seconds). If service isn't installed/running, diagnostics still work directly.
+- No polling while hidden and no privileged shell execution. We never publish a personalized DNS hostname.
 
-## What's **not** implemented
+## Not implemented / not claimed
 
-- DNSProxy service lifecycle, Windows DNS changes and automatic recovery.
-- Connection status/health checks and integration with the control-plane.
-- Single instance handling, code signing, installer testing and real Windows 10 performance results.
+- No verified DoT/TLS upstream; the probe only tests localhost DNS, which can be supplied by any local resolver.
+- No start/stop of DNSProxy, no Windows DNS adapter change, no DHCP/static snapshot/restore, no safe rollback yet.
+- No production-ready service installer / ACL hardening / signed binary. **Do not register the service on a production client until release-gated.**
+- No Windows 10 target-machine benchmark and no verified runtime behavior of service/GUI on the user's machine.
 
-The main screen intentionally says it is a prototype; it does **not** pretend that DNS is connected. Do not use this app as a replacement for the working PowerShell/DNSProxy configuration yet.
+The existing working DNSProxy and shortcuts should remain in use until the service-based controller is tested.
 
-## Build / run (developer workstation)
+## Development
 
-Prerequisites: Rust MSVC toolchain, Visual Studio C++ Build Tools/Windows SDK, WebView2 runtime, Tauri CLI v2. See https://v2.tauri.app/start/prerequisites/.
-
-```powershell
-cargo install tauri-cli --version "^2" --locked
-cd apps/windows-dns/src-tauri
-cargo tauri dev
-```
-
-For a compile-only check:
+Windows prerequisites: Rust MSVC toolchain, Visual Studio C++ Build Tools, Windows SDK and WebView2. See https://v2.tauri.app/start/prerequisites/.
 
 ```powershell
+cargo test --manifest-path apps/windows-dns/dns-core/Cargo.toml
+cargo check --manifest-path apps/windows-dns/service/Cargo.toml
 cargo check --manifest-path apps/windows-dns/src-tauri/Cargo.toml
 ```
 
-For an installer later: `cd apps/windows-dns/src-tauri; cargo tauri build`. This source has **not** yet been compiled or benchmarked on the target Windows 10 22H2 PC. No AVX/AVX2 CPU assumptions may be introduced.
+The service source uses `windows-service` SCM lifecycle and is not registered automatically. It is **read-only** and should not be installed manually by end users at this stage.
 
-## Architecture
+## Next release gate: privileged controller
 
-- Rust/Tauri 2: tray, window lifecycle, later read-only status and privileged-service IPC.
-- Minimal static HTML/CSS/JS: no JS framework and no large animation library.
-- Future separately installed Rust Windows Service: atomic and journaled DNS backup/restore across IPv4/IPv6; DNSProxy process supervision; restricted IPC.
-- DNSProxy under Apache-2.0: only if separately bundled with preserved license/notice. It is **not** bundled in this prototype.
-- Any personal DoT profile will be supplied at runtime; never committed to GitHub.
+Implement signed installation and a restricted privileged Rust service with an authenticated narrow IPC command API (status/enable/disable only). Protect persistent adapter snapshots for both IPv4/IPv6, preserve DHCP/static settings, journal and restore after crash/power loss, validate actual DoT chain before routing, and audit interaction with VPN/TUN software. No arbitrary shell command execution or unverified bypasses.
 
-## UX basis
+## UX bases
 
 - https://aiforui.dev/skills/gestures
 - https://github.com/benjitaylor/skills
 - https://github.com/GoogleChrome/modern-web-guidance
-
-No gestures on the power control; no drag-to-disconnect. Keyboard support, reduced motion and visible states are first-class. See `DESIGN.md`.
-
-## Priority
-
-1. CI green on Windows x64, validate tray open/hide/exit on Windows 10.
-2. Measure cold/warm startup and memory on i7-870 / Radeon HD 6570. Benchmark against a native Rust/Win32 alternative if WebView2 is slow.
-3. Implement a separate Rust Windows service with rollback-safe DNS handling. Never let the UI mutate network configuration directly.
+- See `DESIGN.md` for measurable targets (not claimed results).

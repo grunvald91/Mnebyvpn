@@ -1,0 +1,10 @@
+[package]
+name = "mnebydns-health-service"
+version = "0.3.0"
+edition = "2021"
+description = "Read-only Windows service for mnebyDNS local health checks"
+
+[dependencies]
+mnebydns-core = { path = "../dns-core" }
+serde_json = "1"
+windows-service = "0.8.1"

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "мнебыDNS",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "identifier": "site.mnebyvpn.dns",
   "build": {
     "frontendDist": "../ui"
@@ -13,9 +13,9 @@
         "label": "main",
         "title": "мнебыDNS — Windows",
         "width": 520,
-        "height": 590,
+        "height": 640,
         "minWidth": 360,
-        "minHeight": 470,
+        "minHeight": 500,
         "resizable": true,
         "backgroundColor": "#09131a"
       }

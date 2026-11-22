@@ -18,7 +18,7 @@ permissions:
 jobs:
   compile-windows:
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -27,6 +27,14 @@ jobs:
       - name: Check UI JavaScript
         run: node --check apps/windows-dns/ui/app.js
       - name: Check Rust formatting
-        run: cargo fmt --manifest-path apps/windows-dns/src-tauri/Cargo.toml -- --check
-      - name: Compile Rust tray (no installer, no DNS changes)
+        shell: pwsh
+        run: |
+          cargo fmt --manifest-path apps/windows-dns/dns-core/Cargo.toml -- --check
+          cargo fmt --manifest-path apps/windows-dns/service/Cargo.toml -- --check
+          cargo fmt --manifest-path apps/windows-dns/src-tauri/Cargo.toml -- --check
+      - name: DNS core unit tests (no remote traffic)
+        run: cargo test --manifest-path apps/windows-dns/dns-core/Cargo.toml
+      - name: Compile Windows health service
+        run: cargo check --manifest-path apps/windows-dns/service/Cargo.toml
+      - name: Compile Rust tray and diagnostics
         run: cargo check --manifest-path apps/windows-dns/src-tauri/Cargo.toml
