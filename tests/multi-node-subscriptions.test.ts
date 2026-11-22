@@ -39,13 +39,14 @@ function signed(overrides:Partial<AdditionalNodeReceipt>={},source=receipt()){
   return row;
 }
 
-test('valid Ed25519 country node is appended with correct flag, without exposing signature',()=>{
+test('valid Ed25519 node shows country-only name, without exposing signature',()=>{
   const de=receipt('de-node-01','DE','Германия');
   const nl=receipt();
   const links=verifiedAdditionalVpnLinks([de,nl],owner,pub,now.getTime());
   assert.equal(links.length,2);
-  assert.ok(links[0].includes(encodeURIComponent('🇩🇪 MNEBYVPN · Германия')));
-  assert.ok(links[1].includes(encodeURIComponent('🇳🇱 MNEBYVPN · Нидерланды')));
+  assert.equal(decodeURIComponent(new URL(links[0]).hash.slice(1)),'мне VPN Германия');
+  assert.equal(decodeURIComponent(new URL(links[1]).hash.slice(1)),'мне VPN Нидерланды');
+  assert.equal(new URL(links[0]).search,new URL(de.profile_uri).search);
   assert.ok(!links[0].includes(de.signature));
   assert.equal(verifiedAdditionalVpnLinks([nl,nl],owner,pub,now.getTime()).length,1);
 });
@@ -60,6 +61,7 @@ test('unsigned, tampered, expired or revoked node is not published',()=>{
     {...good,entitlement_id:'00000000-0000-4000-8000-000000000000'},
     {...good,revision:4},
     {...good,signature:'0'.repeat(86)},
+    signed({country_code:'DE',country_name_ru:'Нидерланды'}),
     signed({state:'degraded'}),
     signed({state:'disabled'}),
     signed({verified_at:new Date(now.getTime()-61*60_000)}),

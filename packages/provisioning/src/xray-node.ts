@@ -6,14 +6,13 @@
  */
 import {createHmac} from 'node:crypto';
 import type {DesiredAccess,ObservedAccess,ProvisioningAdapter} from './reconciler.ts';
+import {vpnCountryLabel} from './incy-subscription-presentation.ts';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FIXED_NODE_URL='http://10.66.77.1:18944/v1/provision';
 const WEB_PROFILE_HOST='cdn.servgo.ru';
-// One physical egress node with distinct protocol entries for comparison.
-// The 89.125.90.0/24 IP registry records country DE; this is a display label,
-// not a geolocation-based access decision.
-const NODE_DISPLAY_NAME='MNEBYVPN · Germany';
+// Country-only customer-facing label; transport remains in URI fields.
+const NODE_DISPLAY_NAME=vpnCountryLabel('Германия');
 export interface RealityPublicConfig {
   publicKey:string;
   shortId:string;
@@ -62,7 +61,7 @@ export function makeVpnImportUri(credential:string):string {
     host:WEB_PROFILE_HOST,sni:WEB_PROFILE_HOST,path:'/mnebyvpn-vpn/ws',
   });
   return 'vless://'+id+'@'+WEB_PROFILE_HOST+':8443?'+query+
-    '#'+encodeURIComponent(NODE_DISPLAY_NAME+' · WebSocket TLS');
+    '#'+encodeURIComponent(NODE_DISPLAY_NAME);
 }
 export function makeVpnRealityImportUri(
   credential:string,config:RealityPublicConfig,
@@ -78,8 +77,7 @@ export function makeVpnRealityImportUri(
     fp:fingerprint,pbk:safe.publicKey,sid:safe.shortId,spx:'/',
   });
   return 'vless://'+id+'@'+WEB_PROFILE_HOST+':'+safe.port+'?'+query+
-    '#'+encodeURIComponent(NODE_DISPLAY_NAME+
-      (fingerprint==='firefox'?' · REALITY Firefox (TEST)':' · REALITY Vision'));
+    '#'+encodeURIComponent(NODE_DISPLAY_NAME);
 }
 export class SignedXrayNodeApi implements ProvisioningAdapter {
   /** The actual isolated Xray agent enforces expiry locally without Panel. */

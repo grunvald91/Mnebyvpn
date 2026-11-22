@@ -9,6 +9,7 @@
 import {createPublicKey,verify,type KeyObject} from 'node:crypto';
 import {isIP} from 'node:net';
 import type {Pool} from 'pg';
+import {vpnCountryLabel} from './incy-subscription-presentation.ts';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const NODE_ID=/^[a-z0-9][a-z0-9-]{2,39}$/;
@@ -98,6 +99,7 @@ function safeRow(row:AdditionalNodeReceipt,owner:ActiveAdditionalEntitlement,
                  key:KeyObject,now:number):boolean {
   if(!NODE_ID.test(row.node_id)||row.node_id.endsWith('-')||
      !COUNTRY.test(row.country_code)||row.country_code==='ZZ'||
+     (row.country_code==='DE'&&row.country_name_ru!=='Германия')||
      !/^[А-Яа-яЁёA-Za-z ()-]{2,70}$/.test(row.country_name_ru)||
      !validHost(row.endpoint_host)||row.endpoint_host==='cdn.servgo.ru'||
      row.state!=='enabled'||!Number.isInteger(row.endpoint_port)||
@@ -126,11 +128,6 @@ function safeRow(row:AdditionalNodeReceipt,owner:ActiveAdditionalEntitlement,
   }catch{return false;}
 }
 
-function flag(code:string):string {
-  return [...code].map(letter=>String.fromCodePoint(
-    0x1f1e6+letter.charCodeAt(0)-65)).join('');
-}
-
 /** Never replace, reinterpret, or invalidate the original working node URLs. */
 export function verifiedAdditionalVpnLinks(
   rows:readonly AdditionalNodeReceipt[],
@@ -146,8 +143,7 @@ export function verifiedAdditionalVpnLinks(
   for(const row of rows){
     if(names.has(row.node_id)||!safeRow(row,owner,key,now))continue;
     names.add(row.node_id);
-    const label=flag(row.country_code)+' MNEBYVPN · '+row.country_name_ru+
-      ' · '+row.node_id+' · REALITY';
+    const label=vpnCountryLabel(row.country_name_ru);
     uris.push(row.profile_uri+'#'+encodeURIComponent(label));
   }
   return uris;

@@ -104,14 +104,14 @@ test('node advertises validated REALITY profile first with safe WS fallback',asy
  const firefoxUri=new URL(firefox);
  assert.equal(firefoxUri.searchParams.get('fp'),'firefox');
  assert.equal(decodeURIComponent(firefoxUri.hash.slice(1)),
-   'MNEBYVPN · Germany · REALITY Firefox (TEST)');
+   'мне VPN Германия');
  assert.throws(()=>makeVpnRealityImportUri(credential,reality,'unsafe' as 'chrome'));
  const uriFast=new URL(fast);
  assert.equal(decodeURIComponent(uriFast.hash.slice(1)),
-   'MNEBYVPN · Germany · REALITY Vision');
+   'мне VPN Германия');
  const uriWs=new URL(makeVpnImportUri(credential));
  assert.equal(decodeURIComponent(uriWs.hash.slice(1)),
-   'MNEBYVPN · Germany · WebSocket TLS');
+   'мне VPN Германия');
  assert.match(fast,/security=reality/);
  assert.match(fast,/flow=xtls-rprx-vision/);
  assert.match(fast,/sni=www.cloudflare.com/);
