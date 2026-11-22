@@ -18,7 +18,7 @@ permissions:
 jobs:
   compile-windows:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -38,3 +38,12 @@ jobs:
         run: cargo check --manifest-path apps/windows-dns/service/Cargo.toml
       - name: Compile Rust tray and diagnostics
         run: cargo check --manifest-path apps/windows-dns/src-tauri/Cargo.toml
+      - name: Build standalone Windows GUI preview
+        run: cargo build --release --manifest-path apps/windows-dns/src-tauri/Cargo.toml
+      - name: Upload unsigned read-only Windows GUI preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnebydns-win10-diagnostics-unsigned
+          path: apps/windows-dns/src-tauri/target/release/mnebydns-windows.exe
+          if-no-files-found: error
+          retention-days: 14

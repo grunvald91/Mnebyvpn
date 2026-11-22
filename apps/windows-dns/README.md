@@ -19,6 +19,8 @@
 
 The existing working DNSProxy and shortcuts should remain in use until the service-based controller is tested.
 
+On each branch push CI also builds an **unsigned standalone diagnostic GUI EXE**, uploaded as `mnebydns-win10-diagnostics-unsigned` in its Actions run artifacts. It is not a production installer or a signed commercial release; it requires WebView2 and hasn't been tested on the target Windows 10 machine. The Windows service is **not** installed or included in the GUI artifact.
+
 ## Development
 
 Windows prerequisites: Rust MSVC toolchain, Visual Studio C++ Build Tools, Windows SDK and WebView2. See https://v2.tauri.app/start/prerequisites/.
