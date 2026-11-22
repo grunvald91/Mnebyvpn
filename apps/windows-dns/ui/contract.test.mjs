@@ -17,7 +17,7 @@ const home = html.split('<section id="home" class="view home-view">')[1]?.split(
 const settings = html.split('<section id="settings" class="view hidden">')[1];
 assert.ok(home, 'Missing home dashboard');
 assert.ok(settings, 'Missing Settings');
-assert.equal((home.match(/<button\\b/g) || []).length, 1, 'Home must have exactly one control button');
+assert.equal((home.match(/<button\b/g) || []).length, 1, 'Home must have exactly one control button');
 assert.ok(home.includes('id="toggle-system-dns"'), 'Missing one-button DNS control');
 assert.ok(!home.includes('Тестовый режим'), 'Home must not pretend to be a test screen');
 assert.ok(!home.includes('run-all-tests'), 'Connection tests belong in Settings');
