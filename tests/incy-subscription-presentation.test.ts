@@ -104,7 +104,7 @@ test('expired INCY subscription keeps website and bot actions with no network se
   assert.equal(headers['support-url'],INCY_RENEW_URL);
   assert.equal(headers['announce-url'],INCY_SUPPORT_URL);
   assert.match(Buffer.from(headers['announce'].slice(7),'base64').toString('utf8'),
-    /Поддержка и связь/);
+    /Срок VPN истёк.*Продление: mnebyvpn.site\/\#plans/);
   assert.equal(headers['subscription-userinfo'].split('expire=')[1],
     String(Math.floor(expiry.getTime()/1000)));
   const decoded=Buffer.from(incyExpiredSubscriptionBody().trim(),'base64')
@@ -112,6 +112,10 @@ test('expired INCY subscription keeps website and bot actions with no network se
   assert.ok(decoded.includes('#profile-web-page-url: '+INCY_RENEW_URL));
   assert.ok(decoded.includes('#support-url: '+INCY_RENEW_URL));
   assert.ok(decoded.includes('#announce-url: '+INCY_SUPPORT_URL));
+  const expireNotice=decoded.split('\n').find(line=>line.startsWith('#announce: base64:'));
+  assert.ok(expireNotice);
+  assert.match(Buffer.from(expireNotice.slice('#announce: base64:'.length),'base64').toString('utf8'),
+    /Срок VPN истёк.*Продление/);
   assert.doesNotMatch(decoded,/vless:\/\/|vmess:\/\/|trojan:\/\/|awg:\/\/|amneziawg:\/\/|\[Interface\]/);
 });
 
