@@ -36,6 +36,7 @@ jobs:
           cargo fmt --manifest-path apps/windows-dns/dns-core/Cargo.toml -- --check
           cargo fmt --manifest-path apps/windows-dns/network/Cargo.toml -- --check
           cargo fmt --manifest-path apps/windows-dns/transaction/Cargo.toml -- --check
+          cargo fmt --manifest-path apps/windows-dns/ipc/Cargo.toml -- --check
           cargo fmt --manifest-path apps/windows-dns/journal/Cargo.toml -- --check
           cargo fmt --manifest-path apps/windows-dns/service/Cargo.toml -- --check
           cargo fmt --manifest-path apps/windows-dns/src-tauri/Cargo.toml -- --check
@@ -47,6 +48,8 @@ jobs:
         run: cargo test --manifest-path apps/windows-dns/transaction/Cargo.toml
       - name: File recovery journal and Windows ACL tests
         run: cargo test --manifest-path apps/windows-dns/journal/Cargo.toml
+      - name: Read-only named pipe protocol unit tests
+        run: cargo test --manifest-path apps/windows-dns/ipc/Cargo.toml
       - name: Compile Windows health service
         run: cargo check --manifest-path apps/windows-dns/service/Cargo.toml
       - name: Compile Windows adapter inventory

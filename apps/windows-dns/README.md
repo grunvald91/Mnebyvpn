@@ -148,3 +148,29 @@ unexpected deletion across a reboot from being interpreted as a brand-new
 empty journal. A future elevated, authenticated installer must provision
 the directory with the required protected DACL **before** installing or
 starting the service. No installer or service registration is supplied yet.
+
+## Stage 7: read-only Windows named pipe IPC
+
+The new `ipc/` crate provides a Windows Named Pipe at
+`\\\\.\\pipe\\mnebydns-status-v1` with a restrictive SDDL:
+LocalSystem/Administrators full access, interactive users read-only.
+`PIPE_REJECT_REMOTE_CLIENTS` rejects remote callers and
+`FILE_FLAG_FIRST_PIPE_INSTANCE` detects pipe-name squatting. The GUI
+verifies the pipe server process token belongs to LocalSystem
+before reading the bounded, versioned, fresh JSON status frame.
+The diagnostic service publishes its local DNS report and
+the recovery record's **status only** (`clear/pending/unreadable`).
+
+- **No remote network port**; IPC is local Windows only.
+- **No write commands**, DNS configuration changes, VPN changes or raw
+  journal/credentials exposed to clients.
+- The experimental service is NOT installed automatically.
+  The protected ProgramData directory must be provisioned in a future
+  controlled installer before the SCM service can start.
+- IPC identity verification can deny ordinary users if Windows policy
+  prevents reading the LocalSystem token; fail closed rather than bypassing.
+- A client connecting to the single pipe and refusing to read could delay
+  IPC availability. A bounded overlapped I/O implementation and Windows
+  client/service runtime tests remain a pre-production requirement.
+- Do not claim this is validated on the user's Windows 10. CI compiles and
+  tests protocol helpers and the UI, not live service installation.

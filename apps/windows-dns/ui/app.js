@@ -203,7 +203,21 @@ async function refreshStatus() {
     get('connection-hint').textContent = response.caution;
     updateEndpoint('ipv4', response.local.ipv4);
     updateEndpoint('ipv6', response.local.ipv6);
-    get('service-state').textContent = 'Состояние службы — только после подключения защищённого IPC';
+    if (response.service) {
+      const state = response.service.recovery_state;
+      const label = state === 'pending' ? 'Есть запись восстановления DNS'
+        : state === 'unreadable' ? 'Ошибка чтения защищённого журнала'
+        : 'Связь со службой установлена · журнал проверен';
+      get('service-state').textContent = label;
+      get('service-state').classList.toggle('bad', state !== 'clear');
+      get('service-state').classList.toggle('good', state === 'clear');
+    } else {
+      get('service-state').textContent = response.service_error
+        ? 'Служба недоступна: ' + response.service_error
+        : 'Служба не отвечает';
+      get('service-state').classList.remove('good');
+      get('service-state').classList.add('bad');
+    }
     get('status').textContent = 'Проверка выполнена. Защищённый DoT ещё не подтверждён.';
   } catch (error) {
     get('connection-title').textContent = 'Ошибка диагностики';

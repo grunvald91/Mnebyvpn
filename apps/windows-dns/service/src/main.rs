@@ -10,8 +10,9 @@ use std::fs;
 use std::io;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, RwLock,
 };
+use mnebydns_ipc::serve_local_status;
 use std::thread;
 use std::time::Duration;
 use windows_service::service::{
@@ -30,7 +31,7 @@ fn service_main(_args: Vec<OsString>) {
     }
 }
 
-fn publish(journal: &ProtectedJournal) -> io::Result<()> {
+fn publish(journal: &ProtectedJournal) -> io::Result<ServiceReport> {
     let recovery_state = match journal.check_recovery_pending() {
         Ok(true) => "pending",
         Ok(false) => "clear",
@@ -45,7 +46,8 @@ fn publish(journal: &ProtectedJournal) -> io::Result<()> {
     let payload = serde_json::to_vec(&report)?;
     let path = journal.protected_status_path().map_err(io::Error::other)?;
     // Only the privileged service owns this file; never publish snapshots or secrets.
-    fs::write(path, payload)
+    fs::write(path, payload)?;
+    Ok(report)
 }
 
 fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -74,9 +76,25 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
     };
     status_handle.set_service_status(status.clone())?;
 
+    let initial = publish(&journal)?;
+    let shared = Arc::new(RwLock::new(initial));
+    let pipe_data = Arc::clone(&shared);
+    // The named pipe thread publishes read-only status. It cannot mutate DNS.
+    // Windows tears down the blocking worker when the service process exits.
+    std::thread::spawn(move || {
+        if let Err(error) = serve_local_status(pipe_data) {
+            eprintln!("Read-only named pipe stopped: {error}");
+        }
+    });
+
     while !stop.load(Ordering::Acquire) {
-        if let Err(error) = publish(&journal) {
-            eprintln!("Cannot publish protected health report: {error}");
+        match publish(&journal) {
+            Ok(report) => {
+                if let Ok(mut current) = shared.write() {
+                    *current = report;
+                }
+            }
+            Err(error) => eprintln!("Cannot publish protected health report: {error}"),
         }
         for _ in 0..20 {
             if stop.load(Ordering::Acquire) {

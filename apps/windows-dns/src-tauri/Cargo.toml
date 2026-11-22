@@ -1,6 +1,6 @@
 [package]
 name = "mnebydns-windows"
-version = "0.5.0"
+version = "0.7.0"
 description = "Lightweight Windows GUI and tray with read-only DNS and adapter diagnostics"
 authors = ["mnebyDNS"]
 edition = "2021"
@@ -19,3 +19,4 @@ mnebydns-core = { path = "../dns-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 mnebydns-network = { path = "../network" }
+mnebydns-ipc = { path = "../ipc" }

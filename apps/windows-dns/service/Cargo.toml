@@ -9,3 +9,4 @@ mnebydns-core = { path = "../dns-core" }
 serde_json = "1"
 windows-service = "0.8.1"
 mnebydns-journal = { path = "../journal" }
+mnebydns-ipc = { path = "../ipc" }
