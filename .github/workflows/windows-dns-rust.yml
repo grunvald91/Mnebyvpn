@@ -36,18 +36,17 @@ jobs:
           node --check apps/windows-dns/ui/app.js
           node apps/windows-dns/ui/contract.test.mjs
 
-      - name: Check Rust formatting
+      - name: Check Rust formatting (report all crates)
         shell: bash
         run: |
           set -euo pipefail
-          cargo fmt --manifest-path apps/windows-dns/dns-core/Cargo.toml -- --check
-          cargo fmt --manifest-path apps/windows-dns/network/Cargo.toml -- --check
-          cargo fmt --manifest-path apps/windows-dns/transaction/Cargo.toml -- --check
-          cargo fmt --manifest-path apps/windows-dns/ipc/Cargo.toml -- --check
-          cargo fmt --manifest-path apps/windows-dns/journal/Cargo.toml -- --check
-          cargo fmt --manifest-path apps/windows-dns/service/Cargo.toml -- --check
-          cargo fmt --manifest-path apps/windows-dns/src-tauri/Cargo.toml -- --check
-          cargo fmt --manifest-path apps/windows-dns/setup/Cargo.toml -- --check
+          broken=0
+          for crate in dns-core network transaction ipc journal service src-tauri setup; do
+            if ! cargo fmt --manifest-path "apps/windows-dns/$crate/Cargo.toml" -- --check; then
+              broken=1
+            fi
+          done
+          exit "$broken"
 
       - name: DNS core unit tests
         run: cargo test --manifest-path apps/windows-dns/dns-core/Cargo.toml
