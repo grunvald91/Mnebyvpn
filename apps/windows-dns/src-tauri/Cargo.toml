@@ -1,6 +1,6 @@
 [package]
 name = "mnebydns-windows"
-version = "0.8.0"
+version = "0.9.0"
 description = "Lightweight Windows GUI and tray with read-only DNS and adapter diagnostics"
 authors = ["mnebyDNS"]
 edition = "2021"

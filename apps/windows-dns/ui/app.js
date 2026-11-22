@@ -10,6 +10,7 @@ let dnsLoading = false;
 let dotLoading = false;
 let proxySmokeLoading = false;
 let dotInputRevision = 0;
+let fullTestLoading = false;
 
 for (const button of document.querySelectorAll('[data-tab]')) {
   button.addEventListener('click', () => {
@@ -217,9 +218,7 @@ async function refreshStatus() {
   dnsLoading = true;
   const refresh = get('refresh-dns');
   refresh.disabled = true;
-  get('connection-title').textContent = 'Проверяю локальный DNS…';
   if (typeof invoke !== 'function') {
-    get('connection-title').textContent = 'Недоступно в браузере';
     get('status').textContent = 'Проверка доступна только в Windows-приложении.';
     dnsLoading = false;
     refresh.disabled = false;
@@ -229,10 +228,6 @@ async function refreshStatus() {
     const response = await invoke('inspect_dns');
     const v4 = response.local.ipv4.ok;
     const v6 = response.local.ipv6.ok;
-    get('connection-title').textContent = v4 || v6
-      ? 'Локальный DNS отвечает'
-      : 'Локальный DNS не отвечает';
-    get('connection-hint').textContent = response.caution;
     updateEndpoint('ipv4', response.local.ipv4);
     updateEndpoint('ipv6', response.local.ipv6);
     if (response.service) {
@@ -252,7 +247,6 @@ async function refreshStatus() {
     }
     get('status').textContent = 'Локальный DNS проверен. Статус DoT отображается отдельно в разделе «Мой DNS».';
   } catch (error) {
-    get('connection-title').textContent = 'Ошибка диагностики';
     get('status').textContent = 'Не удалось проверить DNS: ' + String(error);
   } finally {
     dnsLoading = false;
@@ -365,13 +359,93 @@ async function smokeProxy() {
   }
 }
 
+
+function showTestHeading(title, hint) {
+  get('connection-title').textContent = title;
+  get('connection-hint').textContent = hint;
+}
+
+function setTestStep(id, diagnosticId, message, status) {
+  const result = get(id);
+  result.textContent = message;
+  result.classList.toggle('good', status === 'good');
+  result.classList.toggle('bad', status === 'bad');
+  get(diagnosticId).textContent = status === 'good' ? 'Успешно' :
+    status === 'bad' ? 'Ошибка' : 'Не проверено';
+}
+
+async function runAllTests() {
+  if (fullTestLoading || dotLoading || proxySmokeLoading) return;
+  const input = get('dot-host');
+  const host = input.value.trim();
+  if (!host) {
+    input.setAttribute('aria-invalid', 'true');
+    showTestHeading('Нужен адрес DNS', 'Введите персональный DoT-адрес из подписки и повторите проверку.');
+    input.focus();
+    return;
+  }
+  if (typeof invoke !== 'function') {
+    showTestHeading('Запустите EXE на Windows', 'В браузерном просмотре реальные сетевые проверки недоступны.');
+    return;
+  }
+  const revision = dotInputRevision;
+  const buttons = [get('run-all-tests'), get('check-dot'), get('check-proxy')];
+  fullTestLoading = true;
+  buttons.forEach(button => { button.disabled = true; });
+  let phase = 'dot';
+  setTestStep('dot-status', 'dot-diag-state', 'Проверяю сертификат TLS и DNS-ответы…', 'pending');
+  setTestStep('proxy-status', 'proxy-diag-state', 'Ожидает защищённого DNS', 'pending');
+  showTestHeading('Проверяю защищённый DNS…', 'Первый этап: TLS и ответы A / AAAA через порт 853.');
+  try {
+    const tls = await invoke('probe_personal_dot', { host });
+    if (revision !== dotInputRevision) return;
+    if (!tls.complete) {
+      const reason = tls.ipv4.ok ? tls.ipv6.error : tls.ipv4.error;
+      setTestStep('dot-status', 'dot-diag-state', 'TLS проверен, но DNS-запрос не прошёл: ' + (reason || 'нет ответа'), 'bad');
+      setTestStep('proxy-status', 'proxy-diag-state', 'Пропущен: сначала нужен DoT', 'pending');
+      showTestHeading('DoT не прошёл проверку', 'Адрес верный? Посмотрите сообщение первого этапа.');
+      return;
+    }
+    setTestStep('dot-status', 'dot-diag-state', 'TLS и DNS A/AAAA подтверждены · ' + tls.elapsed_ms + ' мс', 'good');
+    phase = 'proxy';
+    showTestHeading('Проверяю DNS-прокси…', 'Второй этап: временный UDP → DoT, без изменения настроек Windows.');
+    setTestStep('proxy-status', 'proxy-diag-state', 'Проверяю локальную передачу DNS…', 'pending');
+    const proxy = await invoke('smoke_local_dot_proxy', { host });
+    if (revision !== dotInputRevision) return;
+    if (!proxy.success) {
+      setTestStep('proxy-status', 'proxy-diag-state', 'Положительный ответ DNS не получен', 'bad');
+      showTestHeading('Прокси не прошёл проверку', 'DoT работает, но локальная передача DNS не подтверждена.');
+      return;
+    }
+    setTestStep('proxy-status', 'proxy-diag-state',
+      'UDP → DoT подтверждён · ' + proxy.elapsed_ms + ' мс · прокси закрыт', 'good');
+    showTestHeading('Проверки пройдены', 'DoT и тестовый UDP-прокси работают. Системный DNS Windows по-прежнему не переключён.');
+  } catch (error) {
+    if (revision !== dotInputRevision) return;
+    if (phase === 'dot') {
+      setTestStep('dot-status', 'dot-diag-state', 'DoT: ' + String(error), 'bad');
+      setTestStep('proxy-status', 'proxy-diag-state', 'Пропущен: сначала нужен DoT', 'pending');
+      showTestHeading('DoT не прошёл проверку', 'Проверьте DNS-имя и доступность порта TCP 853.');
+    } else {
+      setTestStep('proxy-status', 'proxy-diag-state', 'Прокси: ' + String(error), 'bad');
+      showTestHeading('Прокси не прошёл проверку', 'DoT работает, но локальный UDP-тест не подтвердился.');
+    }
+  } finally {
+    fullTestLoading = false;
+    buttons.forEach(button => { button.disabled = false; });
+  }
+}
+
+get('run-all-tests').addEventListener('click', runAllTests);
 get('check-dot').addEventListener('click', checkPersonalDot);
 get('check-proxy').addEventListener('click', smokeProxy);
 get('dot-host').addEventListener('keydown', (event) => {
-  if (event.key === 'Enter') checkPersonalDot();
+  if (event.key === 'Enter') runAllTests();
 });
 get('dot-host').addEventListener('input', () => {
   dotInputRevision += 1;
+  get('dot-host').removeAttribute('aria-invalid');
+  showTestHeading('Проверим ваш DNS', 'Запустите проверку для нового адреса. Настройки Windows останутся без изменений.');
   get('dot-status').textContent = 'Адрес изменён — проверка требуется заново.';
   get('dot-status').classList.remove('good', 'bad');
   get('dot-diag-state').textContent = 'Не проверено';

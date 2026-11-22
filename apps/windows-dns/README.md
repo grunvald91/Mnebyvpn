@@ -361,3 +361,12 @@ server is a separate manual integration check.
 
 References: https://www.rfc-editor.org/rfc/rfc7858 and
 https://www.rfc-editor.org/rfc/rfc7766.
+
+
+## Stage 14: Windows 0.9 usability test build
+
+The home screen now prioritizes the user's personal DoT profile and a single guided `Проверить подключение` action: first authenticated DNS-over-TLS, then the temporary UDP-to-DoT relay. The app explicitly labels itself preview/test mode and never mistakes the existing system localhost resolver for MNEBYDNS being enabled. Advanced adapter diagnostics and individual DNS test buttons remain available. Changed input invalidates prior results. No DNS settings are modified.
+
+Each Windows GUI artifact includes a portable EXE, Russian `START-HERE.md` instructions and `SHA256.txt`. Runtime Windows 10/WebView2 and tray/scale checks still require local testing; a green Windows runner is not proof of hardware compatibility. `ui/contract.test.mjs` cross-checks HTML IDs and Tauri command bindings.
+
+References: https://aiforui.dev/skills/gestures and https://github.com/GoogleChrome/modern-web-guidance.
