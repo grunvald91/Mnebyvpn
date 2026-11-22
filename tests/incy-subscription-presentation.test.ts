@@ -121,8 +121,10 @@ test('expired Karing navigation remains unchanged while INCY uses Site and Chann
   const headers=incyExpiredSubscriptionHeaders(expiry,'karing');
   assert.equal(headers['support-url'],INCY_SUPPORT_URL);
   assert.equal(headers['announce-url'],INCY_RENEW_URL);
+  assert.equal(headers['profile-web-page-url'],INCY_SITE_URL);
   const decoded=Buffer.from(incyExpiredSubscriptionBody('karing').trim(),'base64')
     .toString('utf8');
+  assert.ok(decoded.includes('#profile-web-page-url: '+INCY_SITE_URL));
   assert.ok(decoded.includes('#support-url: '+INCY_SUPPORT_URL));
   assert.ok(decoded.includes('#announce-url: '+INCY_RENEW_URL));
 });
@@ -162,6 +164,6 @@ test('active INCY metadata provides the existing non-Premium payment action',()=
   assert.equal(karing.announce,undefined);
   assert.equal(karing['announce-url'],undefined);
   assert.equal(karing['support-url'],INCY_SUPPORT_URL);
-  assert.equal(karing['profile-web-page-url'],INCY_RENEW_URL);
+  assert.equal(karing['profile-web-page-url'],INCY_SITE_URL);
   assert.equal(karing['premium-url'],INCY_RENEW_URL);
 });
