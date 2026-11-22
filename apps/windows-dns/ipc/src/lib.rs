@@ -42,6 +42,14 @@ pub fn decode_status(raw: &[u8], current_ms: u64) -> Result<ServiceReport, Strin
     ) {
         return Err("Service returned an unknown recovery state".into());
     }
+    if status.dns_state.as_deref().is_some_and(|state| {
+        !matches!(state, "disabled" | "starting" | "active" | "restoring" | "error")
+    }) {
+        return Err("Service returned an unknown DNS controller state".into());
+    }
+    if status.last_error.as_ref().is_some_and(|error| error.len() > 1024) {
+        return Err("Service returned an oversized DNS controller error".into());
+    }
     Ok(status)
 }
 
@@ -72,6 +80,9 @@ mod tests {
                 ipv6: probe,
             },
             recovery_state: Some("clear".to_owned()),
+            dns_state: Some("disabled".to_owned()),
+            adapter_count: Some(0),
+            last_error: None,
         }
     }
 

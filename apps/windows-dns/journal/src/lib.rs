@@ -240,6 +240,281 @@ pub fn provision_for_installer() -> Result<(), String> {
     windows_acl::create_or_verify_private_directory(&root)
 }
 
+
+const CONFIG_NAME: &str = "controller-v1.json";
+const CONFIG_STAGING_NAME: &str = "controller-v1.writing";
+const MAX_CONFIG_BYTES: u64 = 16 * 1024;
+const SYSTEM_RECORD_PREFIX: &str = "system-dns-";
+const SYSTEM_STAGING_SUFFIX: &str = ".writing";
+const MAX_SYSTEM_RECORDS: usize = 128;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ControllerConfig {
+    pub version: u16,
+    pub enabled: bool,
+    pub dot_host: String,
+    pub upstream_addresses: Vec<std::net::SocketAddr>,
+}
+
+impl ControllerConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.version != 1 {
+            return Err("Unsupported DNS controller configuration version".into());
+        }
+        let host = self.dot_host.as_str();
+        if host.len() < 4
+            || host.len() > 253
+            || !host.is_ascii()
+            || host.contains("://")
+            || host.contains(':')
+            || host.chars().any(char::is_whitespace)
+            || host.parse::<std::net::IpAddr>().is_ok()
+        {
+            return Err("Invalid personal DoT hostname in controller configuration".into());
+        }
+        for label in host.split('.') {
+            if label.is_empty()
+                || label.len() > 63
+                || !label.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                || label.starts_with('-')
+                || label.ends_with('-')
+            {
+                return Err("Invalid personal DoT hostname label".into());
+            }
+        }
+        if self.enabled && self.upstream_addresses.is_empty() {
+            return Err("Enabled DNS controller has no pinned DoT upstream addresses".into());
+        }
+        if self.upstream_addresses.len() > 5
+            || self.upstream_addresses.iter().any(|address| {
+                address.port() != 853
+                    || address.ip().is_loopback()
+                    || address.ip().is_unspecified()
+                    || address.ip().is_multicast()
+            })
+        {
+            return Err("Invalid pinned DoT upstream address list".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SystemRecord {
+    version: u16,
+    snapshot: mnebydns_network::AdapterDnsSnapshot,
+    snapshot_sha256: String,
+}
+
+impl SystemRecord {
+    fn new(snapshot: &mnebydns_network::AdapterDnsSnapshot) -> Result<Self, String> {
+        let bytes = serde_json::to_vec(snapshot).map_err(|error| error.to_string())?;
+        let digest = Sha256::digest(bytes);
+        Ok(Self {
+            version: 1,
+            snapshot: snapshot.clone(),
+            snapshot_sha256: format!("{digest:x}"),
+        })
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if self.version != 1 {
+            return Err("Unsupported system DNS recovery record version".into());
+        }
+        validate_system_snapshot(&self.snapshot)?;
+        let bytes = serde_json::to_vec(&self.snapshot).map_err(|error| error.to_string())?;
+        let digest = Sha256::digest(bytes);
+        if self.snapshot_sha256 != format!("{digest:x}") {
+            return Err("System DNS recovery record checksum mismatch".into());
+        }
+        Ok(())
+    }
+}
+
+fn validate_system_snapshot(
+    snapshot: &mnebydns_network::AdapterDnsSnapshot,
+) -> Result<(), String> {
+    let parts: Vec<_> = snapshot.interface_guid.split('-').collect();
+    if parts.len() != 5
+        || parts
+            .iter()
+            .zip([8, 4, 4, 4, 12])
+            .any(|(part, size)| part.len() != size || !part.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    {
+        return Err("Invalid interface GUID in system DNS recovery record".into());
+    }
+    if snapshot.adapter_name.is_empty() || snapshot.adapter_name.len() > 512 {
+        return Err("Invalid adapter name in system DNS recovery record".into());
+    }
+    for (mode, ipv6) in [
+        (&snapshot.ipv4, false),
+        (&snapshot.ipv4_profile, false),
+        (&snapshot.ipv6, true),
+        (&snapshot.ipv6_profile, true),
+    ] {
+        if let mnebydns_network::DnsServerMode::Static(values) = mode {
+            if values.is_empty() || values.len() > 32 {
+                return Err("Invalid static DNS server list in recovery record".into());
+            }
+            for value in values {
+                if value.len() > 255 {
+                    return Err("DNS address too long in recovery record".into());
+                }
+                let address: std::net::IpAddr = value
+                    .parse()
+                    .map_err(|_| "Invalid DNS IP in recovery record".to_owned())?;
+                if address.is_ipv6() != ipv6 {
+                    return Err("Wrong DNS address family in recovery record".into());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_system_guid(guid: &str) -> Result<(), String> {
+    let parts: Vec<_> = guid.split('-').collect();
+    if parts.len() != 5
+        || parts
+            .iter()
+            .zip([8, 4, 4, 4, 12])
+            .any(|(part, size)| part.len() != size || !part.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    {
+        return Err("Invalid adapter GUID for system DNS journal path".into());
+    }
+    Ok(())
+}
+
+/// Append-only per-interface journal. A record is committed before the
+/// corresponding adapter is modified. New adapters can be added while active.
+pub struct SystemDnsJournal {
+    directory: PathBuf,
+}
+
+impl SystemDnsJournal {
+    fn new(directory: PathBuf) -> Self {
+        Self { directory }
+    }
+
+    fn record_path(&self, guid: &str) -> Result<PathBuf, String> {
+        validate_system_guid(guid)?;
+        Ok(self.directory.join(format!("{SYSTEM_RECORD_PREFIX}{guid}.json")))
+    }
+
+    fn staging_path(&self, guid: &str) -> Result<PathBuf, String> {
+        validate_system_guid(guid)?;
+        Ok(self.directory.join(format!("{SYSTEM_RECORD_PREFIX}{guid}{SYSTEM_STAGING_SUFFIX}")))
+    }
+
+    fn read_one(&self, path: &Path) -> Result<Option<mnebydns_network::AdapterDnsSnapshot>, String> {
+        let metadata = match fs::symlink_metadata(path) {
+            Ok(value) => value,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(format!("System DNS journal metadata error: {error}")),
+        };
+        if !metadata.file_type().is_file() || metadata.len() > MAX_RECORD_BYTES {
+            return Err("System DNS journal record is not a bounded regular file".into());
+        }
+        let mut bytes = Vec::new();
+        File::open(path)
+            .map_err(|error| error.to_string())?
+            .take(MAX_RECORD_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|error| error.to_string())?;
+        if bytes.len() as u64 > MAX_RECORD_BYTES {
+            return Err("System DNS journal record exceeds size limit".into());
+        }
+        let record: SystemRecord = serde_json::from_slice(&bytes)
+            .map_err(|error| format!("System DNS journal record is corrupt: {error}"))?;
+        record.validate()?;
+        Ok(Some(record.snapshot))
+    }
+
+    pub fn read_all(&self) -> Result<Vec<mnebydns_network::AdapterDnsSnapshot>, String> {
+        let mut records: Vec<mnebydns_network::AdapterDnsSnapshot> = Vec::new();
+        for entry in fs::read_dir(&self.directory).map_err(|error| error.to_string())? {
+            let entry = entry.map_err(|error| error.to_string())?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !name.starts_with(SYSTEM_RECORD_PREFIX) {
+                continue;
+            }
+            if name.ends_with(SYSTEM_STAGING_SUFFIX) {
+                return Err("An interrupted system DNS journal write requires recovery review".into());
+            }
+            if !name.ends_with(".json") {
+                continue;
+            }
+            let snapshot = self
+                .read_one(&entry.path())?
+                .ok_or_else(|| "System DNS recovery record disappeared".to_owned())?;
+            if records.iter().any(|item| {
+                item.interface_guid.eq_ignore_ascii_case(&snapshot.interface_guid)
+            }) {
+                return Err("Duplicate adapter in system DNS recovery journal".into());
+            }
+            records.push(snapshot);
+            if records.len() > MAX_SYSTEM_RECORDS {
+                return Err("System DNS recovery journal contains too many adapters".into());
+            }
+        }
+        records.sort_by(|left, right| left.interface_guid.cmp(&right.interface_guid));
+        Ok(records)
+    }
+
+    pub fn save_before_change(
+        &mut self,
+        snapshot: &mnebydns_network::AdapterDnsSnapshot,
+    ) -> Result<(), String> {
+        validate_system_snapshot(snapshot)?;
+        let committed = self.record_path(&snapshot.interface_guid)?;
+        let staging = self.staging_path(&snapshot.interface_guid)?;
+        if committed.exists() || staging.exists() {
+            return Err("A system DNS recovery record already exists for this adapter".into());
+        }
+        if self.read_all()?.len() >= MAX_SYSTEM_RECORDS {
+            return Err("System DNS recovery journal adapter limit reached".into());
+        }
+        let bytes = serde_json::to_vec(&SystemRecord::new(snapshot)?)
+            .map_err(|error| error.to_string())?;
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staging)
+            .map_err(|error| format!("Cannot create system DNS staging record: {error}"))?;
+        if let Err(error) = file.write_all(&bytes).and_then(|_| file.sync_all()) {
+            return Err(format!("System DNS backup was not made durable: {error}"));
+        }
+        drop(file);
+        fs::hard_link(&staging, &committed)
+            .map_err(|error| format!("Cannot commit system DNS backup: {error}"))?;
+        fs::remove_file(&staging)
+            .map_err(|error| format!("System DNS backup committed but staging cleanup failed: {error}"))?;
+        if self.read_one(&committed)?.as_ref() != Some(snapshot) {
+            return Err("System DNS backup read-back does not match the original snapshot".into());
+        }
+        Ok(())
+    }
+
+    pub fn clear_verified(&mut self, guid: &str) -> Result<(), String> {
+        let path = self.record_path(guid)?;
+        let staging = self.staging_path(guid)?;
+        if staging.exists() {
+            return Err("System DNS staging record still exists; refusing to clear".into());
+        }
+        if self.read_one(&path)?.is_none() {
+            return Err("System DNS recovery record is missing".into());
+        }
+        fs::remove_file(path).map_err(|error| format!("Cannot clear verified DNS backup: {error}"))
+    }
+
+    pub fn has_pending(&self) -> Result<bool, String> {
+        Ok(!self.read_all()?.is_empty())
+    }
+}
+
+
 #[cfg(windows)]
 pub struct ProtectedJournal {
     inner: FileJournal,
@@ -270,6 +545,66 @@ impl ProtectedJournal {
     pub fn protected_status_path(&self) -> Result<PathBuf, String> {
         windows_acl::verify_existing_private_directory(&self.inner.directory)?;
         Ok(self.inner.directory.join("health-v1.json"))
+    }
+
+    pub fn system_dns_journal(&self) -> Result<SystemDnsJournal, String> {
+        windows_acl::verify_existing_private_directory(&self.inner.directory)?;
+        Ok(SystemDnsJournal::new(self.inner.directory.clone()))
+    }
+
+    pub fn read_controller_config(&self) -> Result<Option<ControllerConfig>, String> {
+        windows_acl::verify_existing_private_directory(&self.inner.directory)?;
+        let path = self.inner.directory.join(CONFIG_NAME);
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(value) => value,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.to_string()),
+        };
+        if !metadata.file_type().is_file() || metadata.len() > MAX_CONFIG_BYTES {
+            return Err("DNS controller configuration is not a bounded regular file".into());
+        }
+        let mut bytes = Vec::new();
+        File::open(path)
+            .map_err(|error| error.to_string())?
+            .take(MAX_CONFIG_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|error| error.to_string())?;
+        if bytes.len() as u64 > MAX_CONFIG_BYTES {
+            return Err("DNS controller configuration exceeds size limit".into());
+        }
+        let config: ControllerConfig =
+            serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+        config.validate()?;
+        Ok(Some(config))
+    }
+
+    pub fn write_controller_config(&self, config: &ControllerConfig) -> Result<(), String> {
+        windows_acl::verify_existing_private_directory(&self.inner.directory)?;
+        config.validate()?;
+        let staging = self.inner.directory.join(CONFIG_STAGING_NAME);
+        let target = self.inner.directory.join(CONFIG_NAME);
+        if staging.exists() {
+            return Err("An interrupted DNS controller configuration write requires review".into());
+        }
+        let bytes = serde_json::to_vec(config).map_err(|error| error.to_string())?;
+        if bytes.len() as u64 > MAX_CONFIG_BYTES {
+            return Err("DNS controller configuration is too large".into());
+        }
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staging)
+            .map_err(|error| format!("Cannot create controller configuration staging file: {error}"))?;
+        file.write_all(&bytes)
+            .and_then(|_| file.sync_all())
+            .map_err(|error| format!("Cannot persist controller configuration: {error}"))?;
+        drop(file);
+        fs::rename(&staging, &target)
+            .map_err(|error| format!("Cannot commit controller configuration: {error}"))?;
+        if self.read_controller_config()?.as_ref() != Some(config) {
+            return Err("Controller configuration read-back mismatch".into());
+        }
+        Ok(())
     }
 }
 

@@ -48,6 +48,12 @@ pub struct ServiceReport {
     /// Internal service state only; not an authorization or truth signal for GUI.
     #[serde(default)]
     pub recovery_state: Option<String>,
+    #[serde(default)]
+    pub dns_state: Option<String>,
+    #[serde(default)]
+    pub adapter_count: Option<u32>,
+    #[serde(default)]
+    pub last_error: Option<String>,
 }
 
 pub fn now_ms() -> u64 {
