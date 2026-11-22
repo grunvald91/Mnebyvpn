@@ -267,7 +267,7 @@ fn read_dns_family(guid: GUID, ipv6: bool) -> Result<FamilyDnsConfig, String> {
     let mut settings: DNS_INTERFACE_SETTINGS = unsafe { std::mem::zeroed() };
     settings.Version = DNS_INTERFACE_SETTINGS_VERSION1;
     if ipv6 {
-        settings.Flags = DNS_SETTING_IPV6;
+        settings.Flags = DNS_SETTING_IPV6 as u64;
     }
     let result = unsafe { GetInterfaceDnsSettings(guid, &mut settings) };
     if result != 0 {
