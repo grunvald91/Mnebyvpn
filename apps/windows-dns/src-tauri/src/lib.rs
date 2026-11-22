@@ -62,7 +62,11 @@ fn launch_system_dns_action(action: String, host: Option<String>) -> Result<Stri
         }
 
         let args = if action == "Enable" {
-            if let Some(hostname) = host.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+            if let Some(hostname) = host
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
                 mnebydns_core::resolve_dot_addresses(hostname)?;
                 format!("enable {}", hostname.to_ascii_lowercase())
             } else {
@@ -106,9 +110,7 @@ fn service_not_installed() -> bool {
     use windows_sys::Win32::System::Services::{
         CloseServiceHandle, OpenSCManagerW, OpenServiceW, SC_MANAGER_CONNECT, SERVICE_QUERY_STATUS,
     };
-    let manager = unsafe {
-        OpenSCManagerW(std::ptr::null(), std::ptr::null(), SC_MANAGER_CONNECT)
-    };
+    let manager = unsafe { OpenSCManagerW(std::ptr::null(), std::ptr::null(), SC_MANAGER_CONNECT) };
     if manager.is_null() {
         return false;
     }
