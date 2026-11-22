@@ -30,9 +30,8 @@ fn service_main(_args: Vec<OsString>) {
 }
 
 fn status_path() -> io::Result<PathBuf> {
-    let program_data = std::env::var_os("ProgramData").ok_or_else(|| {
-        io::Error::new(io::ErrorKind::NotFound, "ProgramData is missing")
-    })?;
+    let program_data = std::env::var_os("ProgramData")
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "ProgramData is missing"))?;
     Ok(PathBuf::from(program_data)
         .join("mnebyDNS")
         .join("health-v1.json"))
@@ -45,7 +44,9 @@ fn publish(path: &PathBuf) -> io::Result<()> {
         probe: probe_loopback(),
     };
     let json = serde_json::to_vec(&report)?;
-    let directory = path.parent().ok_or_else(|| io::Error::other("No status directory"))?;
+    let directory = path
+        .parent()
+        .ok_or_else(|| io::Error::other("No status directory"))?;
     fs::create_dir_all(directory)?;
     // This file only carries read-only diagnostic data and is never used for control.
     fs::write(path, json)
