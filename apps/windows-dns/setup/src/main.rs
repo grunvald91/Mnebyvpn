@@ -2,12 +2,13 @@
 //! It never changes network adapters, DNSProxy, routes, or Windows DNS settings.
 //! This is an unsigned developer preview, NOT a production installer.
 
-use mnebydns_journal::ProtectedJournal;
+use mnebydns_journal::{ControllerConfig, ProtectedJournal};
 use std::env;
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 use windows_service::service::{
@@ -116,9 +117,9 @@ fn install() -> io::Result<()> {
 
     let info = ServiceInfo {
         name: OsString::from(SERVICE_NAME),
-        display_name: OsString::from("мнебыDNS — диагностика (только чтение)"),
+        display_name: OsString::from("мнебыDNS — системный DNS"),
         service_type: ServiceType::OWN_PROCESS,
-        start_type: ServiceStartType::OnDemand,
+        start_type: ServiceStartType::AutoStart,
         error_control: ServiceErrorControl::Normal,
         executable_path: binary,
         launch_arguments: Vec::new(),
@@ -133,12 +134,117 @@ fn install() -> io::Result<()> {
         )
         .map_err(map_service)?;
     service
-        .set_description("Read-only mnebyDNS localhost diagnostics. Does not change DNS or VPN.")
+        .set_description("Persistent mnebyDNS DNS-over-TLS resolver and per-interface DNS controller.")
         .map_err(map_service)?;
+    configure_service_recovery()?;
     service.start::<&str>(&[]).map_err(map_service)?;
-    println!("Diagnostic service installed and started (OnDemand).");
-    println!("Windows DNS settings and existing DNSProxy were NOT changed.");
+    println!("мнебыDNS system DNS service installed and started automatically.");
+    println!("It will start at Windows boot and restore saved DNS settings when disabled.");
     Ok(())
+}
+
+
+fn configure_service_recovery() -> io::Result<()> {
+    let root = env::var_os("SystemRoot").ok_or_else(|| error("SystemRoot missing"))?;
+    let sc = PathBuf::from(root).join("System32").join("sc.exe");
+    let output = Command::new(sc)
+        .args([
+            "failure",
+            SERVICE_NAME,
+            "reset=",
+            "86400",
+            "actions=",
+            "restart/5000/restart/15000/restart/30000",
+        ])
+        .output()?;
+    if !output.status.success() {
+        return Err(error(format!(
+            "Could not configure automatic service restart: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    Ok(())
+}
+
+fn ensure_service_installed() -> io::Result<()> {
+    let manager = service_manager(false)?;
+    match manager.open_service(
+        SERVICE_NAME,
+        ServiceAccess::QUERY_STATUS | ServiceAccess::QUERY_CONFIG | ServiceAccess::START,
+    ) {
+        Ok(service) => {
+            let config = service.query_config().map_err(map_service)?;
+            let expected = PathBuf::from(
+                env::var_os("ProgramFiles").ok_or_else(|| error("ProgramFiles missing"))?,
+            )
+            .join(INSTALL_DIR)
+            .join(SERVICE_BIN);
+            if !is_our_service_path(&config.executable_path, &expected) {
+                return Err(error("Existing service path does not belong to this client"));
+            }
+            if service.query_status().map_err(map_service)?.current_state == ServiceState::Stopped {
+                service.start::<&str>(&[]).map_err(map_service)?;
+            }
+            Ok(())
+        }
+        Err(_) => install(),
+    }
+}
+
+fn enable(hostname: &str) -> io::Result<()> {
+    let host = hostname.trim().to_ascii_lowercase();
+    let addresses = mnebydns_core::resolve_dot_addresses(&host).map_err(error)?;
+    ensure_service_installed()?;
+    let journal = ProtectedJournal::open_service().map_err(error)?;
+    let config = ControllerConfig {
+        version: 1,
+        enabled: true,
+        dot_host: host,
+        upstream_addresses: addresses,
+    };
+    journal.write_controller_config(&config).map_err(error)?;
+    let manager = service_manager(false)?;
+    let service = manager
+        .open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS | ServiceAccess::START)
+        .map_err(map_service)?;
+    if service.query_status().map_err(map_service)?.current_state == ServiceState::Stopped {
+        service.start::<&str>(&[]).map_err(map_service)?;
+    }
+    println!("DNS controller activation requested; service is applying IPv4 and IPv6 DNS to network adapters.");
+    Ok(())
+}
+
+fn disable() -> io::Result<()> {
+    let journal = ProtectedJournal::open_service().map_err(error)?;
+    let system_journal = journal.system_dns_journal().map_err(error)?;
+    let pending = system_journal.has_pending().map_err(error)?;
+    let mut config = match journal.read_controller_config().map_err(error)? {
+        Some(value) => value,
+        None if pending => ControllerConfig {
+            version: 1,
+            enabled: false,
+            dot_host: "recovery.invalid".to_owned(),
+            upstream_addresses: Vec::new(),
+        },
+        None => {
+            println!("No personal DNS controller configuration or pending adapter backup.");
+            return Ok(());
+        }
+    };
+    config.enabled = false;
+    journal.write_controller_config(&config).map_err(error)?;
+    // If the service was stopped or removed while DNS was active, start the
+    // controller only after the disabled state is durable so it restores.
+    ensure_service_installed()?;
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_secs(90) {
+        if !system_journal.has_pending().map_err(error)? {
+            println!("Original IPv4 and IPv6 DNS settings restored and verified.");
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(500));
+    }
+    Err(error("DNS restoration is still pending. The recovery journal is retained; do not delete the service or its ProgramData folder."))
 }
 
 fn status() -> io::Result<()> {
@@ -149,11 +255,20 @@ fn status() -> io::Result<()> {
     let state = service.query_status().map_err(map_service)?;
     println!("{}: {:?}", SERVICE_NAME, state.current_state);
     match ProtectedJournal::open_service() {
-        Ok(journal) => match journal.check_recovery_pending() {
-            Ok(true) => println!("Recovery journal: PENDING (do not delete)"),
-            Ok(false) => println!("Recovery journal: clear"),
-            Err(reason) => println!("Recovery journal unreadable: {reason}"),
-        },
+        Ok(journal) => {
+            match journal.system_dns_journal() {
+                Ok(system) => match system.read_all() {
+                    Ok(records) => println!("System DNS adapter backups: {}", records.len()),
+                    Err(reason) => println!("System DNS journal unreadable: {reason}"),
+                },
+                Err(reason) => println!("System DNS journal unavailable: {reason}"),
+            }
+            match journal.read_controller_config() {
+                Ok(Some(config)) => println!("System DNS configured: {}", if config.enabled { "enabled" } else { "disabled" }),
+                Ok(None) => println!("System DNS configured: no"),
+                Err(reason) => println!("Controller config unreadable: {reason}"),
+            }
+        }
         Err(reason) => println!("Protected journal not accessible: {reason}"),
     }
     Ok(())
@@ -189,6 +304,9 @@ fn uninstall() -> io::Result<()> {
     let journal = ProtectedJournal::open_service().map_err(error)?;
     if journal.check_recovery_pending().map_err(error)? {
         return Err(error("Recovery pending: service uninstall blocked"));
+    }
+    if journal.system_dns_journal().map_err(error)?.has_pending().map_err(error)? {
+        return Err(error("System DNS recovery pending: disable the DNS client and restore all adapters before uninstall"));
     }
 
     let manager = service_manager(false)?;
@@ -235,15 +353,16 @@ fn uninstall() -> io::Result<()> {
 }
 
 fn usage() {
-    eprintln!("mnebydns-setup.exe [install|status|uninstall]");
-    eprintln!("install/uninstall require an elevated Windows Administrator terminal.");
-    eprintln!("This is a diagnostic service only. It never changes DNS settings.");
+    eprintln!("mnebydns-setup.exe [install|enable <DoT-host>|disable|restore|status|uninstall]");
+    eprintln!("System DNS changes require Windows Administrator approval (UAC).");
 }
 
 fn main() {
     let mut args = env::args().skip(1);
     let result = match (args.next().as_deref(), args.next()) {
         (Some("install"), None) => install(),
+        (Some("enable"), Some(host)) if args.next().is_none() => enable(&host),
+        (Some("disable" | "restore"), None) => disable(),
         (Some("status"), None) => status(),
         (Some("uninstall"), None) => uninstall(),
         _ => {

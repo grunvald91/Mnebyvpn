@@ -73,17 +73,18 @@
       <div class="item"><span>Возврат окна</span><strong>Нажать значок в трее</strong></div>
       <div class="item"><span>Выход</span><strong>Меню трея → Выйти</strong></div>
       <div class="item"><span>Системный DNS Windows</span><strong id="system-dns-state">Не проверено</strong></div>
-      <div class="item"><span>Выбор адаптера</span><strong>Вручную</strong></div>
-      <div class="item"><span>Хранение DNS-адреса</span><strong>Не сохраняется</strong></div>
-      <section class="detail" aria-label="Пробное системное включение DNS">
-        <h2>Системный DNS · пробный режим</h2>
-        <p class="section-intro">На 15 минут направляет обычные DNS-запросы Windows через персональный DoT. Использует NRPT, не перезаписывая исходные DNS адаптеров. Нужны права администратора. При существующих правилах VPN включение блокируется.</p>
-        <p class="section-intro">В отдельном окне администратора потребуется ещё раз ввести персональный DoT-хост. Автооткат запланирован при перезагрузке, остановке прокси или по истечении времени.</p>
-        <button class="primary" id="enable-system-dns" type="button">Включить DNS Windows на 15 минут</button>
-        <button class="secondary" id="disable-system-dns" type="button">Выключить системный DNS</button>
-        <button class="secondary" id="refresh-system-dns" type="button">Проверить состояние Windows</button>
-        <p class="dot-status" id="system-dns-message" role="status" aria-live="polite">Состояние ещё не проверялось. Убедитесь, что в системе нет конфликтующих политик DNS.</p>
-        <p class="muted">Важно: браузер с собственным DoH и отдельные VPN могут обходить системный DNS. Долговременный режим пока не включён.</p>
+      <div class="item"><span>Выбор адаптеров</span><strong>Автоматически · все интерфейсы</strong></div>
+      <div class="item"><span>Хранение DoT-хоста</span><strong>Защищённая конфигурация Windows</strong></div>
+      <section class="detail" aria-label="Системный DNS Windows">
+        <h2>Системный DNS Windows</h2>
+        <p class="section-intro">Используется DoT-хост, указанный на главной странице. Клиент меняет DNS непосредственно на сетевых адаптерах Windows: IPv4 и IPv6, включая новые подключения. Для управления потребуется подтверждение UAC.</p>
+        <button class="primary" id="enable-system-dns" type="button">Включить системный DNS</button>
+        <button class="secondary" id="disable-system-dns" type="button">Выключить DNS</button>
+        <button class="secondary" id="restore-system-dns" type="button">Восстановить исходные настройки</button>
+        <button class="secondary" id="refresh-system-dns" type="button">Обновить состояние</button>
+        <p class="dot-status" id="system-dns-message" role="status" aria-live="polite">Состояние службы ещё не проверялось.</p>
+        <p class="muted">При выключении восстанавливаются исходные режимы и адреса DNS каждого адаптера. Пока восстановление не подтверждено, журнал резервных настроек сохраняется.</p>
+        <p class="muted">Приложения с собственным DoH/DoT и отдельные VPN-политики могут использовать независимый DNS. Их состояние показывается диагностикой.</p>
       </section>
       <button class="secondary" id="settings-tray" type="button">Свернуть в трей</button>
     </section>

@@ -141,15 +141,53 @@ fn apply_all(
             !already_applied
         };
         if needs_apply {
-            apply_adapter_loopback_dns(&guid)?;
+            if let Err(apply_error) = apply_adapter_loopback_dns(&guid) {
+                let rollback = restore_adapter_dns(saved)
+                    .and_then(|_| verify_adapter_restored(saved))
+                    .and_then(|_| system_journal.clear_verified(&guid));
+                applied.remove(&guid);
+                return Err(match rollback {
+                    Ok(()) => format!(
+                        "Не удалось применить DNS к {}: {}; исходные настройки восстановлены",
+                        adapter.name, apply_error
+                    ),
+                    Err(restore_error) => format!(
+                        "Не удалось применить DNS к {}: {}; ОШИБКА ВОССТАНОВЛЕНИЯ: {}",
+                        adapter.name, apply_error, restore_error
+                    ),
+                });
+            }
+            if adapter.operational {
+                if let Err(verify_error) = verify_adapter_loopback_dns(&guid) {
+                    let rollback = restore_adapter_dns(saved)
+                        .and_then(|_| verify_adapter_restored(saved))
+                        .and_then(|_| system_journal.clear_verified(&guid));
+                    applied.remove(&guid);
+                    return Err(match rollback {
+                        Ok(()) => format!(
+                            "DNS адаптера {} не прошёл проверку: {}; исходные настройки восстановлены",
+                            adapter.name, verify_error
+                        ),
+                        Err(restore_error) => format!(
+                            "DNS адаптера {} не прошёл проверку: {}; ОШИБКА ВОССТАНОВЛЕНИЯ: {}",
+                            adapter.name, verify_error, restore_error
+                        ),
+                    });
+                }
+            }
             applied.insert(guid.clone());
+        } else if adapter.operational {
+            // Verify effective resolvers every poll to detect VPN/DHCP changes.
+            if let Err(verify_error) = verify_adapter_loopback_dns(&guid) {
+                apply_adapter_loopback_dns(&guid)?;
+                verify_adapter_loopback_dns(&guid).map_err(|retry_error| {
+                    format!(
+                        "DNS адаптера {} не проходит проверку: {}; повтор: {}",
+                        adapter.name, verify_error, retry_error
+                    )
+                })?;
+            }
         }
-        if adapter.operational {
-            // Even after a previous successful write, verify the effective
-            // resolver list on every poll to catch VPN/DHCP/network changes.
-            verify_adapter_loopback_dns(&guid)?;
-        }
-        let _ = saved;
         applied_count += 1;
     }
     Ok(applied_count)

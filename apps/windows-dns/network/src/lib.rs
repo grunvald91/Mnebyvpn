@@ -539,17 +539,15 @@ pub fn capture_adapter_dns(interface_guid: &str) -> Result<AdapterDnsSnapshot, S
     let ipv4_api = read_dns_ipv4(guid)?;
     let registry = registry_source::inspect(&adapter.guid)?;
 
-    if let Some(registry_servers) = registry.ipv4_static.as_ref() {
-        if *registry_servers != ipv4_api.static_servers {
-            return Err("IPv4 DNS API и реестр не совпадают; точное восстановление не подтверждено".into());
-        }
-    }
-
     let ipv4 = mode_from_api(
         ipv4_api.static_servers.clone(),
         ipv4_api.flags,
         DNS_SETTING_NAMESERVER as u64,
     );
+    let ipv4_registry = mode_from_servers(registry.ipv4_static.clone());
+    if ipv4 != ipv4_registry {
+        return Err("IPv4 DNS API и реестр не совпадают; точное восстановление не подтверждено".into());
+    }
     let ipv4_profile = mode_from_api(
         ipv4_api.profile_servers.clone(),
         ipv4_api.flags,
@@ -562,6 +560,23 @@ pub fn capture_adapter_dns(interface_guid: &str) -> Result<AdapterDnsSnapshot, S
     validate_mode(&ipv4_profile, false)?;
     validate_mode(&ipv6, true)?;
     validate_mode(&ipv6_profile, true)?;
+
+    if adapter.operational {
+        for (mode, observed, family) in [
+            (&ipv4, &adapter.dns_ipv4, "IPv4"),
+            (&ipv4_profile, &adapter.dns_ipv4, "IPv4 profile"),
+            (&ipv6, &adapter.dns_ipv6, "IPv6"),
+            (&ipv6_profile, &adapter.dns_ipv6, "IPv6 profile"),
+        ] {
+            if let DnsServerMode::Static(expected) = mode {
+                if expected.iter().any(|server| !observed.contains(server)) {
+                    return Err(format!(
+                        "{family} static DNS snapshot does not match the effective resolver list"
+                    ));
+                }
+            }
+        }
+    }
 
     Ok(AdapterDnsSnapshot {
         interface_guid: adapter.guid,

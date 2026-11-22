@@ -319,37 +319,58 @@ async function refreshSystemDns() {
     return;
   }
   try {
-    const status = await invoke('system_dns_status');
-    const state = get('system-dns-state');
-    state.textContent = status === 'ACTIVE' ? 'Пробный режим NRPT включён' : 'Выключен';
-    state.classList.toggle('good', status === 'ACTIVE');
-    state.classList.toggle('bad', false);
-    get('system-dns-message').textContent = status === 'ACTIVE'
-      ? 'Windows использует пробное правило NRPT. Автоматическое восстановление запланировано.'
-      : 'Правило мнебыDNS не активно. DNS адаптеров не менялся.';
+    const report = await invoke('system_dns_status');
+    const state = report.dns_state || 'disabled';
+    const labels = {
+      disabled: 'Выключен',
+      starting: 'Запуск и настройка адаптеров',
+      active: 'Включён · системный DNS работает',
+      restoring: 'Восстанавливаю исходные настройки',
+      error: 'Ошибка · требуется диагностика'
+    };
+    get('system-dns-state').textContent = labels[state] || state;
+    get('system-dns-state').classList.toggle('good', state === 'active');
+    get('system-dns-state').classList.toggle('bad', state === 'error');
+    const details = [];
+    if (report.adapter_count !== null && report.adapter_count !== undefined) {
+      details.push('Адаптеров: ' + report.adapter_count);
+    }
+    if (report.last_error) details.push(report.last_error);
+    if (report.probe) {
+      details.push('Локальный DNS IPv4: ' + (report.probe.ipv4.ok ? 'OK' : 'ошибка'));
+      details.push('Локальный DNS IPv6: ' + (report.probe.ipv6.ok ? 'OK' : 'ошибка'));
+    }
+    get('system-dns-message').textContent = details.join(' · ') || 'Статус службы получен.';
   } catch (error) {
-    get('system-dns-message').textContent = 'Не удалось прочитать состояние NRPT: ' + String(error);
+    get('system-dns-state').textContent = 'Служба недоступна';
+    get('system-dns-message').textContent = 'Не удалось получить состояние системного DNS: ' + String(error);
   }
 }
 
 async function requestSystemDns(action) {
   if (systemDnsLoading || typeof invoke !== 'function') return;
+  const host = action === 'Enable' ? get('dot-host').value.trim() : null;
+  if (action === 'Enable' && !host) {
+    get('system-dns-message').textContent = 'Сначала укажите персональный DoT-хост на главной странице.';
+    return;
+  }
   systemDnsLoading = true;
-  for (const id of ['enable-system-dns', 'disable-system-dns']) get(id).disabled = true;
+  for (const id of ['enable-system-dns', 'disable-system-dns', 'restore-system-dns']) get(id).disabled = true;
   try {
-    const message = await invoke('launch_system_dns_trial', { action });
-    get('system-dns-message').textContent = message
-      + ' Введите персональный хост в открывшемся окне PowerShell. После завершения нажмите «Проверить состояние Windows».';
+    const message = await invoke('launch_system_dns_action', { action, host });
+    get('system-dns-message').textContent = message;
+    window.setTimeout(refreshSystemDns, 1800);
   } catch (error) {
-    get('system-dns-message').textContent = 'Не удалось открыть UAC: ' + String(error);
+    get('system-dns-message').textContent = 'Не удалось запустить управление DNS: ' + String(error);
   } finally {
     systemDnsLoading = false;
-    for (const id of ['enable-system-dns', 'disable-system-dns']) get(id).disabled = false;
+    for (const id of ['enable-system-dns', 'disable-system-dns', 'restore-system-dns']) get(id).disabled = false;
   }
 }
 
 get('enable-system-dns').addEventListener('click', () => requestSystemDns('Enable'));
 get('disable-system-dns').addEventListener('click', () => requestSystemDns('Disable'));
+get('restore-system-dns').addEventListener('click', () => requestSystemDns('Disable'));
 get('refresh-system-dns').addEventListener('click', refreshSystemDns);
 
 

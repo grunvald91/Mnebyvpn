@@ -1,15 +1,12 @@
-//! Preview-only DNS/UDP -> authenticated DNS-over-TLS bridge.
-//! Binds exclusively to IPv4 loopback on an ephemeral port. No OS DNS edits,
-//! no port 53 bind, no plaintext upstream fallback and no secrets at rest.
-//! The upstream name is resolved and pinned *before* the local listener starts;
-//! otherwise changing system DNS could create a bootstrap resolution loop.
-//!
-//! This proof of concept does NOT claim to be a complete DNS server: no TCP
-//! listener, cache, background service, IPv6 listener or production pooling.
+//! Local DNS forwarder for the persistent Windows DNS controller.
+//! Listens only on 127.0.0.1 and ::1 (UDP/TCP), supports bounded DNS-over-TCP
+//! framing, and forwards only through authenticated DoT. Upstream IPs are
+//! pinned before system DNS changes so service restart cannot create a
+//! bootstrap loop. No plaintext fallback is permitted.
 
 use super::dot::{
-    candidate_addresses, checked_hostname, connect_authenticated, read_exact_until, DOT_PORT,
-    IO_TIMEOUT, MAX_DNS_FRAME,
+    candidate_addresses, checked_hostname, connect_authenticated, read_exact_until,
+    AuthenticatedStream, DOT_PORT, IO_TIMEOUT, MAX_DNS_FRAME,
 };
 use super::{parse_reply, query_packet, NEXT_DNS_ID};
 use native_tls::TlsConnector;
@@ -17,7 +14,7 @@ use serde::Serialize;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -129,20 +126,43 @@ trait Upstream: Send + Sync + 'static {
     fn forward(&self, query: &[u8]) -> Result<Vec<u8>, String>;
 }
 
+const MAX_POOLED_DOT_CONNECTIONS: usize = 4;
+
 struct PinnedDotUpstream {
     host: String,
     addresses: Vec<SocketAddr>,
+    connector: TlsConnector,
+    pool: Mutex<Vec<AuthenticatedStream>>,
 }
 
-impl Upstream for PinnedDotUpstream {
-    fn forward(&self, query: &[u8]) -> Result<Vec<u8>, String> {
-        let mut tls_builder = TlsConnector::builder();
-        tls_builder.min_protocol_version(Some(native_tls::Protocol::Tlsv12));
-        let connector = tls_builder
+impl PinnedDotUpstream {
+    fn new(host: String, addresses: Vec<SocketAddr>) -> Result<Self, String> {
+        let mut builder = TlsConnector::builder();
+        builder.min_protocol_version(Some(native_tls::Protocol::Tlsv12));
+        let connector = builder
             .build()
             .map_err(|_| "TLS context unavailable".to_owned())?;
-        let mut tls =
-            connect_authenticated(&self.host, self.addresses.iter().copied(), &connector)?;
+        Ok(Self {
+            host,
+            addresses,
+            connector,
+            pool: Mutex::new(Vec::new()),
+        })
+    }
+
+    fn connect(&self) -> Result<AuthenticatedStream, String> {
+        connect_authenticated(
+            &self.host,
+            self.addresses.iter().copied(),
+            &self.connector,
+        )
+    }
+
+    fn forward_on(
+        &self,
+        mut tls: AuthenticatedStream,
+        query: &[u8],
+    ) -> Result<(AuthenticatedStream, Vec<u8>), String> {
         let framed_len: u16 = query
             .len()
             .try_into()
@@ -160,7 +180,54 @@ impl Upstream for PinnedDotUpstream {
         }
         let mut response = vec![0u8; len];
         read_exact_until(&mut tls, &mut response, deadline).map_err(str::to_owned)?;
-        Ok(response)
+        Ok((tls, response))
+    }
+
+    fn return_to_pool(&self, tls: AuthenticatedStream) {
+        if let Ok(mut pool) = self.pool.lock() {
+            if pool.len() < MAX_POOLED_DOT_CONNECTIONS {
+                pool.push(tls);
+            }
+        }
+    }
+}
+
+impl Upstream for PinnedDotUpstream {
+    fn forward(&self, query: &[u8]) -> Result<Vec<u8>, String> {
+        let pooled = self
+            .pool
+            .lock()
+            .map_err(|_| "DoT connection pool is unavailable".to_owned())?
+            .pop();
+        let first_attempt = match pooled {
+            Some(connection) => self.forward_on(connection, query),
+            None => self
+                .connect()
+                .and_then(|connection| self.forward_on(connection, query)),
+        };
+        match first_attempt {
+            Ok((connection, response)) => {
+                self.return_to_pool(connection);
+                Ok(response)
+            }
+            Err(first_error) => {
+                // A pooled TLS socket may have been closed by the upstream.
+                // Discard it and retry exactly once with a fresh authenticated
+                // connection; never downgrade to plaintext DNS.
+                let connection = self.connect().map_err(|second| {
+                    format!("{first_error}; reconnect failed: {second}")
+                })?;
+                match self.forward_on(connection, query) {
+                    Ok((connection, response)) => {
+                        self.return_to_pool(connection);
+                        Ok(response)
+                    }
+                    Err(second_error) => Err(format!(
+                        "{first_error}; retry over fresh DoT connection failed: {second_error}"
+                    )),
+                }
+            }
+        }
     }
 }
 
@@ -358,7 +425,8 @@ impl LoopbackDnsServer {
         if addresses.is_empty() {
             return Err("No usable pinned DoT server IP addresses".into());
         }
-        Self::start_with_upstream(Arc::new(PinnedDotUpstream { host, addresses }), port)
+        let upstream = PinnedDotUpstream::new(host, addresses)?;
+        Self::start_with_upstream(Arc::new(upstream), port)
     }
 
     pub fn local_port(&self) -> u16 {

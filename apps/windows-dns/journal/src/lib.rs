@@ -446,9 +446,17 @@ impl SystemDnsJournal {
             if !name.ends_with(".json") {
                 continue;
             }
+            let file_guid = name
+                .strip_prefix(SYSTEM_RECORD_PREFIX)
+                .and_then(|value| value.strip_suffix(".json"))
+                .ok_or_else(|| "Malformed system DNS recovery filename".to_owned())?;
+            validate_system_guid(file_guid)?;
             let snapshot = self
                 .read_one(&entry.path())?
                 .ok_or_else(|| "System DNS recovery record disappeared".to_owned())?;
+            if !snapshot.interface_guid.eq_ignore_ascii_case(file_guid) {
+                return Err("System DNS recovery filename does not match its adapter GUID".into());
+            }
             if records.iter().any(|item| {
                 item.interface_guid.eq_ignore_ascii_case(&snapshot.interface_guid)
             }) {
