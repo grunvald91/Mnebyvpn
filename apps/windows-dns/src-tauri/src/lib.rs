@@ -62,9 +62,14 @@ fn launch_system_dns_action(action: String, host: Option<String>) -> Result<Stri
         }
 
         let args = if action == "Enable" {
-            let hostname = host.ok_or_else(|| "Введите персональный DoT-хост".to_owned())?;
-            mnebydns_core::resolve_dot_addresses(&hostname)?;
-            format!("enable {}", hostname.trim().to_ascii_lowercase())
+            if let Some(hostname) = host.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+                mnebydns_core::resolve_dot_addresses(hostname)?;
+                format!("enable {}", hostname.to_ascii_lowercase())
+            } else {
+                // The elevated helper reuses the protected DoT config if present.
+                // It will reject an unconfigured first launch.
+                "enable".to_owned()
+            }
         } else {
             "disable".to_owned()
         };
