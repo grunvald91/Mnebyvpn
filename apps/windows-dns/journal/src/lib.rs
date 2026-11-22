@@ -405,6 +405,12 @@ mod tests {
         fn capture(&mut self, _: &str) -> Result<Snapshot, String> {
             Ok(original())
         }
+        fn verify_pre_apply(&mut self, _: &Snapshot) -> Result<(), String> {
+            Ok(())
+        }
+        fn verify_restore_target(&mut self, _: &Snapshot) -> Result<(), String> {
+            Ok(())
+        }
         fn apply_ipv4_loopback(&mut self, _: &str) -> Result<(), String> {
             Ok(())
         }
