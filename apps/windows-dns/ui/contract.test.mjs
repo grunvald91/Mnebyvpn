@@ -13,8 +13,19 @@ for (const m of js.matchAll(/\bget\(['"]([^'"]+)['"]\)/g)) {
 for (const m of js.matchAll(/\binvoke\(['"]([a-z_]+)'/g)) {
   assert.ok(rust.includes('fn ' + m[1] + '('), 'Missing Tauri command: ' + m[1]);
 }
-assert.ok(html.includes('id="run-all-tests"'));
-assert.ok(html.includes('id="dot-host"'));
-assert.ok(html.includes('Тестовый режим'));
+const home = html.split('<section id="home" class="view home-view">')[1]?.split('<section id="diagnostics"')[0];
+const settings = html.split('<section id="settings" class="view hidden">')[1];
+assert.ok(home, 'Missing home dashboard');
+assert.ok(settings, 'Missing Settings');
+assert.equal((home.match(/<button\\b/g) || []).length, 1, 'Home must have exactly one control button');
+assert.ok(home.includes('id="toggle-system-dns"'), 'Missing one-button DNS control');
+assert.ok(!home.includes('Тестовый режим'), 'Home must not pretend to be a test screen');
+assert.ok(!home.includes('run-all-tests'), 'Connection tests belong in Settings');
+assert.ok(settings.includes('id="dot-host"'), 'DoT profile belongs in Settings');
+assert.ok(settings.includes('id="run-all-tests"'), 'Diagnostics must remain available');
+assert.ok(!settings.includes('id="enable-system-dns"'), 'No duplicate enable button in Settings');
+assert.ok(!settings.includes('id="disable-system-dns"'), 'No duplicate disable button in Settings');
 assert.ok(js.includes('async function runAllTests()'));
-console.log('UI contract OK: ' + ids.length + ' DOM IDs');
+assert.ok(js.includes('async function requestSystemDns(action)'));
+assert.ok(js.includes("systemDnsState === 'active' ? 'Disable' : 'Enable'"));
+console.log('UI contract OK: ' + ids.length + ' DOM IDs; single control on main page');
