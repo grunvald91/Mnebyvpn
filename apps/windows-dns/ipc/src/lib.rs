@@ -3,7 +3,7 @@
 //! Windows client requires a LocalSystem-owned server process; a spoofed pipe
 //! from an unprivileged user is rejected even if it wins the name first.
 
-use mnebydns_core::{now_ms, ServiceReport};
+use mnebydns_core::ServiceReport;
 
 pub const MAX_FRAME: usize = 4096;
 pub const MAX_STATUS_AGE_MS: u64 = 15_000;
