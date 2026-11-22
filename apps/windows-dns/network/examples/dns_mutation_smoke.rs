@@ -8,7 +8,7 @@ use mnebydns_network::{
 fn main() -> Result<(), String> {
     let adapter = list_adapters()?
         .into_iter()
-        .find(|item| item.operational && !item.is_loopback)
+        .find(|item| item.operational && item.likely_physical && !item.is_tunnel)
         .ok_or_else(|| "No active non-loopback adapter on disposable runner".to_owned())?;
     let snapshot = capture_adapter_dns(&adapter.guid)?;
     let apply_result = apply_adapter_loopback_dns(&snapshot)
