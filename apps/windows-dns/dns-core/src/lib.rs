@@ -53,6 +53,8 @@ pub struct ServiceReport {
     #[serde(default)]
     pub adapter_count: Option<u32>,
     #[serde(default)]
+    pub configured: bool,
+    #[serde(default)]
     pub last_error: Option<String>,
 }
 
