@@ -75,3 +75,31 @@ export function incySubscriptionHeaders(expiresAt:Date):Record<string,string>{
     'premium-url':INCY_RENEW_URL,
   };
 }
+
+/** Provider navigation after natural expiration. No network connection lines
+ * may be present: no valid VPN entitlement or node ACK is implied by HTTP 200.
+ * The site may be reached even when a subscription's servers have expired.
+ */
+export function incyExpiredSubscriptionHeaders(expiresAt:Date):Record<string,string>{
+  return {
+    ...incySubscriptionHeaders(expiresAt),
+    'announce':'base64:'+Buffer.from(
+      'Срок VPN истёк. Продлите доступ на mnebyvpn.site','utf8').toString('base64'),
+    'announce-url':INCY_RENEW_URL,
+  };
+}
+
+/** INCY recognizes these # comments in base64 text subscriptions as fallback
+ * navigation metadata. Crucially NO VPN keys or server URIs are returned.
+ */
+export function incyExpiredSubscriptionBody():string{
+  return Buffer.from([
+    '#profile-title: MNEBYVPN',
+    '#profile-web-page-url: '+INCY_SITE_URL,
+    '#support-url: '+INCY_SUPPORT_URL,
+    '#profile-update-interval: 1',
+    '#announce: base64:'+Buffer.from(
+      'Срок VPN истёк. Продлите доступ на mnebyvpn.site','utf8').toString('base64'),
+    '#announce-url: '+INCY_RENEW_URL,
+  ].join('\n')+'\n','utf8').toString('base64')+'\n';
+}
