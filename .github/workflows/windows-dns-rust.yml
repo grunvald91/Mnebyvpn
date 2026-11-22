@@ -127,3 +127,33 @@ jobs:
           path: apps/windows-dns/portable-preview/*
           if-no-files-found: error
           retention-days: 14
+      - name: Smoke test reversible NRPT policy and rollback task (disposable Windows runner)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/windows-dns-rust-tray'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (@(Get-DnsClientNrptRule -ErrorAction Stop).Count -gt 0) {
+            throw 'Runner already has NRPT policy; cannot safely test Any-rule'
+          }
+          $token = ([guid]::NewGuid()).ToString('N')
+          $label = "MnebyDNS CI $token"
+          $taskName = "MnebyDNS-CI-$token"
+          try {
+            Add-DnsClientNrptRule -Namespace '.' -NameServers @('127.0.0.1','::1') -DisplayName $label -ErrorAction Stop | Out-Null
+            $own = @(Get-DnsClientNrptRule -ErrorAction Stop | Where-Object { $_.DisplayName -eq $label })
+            if ($own.Count -ne 1 -or @($own[0].Namespace) -notcontains '.') { throw 'NRPT Any readback failed' }
+            $taskAction = New-ScheduledTaskAction -Execute (Join-Path $env:WINDIR 'System32\cmd.exe') -Argument '/c exit 0'
+            $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+            $tick = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(1)) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Minutes 15)
+            $boot = New-ScheduledTaskTrigger -AtStartup
+            $logon = New-ScheduledTaskTrigger -AtLogOn
+            Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger @($tick,$boot,$logon) -Principal $principal -Force | Out-Null
+            if (-not (Get-ScheduledTask -TaskName $taskName -ErrorAction Stop)) { throw 'Cannot read rollback task' }
+          } finally {
+            @(Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq $label }) |
+              ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force -Confirm:$false -ErrorAction Stop }
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+          }
+          if (@(Get-DnsClientNrptRule -ErrorAction Stop).Count -ne 0) {
+            throw 'NRPT rollback did not restore the empty policy list'
+          }
