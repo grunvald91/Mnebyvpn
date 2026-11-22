@@ -36,17 +36,21 @@ async fn smoke_local_dot_proxy(host: String) -> Result<mnebydns_core::UdpDotSmok
         })?
 }
 
+#[cfg(windows)]
+const EXPECTED_SYSTEM_DNS_SCRIPT: &[u8] = include_bytes!("../../SYSTEM-DNS.ps1");
 
 #[cfg(windows)]
 fn system_dns_script() -> Result<std::path::PathBuf, String> {
-    let exe = std::env::current_exe()
-        .map_err(|_| "Не удалось определить путь приложения".to_owned())?;
+    let exe =
+        std::env::current_exe().map_err(|_| "Не удалось определить путь приложения".to_owned())?;
     let path = exe
         .parent()
         .ok_or_else(|| "Не удалось определить каталог приложения".to_owned())?
         .join("SYSTEM-DNS.ps1");
-    if !path.is_file() {
-        return Err("Отсутствует SYSTEM-DNS.ps1. Распакуйте весь ZIP-архив приложения.".into());
+    let bytes = std::fs::read(&path)
+        .map_err(|_| "Не найден SYSTEM-DNS.ps1. Распакуйте весь ZIP-архив.".to_owned())?;
+    if bytes != EXPECTED_SYSTEM_DNS_SCRIPT {
+        return Err("SYSTEM-DNS.ps1 изменён: отказ от запуска с правами администратора. Скачайте чистый ZIP.".into());
     }
     Ok(path)
 }

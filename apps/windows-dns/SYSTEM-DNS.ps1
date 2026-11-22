@@ -98,21 +98,26 @@ try {
     # SYSTEM task does not run a user-writable .ps1; its only action is a
     # fixed encoded cleanup command bound to this unique NRPT rule and PID.
     $cleanup = @'
-$ErrorActionPreference = 'SilentlyContinue'
-$p = Get-Process -Id __PID__ -ErrorAction SilentlyContinue
-if ($p -and $p.ProcessName -eq 'mnebydns-loopback' -and $p.StartTime.ToUniversalTime().Ticks -eq [long]__TICKS__ -and (Get-Date) -lt [datetime]::FromBinary([long]__DEADLINE__)) { exit 0 }
-Get-DnsClientNrptRule | Where-Object { $_.DisplayName -eq '__MARKER__' -and @($_.Namespace) -contains '.' } | ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force -Confirm:$false }
-if ($p -and $p.ProcessName -eq 'mnebydns-loopback' -and $p.StartTime.ToUniversalTime().Ticks -eq [long]__TICKS__) { Stop-Process -Id __PID__ -Force }
-Unregister-ScheduledTask -TaskName '__TASK__' -Confirm:$false
+$ErrorActionPreference = 'Stop'
+try {
+    $p = Get-Process -Id __PID__ -ErrorAction SilentlyContinue
+    $matches = $p -and $p.ProcessName -eq 'mnebydns-loopback' -and $p.StartTime.ToUniversalTime().Ticks -eq [long]__TICKS__
+    if ($matches -and (Get-Date) -lt [datetime]::FromBinary([long]__DEADLINE__)) { exit 0 }
+    Get-DnsClientNrptRule -ErrorAction Stop | Where-Object { $_.DisplayName -eq '__MARKER__' -and @($_.Namespace) -contains '.' } | ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force -Confirm:$false -ErrorAction Stop }
+    if (@(Get-DnsClientNrptRule -ErrorAction Stop | Where-Object { $_.DisplayName -eq '__MARKER__' }).Count -gt 0) { exit 1 }
+    if ($matches) { Stop-Process -Id __PID__ -Force -ErrorAction SilentlyContinue }
+    Unregister-ScheduledTask -TaskName '__TASK__' -Confirm:$false -ErrorAction SilentlyContinue
+} catch { exit 1 }
 '@
     $cleanup = $cleanup.Replace('__PID__', "$($child.Id)").Replace('__TICKS__', "$started").Replace('__DEADLINE__', "$($expires.ToBinary())").Replace('__MARKER__', $marker).Replace('__TASK__', $taskname)
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cleanup))
     $taskExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $actionTask = New-ScheduledTaskAction -Execute $taskExe -Argument "-NoProfile -NonInteractive -EncodedCommand $encoded"
     $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-    $tick = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Minutes $durationMinutes)
+    $tick = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(1)) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Minutes $durationMinutes)
     $boot = New-ScheduledTaskTrigger -AtStartup
-    Register-ScheduledTask -TaskName $taskname -Action $actionTask -Trigger @($tick, $boot) -Principal $principal -Force | Out-Null
+    $logon = New-ScheduledTaskTrigger -AtLogOn
+    Register-ScheduledTask -TaskName $taskname -Action $actionTask -Trigger @($tick, $boot, $logon) -Principal $principal -Force | Out-Null
     Add-DnsClientNrptRule -Namespace '.' -NameServers $listenIPs -DisplayName $marker -ErrorAction Stop | Out-Null
     if (@(OwnRules).Count -ne 1) { throw 'NRPT правило не найдено после записи.' }
     'SYSTEM-DNS-TRIAL-ACTIVE'

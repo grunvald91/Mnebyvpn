@@ -261,12 +261,19 @@ impl LoopbackDnsServer {
         let udp6 = UdpSocket::bind(("::1", actual_port))
             .map_err(|_| "UDP IPv6 loopback port unavailable".to_owned())?;
 
+        // Configure ALL sockets before starting workers: a partial error
+        // must not leave a detached listener holding port 53.
+        for socket in [&tcp4, &tcp6] {
+            socket.set_nonblocking(true)
+                .map_err(|_| "Cannot configure DNS TCP listener".to_owned())?;
+        }
+        for socket in [&udp4, &udp6] {
+            socket.set_read_timeout(Some(RECV_POLL))
+                .map_err(|_| "Cannot configure DNS UDP listener".to_owned())?;
+        }
         let stop = Arc::new(AtomicBool::new(false));
         let mut threads = Vec::new();
         for listener in [tcp4, tcp6] {
-            listener
-                .set_nonblocking(true)
-                .map_err(|_| "Cannot configure DNS TCP listener".to_owned())?;
             let resolver = Arc::clone(&upstream);
             let stopping = Arc::clone(&stop);
             threads.push(thread::spawn(move || {
@@ -285,9 +292,7 @@ impl LoopbackDnsServer {
             }));
         }
         for listener in [udp4, udp6] {
-            // Socket preparation is complete before any changes to Windows
-            // DNS; unlike a network service this preview has no restart.
-            let _ = listener.set_read_timeout(Some(RECV_POLL));
+            // All socket options were configured before starting workers.
             let resolver = Arc::clone(&upstream);
             let stopping = Arc::clone(&stop);
             threads.push(thread::spawn(move || {
