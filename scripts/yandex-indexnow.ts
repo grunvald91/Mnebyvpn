@@ -55,12 +55,12 @@ export async function verifyLiveSeoReady(fetchImpl:FetchClient=fetch):Promise<vo
     if(!page.headers.get('content-type')?.toLowerCase().includes('text/html'))
       throw Error('INDEXNOW_PUBLIC_PAGE_NOT_HTML');
     const robots=page.headers.get('x-robots-tag')||'';
-    if(/\\bnoindex\\b/i.test(robots))throw Error('INDEXNOW_PUBLIC_PAGE_NOINDEX');
+    if(/\bnoindex\b/i.test(robots))throw Error('INDEXNOW_PUBLIC_PAGE_NOINDEX');
     let html:string;
     try{html=await page.text();}catch{throw Error('INDEXNOW_PUBLIC_PAGE_BODY');}
     if(!html.includes('<link rel="canonical" href="'+url+'">'))
       throw Error('INDEXNOW_PUBLIC_PAGE_CANONICAL');
-    if(/<meta\\b(?=[^>]*\\bname=["']robots["'])(?=[^>]*\\bcontent=["'][^"']*\\bnoindex\\b)[^>]*>/i.test(html))
+    if(/<meta\b(?=[^>]*\bname=["']robots["'])(?=[^>]*\bcontent=["'][^"']*\bnoindex\b)[^>]*>/i.test(html))
       throw Error('INDEXNOW_PUBLIC_PAGE_NOINDEX');
     const guide=SEO_PAGES.find(p=>p.path===path);
     if(guide&&(!html.includes('<h1>'+guide.headline+'</h1>')||
