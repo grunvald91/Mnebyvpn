@@ -24,7 +24,8 @@ import {isCanonicalAwgPublicKey,loadVerifiedAwgMaterial}
 import {deriveSubscriptionAwgIdentity,verifiedIncyAwgLine}
   from '../../../packages/provisioning/src/awg-in-subscription.ts';
 import {germanWebSocketOnly,keepSupportedAdditionalTransport,incySubscriptionHeaders,
-  incyExpiredSubscriptionHeaders,incyExpiredSubscriptionBody}
+  incyExpiredSubscriptionHeaders,incyExpiredSubscriptionBody,
+  incyEncodeActiveSubscription}
   from '../../../packages/provisioning/src/incy-subscription-presentation.ts';
 import {
   prepareWebsiteProdamusCheckout, prepareWebsiteYookassaCheckout, type PayformLinkTransport,
@@ -943,9 +944,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       // Per-entitlement INCY metadata refreshed on every request.
       // A durable subscription URL does not imply unlimited VPN access.
       for(const [name,value] of Object.entries(
-        incySubscriptionHeaders(owner.expiresAt)))
+        incySubscriptionHeaders(owner.expiresAt,requestedClient)))
         res.setHeader(name,value);
-      send(res,200,Buffer.from(profile+'\n','utf8').toString('base64')+'\n',
+      send(res,200,incyEncodeActiveSubscription(profile,requestedClient),
         'text/plain; charset=utf-8');
     }catch{
       json(res,503,{code:'VPN_SUBSCRIPTION_UNAVAILABLE'});

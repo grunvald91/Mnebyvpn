@@ -93,7 +93,12 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.equal(response.status,200);
    assert.match(response.headers.get('content-type')??'',/text\/plain/);
    assert.equal(response.headers.get('cache-control'),'no-store');
-   const decoded=Buffer.from((await response.text()).trim(),'base64').toString('utf8').trim();
+   const encodedResponse=await response.text();
+   const fullBody=Buffer.from(encodedResponse.trim(),'base64').toString('utf8').trim();
+   assert.ok(fullBody.includes('#profile-web-page-url: https://mnebyvpn.site'));
+   assert.ok(fullBody.includes('#support-url: https://t.me/MNEBYVPN_bot?start=support'));
+   assert.ok(fullBody.includes('#announce-url: https://mnebyvpn.site/#plans'));
+   const decoded=fullBody.split('\n').filter(line=>!line.startsWith('#')).join('\n');
    const displayedWs=germanWebSocketOnly(profile);
    assert.equal(decoded,displayedWs);
    assert.equal(response.headers.get('profile-web-page-url'),'https://mnebyvpn.site');
@@ -123,16 +128,17 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const legacyRefresh=await fetch(root+'/sub/'+issued!.token);
    assert.equal(legacyRefresh.status,200);
    assert.equal(Buffer.from((await legacyRefresh.text()).trim(),'base64')
-     .toString('utf8').trim(),displayedWs);
+     .toString('utf8').trim().split('\n').filter(line=>!line.startsWith('#')).join('\n'),displayedWs);
    const dual=await fetch(root+'/sub/'+issued!.token+'?client=incy');
    assert.equal(dual.status,200);
    assert.equal(dual.headers.get('premium-url'),'https://mnebyvpn.site/#plans');
    assert.equal(dual.headers.get('support-url'),
      'https://t.me/MNEBYVPN_bot?start=support');
-   assert.equal(Buffer.from((await dual.text()).trim(),'base64').toString('utf8').trim(),displayedWs);
+   assert.equal(Buffer.from((await dual.text()).trim(),'base64').toString('utf8').trim().split('\n').filter(line=>!line.startsWith('#')).join('\n'),displayedWs);
    const karing=await fetch(root+'/sub/'+issued!.token+'?client=karing');
    assert.equal(karing.status,200);
    assert.equal(karing.headers.get('premium-url'),'https://mnebyvpn.site/#plans');
+   // Karing keeps the previous exact comment-free body to avoid regressions.
    assert.equal(Buffer.from((await karing.text()).trim(),'base64')
      .toString('utf8').trim(),displayedWs);
    assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=other')).status,400);
@@ -152,7 +158,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const single=await fetch(root+'/sub/'+issued!.token+'?client=karing');
    assert.equal(single.status,200);
    assert.equal(Buffer.from((await single.text()).trim(),'base64')
-     .toString('utf8').trim(),displayedWs);
+     .toString('utf8').trim().split('\n').filter(line=>!line.startsWith('#')).join('\n'),displayedWs);
    // Multi-country nodes appear only after the DB release gate, fresh verified
    // registry status, and a cryptographic grant for this SAME active entitlement.
    const current=await pool.query(
@@ -183,7 +189,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    // still false: existing clients cannot see staged endpoints.
    const notReleased=await fetch(root+'/sub/'+issued!.token);
    assert.equal(Buffer.from((await notReleased.text()).trim(),'base64')
-     .toString('utf8').trim(),displayedWs);
+     .toString('utf8').trim().split('\n').filter(line=>!line.startsWith('#')).join('\n'),displayedWs);
    for(const row of extras){
      await pool.query(
        'INSERT INTO vpn_additional_nodes(node_id,country_code,country_name_ru,'+
@@ -205,24 +211,24 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const withCountries=await fetch(root+'/sub/'+issued!.token);
    assert.equal(withCountries.status,200);
    const delivered=Buffer.from((await withCountries.text()).trim(),'base64')
-     .toString('utf8').trim().split('\n');
+     .toString('utf8').trim().split('\n').filter(line=>!line.startsWith('#')).join('\n').split('\n');
    assert.equal(delivered.length,2);
    assert.equal(decodeURIComponent(new URL(delivered[0]!).hash.slice(1)),
       'мне VPN Нидерланды');
    assert.equal(delivered[1],displayedWs);
    const forKaring=await fetch(root+'/sub/'+issued!.token+'?client=karing');
    assert.deepEqual(Buffer.from((await forKaring.text()).trim(),'base64')
-     .toString('utf8').trim().split('\n'),delivered);
+     .toString('utf8').trim().split('\n').filter(line=>!line.startsWith('#')).join('\n').split('\n'),delivered);
    await pool.query("UPDATE vpn_additional_nodes SET state='degraded' WHERE node_id='nl-node-02'");
    const degraded=await fetch(root+'/sub/'+issued!.token);
    assert.equal(Buffer.from((await degraded.text()).trim(),'base64')
-     .toString('utf8').trim().split('\n').length,1);
+     .toString('utf8').trim().split('\n').filter(line=>!line.startsWith('#')).join('\n').split('\n').length,1);
    await pool.query(
      "UPDATE vpn_additional_node_receipts SET signature=$1 WHERE node_id='de-node-02'",
      ['0'.repeat(86)]);
    const tampered=await fetch(root+'/sub/'+issued!.token);
    assert.equal(Buffer.from((await tampered.text()).trim(),'base64')
-     .toString('utf8').trim(),displayedWs);
+     .toString('utf8').trim().split('\n').filter(line=>!line.startsWith('#')).join('\n'),displayedWs);
    await pool.query("UPDATE vpn_release_flags SET enabled=false WHERE feature='vpn_additional_nodes'");
    assert.equal((await fetch(root+'/sub/'+'B'.repeat(43))).status,404);
    const installer=await fetch(root+'/install/'+issued!.token+'?client=incy');
@@ -271,7 +277,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const restored=await fetch(root+'/sub/'+issued!.token);
    assert.equal(restored.status,200);
    assert.equal(Buffer.from((await restored.text()).trim(),'base64')
-     .toString('utf8').trim(),displayedWs);
+     .toString('utf8').trim().split('\n').filter(line=>!line.startsWith('#')).join('\n'),displayedWs);
    // Revoked links are not eligible for the expired-metadata exception.
    await pool.query('UPDATE vpn_subscription_links SET revoked_at=now() WHERE entitlement_id=$1',[entitlement]);
    assert.equal((await fetch(root+'/sub/'+issued!.token)).status,404);
