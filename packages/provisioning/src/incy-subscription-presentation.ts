@@ -50,7 +50,7 @@ export function keepSupportedAdditionalTransport(link:string):boolean{
  * and not the lifetime of the reusable HTTPS bearer URL. No fabricated
  * traffic totals or free trial expiry: always use authoritative entitlement.
  */
-export function incySubscriptionHeaders(expiresAt:Date):Record<string,string>{
+export function incySubscriptionHeaders(expiresAt:Date,client:string|null=null):Record<string,string>{
   if(!(expiresAt instanceof Date)||!Number.isFinite(expiresAt.getTime()))
     throw Error('Invalid VPN entitlement expiry');
   const expire=Math.floor(expiresAt.getTime()/1000);
@@ -73,11 +73,13 @@ export function incySubscriptionHeaders(expiresAt:Date):Record<string,string>{
     // INCY's optional "Premium" action must lead to the actual website
     // tariffs, not duplicate the Telegram support bot link.
     'premium-url':INCY_RENEW_URL,
-    // Non-Premium INCY supports announcements independently of provider
-    // banner-* fields. This is a second navigable route to renew access.
-    'announce':'base64:'+Buffer.from(
-      'Оплата и продление VPN: mnebyvpn.site','utf8').toString('base64'),
-    'announce-url':INCY_RENEW_URL,
+    // Karing's existing metadata contract stays unchanged. INCY supports
+    // non-Premium announcements as a second route to the renewal page.
+    ...(client==='karing'?{}:{
+      'announce':'base64:'+Buffer.from(
+        'Оплата и продление VPN: mnebyvpn.site','utf8').toString('base64'),
+      'announce-url':INCY_RENEW_URL,
+    }),
   };
 }
 
