@@ -81,6 +81,21 @@ pub(crate) fn candidate_addresses(addresses: impl Iterator<Item = SocketAddr>) -
         .collect()
 }
 
+/// Resolve the personal DoT hostname before Windows DNS is redirected to
+/// localhost. The returned socket addresses are persisted so the service can
+/// restart after reboot without depending on the DNS resolver it replaces.
+pub fn resolve_dot_addresses(hostname: &str) -> Result<Vec<SocketAddr>, String> {
+    let host = checked_hostname(hostname)?;
+    let addresses = (host.as_str(), DOT_PORT)
+        .to_socket_addrs()
+        .map_err(|_| "Не удалось разрешить имя персонального DoT-сервера".to_owned())?;
+    let candidates = candidate_addresses(addresses);
+    if candidates.is_empty() {
+        return Err("Для персонального DoT-сервера не найден IP-адрес".into());
+    }
+    Ok(candidates)
+}
+
 pub(crate) fn connect_authenticated(
     host: &str,
     addresses: impl Iterator<Item = SocketAddr>,

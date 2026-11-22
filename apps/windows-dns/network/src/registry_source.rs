@@ -19,6 +19,7 @@ pub struct RegistryDnsEvidence {
     pub ipv4_static: Option<Vec<String>>,
     pub ipv4_dhcp: Option<Vec<String>>,
     pub ipv6_static: Option<Vec<String>>,
+    pub ipv6_profile_static: Option<Vec<String>>,
 }
 
 fn wide(value: &str) -> Vec<u16> {
@@ -119,6 +120,9 @@ pub(super) fn inspect(interface_guid: &str) -> Result<RegistryDnsEvidence, Strin
             .map(|v| parse_servers(&v, false))
             .transpose()?,
         ipv6_static: read_reg_sz(&v6_path, "NameServer")?
+            .map(|v| parse_servers(&v, true))
+            .transpose()?,
+        ipv6_profile_static: read_reg_sz(&v6_path, "ProfileNameServer")?
             .map(|v| parse_servers(&v, true))
             .transpose()?,
     })

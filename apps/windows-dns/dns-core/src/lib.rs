@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 mod dot;
 mod udp_proxy;
-pub use dot::{probe_dot_strict, DotProbeReport};
+pub use dot::{probe_dot_strict, resolve_dot_addresses, DotProbeReport};
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};

@@ -331,13 +331,32 @@ impl LoopbackDnsServer {
     /// Bootstraps the trusted DoT hostname before any potential OS mutation.
     /// This binds a local DNS server, but does NOT modify Windows DNS settings.
     pub fn start(hostname: &str, port: u16) -> Result<Self, String> {
+        let addresses = super::dot::resolve_dot_addresses(hostname)?;
+        Self::start_pinned(hostname, addresses, port)
+    }
+
+    /// Start from addresses resolved and persisted before the system DNS
+    /// switch. Certificate validation still uses the original hostname.
+    pub fn start_pinned(
+        hostname: &str,
+        addresses: Vec<SocketAddr>,
+        port: u16,
+    ) -> Result<Self, String> {
         let host = checked_hostname(hostname)?;
-        let addresses = (host.as_str(), DOT_PORT)
-            .to_socket_addrs()
-            .map_err(|_| "Cannot bootstrap personal DoT server hostname".to_owned())?;
-        let addresses = candidate_addresses(addresses);
+        if addresses.is_empty()
+            || addresses.len() > 5
+            || addresses.iter().any(|address| {
+                address.port() != DOT_PORT
+                    || address.ip().is_loopback()
+                    || address.ip().is_unspecified()
+                    || address.ip().is_multicast()
+            })
+        {
+            return Err("Invalid pinned DoT server address list".into());
+        }
+        let addresses = candidate_addresses(addresses.into_iter());
         if addresses.is_empty() {
-            return Err("No bootstrap IP addresses for DoT".into());
+            return Err("No usable pinned DoT server IP addresses".into());
         }
         Self::start_with_upstream(Arc::new(PinnedDotUpstream { host, addresses }), port)
     }

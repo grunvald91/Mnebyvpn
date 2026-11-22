@@ -2,7 +2,7 @@
 //! Effective DNS addresses do not identify whether Windows obtained them statically,
 //! through DHCP, or through IPv6 router advertisements.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 mod registry_source;
 pub use registry_source::RegistryDnsEvidence;
@@ -229,8 +229,9 @@ pub fn list_adapters() -> Result<Vec<AdapterInfo>, String> {
 // Stage 4: non-privileged DNS configuration inspection, no mutating calls.
 // Microsoft: GetInterfaceDnsSettings / FreeInterfaceDnsSettings, Windows 10 build 19041+.
 use windows_sys::Win32::NetworkManagement::IpHelper::{
-    FreeInterfaceDnsSettings, GetInterfaceDnsSettings, DNS_INTERFACE_SETTINGS,
-    DNS_INTERFACE_SETTINGS_VERSION1, DNS_SETTING_NAMESERVER,
+    FreeInterfaceDnsSettings, GetInterfaceDnsSettings, SetInterfaceDnsSettings,
+    DNS_INTERFACE_SETTINGS, DNS_INTERFACE_SETTINGS_VERSION1, DNS_SETTING_IPV6,
+    DNS_SETTING_NAMESERVER, DNS_SETTING_PROFILE_NAMESERVER,
 };
 
 #[derive(Clone, Debug, Serialize)]
@@ -465,6 +466,224 @@ pub fn preflight_adapter(guid: &str) -> Result<AdapterPreflight, String> {
         registry_error,
     })
 }
+
+
+/// Exact per-stack DNS source captured before the client takes ownership.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DnsServerMode {
+    Automatic,
+    Static(Vec<String>),
+}
+
+/// DNS state for one Windows network interface. IPv4/IPv6 and profile DNS
+/// are kept separately so restore does not convert DHCP/RA into static DNS.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AdapterDnsSnapshot {
+    pub interface_guid: String,
+    pub adapter_name: String,
+    pub ipv4: DnsServerMode,
+    pub ipv6: DnsServerMode,
+    pub ipv4_profile: DnsServerMode,
+    pub ipv6_profile: DnsServerMode,
+}
+
+fn mode_from_servers(servers: Option<Vec<String>>) -> DnsServerMode {
+    match servers {
+        Some(values) if !values.is_empty() => DnsServerMode::Static(values),
+        _ => DnsServerMode::Automatic,
+    }
+}
+
+fn validate_mode(mode: &DnsServerMode, ipv6: bool) -> Result<(), String> {
+    if let DnsServerMode::Static(values) = mode {
+        if values.is_empty() || values.len() > MAX_DNS_SERVERS_PER_ADAPTER {
+            return Err("Неполный или пустой список DNS для восстановления".into());
+        }
+        for value in values {
+            let address: IpAddr = value
+                .parse()
+                .map_err(|_| "Снимок содержит некорректный DNS-адрес".to_owned())?;
+            if address.is_ipv6() != ipv6 {
+                return Err("Снимок содержит DNS-адрес неверного семейства".into());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn mode_from_api(
+    servers: Vec<String>,
+    flags: u64,
+    flag: u64,
+) -> DnsServerMode {
+    if flags & flag == 0 {
+        DnsServerMode::Automatic
+    } else {
+        mode_from_servers(Some(servers))
+    }
+}
+
+/// Capture exact static/automatic DNS source for both IP families and
+/// Wi-Fi profile DNS. Any mismatch between independent IPv4 API/registry
+/// observations blocks a destructive change.
+pub fn capture_adapter_dns(interface_guid: &str) -> Result<AdapterDnsSnapshot, String> {
+    let adapter = list_adapters()?
+        .into_iter()
+        .find(|item| item.guid.eq_ignore_ascii_case(interface_guid))
+        .ok_or_else(|| "Сетевой адаптер исчез во время снимка DNS".to_owned())?;
+    if adapter.is_loopback {
+        return Err("Loopback не является целевым сетевым адаптером".into());
+    }
+
+    let guid = parse_guid(&adapter.guid)?;
+    let ipv4_api = read_dns_ipv4(guid)?;
+    let registry = registry_source::inspect(&adapter.guid)?;
+
+    if let Some(registry_servers) = registry.ipv4_static.as_ref() {
+        if *registry_servers != ipv4_api.static_servers {
+            return Err("IPv4 DNS API и реестр не совпадают; точное восстановление не подтверждено".into());
+        }
+    }
+
+    let ipv4 = mode_from_api(
+        ipv4_api.static_servers.clone(),
+        ipv4_api.flags,
+        DNS_SETTING_NAMESERVER as u64,
+    );
+    let ipv4_profile = mode_from_api(
+        ipv4_api.profile_servers.clone(),
+        ipv4_api.flags,
+        DNS_SETTING_PROFILE_NAMESERVER as u64,
+    );
+    let ipv6 = mode_from_servers(registry.ipv6_static.clone());
+    let ipv6_profile = mode_from_servers(registry.ipv6_profile_static.clone());
+
+    validate_mode(&ipv4, false)?;
+    validate_mode(&ipv4_profile, false)?;
+    validate_mode(&ipv6, true)?;
+    validate_mode(&ipv6_profile, true)?;
+
+    Ok(AdapterDnsSnapshot {
+        interface_guid: adapter.guid,
+        adapter_name: adapter.name,
+        ipv4,
+        ipv6,
+        ipv4_profile,
+        ipv6_profile,
+    })
+}
+
+fn mode_text(mode: &DnsServerMode) -> String {
+    match mode {
+        DnsServerMode::Automatic => String::new(),
+        DnsServerMode::Static(values) => values.join(","),
+    }
+}
+
+fn set_dns_stack(
+    interface_guid: &str,
+    ipv6: bool,
+    adapter_mode: &DnsServerMode,
+    profile_mode: &DnsServerMode,
+) -> Result<(), String> {
+    validate_mode(adapter_mode, ipv6)?;
+    validate_mode(profile_mode, ipv6)?;
+    let guid = parse_guid(interface_guid)?;
+    let mut name_server = mode_text(adapter_mode).encode_utf16().chain([0]).collect::<Vec<_>>();
+    let mut profile_server = mode_text(profile_mode).encode_utf16().chain([0]).collect::<Vec<_>>();
+    let mut settings: DNS_INTERFACE_SETTINGS = unsafe { std::mem::zeroed() };
+    settings.Version = DNS_INTERFACE_SETTINGS_VERSION1;
+    settings.Flags = (DNS_SETTING_NAMESERVER | DNS_SETTING_PROFILE_NAMESERVER) as u64;
+    if ipv6 {
+        settings.Flags |= DNS_SETTING_IPV6 as u64;
+    }
+    settings.NameServer = name_server.as_mut_ptr();
+    settings.ProfileNameServer = profile_server.as_mut_ptr();
+    let code = unsafe { SetInterfaceDnsSettings(guid, &settings) };
+    if code != 0 {
+        return Err(format!(
+            "Windows не смогла изменить {} DNS адаптера {} (код {})",
+            if ipv6 { "IPv6" } else { "IPv4" },
+            interface_guid,
+            code
+        ));
+    }
+    Ok(())
+}
+
+/// Apply localhost as the only DNS resolver for IPv4 and IPv6. Both adapter
+/// and profile DNS are updated so a saved Wi-Fi profile cannot silently win.
+pub fn apply_adapter_loopback_dns(interface_guid: &str) -> Result<(), String> {
+    set_dns_stack(
+        interface_guid,
+        false,
+        &DnsServerMode::Static(vec!["127.0.0.1".into()]),
+        &DnsServerMode::Static(vec!["127.0.0.1".into()]),
+    )?;
+    set_dns_stack(
+        interface_guid,
+        true,
+        &DnsServerMode::Static(vec!["::1".into()]),
+        &DnsServerMode::Static(vec!["::1".into()]),
+    )
+}
+
+/// Restore the exact static/automatic state captured for both IP families.
+pub fn restore_adapter_dns(snapshot: &AdapterDnsSnapshot) -> Result<(), String> {
+    let ipv4 = set_dns_stack(
+        &snapshot.interface_guid,
+        false,
+        &snapshot.ipv4,
+        &snapshot.ipv4_profile,
+    );
+    let ipv6 = set_dns_stack(
+        &snapshot.interface_guid,
+        true,
+        &snapshot.ipv6,
+        &snapshot.ipv6_profile,
+    );
+    match (ipv4, ipv6) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(a), Err(b)) => Err(format!("IPv4: {a}; IPv6: {b}")),
+        (Err(error), _) | (_, Err(error)) => Err(error),
+    }
+}
+
+/// Read-back verification after activation: both stacks must resolve only
+/// through their loopback listeners, not through a surviving public resolver.
+pub fn verify_adapter_loopback_dns(interface_guid: &str) -> Result<(), String> {
+    let adapter = list_adapters()?
+        .into_iter()
+        .find(|item| item.guid.eq_ignore_ascii_case(interface_guid))
+        .ok_or_else(|| "Адаптер исчез после применения DNS".to_owned())?;
+    if adapter.dns_ipv4 != ["127.0.0.1"] {
+        return Err(format!(
+            "IPv4 DNS не применился полностью: {}",
+            adapter.dns_ipv4.join(", ")
+        ));
+    }
+    if adapter.dns_ipv6 != ["::1"] {
+        return Err(format!(
+            "IPv6 DNS не применился полностью: {}",
+            adapter.dns_ipv6.join(", ")
+        ));
+    }
+    Ok(())
+}
+
+/// Restore verification compares the entire captured DNS source state,
+/// including DHCP/RA-vs-static mode and profile DNS, not just effective IPs.
+pub fn verify_adapter_restored(snapshot: &AdapterDnsSnapshot) -> Result<(), String> {
+    let current = capture_adapter_dns(&snapshot.interface_guid)?;
+    if current != *snapshot {
+        return Err(format!(
+            "DNS адаптера {} отличается от исходного снимка",
+            snapshot.adapter_name
+        ));
+    }
+    Ok(())
+}
+
 
 #[cfg(test)]
 mod tests {
