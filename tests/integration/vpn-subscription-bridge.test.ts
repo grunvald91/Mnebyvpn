@@ -238,9 +238,43 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const installerJs=await script.text();
    assert.match(installerJs,/incy:\/\/import\//);
    assert.ok(installerJs.includes('window.location.assign(target)'));
-   await pool.query("UPDATE entitlements SET state='EXPIRED' WHERE id=$1",[entitlement]);
-   assert.equal((await fetch(root+'/sub/'+issued!.token)).status,404);
+   // A naturally expired entitlement must retain PUBLIC renewal navigation
+   // without returning any of the (now invalid) VPN network credentials.
+   await pool.query(
+     "UPDATE entitlements SET state='EXPIRED', starts_at=now()-interval '2 days', expires_at=now()-interval '1 second' WHERE id=$1",
+     [entitlement]);
+   const expired=await fetch(root+'/sub/'+issued!.token);
+   assert.equal(expired.status,200);
+   assert.equal(expired.headers.get('premium-url'),'https://mnebyvpn.site/#plans');
+   assert.equal(expired.headers.get('support-url'),
+     'https://t.me/MNEBYVPN_bot?start=support');
+   assert.equal(expired.headers.get('profile-web-page-url'),'https://mnebyvpn.site');
+   assert.equal(expired.headers.get('announce-url'),'https://mnebyvpn.site/#plans');
+   assert.equal(expired.headers.get('cache-control'),'no-store');
+   const expiredText=Buffer.from((await expired.text()).trim(),'base64')
+     .toString('utf8');
+   assert.ok(expiredText.includes('#profile-web-page-url: https://mnebyvpn.site'));
+   assert.ok(expiredText.includes('#support-url: https://t.me/MNEBYVPN_bot?start=support'));
+   assert.doesNotMatch(expiredText,/vless:\/\/|vmess:\/\/|trojan:\/\/|amneziawg:\/\/|awg:\/\//);
+   assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=incy')).status,200);
+   assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=bad')).status,400);
    assert.equal((await fetch(root+'/install/'+issued!.token+'?client=incy')).status,404);
+
+   // Renewal must not mint another bearer URL: same link works only after
+   // reactivation and exact node provisioning ACK.
+   await pool.query(
+     "UPDATE entitlements SET state='ACTIVE', expires_at=now()+interval '1 day' WHERE id=$1",
+     [entitlement]);
+   await pool.query(
+     "UPDATE provisioning_state SET applied_revision=(SELECT revision FROM entitlements WHERE id=$1),last_observed_at=now() WHERE entitlement_id=$1 AND adapter='vpn'",
+     [entitlement]);
+   const restored=await fetch(root+'/sub/'+issued!.token);
+   assert.equal(restored.status,200);
+   assert.equal(Buffer.from((await restored.text()).trim(),'base64')
+     .toString('utf8').trim(),displayedWs);
+   // Revoked links are not eligible for the expired-metadata exception.
+   await pool.query('UPDATE vpn_subscription_links SET revoked_at=now() WHERE entitlement_id=$1',[entitlement]);
+   assert.equal((await fetch(root+'/sub/'+issued!.token)).status,404);
  } finally {
    child?.kill('SIGTERM');
    await new Promise<void>(resolve=>worker.close(()=>resolve()));

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
   germanWebSocketOnly,keepSupportedAdditionalTransport,
-  incySubscriptionHeaders,INCY_SITE_URL,INCY_RENEW_URL,
+  incySubscriptionHeaders,incyExpiredSubscriptionHeaders,
+  incyExpiredSubscriptionBody,INCY_SITE_URL,INCY_RENEW_URL,
   INCY_SUPPORT_URL,
 } from '../packages/provisioning/src/incy-subscription-presentation.ts';
 
@@ -90,4 +91,23 @@ test('canonical GET /sub uses same metadata for every entitlement and keeps FI A
   assert.ok(!site.includes('stableMultiClientVpnProfile(nodeProfile)'));
   assert.ok(site.includes("if(!validNodeVpnProfile(profile))"));
   assert.ok(site.includes("subscriptionOwner(subscriptionPool,subMatch[1])"));
+});
+
+test('expired INCY subscription keeps website and support with no network secrets',()=>{
+  const expiry=new Date('2026-11-20T22:25:00Z');
+  const headers=incyExpiredSubscriptionHeaders(expiry);
+  assert.equal(headers['profile-web-page-url'],INCY_SITE_URL);
+  assert.equal(headers['premium-url'],INCY_RENEW_URL);
+  assert.equal(headers['support-url'],INCY_SUPPORT_URL);
+  assert.equal(headers['announce-url'],INCY_RENEW_URL);
+  assert.match(Buffer.from(headers['announce'].slice(7),'base64').toString('utf8'),
+    /истёк/);
+  assert.equal(headers['subscription-userinfo'].split('expire=')[1],
+    String(Math.floor(expiry.getTime()/1000)));
+  const decoded=Buffer.from(incyExpiredSubscriptionBody().trim(),'base64')
+    .toString('utf8');
+  assert.ok(decoded.includes('#profile-web-page-url: '+INCY_SITE_URL));
+  assert.ok(decoded.includes('#support-url: '+INCY_SUPPORT_URL));
+  assert.ok(decoded.includes('#announce-url: '+INCY_RENEW_URL));
+  assert.doesNotMatch(decoded,/vless:\/\/|vmess:\/\/|trojan:\/\/|awg:\/\/|amneziawg:\/\/|\[Interface\]/);
 });

@@ -14,7 +14,8 @@ import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,val
   from '../../../packages/support/src/telegram-relay.ts';
 import {verifyGscOwnerRelaySignature} from '../../../packages/support/src/gsc-owner-relay.ts';
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
-import {subscriptionOwner,subscriptionLink,issueSubscriptionLinkForAccount}
+import {subscriptionOwner,subscriptionLink,issueSubscriptionLinkForAccount,
+  expiredSubscriptionMetadata}
   from '../../../packages/provisioning/src/subscription-links.ts';
 import {additionalNodeVerificationKey,loadAdditionalVpnLinks}
   from '../../../packages/provisioning/src/multi-node-subscriptions.ts';
@@ -22,7 +23,8 @@ import {isCanonicalAwgPublicKey,loadVerifiedAwgMaterial}
   from '../../../packages/provisioning/src/awg-subscriber-material.ts';
 import {deriveSubscriptionAwgIdentity,verifiedIncyAwgLine}
   from '../../../packages/provisioning/src/awg-in-subscription.ts';
-import {germanWebSocketOnly,keepSupportedAdditionalTransport,incySubscriptionHeaders}
+import {germanWebSocketOnly,keepSupportedAdditionalTransport,incySubscriptionHeaders,
+  incyExpiredSubscriptionHeaders,incyExpiredSubscriptionBody}
   from '../../../packages/provisioning/src/incy-subscription-presentation.ts';
 import {
   prepareWebsiteProdamusCheckout, prepareWebsiteYookassaCheckout, type PayformLinkTransport,
@@ -875,7 +877,24 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if(req.method==='GET'&&subMatch){
     if(!subscriptionPool){json(res,503,{code:'SUBSCRIPTION_BACKEND_UNAVAILABLE'});return;}
     const owner=await subscriptionOwner(subscriptionPool,subMatch[1]);
-    if(!owner){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
+    if(!owner){
+      // A naturally expired, non-refunded, non-revoked link keeps only
+      // provider navigation; it NEVER retrieves an Xray/AWG node profile.
+      const expiresAt=await expiredSubscriptionMetadata(
+        subscriptionPool,subMatch[1]);
+      if(!expiresAt){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
+      const requestedClient=url.searchParams.get('client');
+      if(url.searchParams.size>1||
+         [...url.searchParams.keys()].some(k=>k!=='client')||
+         (requestedClient!==null&&requestedClient!=='incy'&&requestedClient!=='karing')){
+        json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
+      }
+      for(const [name,value] of Object.entries(
+        incyExpiredSubscriptionHeaders(expiresAt)))
+        res.setHeader(name,value);
+      send(res,200,incyExpiredSubscriptionBody(),'text/plain; charset=utf-8');
+      return;
+    }
     try{
       const nodeProfile=await liveVpnProfile(owner);
       // Preserve canonical RU188 entitlement; display verified FI AWG and
