@@ -227,7 +227,7 @@ pub fn list_adapters() -> Result<Vec<AdapterInfo>, String> {
 // Microsoft: GetInterfaceDnsSettings / FreeInterfaceDnsSettings, Windows 10 build 19041+.
 use windows_sys::Win32::NetworkManagement::IpHelper::{
     FreeInterfaceDnsSettings, GetInterfaceDnsSettings, DNS_INTERFACE_SETTINGS,
-    DNS_INTERFACE_SETTINGS_VERSION1, DNS_SETTING_IPV6,
+    DNS_INTERFACE_SETTINGS_VERSION1, DNS_SETTING_NAMESERVER,
 };
 
 #[derive(Clone, Debug, Serialize)]
@@ -235,6 +235,8 @@ pub struct FamilyDnsConfig {
     pub static_servers: Vec<String>,
     pub profile_servers: Vec<String>,
     pub flags: u64,
+    /// Evidence only. Never use this read-only report as a recovery journal.
+    pub origin_evidence: String,
     pub interpretation: String,
 }
 
@@ -250,6 +252,9 @@ pub struct AdapterPreflight {
     pub local_dns_targets: Vec<String>,
     pub mutation_enabled: bool,
     pub warning: String,
+    /// A verified two-family backup is not yet available.
+    pub recovery_ready: bool,
+    pub recovery_blockers: Vec<String>,
 }
 
 /// Convert only canonical Windows interface GUID strings returned by list_adapters().
@@ -275,56 +280,87 @@ fn parse_guid(input: &str) -> Result<GUID, String> {
     })
 }
 
-fn parse_servers(value: &str) -> Vec<String> {
-    value
-        .split([',', ' ', '\t', '\n'])
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .take(32)
-        .map(str::to_owned)
-        .collect()
+/// Never truncate or silently discard a DNS server. A truncated backup
+/// could restore a different resolver order after a crash.
+fn parse_servers(value: &str) -> Result<Vec<String>, String> {
+    let mut result = Vec::new();
+    for entry in value.split([',', ' ', '\t', '\n']).filter(|s| !s.is_empty()) {
+        if result.len() >= MAX_DNS_SERVERS_PER_ADAPTER {
+            return Err("DNS server list exceeds recovery inspection limit".into());
+        }
+        let ip: IpAddr = entry
+            .parse()
+            .map_err(|_| "Invalid DNS IP address in Windows settings".to_owned())?;
+        if !ip.is_ipv4() {
+            return Err("IPv6 address found in an IPv4-only configuration read".into());
+        }
+        result.push(entry.to_owned());
+    }
+    Ok(result)
+}
+
+/// Windows owns these API-allocated strings. Reject unterminated or invalid
+/// UTF-16 instead of silently keeping a truncated backup candidate.
+unsafe fn read_dns_wide(ptr: *const u16) -> Result<String, String> {
+    if ptr.is_null() {
+        return Ok(String::new());
+    }
+    const MAX_UNITS: usize = 2048;
+    let mut length = 0;
+    while length < MAX_UNITS && *ptr.add(length) != 0 {
+        length += 1;
+    }
+    if length == MAX_UNITS {
+        return Err("Windows returned an unterminated DNS setting".into());
+    }
+    String::from_utf16(slice::from_raw_parts(ptr, length))
+        .map_err(|_| "Windows returned invalid DNS setting UTF-16".into())
 }
 
 fn interpret_family(static_servers: &[String], profile_servers: &[String]) -> String {
     if !profile_servers.is_empty() {
         "Есть DNS профильного подключения; точный способ восстановления требует дополнительной проверки".to_owned()
     } else if !static_servers.is_empty() {
-        "Настроены статические DNS-серверы; для отката нужно сохранить их точный порядок".to_owned()
+        "Найдены статические IPv4 DNS; для отката нужно подтвердить источник и их точный порядок".to_owned()
     } else {
         "Статический DNS не указан; это не доказывает режим DHCP/RA".to_owned()
     }
 }
 
-fn read_dns_family(guid: GUID, ipv6: bool) -> Result<FamilyDnsConfig, String> {
-    // Windows API docs recommend a zero-initialized V1 struct. IPv6 flag on input
-    // selects the IPv6 stack; errors are displayed explicitly, never guessed.
+fn read_dns_ipv4(guid: GUID) -> Result<FamilyDnsConfig, String> {
+    // Microsoft GetInterfaceDnsSettings contract: set ONLY Version. Passing
+    // DNS_SETTING_IPV6 on input is not supported by the documented read API.
     let mut settings: DNS_INTERFACE_SETTINGS = unsafe { std::mem::zeroed() };
     settings.Version = DNS_INTERFACE_SETTINGS_VERSION1;
-    if ipv6 {
-        settings.Flags = DNS_SETTING_IPV6 as u64;
+    let code = unsafe { GetInterfaceDnsSettings(guid, &mut settings) };
+    if code != 0 {
+        return Err(format!("Не удалось прочитать IPv4 DNS (Windows API код {code})"));
     }
-    let result = unsafe { GetInterfaceDnsSettings(guid, &mut settings) };
-    if result != 0 {
-        return Err(format!(
-            "Не удалось прочитать настройки DNS {} (Windows API код {})",
-            if ipv6 { "IPv6" } else { "IPv4" },
-            result
-        ));
-    }
-    // Windows owns the allocations returned in fields; extract owned Strings
-    // before releasing the settings object.
-    let raw_static = unsafe { read_wide_string(settings.NameServer) };
-    let raw_profile = unsafe { read_wide_string(settings.ProfileNameServer) };
+    // Release Windows-owned strings even when strict parsing fails.
+    let strings = unsafe {
+        (|| {
+            let static_text = read_dns_wide(settings.NameServer)?;
+            let profile_text = read_dns_wide(settings.ProfileNameServer)?;
+            Ok::<_, String>((static_text, profile_text))
+        })()
+    };
     let flags = settings.Flags;
     unsafe { FreeInterfaceDnsSettings(&mut settings) };
-
-    let static_servers = parse_servers(&raw_static);
-    let profile_servers = parse_servers(&raw_profile);
+    let (raw_static, raw_profile) = strings?;
+    let static_servers = parse_servers(&raw_static)?;
+    let profile_servers = parse_servers(&raw_profile)?;
+    let origin_evidence =
+        if flags & DNS_SETTING_NAMESERVER as u64 != 0 && !static_servers.is_empty() {
+            "Статическая конфигурация обнаружена (IPv4), но откат ещё не разрешён"
+        } else {
+            "Источник DNS не подтверждён; DHCP нельзя определять по пустому полю"
+        };
     let interpretation = interpret_family(&static_servers, &profile_servers);
     Ok(FamilyDnsConfig {
         static_servers,
         profile_servers,
         flags,
+        origin_evidence: origin_evidence.to_owned(),
         interpretation,
     })
 }
@@ -339,22 +375,38 @@ pub fn preflight_adapter(guid: &str) -> Result<AdapterPreflight, String> {
         .ok_or_else(|| "Сетевой адаптер больше не существует — обновите список".to_owned())?;
 
     let interface_guid = parse_guid(&adapter.guid)?;
-    let (ipv4, ipv4_error) = match read_dns_family(interface_guid, false) {
+    let (ipv4, ipv4_error) = match read_dns_ipv4(interface_guid) {
         Ok(value) => (Some(value), None),
         Err(error) => (None, Some(error)),
     };
-    let (ipv6, ipv6_error) = match read_dns_family(interface_guid, true) {
-        Ok(value) => (Some(value), None),
-        Err(error) => (None, Some(error)),
-    };
-
-    let warning = if adapter.is_tunnel || adapter.is_loopback || !adapter.likely_physical {
-        "Этот интерфейс не подтверждён как физический Wi-Fi/Ethernet. Настройка заблокирована."
-    } else if ipv4_error.is_some() || ipv6_error.is_some() {
-        "Не удалось прочитать оба стека DNS — настройка заблокирована."
-    } else {
-        "Параметры прочитаны, но точный DHCP/RA-режим, защищённый журнал и проверенный откат ещё не реализованы."
-    };
+    // GetAdaptersAddresses reports effective IPv6 DNS separately in adapter
+    // inventory. The documented GetInterfaceDnsSettings V1 read API does not
+    // provide a validated IPv6 source-mode selector; NEVER relabel an IPv4
+    // result as an IPv6 configuration or assume IPv6 RA/DHCP settings.
+    let ipv6: Option<FamilyDnsConfig> = None;
+    let ipv6_error = Some(
+        "Источник IPv6 DNS не подтверждён: эффективные IPv6 адреса смотрите в карточке адаптера"
+            .to_owned(),
+    );
+    let mut recovery_blockers = vec![
+        "Не подтверждено происхождение IPv6 DNS (статический/DHCPv6/RA/профиль)"
+            .to_owned(),
+    ];
+    if adapter.is_tunnel || adapter.is_loopback || !adapter.likely_physical {
+        recovery_blockers.push("Адаптер не подтверждён как физический Wi-Fi/Ethernet".to_owned());
+    }
+    if ipv4_error.is_some() {
+        recovery_blockers.push("Не удалось прочитать исходный IPv4 DNS без потерь".to_owned());
+    }
+    if ipv4.as_ref().is_some_and(|v| v.profile_servers.len() > 0) {
+        recovery_blockers.push("Обнаружен профильный DNS, необходим отдельный план восстановления".to_owned());
+    }
+    if ipv4.as_ref().is_some_and(|v| {
+        v.static_servers.is_empty() || v.flags & DNS_SETTING_NAMESERVER as u64 == 0
+    }) {
+        recovery_blockers.push("Источник IPv4 DNS (DHCP/статический) не доказан".to_owned());
+    }
+    let warning = "Неполный снимок: нельзя сохранять его как точный backup IPv4+IPv6 и менять DNS Windows.";
     Ok(AdapterPreflight {
         guid: adapter.guid,
         adapter_name: adapter.name,
@@ -366,6 +418,8 @@ pub fn preflight_adapter(guid: &str) -> Result<AdapterPreflight, String> {
         local_dns_targets: vec!["127.0.0.1".to_owned(), "::1".to_owned()],
         mutation_enabled: false,
         warning: warning.to_owned(),
+        recovery_ready: false,
+        recovery_blockers,
     })
 }
 
@@ -387,9 +441,24 @@ mod tests {
         assert!(interpret_family(&["1.1.1.1".into()], &[]).contains("статические"));
         assert!(interpret_family(&[], &["1.1.1.1".into()]).contains("профильного"));
         assert_eq!(
-            parse_servers("1.1.1.1, 8.8.8.8"),
+            parse_servers("1.1.1.1, 8.8.8.8").unwrap(),
             vec!["1.1.1.1", "8.8.8.8"]
         );
+    }
+
+    #[test]
+    fn reject_lossy_or_wrong_family_ipv4_recovery_evidence() {
+        assert!(parse_servers("::1").is_err());
+        assert!(parse_servers("1.1.1.1,not-an-ip").is_err());
+        assert!(parse_servers(&vec!["1.1.1.1"; 33].join(",")).is_err());
+        assert_eq!(parse_servers(""), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn no_unverified_ipv6_mode_can_enable_mutation() {
+        // A returned IPv4 configuration must never be mistaken for IPv6
+        // just because GetAdaptersAddresses includes effective IPv6 servers.
+        assert_eq!(DNS_INTERFACE_SETTINGS_VERSION1, 1);
     }
 
     #[test]
