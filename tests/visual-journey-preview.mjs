@@ -76,6 +76,55 @@ const { chromium }=await import(process.env.VISUAL_PLAYWRIGHT_PACKAGE||'playwrig
 const browser=await chromium.launch({headless:true,args:['--no-sandbox'],
   ...(process.env.VISUAL_CHROME_PATH?{executablePath:process.env.VISUAL_CHROME_PATH}:{})});
 let failed=false;
+// Hold the deferred journey script to reproduce a genuinely slow first paint.
+// The old storefront must never become visible before interactive hydration.
+async function auditFirstPaint(){
+  const page=await browser.newPage({viewport:{width:390,height:844}});
+  let releaseScript;
+  const paused=new Promise(resolve=>{releaseScript=resolve;});
+  await page.route('**/journey.js',async route=>{
+    await paused;
+    await route.continue();
+  });
+  try{
+    await page.goto(base+'/',{waitUntil:'commit'});
+    await page.locator('#legacy-hero-title').waitFor({state:'attached'});
+    await page.waitForFunction(()=>
+      [...document.styleSheets].some(s=>s.href?.endsWith('/journey.css')));
+    const before=await page.evaluate(()=>({
+      activated:document.body.classList.contains('journey-active'),
+      legacy:getComputedStyle(document.querySelector('main > .hero')).display,
+      legacyPlans:getComputedStyle(document.querySelector('main > .plans-section')).display,
+      loader:getComputedStyle(document.querySelector('main'),'::before').content,
+    }));
+    console.log('FIRST_PAINT_BEFORE_JOURNEY='+JSON.stringify(before));
+    if(before.activated||before.legacy!=='none'||before.legacyPlans!=='none'||
+       !before.loader.includes('MNEBYVPN'))failed=true;
+  }finally{
+    releaseScript();
+  }
+  await page.waitForFunction(()=>document.body.classList.contains('journey-active'));
+  const after=await page.evaluate(()=>({
+    legacy:getComputedStyle(document.querySelector('main > .hero')).display,
+    landing:getComputedStyle(document.getElementById('journey-landing')).display,
+  }));
+  console.log('FIRST_PAINT_AFTER_JOURNEY='+JSON.stringify(after));
+  if(after.legacy!=='none'||after.landing==='none')failed=true;
+  await page.close();
+
+  const ctx=await browser.newContext({javaScriptEnabled:false,viewport:{width:390,height:844}});
+  const staticPage=await ctx.newPage();
+  await staticPage.goto(base+'/',{waitUntil:'load'});
+  const noJs=await staticPage.evaluate(()=>({
+    legacy:getComputedStyle(document.querySelector('main > .hero')).display,
+    legacyHeading:document.getElementById('legacy-hero-title')?.textContent?.trim(),
+    journeyHidden:document.getElementById('journey-landing')?.hidden,
+  }));
+  console.log('FIRST_PAINT_NO_JS='+JSON.stringify(noJs));
+  if(noJs.legacy==='none'||!noJs.legacyHeading||!noJs.journeyHidden)failed=true;
+  await ctx.close();
+}
+await auditFirstPaint();
 /* Verify the actual vertical geometry instead of inferring it from a JPG:
    - footer at document bottom, or viewport bottom for short screens;
    - single blocks centered in the available main area;
