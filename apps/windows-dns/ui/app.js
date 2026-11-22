@@ -249,7 +249,7 @@ async function refreshStatus() {
       get('service-state').classList.remove('good');
       get('service-state').classList.add('bad');
     }
-    get('status').textContent = 'Проверка выполнена. Защищённый DoT ещё не подтверждён.';
+    get('status').textContent = 'Локальный DNS проверен. Статус DoT отображается отдельно в разделе «Мой DNS».';
   } catch (error) {
     get('connection-title').textContent = 'Ошибка диагностики';
     get('status').textContent = 'Не удалось проверить DNS: ' + String(error);
