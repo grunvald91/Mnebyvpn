@@ -12,36 +12,22 @@
 <main class="app">
   <header class="brandbar">
     <div class="brand"><span class="mark" aria-hidden="true">◈</span>мнебы<span>DNS</span></div>
-    <div class="header-actions"><span class="version">PREVIEW · 0.10</span><button class="icon-button" id="tray-button" type="button" title="Свернуть в трей" aria-label="Свернуть в трей">–</button></div>
+    <div class="header-actions"><span class="version">BETA · 0.11</span><button class="icon-button" id="tray-button" type="button" title="Свернуть в трей" aria-label="Свернуть в трей">–</button></div>
   </header>
   <nav class="tabs" aria-label="Разделы приложения">
     <button class="tab active" data-tab="home" type="button" aria-current="page">Главная</button>
     <button class="tab" data-tab="diagnostics" type="button">Диагностика</button>
     <button class="tab" data-tab="settings" type="button">Настройки</button>
   </nav>
-  <section id="home" class="view">
-    <section class="hero" aria-labelledby="connection-title">
-      <div class="hero-top"><div class="status-symbol" aria-hidden="true">◈</div><span class="mode-chip"><span class="mode-dot" aria-hidden="true"></span> Тестовый режим</span></div>
+  <section id="home" class="view home-view">
+    <section class="hero home-dashboard" aria-labelledby="home-title">
+      <div class="home-orbit" aria-hidden="true"><span class="home-orbit-inner">◈</span></div>
       <p class="overline">МНЕБЫDNS · WINDOWS</p>
-      <h1 id="connection-title">Проверим ваш DNS</h1>
-      <p class="hint" id="connection-hint">Проверка защищённого DNS и локального прокси. Интернет и настройки Windows останутся без изменений.</p>
-      <p class="safety-line"><span aria-hidden="true">✓</span> Системный DNS не переключается</p>
+      <h1 id="home-title">Smart DNS</h1>
+      <p id="home-summary" class="home-summary" aria-live="polite">Проверяю подключение…</p>
+      <button id="toggle-system-dns" class="primary power-toggle" type="button" aria-pressed="false" disabled>Проверка состояния…</button>
+      <p id="home-action-hint" class="home-action-hint" role="status" aria-live="polite">Для подключения потребуется персональный DNS-адрес.</p>
     </section>
-    <section class="detail profile-card" aria-label="Проверка персонального DNS">
-      <div class="detailhead"><h2>Подключение</h2><span class="chip">DoT · TLS 853</span></div>
-      <label class="dot-label" for="dot-host">Адрес персонального DNS</label>
-      <input class="dot-input" id="dot-host" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="253" placeholder="ваш-ключ.dns.mnebyvpn.site" aria-describedby="dot-help">
-      <p class="muted dot-help" id="dot-help">Только имя сервера, без https:// и порта. Не сохраняется в приложении.</p>
-      <button class="primary main-action" id="run-all-tests" type="button">Проверить подключение <span aria-hidden="true">→</span></button>
-      <div class="test-flow" aria-label="Результаты проверки">
-        <div class="test-step"><span class="step-number">01</span><div class="step-body"><div class="step-title"><strong>Защищённый DNS</strong><span class="step-tag">TLS + A / AAAA</span></div><p class="dot-status" id="dot-status" role="status" aria-live="polite">Ожидает проверки</p></div></div>
-        <div class="test-step"><span class="step-number">02</span><div class="step-body"><div class="step-title"><strong>Локальный DNS-прокси</strong><span class="step-tag">UDP → DoT</span></div><p class="dot-status" id="proxy-status" role="status" aria-live="polite">Ожидает проверки</p></div></div>
-      </div>
-      <details class="advanced-tests"><summary>Отдельные проверки <span aria-hidden="true">⌄</span></summary>
-        <div class="advanced-content"><button class="secondary" id="check-dot" type="button">Проверить только DoT</button><button class="secondary" id="check-proxy" type="button">Проверить только UDP-прокси</button><p class="muted">Тестовый прокси использует временный порт 127.0.0.1 и закрывается после проверки.</p></div>
-      </details>
-    </section>
-    <p class="disclaimer">Предварительная версия для проверки внешнего вида и связи. Успешный тест не означает включение DNS для всех программ Windows.</p>
   </section>
   <section id="diagnostics" class="view hidden">
     <div class="section-heading"><h1>Диагностика</h1><span class="chip">Только чтение</span></div>
@@ -65,7 +51,7 @@
       <button class="secondary" id="toggle-all-adapters" type="button">Показать служебные интерфейсы</button>
       <div id="adapter-details" class="adapter-details"><p class="muted">Выбор адаптера ничего не изменяет.</p></div>
       <button class="secondary" id="preflight-dns" type="button" disabled>Проверить настройки перед включением</button>
-      <div id="preflight-result" class="preflight-result" role="status" aria-live="polite">Предпроверка только читает сведения. Для включения системного DNS откройте вкладку «Настройки».</div>
+      <div id="preflight-result" class="preflight-result" role="status" aria-live="polite">Предпроверка только читает сведения. Включение и выключение — на главной.</div>
     </section>
   </section>
   <section id="settings" class="view hidden">
@@ -78,15 +64,27 @@
       <div class="item"><span>Хранение DoT-хоста</span><strong>Защищённая конфигурация Windows</strong></div>
       <section class="detail" aria-label="Системный DNS Windows">
         <h2>Системный DNS Windows</h2>
-        <p class="section-intro">Используется DoT-хост, указанный на главной странице. Клиент меняет DNS непосредственно на сетевых адаптерах Windows: IPv4 и IPv6, включая новые физические подключения Wi-Fi/Ethernet. Туннельные и неизвестные виртуальные адаптеры намеренно не изменяются. Для управления потребуется подтверждение UAC.</p>
-        <button class="primary" id="enable-system-dns" type="button">Включить системный DNS</button>
-        <button class="secondary" id="disable-system-dns" type="button">Выключить DNS</button>
+        <p class="section-intro">Используется персональное имя DoT-сервера из настроек ниже. Клиент меняет DNS непосредственно на сетевых адаптерах Windows: IPv4 и IPv6, включая новые физические подключения Wi-Fi/Ethernet. Туннельные и неизвестные виртуальные адаптеры намеренно не изменяются. Для управления потребуется подтверждение UAC.</p>
         <button class="secondary" id="restore-system-dns" type="button">Восстановить исходные настройки</button>
         <button class="secondary" id="refresh-system-dns" type="button">Обновить состояние</button>
         <p class="dot-status" id="system-dns-message" role="status" aria-live="polite">Состояние службы ещё не проверялось.</p>
         <p class="muted">При выключении восстанавливаются исходные режимы и адреса DNS каждого адаптера. Пока восстановление не подтверждено, журнал резервных настроек сохраняется.</p>
         <p class="muted">Приложения с собственным DoH/DoT и отдельные VPN-политики могут использовать независимый DNS. Их состояние показывается диагностикой.</p>
       </section>
+    <section class="detail profile-card" aria-label="Адрес DNS и проверки подключения">
+      <div class="detailhead"><h2>Подключение</h2><span class="chip">DoT · TLS 853</span></div>
+      <label class="dot-label" for="dot-host">Адрес персонального DNS</label>
+      <input class="dot-input" id="dot-host" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="253" placeholder="ваш-ключ.dns.mnebyvpn.site" aria-describedby="dot-help">
+      <p class="muted dot-help" id="dot-help">Только имя сервера, без https:// и порта. При включении адрес сохраняется в защищённой конфигурации Windows; в интерфейсе ключ не сохраняется.</p>
+      <button class="secondary main-action" id="run-all-tests" type="button">Проверить подключение <span aria-hidden="true">→</span></button>
+      <div class="test-flow" aria-label="Результаты проверки">
+        <div class="test-step"><span class="step-number">01</span><div class="step-body"><div class="step-title"><strong>Защищённый DNS</strong><span class="step-tag">TLS + A / AAAA</span></div><p class="dot-status" id="dot-status" role="status" aria-live="polite">Ожидает проверки</p></div></div>
+        <div class="test-step"><span class="step-number">02</span><div class="step-body"><div class="step-title"><strong>Локальный DNS-прокси</strong><span class="step-tag">UDP → DoT</span></div><p class="dot-status" id="proxy-status" role="status" aria-live="polite">Ожидает проверки</p></div></div>
+      </div>
+      <details class="advanced-tests"><summary>Отдельные проверки <span aria-hidden="true">⌄</span></summary>
+        <div class="advanced-content"><button class="secondary" id="check-dot" type="button">Проверить только DoT</button><button class="secondary" id="check-proxy" type="button">Проверить только UDP-прокси</button><p class="muted">Тестовый прокси использует временный порт 127.0.0.1 и закрывается после проверки.</p></div>
+      </details>
+    </section>
       <button class="secondary" id="settings-tray" type="button">Свернуть в трей</button>
     </section>
   </section>
