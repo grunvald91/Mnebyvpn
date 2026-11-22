@@ -96,19 +96,18 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const encodedResponse=await response.text();
    const fullBody=Buffer.from(encodedResponse.trim(),'base64').toString('utf8').trim();
    assert.ok(fullBody.includes('#profile-web-page-url: https://mnebyvpn.site'));
-   assert.ok(fullBody.includes('#support-url: https://t.me/MNEBYVPN_bot?start=support'));
-   assert.ok(fullBody.includes('#announce-url: https://mnebyvpn.site/#plans'));
+   assert.ok(!fullBody.includes('#support-url:'));
+   assert.ok(fullBody.includes('#announce-url: https://t.me/MNEBYVPN_bot?start=support'));
    const decoded=fullBody.split('\n').filter(line=>!line.startsWith('#')).join('\n');
    const displayedWs=germanWebSocketOnly(profile);
    assert.equal(decoded,displayedWs);
    assert.equal(response.headers.get('profile-web-page-url'),'https://mnebyvpn.site');
    assert.equal(response.headers.get('premium-url'),'https://mnebyvpn.site/#plans');
-   assert.equal(response.headers.get('announce-url'),'https://mnebyvpn.site/#plans');
+   assert.equal(response.headers.get('announce-url'),'https://t.me/MNEBYVPN_bot?start=support');
    assert.equal(response.headers.get('homepage'),'https://mnebyvpn.site');
    assert.equal(Buffer.from((response.headers.get('profile-description')??'').replace(/^base64:/,''),'base64').toString('utf8'),
      'Оплата и продление: mnebyvpn.site');
-   assert.equal(response.headers.get('support-url'),
-     'https://t.me/MNEBYVPN_bot?start=support');
+   assert.equal(response.headers.get('support-url'),null);
    assert.equal(response.headers.get('profile-update-interval'),'1');
    assert.equal(response.headers.get('subscription-userinfo'),
      'upload=0;download=0;total=0;expire='+
@@ -133,7 +132,8 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const dual=await fetch(root+'/sub/'+issued!.token+'?client=incy');
    assert.equal(dual.status,200);
    assert.equal(dual.headers.get('premium-url'),'https://mnebyvpn.site/#plans');
-   assert.equal(dual.headers.get('support-url'),
+   assert.equal(dual.headers.get('support-url'),null);
+   assert.equal(dual.headers.get('announce-url'),
      'https://t.me/MNEBYVPN_bot?start=support');
    assert.equal(Buffer.from((await dual.text()).trim(),'base64').toString('utf8').trim().split('\n').filter(line=>!line.startsWith('#')).join('\n'),displayedWs);
    const karing=await fetch(root+'/sub/'+issued!.token+'?client=karing');
@@ -253,16 +253,24 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const expired=await fetch(root+'/sub/'+issued!.token);
    assert.equal(expired.status,200);
    assert.equal(expired.headers.get('premium-url'),'https://mnebyvpn.site/#plans');
-   assert.equal(expired.headers.get('support-url'),
-     'https://t.me/MNEBYVPN_bot?start=support');
+   assert.equal(expired.headers.get('support-url'),null);
    assert.equal(expired.headers.get('profile-web-page-url'),'https://mnebyvpn.site');
-   assert.equal(expired.headers.get('announce-url'),'https://mnebyvpn.site/#plans');
+   assert.equal(expired.headers.get('announce-url'),'https://t.me/MNEBYVPN_bot?start=support');
    assert.equal(expired.headers.get('cache-control'),'no-store');
    const expiredText=Buffer.from((await expired.text()).trim(),'base64')
      .toString('utf8');
    assert.ok(expiredText.includes('#profile-web-page-url: https://mnebyvpn.site'));
-   assert.ok(expiredText.includes('#support-url: https://t.me/MNEBYVPN_bot?start=support'));
+   assert.ok(!expiredText.includes('#support-url:'));
    assert.doesNotMatch(expiredText,/vless:\/\/|vmess:\/\/|trojan:\/\/|amneziawg:\/\/|awg:\/\//);
+   const expiredKaring=await fetch(root+'/sub/'+issued!.token+'?client=karing');
+   assert.equal(expiredKaring.status,200);
+   assert.equal(expiredKaring.headers.get('support-url'),
+     'https://t.me/MNEBYVPN_bot?start=support');
+   assert.equal(expiredKaring.headers.get('announce-url'),'https://mnebyvpn.site/#plans');
+   const expiredKaringText=Buffer.from((await expiredKaring.text()).trim(),'base64')
+     .toString('utf8');
+   assert.ok(expiredKaringText.includes('#support-url: https://t.me/MNEBYVPN_bot?start=support'));
+   assert.ok(expiredKaringText.includes('#announce-url: https://mnebyvpn.site/#plans'));
    assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=incy')).status,200);
    assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=bad')).status,400);
    assert.equal((await fetch(root+'/install/'+issued!.token+'?client=incy')).status,404);
