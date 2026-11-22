@@ -60,7 +60,10 @@ fn publish(
         recovery_state: Some(recovery_state.to_owned()),
         dns_state: Some(state.to_owned()),
         adapter_count: Some(adapter_count),
-        configured: journal.read_controller_config().map(|config| config.is_some()).unwrap_or(false),
+        configured: journal
+            .read_controller_config()
+            .map(|config| config.is_some())
+            .unwrap_or(false),
         last_error: last_error.map(|value| value.chars().take(1024).collect()),
     };
     let payload = serde_json::to_vec(&report)?;
