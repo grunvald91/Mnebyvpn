@@ -7,6 +7,13 @@ use tauri::{
 };
 
 #[tauri::command]
+async fn list_network_adapters() -> Result<Vec<mnebydns_network::AdapterInfo>, String> {
+    tauri::async_runtime::spawn_blocking(mnebydns_network::list_adapters)
+        .await
+        .map_err(|error| format!("Не удалось получить список адаптеров: {error}"))?
+}
+
+#[tauri::command]
 fn get_ui_mode() -> &'static str {
     "Диагностика: только чтение. Настройки DNS Windows не изменяются"
 }
@@ -42,7 +49,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_ui_mode,
             hide_to_tray,
-            inspect_dns
+            inspect_dns,
+            list_network_adapters
         ])
         .setup(|app| {
             let open = MenuItem::with_id(app, "open", "Открыть мнебыDNS", true, None::<&str>)?;
