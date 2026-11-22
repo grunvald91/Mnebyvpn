@@ -944,7 +944,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       // Per-entitlement INCY metadata refreshed on every request.
       // A durable subscription URL does not imply unlimited VPN access.
       for(const [name,value] of Object.entries(
-        incySubscriptionHeaders(owner.expiresAt)))
+        incySubscriptionHeaders(owner.expiresAt,requestedClient)))
         res.setHeader(name,value);
       send(res,200,incyEncodeActiveSubscription(profile,requestedClient),
         'text/plain; charset=utf-8');
