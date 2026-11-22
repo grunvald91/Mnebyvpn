@@ -515,7 +515,7 @@ impl UdpDotPreview {
         if addresses.is_empty() {
             return Err("No upstream IP address available for DoT preview".into());
         }
-        Self::start_with_upstream(Arc::new(PinnedDotUpstream { host, addresses }))
+        Self::start_with_upstream(Arc::new(PinnedDotUpstream::new(host, addresses)?))
     }
 
     pub fn local_address(&self) -> SocketAddr {
