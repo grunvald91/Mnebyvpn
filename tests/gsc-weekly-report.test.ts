@@ -95,7 +95,7 @@ test('private report explains actual query-to-canonical-page evidence, never pub
   ]}};
   const privateReport=formatTelegramReport(input);
   assert.match(privateReport,/«как открыть gemini» → \/gemini/);
-  assert.match(privateReport,/24 показов, 1 кликов/);
+  assert.match(privateReport,/показы: 24; клики: 1/);
   assert.match(privateReport,/«впн не запускается» → \/vpn/);
   assert.ok(!privateReport.includes('секрет покупки'));
   assert.ok(privateReport.length<=3800);
