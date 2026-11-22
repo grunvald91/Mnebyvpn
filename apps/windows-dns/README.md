@@ -1,6 +1,6 @@
 # мнебыDNS for Windows (Rust/Tauri 2)
 
-**Stage 3: read-only Windows network adapter inventory.** The previous tray and localhost DNS diagnostics remain. This stage does not modify Windows DNS, VPN routes, adapters, or services.
+**Current: read-only Windows DNS recovery preflight.** The tray, adapter inventory and protected diagnostic service are implemented. The application still does not modify DNS, VPN routes or adapters.
 
 ## Implemented
 
@@ -213,3 +213,40 @@ all bytes. A client that did not read could monopolize the only pipe instance.
 This does not enable DNS switching. Actual Windows 10 22H2 and hostile-client
 security testing, safe DNSProxy ownership, DHCP/RA restore, and recovery on
 power failure are still release gates.
+
+## Stage 10: fail-closed DNS evidence and rollback identity checks
+
+Documentation review found a prior API misuse: `GetInterfaceDnsSettings`
+requires its input `Flags` to be **zero**. The previous preflight passed
+`DNS_SETTING_IPV6` to the *read* call even though Microsoft documents that
+flag for *setting* configuration. That return value was not a verified IPv6
+source snapshot. It must never be used as rollback input.
+
+This stage corrects the read call and adds the following safety gates:
+
+- Read Windows' native **IPv4** static/profile DNS data with version-only
+  API input. Reject invalid IPs, wrong family, overlong/unterminated UTF-16 and
+  server lists beyond 32; never truncate a future backup silently.
+- IPv6 shows only **effective addresses** from adapter inventory. IPv6
+  static/DHCPv6/RA/profile **source remains UNVERIFIED**. The GUI reports
+  blockers explicitly, with `recovery_ready=false` and
+  `mutation_enabled=false` regardless of available IPv4 data.
+- Recovery state machine now requires backend checks both **after durable
+  journal save and before DNS writes**, and **again before any restore**.
+  Mock tests reject adapter/source drift and replacement without touching DNS
+  and preserve the recovery record for investigation.
+- Windows runner executes a native read-only preflight example on its
+  operational adapters, in addition to transaction tests and the existing
+  no-mutation SCM smoke test.
+
+**Not yet implemented:** an authoritative, tested IPv6 origin capture,
+DHCP/RA and per-profile restore, a real Windows `NetworkBackend` that can
+apply/restore and verify exact configurations, DNSProxy lifecycle/DoT checks,
+a signed installer, and crash/power-loss testing on Windows 10 22H2. The
+protected journal remains reserved for genuine mutations; incomplete
+read-only evidence is NEVER committed as a recovery record.
+
+Microsoft references:
+- https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-getinterfacednssettings
+- https://learn.microsoft.com/en-us/windows/win32/api/netioapi/ns-netioapi-dns_interface_settings
+- https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-setinterfacednssettings
