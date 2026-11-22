@@ -1,0 +1,32 @@
+name: Windows DNS Rust UI check
+
+on:
+  push:
+    branches: [feature/windows-dns-rust-tray]
+    paths:
+      - "apps/windows-dns/**"
+      - ".github/workflows/windows-dns-rust.yml"
+  pull_request:
+    paths:
+      - "apps/windows-dns/**"
+      - ".github/workflows/windows-dns-rust.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile-windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Check UI JavaScript
+        run: node --check apps/windows-dns/ui/app.js
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path apps/windows-dns/src-tauri/Cargo.toml -- --check
+      - name: Compile Rust tray (no installer, no DNS changes)
+        run: cargo check --manifest-path apps/windows-dns/src-tauri/Cargo.toml

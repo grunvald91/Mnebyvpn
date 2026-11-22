@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>мнебыDNS — Windows</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <main class="app">
+    <header class="brandbar">
+      <div class="brand"><div class="mark" aria-hidden="true">◈</div>мнебы<span>DNS</span></div>
+      <div class="version">ПРОТОТИП · 0.2</div>
+    </header>
+    <nav class="tabs" aria-label="Разделы приложения">
+      <button class="tab active" data-tab="home" aria-current="page">Главная</button>
+      <button class="tab" data-tab="diagnostics">Диагностика</button>
+      <button class="tab" data-tab="settings">Настройки</button>
+    </nav>
+    <section id="home" class="view">
+      <div class="hero">
+        <div class="status-symbol" aria-hidden="true">◈</div>
+        <p class="overline">ПОДКЛЮЧЕНИЕ</p>
+        <h1>DNS не проверен</h1>
+        <p class="hint">Это прототип интерфейса. Управление реальным DNS здесь пока не подключено.</p>
+        <button class="primary" id="tray-button">Свернуть в трей</button>
+        <p class="muted">DNSProxy, VPN и системные DNS-настройки не изменяются.</p>
+      </div>
+      <section class="detail" aria-label="Профиль DNS">
+        <div class="detailhead"><h2>Мой DNS</h2><span class="chip">DoT · TLS</span></div>
+        <div class="item"><span>Персональный профиль</span><strong>Настраивается локально</strong></div>
+        <div class="item"><span>Протоколы</span><strong>IPv4 и IPv6</strong></div>
+      </section>
+    </section>
+    <section id="diagnostics" class="view hidden">
+      <h1>Диагностика</h1>
+      <p class="hint">Эти проверки появятся после подключения Rust-службы.</p>
+      <div class="item"><span>Локальный DNSProxy</span><strong>Не проверено</strong></div>
+      <div class="item"><span>DoT / TLS</span><strong>Не проверено</strong></div>
+      <div class="item"><span>DNS A / AAAA</span><strong>Не проверено</strong></div>
+      <div class="item"><span>VPN / TUN</span><strong>Не проверено</strong></div>
+    </section>
+    <section id="settings" class="view hidden">
+      <h1>Настройки</h1>
+      <div class="item"><span>Сворачивание при закрытии</span><strong>В трей</strong></div>
+      <div class="item"><span>Возврат окна</span><strong>Нажать значок в трее</strong></div>
+      <div class="item"><span>Выход</span><strong>Правый клик → Выйти</strong></div>
+      <div class="item"><span>Изменение VPN</span><strong>Не выполняется</strong></div>
+      <button class="secondary" id="settings-tray">Свернуть в трей</button>
+    </section>
+    <footer><span id="status" role="status" aria-live="polite">Без изменений системных настроек</span><span>mnebyvpn.site</span></footer>
+  </main>
+</body>
+</html>

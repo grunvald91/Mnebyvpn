@@ -1,0 +1,33 @@
+* { box-sizing: border-box; }
+:root { font-family: "Segoe UI", system-ui, sans-serif; color: #ecf7f5; background: #09131a; }
+body { margin: 0; min-width: 320px; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid #80efe0; outline-offset: 3px; }
+.app { max-width: 640px; margin: 0 auto; padding: 22px; min-height: 100vh; display: flex; flex-direction: column; gap: 22px; }
+.brandbar,.detailhead,.item,footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { font-size: 23px; font-weight: 760; letter-spacing: -.8px; display:flex; align-items:center; gap: 3px; }
+.brand span { color: #67dac9; } .mark { color: #67dac9; font-size: 27px; margin-right: 8px; }
+.version,.overline,.muted { color: #8faab1; font-size: 12px; }
+.tabs { display: grid; grid-template-columns: repeat(3,1fr); gap: 4px; padding: 4px; border-radius: 14px; background: #15242b; }
+.tab { border: 0; border-radius: 10px; background: transparent; color: #b4c8c9; min-height: 40px; padding: 8px 3px; font-size: 13px; }
+.tab.active { background: #29474b; color: #fff; }
+.view { flex: 1; } .hidden { display: none; }
+.hero { border: 1px solid #24434a; background: #11252b; padding: 29px 18px; border-radius: 20px; text-align:center; }
+.status-symbol { color: #65d7c8; font-size: 46px; line-height: 1.4; }
+.overline { letter-spacing: 1.5px; margin: 8px 0 6px; }
+h1 { font-size: clamp(22px, 5vw, 29px); margin: 6px 0 10px; letter-spacing: -.5px; }
+h2 { margin: 0; font-size: 17px; }
+.hint { color: #a7c1c3; font-size: 14px; line-height: 1.55; max-width: 390px; margin: 0 auto 23px; }
+.primary,.secondary { border: 0; width: 100%; min-height: 48px; border-radius: 12px; font-weight: 650; }
+.primary { background:#6bdfd0; color:#072321; }
+.secondary { background: #233d44; color:#effaf8; margin-top: 18px; }
+.primary:hover,.secondary:hover { filter: brightness(1.08); }
+.hero .muted { line-height:1.4; margin: 13px auto 0; }
+.detail { border: 1px solid #24434a; border-radius: 17px; padding: 18px; margin-top: 15px; }
+.chip { background:#21413d; color:#9ef4e5; font-size: 12px; padding: 6px 10px; border-radius: 999px; }
+.item { border-bottom: 1px solid #244047; padding: 14px 0; font-size: 13px; }
+.item:last-child { border: 0; padding-bottom: 0; }
+.item span { color:#abc0c4; } .item strong { font-weight: 560; text-align:right; }
+footer { margin-top: auto; font-size: 11px; color: #8fa8ad; }
+@media (max-width:420px) { .app{ padding:14px; gap:15px; } .hero{padding:21px 13px;} .brand {font-size:20px;} .version{font-size:10px;} .item{align-items:flex-start;} }
+@media (prefers-reduced-motion: no-preference) { button { transition: background-color .14s ease, filter .14s ease; } }

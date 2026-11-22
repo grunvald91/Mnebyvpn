@@ -1,0 +1,17 @@
+[package]
+name = "mnebydns-windows"
+version = "0.2.0"
+description = "Lightweight Windows GUI and tray prototype for mnebyDNS"
+authors = ["mnebyDNS"]
+edition = "2021"
+build = "build.rs"
+
+[lib]
+name = "mnebydns_windows_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }

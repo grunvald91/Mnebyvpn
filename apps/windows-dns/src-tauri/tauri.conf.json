@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "мнебыDNS",
+  "version": "0.2.0",
+  "identifier": "site.mnebyvpn.dns",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "мнебыDNS — Windows",
+        "width": 520,
+        "height": 590,
+        "minWidth": 360,
+        "minHeight": 470,
+        "resizable": true,
+        "backgroundColor": "#09131a"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "nsis",
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ]
+  }
+}
