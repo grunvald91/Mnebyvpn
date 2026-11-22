@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
   germanWebSocketOnly,keepSupportedAdditionalTransport,
-  incySubscriptionHeaders,INCY_SITE_URL,
-  INCY_BOT_URL,INCY_SUPPORT_URL,
+  incySubscriptionHeaders,INCY_SITE_URL,INCY_RENEW_URL,
+  INCY_SUPPORT_URL,
 } from '../packages/provisioning/src/incy-subscription-presentation.ts';
 
 const userId='11111111-2222-4333-8444-555555555555';
@@ -63,8 +63,13 @@ test('INCY metadata uses exact paid or trial entitlement expiry in Unix seconds'
       'base64:'+Buffer.from('MNEBYVPN').toString('base64'));
     assert.equal(h['profile-update-interval'],'1');
     assert.equal(h['profile-web-page-url'],INCY_SITE_URL);
+    assert.equal(h['homepage'],INCY_SITE_URL);
+    assert.equal(h['profile-description'],
+      'base64:'+Buffer.from('Оплата и продление: mnebyvpn.site').toString('base64'));
     assert.equal(h['support-url'],INCY_SUPPORT_URL);
-    assert.equal(h['premium-url'],INCY_BOT_URL);
+    assert.equal(h['premium-url'],INCY_RENEW_URL);
+    assert.notEqual(h['premium-url'],h['support-url']);
+    assert.equal(new URL(h['premium-url']).origin,new URL(h['profile-web-page-url']).origin);
     assert.equal(h['support-url'],'https://t.me/MNEBYVPN_bot?start=support');
   }
   assert.throws(()=>incySubscriptionHeaders(new Date(NaN)));
