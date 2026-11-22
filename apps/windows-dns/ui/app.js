@@ -24,6 +24,7 @@ for (const button of document.querySelectorAll('[data-tab]')) {
       panel.classList.toggle('hidden', panel.id !== button.dataset.tab);
     }
     if (button.dataset.tab === 'diagnostics') refreshAdapters();
+    if (button.dataset.tab === 'settings') refreshSystemDns();
   });
 }
 
@@ -309,6 +310,49 @@ async function checkPersonalDot() {
 
 get('tray-button').addEventListener('click', hideToTray);
 get('settings-tray').addEventListener('click', hideToTray);
+
+let systemDnsLoading = false;
+
+async function refreshSystemDns() {
+  if (typeof invoke !== 'function') {
+    get('system-dns-message').textContent = 'Доступно только в Windows-приложении.';
+    return;
+  }
+  try {
+    const status = await invoke('system_dns_status');
+    const state = get('system-dns-state');
+    state.textContent = status === 'ACTIVE' ? 'Пробный режим NRPT включён' : 'Выключен';
+    state.classList.toggle('good', status === 'ACTIVE');
+    state.classList.toggle('bad', false);
+    get('system-dns-message').textContent = status === 'ACTIVE'
+      ? 'Windows использует пробное правило NRPT. Автоматическое восстановление запланировано.'
+      : 'Правило мнебыDNS не активно. DNS адаптеров не менялся.';
+  } catch (error) {
+    get('system-dns-message').textContent = 'Не удалось прочитать состояние NRPT: ' + String(error);
+  }
+}
+
+async function requestSystemDns(action) {
+  if (systemDnsLoading || typeof invoke !== 'function') return;
+  systemDnsLoading = true;
+  for (const id of ['enable-system-dns', 'disable-system-dns']) get(id).disabled = true;
+  try {
+    const message = await invoke('launch_system_dns_trial', { action });
+    get('system-dns-message').textContent = message
+      + ' Введите персональный хост в открывшемся окне PowerShell. После завершения нажмите «Проверить состояние Windows».';
+  } catch (error) {
+    get('system-dns-message').textContent = 'Не удалось открыть UAC: ' + String(error);
+  } finally {
+    systemDnsLoading = false;
+    for (const id of ['enable-system-dns', 'disable-system-dns']) get(id).disabled = false;
+  }
+}
+
+get('enable-system-dns').addEventListener('click', () => requestSystemDns('Enable'));
+get('disable-system-dns').addEventListener('click', () => requestSystemDns('Disable'));
+get('refresh-system-dns').addEventListener('click', refreshSystemDns);
+
+
 get('refresh-dns').addEventListener('click', refreshStatus);
 get('refresh-adapters').addEventListener('click', refreshAdapters);
 get('preflight-dns').addEventListener('click', preflightDns);

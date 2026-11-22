@@ -14,14 +14,16 @@ use super::dot::{
 use super::{parse_reply, query_packet, NEXT_DNS_ID};
 use native_tls::TlsConnector;
 use serde::Serialize;
-use std::io::Write;
-use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
+use std::io::{Read, Write};
+use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 const MAX_UDP_PACKET: usize = 1232;
+const MAX_TCP_FRAME: usize = 4096;
+const TCP_READ_TIMEOUT: Duration = Duration::from_millis(3000);
 const WORKERS: usize = 2;
 const RECV_POLL: Duration = Duration::from_millis(100);
 const SMOKE_TIMEOUT: Duration = Duration::from_millis(12000);
@@ -33,7 +35,7 @@ struct QueryInfo {
 }
 
 fn read_query(packet: &[u8]) -> Option<QueryInfo> {
-    if packet.len() < 17 || packet.len() > MAX_UDP_PACKET {
+    if packet.len() < 17 || packet.len() > MAX_TCP_FRAME {
         return None;
     }
     // QR/opcode/AA/TC must be zero; RD can be on or off. Response code=0.
@@ -163,6 +165,9 @@ impl Upstream for PinnedDotUpstream {
 }
 
 fn reply_for_query(upstream: &dyn Upstream, query: &[u8]) -> Option<Vec<u8>> {
+    if query.len() > MAX_UDP_PACKET {
+        return None;
+    }
     let info = read_query(query)?;
     match upstream.forward(query) {
         Ok(response) if valid_upstream_answer(query, &response, info.end_of_question) => {
@@ -173,6 +178,141 @@ fn reply_for_query(upstream: &dyn Upstream, query: &[u8]) -> Option<Vec<u8>> {
             }
         }
         _ => Some(response_header(query, info, false)),
+    }
+}
+
+
+/// TCP DNS shares the exact validation and TLS upstream but does not apply
+/// UDP's 512/EDNS0 size limit. It always emits a full framed response.
+fn reply_for_tcp(upstream: &dyn Upstream, query: &[u8]) -> Option<Vec<u8>> {
+    let info = read_query(query)?;
+    Some(match upstream.forward(query) {
+        Ok(reply) if valid_upstream_answer(query, &reply, info.end_of_question) => reply,
+        _ => response_header(query, info, false),
+    })
+}
+
+fn handle_tcp(mut stream: TcpStream, upstream: &dyn Upstream, stopping: &AtomicBool) {
+    if stream
+        .set_read_timeout(Some(TCP_READ_TIMEOUT))
+        .and_then(|_| stream.set_write_timeout(Some(TCP_READ_TIMEOUT)))
+        .is_err()
+    {
+        return;
+    }
+    // Query reuse on a single TCP session is supported, but bounded. This
+    // preview does not support pipelining (queries on the wire before replies).
+    for _ in 0..16 {
+        if stopping.load(Ordering::Acquire) { return; }
+        let mut header = [0u8; 2];
+        if stream.read_exact(&mut header).is_err() { return; }
+        let len = usize::from(u16::from_be_bytes(header));
+        if !(17..=MAX_TCP_FRAME).contains(&len) { return; }
+        let mut packet = vec![0u8; len];
+        if stream.read_exact(&mut packet).is_err() { return; }
+        let Some(answer) = reply_for_tcp(upstream, &packet) else { return; };
+        let Ok(size) = u16::try_from(answer.len()) else { return; };
+        if stream.write_all(&size.to_be_bytes())
+            .and_then(|_| stream.write_all(&answer))
+            .is_err() { return; }
+    }
+}
+
+#[must_use]
+pub struct LoopbackDnsServer {
+    port: u16,
+    stopping: Arc<AtomicBool>,
+    threads: Vec<JoinHandle<()>>,
+}
+
+impl LoopbackDnsServer {
+    /// Binds both IPv4 and IPv6 on localhost, both UDP and TCP, on the SAME
+    /// port. All four binds must succeed before a worker thread starts.
+    /// Explicitly requesting 53 can fail if another DNS server owns it.
+    fn start_with_upstream(upstream: Arc<dyn Upstream>, port: u16) -> Result<Self, String> {
+        let tcp4 = TcpListener::bind(("127.0.0.1", port))
+            .map_err(|_| "TCP IPv4 loopback port unavailable".to_owned())?;
+        let actual_port = tcp4.local_addr()
+            .map_err(|_| "Cannot determine loopback TCP port".to_owned())?.port();
+        if actual_port == 0 { return Err("Invalid local DNS listener port".into()); }
+        let udp4 = UdpSocket::bind(("127.0.0.1", actual_port))
+            .map_err(|_| "UDP IPv4 loopback port unavailable".to_owned())?;
+        let tcp6 = TcpListener::bind(("::1", actual_port))
+            .map_err(|_| "TCP IPv6 loopback port unavailable".to_owned())?;
+        let udp6 = UdpSocket::bind(("::1", actual_port))
+            .map_err(|_| "UDP IPv6 loopback port unavailable".to_owned())?;
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let mut threads = Vec::new();
+        for listener in [tcp4, tcp6] {
+            listener.set_nonblocking(true)
+                .map_err(|_| "Cannot configure DNS TCP listener".to_owned())?;
+            let resolver = Arc::clone(&upstream);
+            let stopping = Arc::clone(&stop);
+            threads.push(thread::spawn(move || {
+                while !stopping.load(Ordering::Acquire) {
+                    match listener.accept() {
+                        Ok((stream, peer)) if peer.ip().is_loopback() => {
+                            handle_tcp(stream, resolver.as_ref(), stopping.as_ref());
+                        }
+                        Ok(_) => continue,
+                        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                            thread::sleep(RECV_POLL);
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }));
+        }
+        for listener in [udp4, udp6] {
+            // Socket preparation is complete before any changes to Windows
+            // DNS; unlike a network service this preview has no restart.
+            let _ = listener.set_read_timeout(Some(RECV_POLL));
+            let resolver = Arc::clone(&upstream);
+            let stopping = Arc::clone(&stop);
+            threads.push(thread::spawn(move || {
+                let mut buf = [0u8; MAX_UDP_PACKET + 1];
+                while !stopping.load(Ordering::Acquire) {
+                    let (count, peer) = match listener.recv_from(&mut buf) {
+                        Ok(x) => x,
+                        Err(error) if error.kind() == std::io::ErrorKind::TimedOut
+                            || error.kind() == std::io::ErrorKind::WouldBlock => continue,
+                        Err(_) => break,
+                    };
+                    if !peer.ip().is_loopback() || stopping.load(Ordering::Acquire) { continue; }
+                    if let Some(answer) = reply_for_query(resolver.as_ref(), &buf[..count]) {
+                        if !stopping.load(Ordering::Acquire) {
+                            let _ = listener.send_to(&answer, peer);
+                        }
+                    }
+                }
+            }));
+        }
+        Ok(Self { port: actual_port, stopping: stop, threads })
+    }
+
+    /// Bootstraps the trusted DoT hostname before any potential OS mutation.
+    /// This binds a local DNS server, but does NOT modify Windows DNS settings.
+    pub fn start(hostname: &str, port: u16) -> Result<Self, String> {
+        let host = checked_hostname(hostname)?;
+        let addresses = (host.as_str(), DOT_PORT)
+            .to_socket_addrs()
+            .map_err(|_| "Cannot bootstrap personal DoT server hostname".to_owned())?;
+        let addresses = candidate_addresses(addresses);
+        if addresses.is_empty() { return Err("No bootstrap IP addresses for DoT".into()); }
+        Self::start_with_upstream(
+            Arc::new(PinnedDotUpstream { host, addresses }),
+            port,
+        )
+    }
+
+    pub fn local_port(&self) -> u16 { self.port }
+}
+
+impl Drop for LoopbackDnsServer {
+    fn drop(&mut self) {
+        self.stopping.store(true, Ordering::Release);
+        for worker in self.threads.drain(..) { let _ = worker.join(); }
     }
 }
 
@@ -452,6 +592,69 @@ mod tests {
         Ok(())
     }
 
+
+    #[test]
+    fn dual_stack_loopback_udp_and_tcp_share_port() -> Result<(), String> {
+        let resolver = mock(false, false, false);
+        let server = LoopbackDnsServer::start_with_upstream(resolver, 0)?;
+        assert_ne!(server.local_port(), 0);
+        for local in ["127.0.0.1", "::1"] {
+            let address: SocketAddr = format!(
+                "{}:{}",
+                if local.contains(':') { format!("[{local}]") } else { local.to_owned() },
+                server.local_port()
+            ).parse().map_err(|_| "test address parse failure".to_owned())?;
+            let socket = if local.contains(':') {
+                UdpSocket::bind("[::1]:0")
+            } else {
+                UdpSocket::bind("127.0.0.1:0")
+            }.map_err(|e| e.to_string())?;
+            socket.set_read_timeout(Some(Duration::from_secs(2))).map_err(|e| e.to_string())?;
+            let packet = query_packet(0x1405, 1);
+            socket.send_to(&packet, address).map_err(|e| e.to_string())?;
+            let mut reply = [0u8; 512];
+            let (n, _) = socket.recv_from(&mut reply).map_err(|e| e.to_string())?;
+            assert!(parse_reply(&reply[..n], 0x1405, 1).is_ok());
+
+            let mut tcp = TcpStream::connect_timeout(&address, Duration::from_secs(2))
+                .map_err(|e| e.to_string())?;
+            tcp.set_read_timeout(Some(Duration::from_secs(2))).map_err(|e| e.to_string())?;
+            tcp.write_all(&(packet.len() as u16).to_be_bytes()).map_err(|e| e.to_string())?;
+            tcp.write_all(&packet).map_err(|e| e.to_string())?;
+            let mut header = [0u8; 2];
+            tcp.read_exact(&mut header).map_err(|e| e.to_string())?;
+            let mut dns = vec![0u8; usize::from(u16::from_be_bytes(header))];
+            tcp.read_exact(&mut dns).map_err(|e| e.to_string())?;
+            assert!(parse_reply(&dns, 0x1405, 1).is_ok());
+        }
+        drop(server);
+        Ok(())
+    }
+
+    #[test]
+    fn tcp_transports_large_dns_responses_without_udp_truncation() {
+        let query = query_packet(88, 1);
+        let answer = reply_for_tcp(mock(false, false, true).as_ref(), &query).unwrap();
+        assert!(answer.len() > 512);
+        assert_eq!(answer[2] & 2, 0);
+        let datagram = reply_for_query(mock(false, false, true).as_ref(), &query).unwrap();
+        assert_ne!(datagram[2] & 2, 0);
+    }
+
+    #[test]
+    fn port_conflicts_block_all_dns_server_startup() -> Result<(), String> {
+        let occupied = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
+        let port = occupied.local_addr().map_err(|e| e.to_string())?.port();
+        assert!(LoopbackDnsServer::start_with_upstream(mock(false, false, false), port).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn tcp_upstream_failure_returns_servfail() {
+        let query = query_packet(91, 1);
+        let answer = reply_for_tcp(mock(false, true, false).as_ref(), &query).unwrap();
+        assert_eq!(answer[3] & 15, 2);
+    }
     #[test]
     fn oversized_and_invalid_packets_are_dropped_without_reply() -> Result<(), io::Error> {
         let proxy = UdpDotPreview::start_with_upstream(mock(false, false, false))

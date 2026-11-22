@@ -370,3 +370,35 @@ The home screen now prioritizes the user's personal DoT profile and a single gui
 Each Windows GUI artifact includes a portable EXE, Russian `START-HERE.md` instructions and `SHA256.txt`. Runtime Windows 10/WebView2 and tray/scale checks still require local testing; a green Windows runner is not proof of hardware compatibility. `ui/contract.test.mjs` cross-checks HTML IDs and Tauri command bindings.
 
 References: https://aiforui.dev/skills/gestures and https://github.com/GoogleChrome/modern-web-guidance.
+
+
+## Stage 15 — Windows system DNS trial, version 0.10
+
+This is a **time-limited**, administrator-approved trial. It uses the Windows
+DNS Name Resolution Policy Table (NRPT) namespace dot, officially defined as
+Any, so it does not overwrite the per-interface IPv4/IPv6 static/DHCP/RA
+settings whose exact source is not yet safely restorable.
+
+Before creating any NRPT rule, the separately launched local process binds
+127.0.0.1 and ::1, **UDP and TCP port 53**, resolves and pins the personal DoT
+server upstream, verifies certificate and hostname, and answers direct DNS
+queries through encrypted DoT. A SYSTEM scheduled rollback task is registered
+before the NRPT rule is added, repeats each minute, and removes the tagged
+rule after 15 minutes, on reboot, or if the local proxy process exits.
+A user can disable the rule sooner. Existing NRPT rules always block trial
+activation rather than competing with a VPN/corporate policy.
+
+The Windows GUI launches the elevated, bundled PowerShell helper using UAC and
+checks live NRPT status separately. UAC process launch is never treated as a
+successful activation. The personal DoT name is read in the elevated console
+and passed only in the process environment of the child, not saved in files
+or placed on the command line. The proxy binds to localhost only, never
+exposes itself as an open resolver, and never falls back to plaintext DNS
+upstream.
+
+This trial is not a permanent service and is not proven on the user's Windows
+10 hardware. The permanent release requires a supervised always-on service,
+a secure installer, verified NRPT rollback including power loss, retries,
+long-term TLS pooling, DNS over TCP/UDP tests under load, and tests with VPN
+and third-party DoH. NRPT also does not capture applications that perform
+their own DNS resolution.

@@ -34,6 +34,14 @@ jobs:
           set -euo pipefail
           node --check apps/windows-dns/ui/app.js
           node apps/windows-dns/ui/contract.test.mjs
+      - name: Parse system DNS PowerShell syntax (no mutation)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'apps/windows-dns/SYSTEM-DNS.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -ne 0) { throw ($errors | Out-String) }
       - name: Check Rust formatting (fail fast)
         shell: bash
         run: |
@@ -48,6 +56,8 @@ jobs:
           cargo fmt --manifest-path apps/windows-dns/setup/Cargo.toml -- --check
       - name: DNS core unit tests (no remote traffic)
         run: cargo test --manifest-path apps/windows-dns/dns-core/Cargo.toml
+      - name: Build native loopback DNS server (UDP/TCP on IPv4/IPv6)
+        run: cargo build --release --manifest-path apps/windows-dns/dns-core/Cargo.toml --bin mnebydns-loopback
       - name: Network inventory unit tests (no adapter changes)
         run: cargo test --manifest-path apps/windows-dns/network/Cargo.toml
       - name: Native Windows DNS preflight (no network changes)
@@ -88,6 +98,12 @@ jobs:
         run: ./apps/windows-dns/setup/smoke-runner.ps1
       - name: Build standalone Windows GUI preview
         run: cargo build --release --manifest-path apps/windows-dns/src-tauri/Cargo.toml
+      - name: Read NRPT policy status without mutation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $state = & 'apps/windows-dns/SYSTEM-DNS.ps1' -Action Status
+          if ($state -ne 'OFF') { throw "Expected OFF on disposable runner, got $state" }
       - name: Prepare portable GUI preview with checksum
         shell: pwsh
         run: |
@@ -95,9 +111,15 @@ jobs:
           $folder = 'apps/windows-dns/portable-preview'
           New-Item -ItemType Directory -Path $folder -Force | Out-Null
           Copy-Item 'apps/windows-dns/src-tauri/target/release/mnebydns-windows.exe' "$folder/mnebydns-windows.exe"
+          Copy-Item 'apps/windows-dns/dns-core/target/release/mnebydns-loopback.exe' "$folder/mnebydns-loopback.exe"
+          Copy-Item 'apps/windows-dns/SYSTEM-DNS.ps1' "$folder/SYSTEM-DNS.ps1"
           Copy-Item 'apps/windows-dns/TRY-WINDOWS-10.md' "$folder/START-HERE.md"
-          $hash = (Get-FileHash -Algorithm SHA256 "$folder/mnebydns-windows.exe").Hash.ToLowerInvariant()
-          "$hash  mnebydns-windows.exe" | Out-File -LiteralPath "$folder/SHA256.txt" -Encoding ascii
+          $names = @('mnebydns-windows.exe','mnebydns-loopback.exe','SYSTEM-DNS.ps1')
+          $hashLines = foreach ($name in $names) {
+            $hash = (Get-FileHash -Algorithm SHA256 "$folder/$name").Hash.ToLowerInvariant()
+            "$hash  $name"
+          }
+          $hashLines | Out-File -LiteralPath "$folder/SHA256.txt" -Encoding ascii
       - name: Upload portable Windows GUI preview (unsigned)
         uses: actions/upload-artifact@v4
         with:

@@ -12,7 +12,7 @@
 <main class="app">
   <header class="brandbar">
     <div class="brand"><span class="mark" aria-hidden="true">◈</span>мнебы<span>DNS</span></div>
-    <div class="header-actions"><span class="version">PREVIEW · 0.9</span><button class="icon-button" id="tray-button" type="button" title="Свернуть в трей" aria-label="Свернуть в трей">–</button></div>
+    <div class="header-actions"><span class="version">PREVIEW · 0.10</span><button class="icon-button" id="tray-button" type="button" title="Свернуть в трей" aria-label="Свернуть в трей">–</button></div>
   </header>
   <nav class="tabs" aria-label="Разделы приложения">
     <button class="tab active" data-tab="home" type="button" aria-current="page">Главная</button>
@@ -72,9 +72,19 @@
       <div class="item"><span>Закрытие окна</span><strong>Свернуть в трей</strong></div>
       <div class="item"><span>Возврат окна</span><strong>Нажать значок в трее</strong></div>
       <div class="item"><span>Выход</span><strong>Меню трея → Выйти</strong></div>
-      <div class="item"><span>Изменение DNS Windows</span><strong>Отключено</strong></div>
+      <div class="item"><span>Системный DNS Windows</span><strong id="system-dns-state">Не проверено</strong></div>
       <div class="item"><span>Выбор адаптера</span><strong>Вручную</strong></div>
       <div class="item"><span>Хранение DNS-адреса</span><strong>Не сохраняется</strong></div>
+      <section class="detail" aria-label="Пробное системное включение DNS">
+        <h2>Системный DNS · пробный режим</h2>
+        <p class="section-intro">На 15 минут направляет обычные DNS-запросы Windows через персональный DoT. Использует NRPT, не перезаписывая исходные DNS адаптеров. Нужны права администратора. При существующих правилах VPN включение блокируется.</p>
+        <p class="section-intro">В отдельном окне администратора потребуется ещё раз ввести персональный DoT-хост. Автооткат запланирован при перезагрузке, остановке прокси или по истечении времени.</p>
+        <button class="primary" id="enable-system-dns" type="button">Включить DNS Windows на 15 минут</button>
+        <button class="secondary" id="disable-system-dns" type="button">Выключить системный DNS</button>
+        <button class="secondary" id="refresh-system-dns" type="button">Проверить состояние Windows</button>
+        <p class="dot-status" id="system-dns-message" role="status" aria-live="polite">Состояние ещё не проверялось. Убедитесь, что в системе нет конфликтующих политик DNS.</p>
+        <p class="muted">Важно: браузер с собственным DoH и отдельные VPN могут обходить системный DNS. Долговременный режим пока не включён.</p>
+      </section>
       <button class="secondary" id="settings-tray" type="button">Свернуть в трей</button>
     </section>
   </section>

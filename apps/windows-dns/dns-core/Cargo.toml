@@ -2,7 +2,7 @@
 name = "mnebydns-core"
 version = "0.3.0"
 edition = "2021"
-description = "Read-only loopback DNS health checks and status schema"
+description = "Authenticated DoT bridge and loopback DNS diagnostics"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

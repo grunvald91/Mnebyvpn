@@ -36,6 +36,118 @@ async fn smoke_local_dot_proxy(host: String) -> Result<mnebydns_core::UdpDotSmok
         })?
 }
 
+
+#[cfg(windows)]
+fn system_dns_script() -> Result<std::path::PathBuf, String> {
+    let exe = std::env::current_exe()
+        .map_err(|_| "Не удалось определить путь приложения".to_owned())?;
+    let path = exe
+        .parent()
+        .ok_or_else(|| "Не удалось определить каталог приложения".to_owned())?
+        .join("SYSTEM-DNS.ps1");
+    if !path.is_file() {
+        return Err("Отсутствует SYSTEM-DNS.ps1. Распакуйте весь ZIP-архив приложения.".into());
+    }
+    Ok(path)
+}
+
+#[cfg(windows)]
+fn powershell_path() -> Result<std::path::PathBuf, String> {
+    let root = std::env::var_os("SystemRoot")
+        .ok_or_else(|| "Не найден системный каталог Windows".to_owned())?;
+    let path = std::path::PathBuf::from(root)
+        .join("System32")
+        .join("WindowsPowerShell")
+        .join("v1.0")
+        .join("powershell.exe");
+    if !path.is_file() {
+        return Err("Не найден системный PowerShell Windows".into());
+    }
+    Ok(path)
+}
+
+/// Launch the audited, bundled SYSTEM-DNS.ps1 through an explicit Windows
+/// elevation prompt. This function never passes the personal DoT host as a
+/// command-line argument or claims that UAC/activation has succeeded.
+#[tauri::command]
+fn launch_system_dns_trial(action: String) -> Result<String, String> {
+    if action != "Enable" && action != "Disable" {
+        return Err("Недопустимая операция системного DNS".into());
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        fn wide(value: &std::ffi::OsStr) -> Vec<u16> {
+            value.encode_wide().chain(std::iter::once(0)).collect()
+        }
+        let script = system_dns_script()?;
+        let shell = powershell_path()?;
+        let args = format!(
+            "-NoLogo -NoProfile -ExecutionPolicy Bypass -File \"{}\" -Action {action}",
+            script.display()
+        );
+        let runas = wide(std::ffi::OsStr::new("runas"));
+        let program = wide(shell.as_os_str());
+        let parameters = wide(std::ffi::OsStr::new(&args));
+        let result = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                runas.as_ptr(),
+                program.as_ptr(),
+                parameters.as_ptr(),
+                std::ptr::null(),
+                1,
+            )
+        };
+        if result as usize <= 32 {
+            return Err("Windows не запустила запрос прав администратора (UAC)".into());
+        }
+        Ok("Запрос UAC открыт. Само включение ещё не подтверждено. Проверьте состояние после завершения операции.".into())
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Системный DNS доступен только в Windows".into())
+    }
+}
+
+#[tauri::command]
+async fn system_dns_status() -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        return tauri::async_runtime::spawn_blocking(|| {
+            let script = system_dns_script()?;
+            let shell = powershell_path()?;
+            let output = std::process::Command::new(shell)
+                .arg("-NoLogo")
+                .arg("-NoProfile")
+                .arg("-NonInteractive")
+                .arg("-ExecutionPolicy")
+                .arg("Bypass")
+                .arg("-File")
+                .arg(script)
+                .arg("-Action")
+                .arg("Status")
+                .output()
+                .map_err(|_| "Не удалось прочитать политику DNS Windows".to_owned())?;
+            if !output.status.success() {
+                return Err("Windows не смогла проверить правила NRPT".to_owned());
+            }
+            let response = String::from_utf8_lossy(&output.stdout);
+            let result = response.trim();
+            match result {
+                "ACTIVE" => Ok("ACTIVE".to_owned()),
+                "OFF" => Ok("OFF".to_owned()),
+                _ => Err("Неоднозначный ответ Windows NRPT".to_owned()),
+            }
+        })
+        .await
+        .map_err(|_| "Сбой проверки статуса системного DNS".to_owned())?;
+    }
+    #[cfg(not(windows))]
+    Err("Системный DNS доступен только в Windows".into())
+}
+
 #[tauri::command]
 fn get_ui_mode() -> &'static str {
     "Диагностика: только чтение. Настройки DNS Windows не изменяются"
@@ -76,7 +188,9 @@ pub fn run() {
             list_network_adapters,
             preflight_dns_adapter,
             probe_personal_dot,
-            smoke_local_dot_proxy
+            smoke_local_dot_proxy,
+            launch_system_dns_trial,
+            system_dns_status
         ])
         .setup(|app| {
             let open = MenuItem::with_id(app, "open", "Открыть мнебыDNS", true, None::<&str>)?;
