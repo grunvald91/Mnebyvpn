@@ -172,6 +172,19 @@ async function preflightDns() {
     note.className = 'adapter-warning';
     note.textContent = snapshot.warning + ' Переключение DNS пока отключено.';
     result.append(note);
+    if (!snapshot.recovery_ready && Array.isArray(snapshot.recovery_blockers)) {
+      const heading = document.createElement('strong');
+      heading.textContent = 'Почему точное восстановление ещё заблокировано';
+      result.append(heading);
+      const blockers = document.createElement('ul');
+      blockers.className = 'recovery-blockers';
+      for (const reason of snapshot.recovery_blockers) {
+        const line = document.createElement('li');
+        line.textContent = reason;
+        blockers.append(line);
+      }
+      result.append(blockers);
+    }
   } catch (error) {
     result.textContent = 'Ошибка предпроверки: ' + String(error);
   } finally {
