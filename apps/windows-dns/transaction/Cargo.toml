@@ -1,0 +1,8 @@
+[package]
+name = "mnebydns-transaction"
+version = "0.5.0"
+edition = "2021"
+description = "DNS adapter transaction and fail-closed rollback state machine"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

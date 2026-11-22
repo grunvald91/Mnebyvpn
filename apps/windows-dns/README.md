@@ -73,3 +73,15 @@ Microsoft references:
 - https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-getinterfacednssettings
 - https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-freeinterfacednssettings
 - https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-dns_interface_settings
+
+## Transaction core (not yet connected to Windows)
+
+`transaction/` implements the guarded DNS activation/rollback state machine with a
+`NetworkBackend` and `RecoveryJournal` abstraction. Mock tests cover successful
+activation, unknown DHCP/RA mode refusal, journal failure, partial IPv6 update, DoT
+verification failure, and recovery failure requiring retained journal.
+
+This crate does **not** modify Windows networking and has **no real privileged
+service backend or protected on-disk journal**. The journal must be durable and
+ACL-protected before the first production mutation. Do not present these mock
+tests as real Windows DNS rollback verification.
