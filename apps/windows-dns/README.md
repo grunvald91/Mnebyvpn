@@ -324,3 +324,40 @@ Standards:
 
 These measures improve the *diagnostic*. They do not install a local DNS
 proxy or authorize changing Windows adapter DNS.
+
+
+## Stage 13: temporary UDP loopback → authenticated DoT proxy
+
+A real UDP DNS listener is now implemented in `dns-core/src/udp_proxy.rs`.
+The GUI button **"Проверить локальный DNS-прокси"** starts a short-lived
+127.0.0.1 listener on an **ephemeral port** (never port 53), sends an
+`example.com` A query through the listener, forwards the original DNS packet
+to the user's explicitly entered DoT hostname using system-trusted TLS
+with TLS 1.2+, validates the upstream transaction ID and exact question,
+and shuts the listener down at the end. A failed DoT lookup produces
+**SERVFAIL**, never a plaintext upstream fallback.
+
+The listener uses two bounded workers, a bounded UDP payload, explicit
+EDNS OPT parsing, per-query TLS timeouts, an upper limit on upstream
+DNS frame length and short socket polling for shutdown. Oversized responses
+set the DNS **TC** flag rather than sending fragmented UDP packets.
+**TCP fallback is not yet implemented** and TC replies may be unusable
+until it is added. DHCP/RA/VPN/Windows adapter settings are untouched.
+
+Before opening the listener, the resolver resolves and **pins the DoT
+upstream IP addresses** using the existing OS resolver, to prevent
+re-resolution through a future local DNS redirect. No hostname or
+personal configuration is written to disk or logged. This is a
+preview smoke test, **not** continuous Windows DNSProxy deployment:
+each query currently opens a separate authenticated TLS connection
+(no pooling, caching, DNS over TCP listener, IPv6 listener or
+production auto-recovery).
+
+Offline tests on the actual Windows runner use a mock upstream to
+exercise native UDP loopback, SERVFAIL, malformed input dropping,
+EDNS framing, response correlation and truncation with **zero external
+network calls**. Running the GUI button against a real personal
+server is a separate manual integration check.
+
+References: https://www.rfc-editor.org/rfc/rfc7858 and
+https://www.rfc-editor.org/rfc/rfc7766.

@@ -38,6 +38,9 @@
         <p class="muted dot-help" id="dot-help">Укажите только имя хоста без https:// и порта. Тест делает запросы A и AAAA к example.com через TLS:853. Настройки Windows не меняются.</p>
         <button class="secondary" id="check-dot" type="button">Проверить защищённый DoT</button>
         <p class="dot-status" id="dot-status" role="status" aria-live="polite">Ещё не проверен</p>
+        <button class="secondary" id="check-proxy" type="button">Проверить локальный DNS-прокси</button>
+        <p class="muted dot-help">Тестовый UDP-порт на 127.0.0.1, без изменения порта 53 и DNS Windows. Прокси закрывается после проверки.</p>
+        <p class="dot-status" id="proxy-status" role="status" aria-live="polite">Локальная передача DNS через DoT ещё не проверена.</p>
       </section>
     </section>
     <section id="diagnostics" class="view hidden">
@@ -47,6 +50,7 @@
       <div class="item"><span>IPv6 / AAAA</span><strong id="ipv6-state">Не проверено</strong></div>
       <div class="item"><span>Служба Windows</span><strong id="service-state">Не проверено</strong></div>
       <div class="item"><span>DoT / TLS</span><strong id="dot-diag-state">Не проверено</strong></div>
+      <div class="item"><span>Локальный UDP → DoT</span><strong id="proxy-diag-state">Не проверено</strong></div>
       <div class="item"><span>Smart DNS-маршрутизация</span><strong>Не проверялась</strong></div>
       <div class="item"><span>VPN / TUN</span><strong>Не изменяются</strong></div>
       <section class="detail adapter-section" aria-label="Сетевые адаптеры">

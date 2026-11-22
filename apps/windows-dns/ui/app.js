@@ -8,6 +8,7 @@ let preflightLoading = false;
 let adaptersLoading = false;
 let dnsLoading = false;
 let dotLoading = false;
+let proxySmokeLoading = false;
 let dotInputRevision = 0;
 
 for (const button of document.querySelectorAll('[data-tab]')) {
@@ -317,7 +318,55 @@ get('settings-tray').addEventListener('click', hideToTray);
 get('refresh-dns').addEventListener('click', refreshStatus);
 get('refresh-adapters').addEventListener('click', refreshAdapters);
 get('preflight-dns').addEventListener('click', preflightDns);
+
+async function smokeProxy() {
+  if (proxySmokeLoading || dotLoading) return;
+  const host = get('dot-host').value.trim();
+  const revision = dotInputRevision;
+  const button = get('check-proxy');
+  const result = get('proxy-status');
+  const diagnostic = get('proxy-diag-state');
+  if (!host) {
+    result.textContent = 'Укажите имя персонального DoT-сервера.';
+    return;
+  }
+  if (typeof invoke !== 'function') {
+    result.textContent = 'Проверка доступна только в Windows-приложении.';
+    return;
+  }
+  proxySmokeLoading = true;
+  button.disabled = true;
+  result.classList.remove('good', 'bad');
+  result.textContent = 'Запускаю временный UDP-порт и проверяю передачу через TLS…';
+  try {
+    const report = await invoke('smoke_local_dot_proxy', { host });
+    if (dotInputRevision !== revision) {
+      result.textContent = 'Имя сервера изменилось — выполните новую проверку.';
+      diagnostic.textContent = 'Нужна повторная проверка';
+      return;
+    }
+    if (!report.success) throw new Error('Положительный DNS-ответ не подтверждён');
+    result.textContent = 'UDP → DoT работает. A-ответов: ' + report.answer_count
+      + ', тестовый порт: ' + report.local_port
+      + ', время: ' + report.elapsed_ms + ' мс. Прокси остановлен.';
+    diagnostic.textContent = 'Тест UDP → DoT успешен';
+    result.classList.add('good');
+  } catch (error) {
+    if (dotInputRevision !== revision) {
+      result.textContent = 'Имя сервера изменилось — выполните новую проверку.';
+      return;
+    }
+    result.textContent = 'Локальный прокси: ' + String(error);
+    diagnostic.textContent = 'Тест не пройден';
+    result.classList.add('bad');
+  } finally {
+    proxySmokeLoading = false;
+    button.disabled = false;
+  }
+}
+
 get('check-dot').addEventListener('click', checkPersonalDot);
+get('check-proxy').addEventListener('click', smokeProxy);
 get('dot-host').addEventListener('keydown', (event) => {
   if (event.key === 'Enter') checkPersonalDot();
 });
@@ -326,6 +375,9 @@ get('dot-host').addEventListener('input', () => {
   get('dot-status').textContent = 'Адрес изменён — проверка требуется заново.';
   get('dot-status').classList.remove('good', 'bad');
   get('dot-diag-state').textContent = 'Не проверено';
+  get('proxy-status').textContent = 'Адрес изменился — проверка локального прокси сброшена.';
+  get('proxy-status').classList.remove('good', 'bad');
+  get('proxy-diag-state').textContent = 'Не проверено';
 });
 
 if (typeof invoke === 'function') {

@@ -28,6 +28,13 @@ async fn probe_personal_dot(host: String) -> Result<mnebydns_core::DotProbeRepor
 }
 
 #[tauri::command]
+async fn smoke_local_dot_proxy(host: String) -> Result<mnebydns_core::UdpDotSmokeReport, String> {
+    tauri::async_runtime::spawn_blocking(move || mnebydns_core::smoke_udp_dot_preview(&host))
+        .await
+        .map_err(|_| "Проверка локального UDP/DoT-прокси завершилась внутренней ошибкой".to_owned())?
+}
+
+#[tauri::command]
 fn get_ui_mode() -> &'static str {
     "Диагностика: только чтение. Настройки DNS Windows не изменяются"
 }
@@ -66,7 +73,8 @@ pub fn run() {
             inspect_dns,
             list_network_adapters,
             preflight_dns_adapter,
-            probe_personal_dot
+            probe_personal_dot,
+            smoke_local_dot_proxy
         ])
         .setup(|app| {
             let open = MenuItem::with_id(app, "open", "Открыть мнебыDNS", true, None::<&str>)?;

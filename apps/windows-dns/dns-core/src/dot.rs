@@ -11,18 +11,18 @@ use std::net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-const DOT_PORT: u16 = 853;
-const IO_TIMEOUT: Duration = Duration::from_millis(2500);
+pub(crate) const DOT_PORT: u16 = 853;
+pub(crate) const IO_TIMEOUT: Duration = Duration::from_millis(2500);
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(1500);
 const MAX_IP_ADDRESSES: usize = 5;
-const MAX_DNS_FRAME: usize = 4096;
+pub(crate) const MAX_DNS_FRAME: usize = 4096;
 const MAX_OS_ADDRESSES: usize = 32;
 
-type AuthenticatedStream = native_tls::TlsStream<TcpStream>;
+pub(crate) type AuthenticatedStream = native_tls::TlsStream<TcpStream>;
 
 /// DNS-over-TLS must not allow slow trickle responses to prolong a probe
 /// indefinitely: each read is bounded by the time LEFT in one frame deadline.
-trait DnsIo: Read + Write {
+pub(crate) trait DnsIo: Read + Write {
     fn set_read_budget(&self, remaining: Duration) -> io::Result<()>;
 }
 impl DnsIo for AuthenticatedStream {
@@ -31,7 +31,7 @@ impl DnsIo for AuthenticatedStream {
     }
 }
 
-fn read_exact_until<S: DnsIo>(
+pub(crate) fn read_exact_until<S: DnsIo>(
     stream: &mut S,
     bytes: &mut [u8],
     deadline: Instant,
@@ -61,7 +61,7 @@ fn read_exact_until<S: DnsIo>(
 /// Prefer IPv4 where the personal service has no IPv6 record, but never
 /// discard all IPv6 candidates just because Windows listed them first.
 /// Deduplicate and bound retries to keep a failed probe responsive.
-fn candidate_addresses(addresses: impl Iterator<Item = SocketAddr>) -> Vec<SocketAddr> {
+pub(crate) fn candidate_addresses(addresses: impl Iterator<Item = SocketAddr>) -> Vec<SocketAddr> {
     let mut ipv4 = Vec::new();
     let mut ipv6 = Vec::new();
     for address in addresses.take(MAX_OS_ADDRESSES) {
@@ -76,7 +76,7 @@ fn candidate_addresses(addresses: impl Iterator<Item = SocketAddr>) -> Vec<Socke
         .collect()
 }
 
-fn connect_authenticated(
+pub(crate) fn connect_authenticated(
     host: &str,
     addresses: impl Iterator<Item = SocketAddr>,
     connector: &TlsConnector,
@@ -115,7 +115,7 @@ pub struct DotProbeReport {
     pub complete: bool,
 }
 
-fn checked_hostname(input: &str) -> Result<String, String> {
+pub(crate) fn checked_hostname(input: &str) -> Result<String, String> {
     // DNS authentication requires the exact hostname from the trusted profile.
     // Reject URLs, ports, IP literals, control characters and whitespace.
     let host = input.trim().to_ascii_lowercase();
