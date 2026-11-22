@@ -250,3 +250,26 @@ Microsoft references:
 - https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-getinterfacednssettings
 - https://learn.microsoft.com/en-us/windows/win32/api/netioapi/ns-netioapi-dns_interface_settings
 - https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-setinterfacednssettings
+
+
+## Stage 11: Windows registry DNS origin evidence (read-only)
+
+`network/registry_source.rs` adds native, read-only `RegGetValueW` inspection of per-interface
+`NameServer` in Tcpip/Tcpip6 and `DhcpNameServer` in Tcpip for an explicitly
+selected adapter GUID. Microsoft documents both IPv4 and IPv6 `NameServer` registry
+paths for Windows network devices:
+
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/network/mb-dns-updates
+- https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-reggetvaluew
+
+The evidence is **not** authoritative provenance: absent/empty registry
+entries are not proof of DHCP/RA; the effective DNS list can also be affected
+by VPN, policies and profile DNS. The app never writes the registry, never
+saves this evidence as a recovery snapshot, never enables DNS switching, and
+does not log DNS addresses in GitHub Actions.
+
+The native preflight compares IPv4 registry static data with DNS API data,
+flags inconsistencies, and reports any read/parse errors instead of
+guessing. IPv6 static values are exposed only as unverified evidence.
+A complete original-mode capture, exact RA/DHCPv6/profile restoration and
+real Windows 10 recovery testing are required before introducing mutation.

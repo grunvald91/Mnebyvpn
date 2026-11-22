@@ -172,6 +172,22 @@ async function preflightDns() {
     note.className = 'adapter-warning';
     note.textContent = snapshot.warning + ' Переключение DNS пока отключено.';
     result.append(note);
+    if (snapshot.registry) {
+      const evidence = document.createElement('p');
+      evidence.className = 'muted';
+      const count = (values) => Array.isArray(values) ? values.length + ' адресов' : 'нет записи';
+      evidence.textContent = 'Реестр (только чтение): IPv4 статический — '
+        + count(snapshot.registry.ipv4_static)
+        + '; IPv4 DHCP — ' + count(snapshot.registry.ipv4_dhcp)
+        + '; IPv6 статический — ' + count(snapshot.registry.ipv6_static)
+        + '. Это не доказывает текущий источник DNS.';
+      result.append(evidence);
+    } else if (snapshot.registry_error) {
+      const problem = document.createElement('p');
+      problem.className = 'adapter-warning';
+      problem.textContent = 'Независимая проверка реестра недоступна: ' + snapshot.registry_error;
+      result.append(problem);
+    }
     if (!snapshot.recovery_ready && Array.isArray(snapshot.recovery_blockers)) {
       const heading = document.createElement('strong');
       heading.textContent = 'Почему точное восстановление ещё заблокировано';

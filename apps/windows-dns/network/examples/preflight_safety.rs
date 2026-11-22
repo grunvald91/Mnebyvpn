@@ -20,6 +20,9 @@ fn main() -> Result<(), String> {
         if report.recovery_blockers.is_empty() {
             return Err("Unverified backup must report at least one blocker".into());
         }
+        if report.registry.is_some() == report.registry_error.is_some() {
+            return Err("Registry evidence and error must be mutually exclusive".into());
+        }
         if report.ipv4.is_some() {
             ipv4_reads += 1;
         }

@@ -3,6 +3,9 @@
 //! through DHCP, or through IPv6 router advertisements.
 
 use serde::Serialize;
+
+mod registry_source;
+pub use registry_source::RegistryDnsEvidence;
 use std::ffi::c_void;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::ptr::null;
@@ -255,6 +258,8 @@ pub struct AdapterPreflight {
     /// A verified two-family backup is not yet available.
     pub recovery_ready: bool,
     pub recovery_blockers: Vec<String>,
+    pub registry: Option<RegistryDnsEvidence>,
+    pub registry_error: Option<String>,
 }
 
 /// Convert only canonical Windows interface GUID strings returned by list_adapters().
@@ -406,6 +411,35 @@ pub fn preflight_adapter(guid: &str) -> Result<AdapterPreflight, String> {
     }) {
         recovery_blockers.push("Источник IPv4 DNS (DHCP/статический) не доказан".to_owned());
     }
+    // Independent, read-only registry evidence supplements the DNS API.
+    // Registry values are not proof of the currently active source mode:
+    // DHCP, RDNSS/RA, VPN/NRPT and policy may override effective servers.
+    let (registry, registry_error) = match registry_source::inspect(&adapter.guid) {
+        Ok(value) => (Some(value), None),
+        Err(error) => {
+            recovery_blockers.push("Не удалось независимо прочитать DNS из реестра".to_owned());
+            (None, Some(error))
+        }
+    };
+    if let Some(evidence) = registry.as_ref() {
+        if let (Some(static4), Some(api4)) =
+            (evidence.ipv4_static.as_ref(), ipv4.as_ref())
+        {
+            if *static4 != api4.static_servers {
+                recovery_blockers.push(
+                    "IPv4 NameServer реестра отличается от Windows DNS API".to_owned()
+                );
+            }
+        }
+        if evidence.ipv6_static.as_ref().is_some_and(|values| !values.is_empty()) {
+            // Even if static nameservers match the effective list, RA, DHCPv6,
+            // profile DNS and policy are not proven absent.
+            recovery_blockers.push(
+                "Статический IPv6 найден в реестре, но источник действующего DNS не доказан"
+                    .to_owned()
+            );
+        }
+    }
     let warning = "Неполный снимок: нельзя сохранять его как точный backup IPv4+IPv6 и менять DNS Windows.";
     Ok(AdapterPreflight {
         guid: adapter.guid,
@@ -420,6 +454,8 @@ pub fn preflight_adapter(guid: &str) -> Result<AdapterPreflight, String> {
         warning: warning.to_owned(),
         recovery_ready: false,
         recovery_blockers,
+        registry,
+        registry_error,
     })
 }
 
