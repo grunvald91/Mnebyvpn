@@ -240,7 +240,6 @@ pub fn provision_for_installer() -> Result<(), String> {
     windows_acl::create_or_verify_private_directory(&root)
 }
 
-
 const CONFIG_NAME: &str = "controller-v1.json";
 const CONFIG_STAGING_NAME: &str = "controller-v1.writing";
 const MAX_CONFIG_BYTES: u64 = 16 * 1024;
@@ -276,7 +275,9 @@ impl ControllerConfig {
         for label in host.split('.') {
             if label.is_empty()
                 || label.len() > 63
-                || !label.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                || !label
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
                 || label.starts_with('-')
                 || label.ends_with('-')
             {
@@ -333,15 +334,12 @@ impl SystemRecord {
     }
 }
 
-fn validate_system_snapshot(
-    snapshot: &mnebydns_network::AdapterDnsSnapshot,
-) -> Result<(), String> {
+fn validate_system_snapshot(snapshot: &mnebydns_network::AdapterDnsSnapshot) -> Result<(), String> {
     let parts: Vec<_> = snapshot.interface_guid.split('-').collect();
     if parts.len() != 5
-        || parts
-            .iter()
-            .zip([8, 4, 4, 4, 12])
-            .any(|(part, size)| part.len() != size || !part.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        || parts.iter().zip([8, 4, 4, 4, 12]).any(|(part, size)| {
+            part.len() != size || !part.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
     {
         return Err("Invalid interface GUID in system DNS recovery record".into());
     }
@@ -377,10 +375,9 @@ fn validate_system_snapshot(
 fn validate_system_guid(guid: &str) -> Result<(), String> {
     let parts: Vec<_> = guid.split('-').collect();
     if parts.len() != 5
-        || parts
-            .iter()
-            .zip([8, 4, 4, 4, 12])
-            .any(|(part, size)| part.len() != size || !part.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        || parts.iter().zip([8, 4, 4, 4, 12]).any(|(part, size)| {
+            part.len() != size || !part.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
     {
         return Err("Invalid adapter GUID for system DNS journal path".into());
     }
@@ -400,15 +397,22 @@ impl SystemDnsJournal {
 
     fn record_path(&self, guid: &str) -> Result<PathBuf, String> {
         validate_system_guid(guid)?;
-        Ok(self.directory.join(format!("{SYSTEM_RECORD_PREFIX}{guid}.json")))
+        Ok(self
+            .directory
+            .join(format!("{SYSTEM_RECORD_PREFIX}{guid}.json")))
     }
 
     fn staging_path(&self, guid: &str) -> Result<PathBuf, String> {
         validate_system_guid(guid)?;
-        Ok(self.directory.join(format!("{SYSTEM_RECORD_PREFIX}{guid}{SYSTEM_STAGING_SUFFIX}")))
+        Ok(self.directory.join(format!(
+            "{SYSTEM_RECORD_PREFIX}{guid}{SYSTEM_STAGING_SUFFIX}"
+        )))
     }
 
-    fn read_one(&self, path: &Path) -> Result<Option<mnebydns_network::AdapterDnsSnapshot>, String> {
+    fn read_one(
+        &self,
+        path: &Path,
+    ) -> Result<Option<mnebydns_network::AdapterDnsSnapshot>, String> {
         let metadata = match fs::symlink_metadata(path) {
             Ok(value) => value,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -441,7 +445,9 @@ impl SystemDnsJournal {
                 continue;
             }
             if name.ends_with(SYSTEM_STAGING_SUFFIX) {
-                return Err("An interrupted system DNS journal write requires recovery review".into());
+                return Err(
+                    "An interrupted system DNS journal write requires recovery review".into(),
+                );
             }
             if !name.ends_with(".json") {
                 continue;
@@ -458,7 +464,8 @@ impl SystemDnsJournal {
                 return Err("System DNS recovery filename does not match its adapter GUID".into());
             }
             if records.iter().any(|item| {
-                item.interface_guid.eq_ignore_ascii_case(&snapshot.interface_guid)
+                item.interface_guid
+                    .eq_ignore_ascii_case(&snapshot.interface_guid)
             }) {
                 return Err("Duplicate adapter in system DNS recovery journal".into());
             }
@@ -484,8 +491,8 @@ impl SystemDnsJournal {
         if self.read_all()?.len() >= MAX_SYSTEM_RECORDS {
             return Err("System DNS recovery journal adapter limit reached".into());
         }
-        let bytes = serde_json::to_vec(&SystemRecord::new(snapshot)?)
-            .map_err(|error| error.to_string())?;
+        let bytes =
+            serde_json::to_vec(&SystemRecord::new(snapshot)?).map_err(|error| error.to_string())?;
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -497,8 +504,9 @@ impl SystemDnsJournal {
         drop(file);
         fs::hard_link(&staging, &committed)
             .map_err(|error| format!("Cannot commit system DNS backup: {error}"))?;
-        fs::remove_file(&staging)
-            .map_err(|error| format!("System DNS backup committed but staging cleanup failed: {error}"))?;
+        fs::remove_file(&staging).map_err(|error| {
+            format!("System DNS backup committed but staging cleanup failed: {error}")
+        })?;
         if self.read_one(&committed)?.as_ref() != Some(snapshot) {
             return Err("System DNS backup read-back does not match the original snapshot".into());
         }
@@ -521,7 +529,6 @@ impl SystemDnsJournal {
         Ok(!self.read_all()?.is_empty())
     }
 }
-
 
 #[cfg(windows)]
 pub struct ProtectedJournal {
@@ -602,7 +609,9 @@ impl ProtectedJournal {
             .write(true)
             .create_new(true)
             .open(&staging)
-            .map_err(|error| format!("Cannot create controller configuration staging file: {error}"))?;
+            .map_err(|error| {
+                format!("Cannot create controller configuration staging file: {error}")
+            })?;
         file.write_all(&bytes)
             .and_then(|_| file.sync_all())
             .map_err(|error| format!("Cannot persist controller configuration: {error}"))?;
@@ -797,7 +806,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod system_dns_tests {
     use super::*;
@@ -831,7 +839,9 @@ mod system_dns_tests {
         let directory = tempfile::tempdir().unwrap();
         let journal = SystemDnsJournal::new(directory.path().to_path_buf());
         fs::write(
-            journal.staging_path("12345678-9abc-def0-1234-56789abcdef0").unwrap(),
+            journal
+                .staging_path("12345678-9abc-def0-1234-56789abcdef0")
+                .unwrap(),
             b"incomplete",
         )
         .unwrap();
