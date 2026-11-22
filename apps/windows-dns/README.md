@@ -46,3 +46,12 @@ Before any DNS write:
 - https://aiforui.dev/skills/gestures
 - https://github.com/benjitaylor/skills
 - https://github.com/GoogleChrome/modern-web-guidance
+
+## Review fixes (0.4 diagnostic branch)
+
+- Local DNS probe verifies the full DNS question, requested record type, untruncated answer data and safe packet boundaries. It never claims a successful TLS handshake.
+- Windows network inventory fails rather than silently returning truncated adapters or DNS address lists, and bounds retry counts for GetAdaptersAddresses.
+- The UI prevents concurrent diagnostics/adapter refresh requests and clearly labels the optional service status file as untrusted.
+- Effective DNS addresses are not a recoverable snapshot of DHCP/static configuration. There is **still no privileged DNS control** and no automatic network changes.
+
+Before commercial deployment, the service status mechanism needs protected ACLs, an authenticated IPC channel and crash-safe persistence. The current service writes a JSON file for non-authoritative diagnostics only.

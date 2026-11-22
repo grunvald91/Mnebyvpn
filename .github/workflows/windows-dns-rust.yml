@@ -12,6 +12,10 @@ on:
       - ".github/workflows/windows-dns-rust.yml"
   workflow_dispatch:
 
+concurrency:
+  group: windows-dns-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

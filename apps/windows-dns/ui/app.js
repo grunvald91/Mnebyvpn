@@ -4,6 +4,8 @@ const get = (id) => document.getElementById(id);
 const invoke = window.__TAURI__?.core?.invoke;
 let adapters = [];
 let selectedAdapterGuid = null;
+let adaptersLoading = false;
+let dnsLoading = false;
 
 for (const button of document.querySelectorAll('[data-tab]')) {
   button.addEventListener('click', () => {
@@ -106,6 +108,8 @@ function renderAdapters() {
 }
 
 async function refreshAdapters() {
+  if (adaptersLoading) return;
+  adaptersLoading = true;
   const button = get('refresh-adapters');
   button.disabled = true;
   get('adapters-list').textContent = 'Получаю список адаптеров Windows…';
@@ -122,17 +126,21 @@ async function refreshAdapters() {
   } catch (error) {
     get('adapters-list').textContent = 'Не удалось получить список адаптеров: ' + String(error);
   } finally {
+    adaptersLoading = false;
     button.disabled = false;
   }
 }
 
 async function refreshStatus() {
+  if (dnsLoading) return;
+  dnsLoading = true;
   const refresh = get('refresh-dns');
   refresh.disabled = true;
   get('connection-title').textContent = 'Проверяю локальный DNS…';
   if (typeof invoke !== 'function') {
     get('connection-title').textContent = 'Недоступно в браузере';
     get('status').textContent = 'Проверка доступна только в Windows-приложении.';
+    dnsLoading = false;
     refresh.disabled = false;
     return;
   }
@@ -147,13 +155,14 @@ async function refreshStatus() {
     updateEndpoint('ipv4', response.local.ipv4);
     updateEndpoint('ipv6', response.local.ipv6);
     get('service-state').textContent = response.service
-      ? 'Служба диагностики сообщает о работе'
-      : 'Нет актуальных данных службы';
+      ? 'Получен свежий диагностический файл (не подтверждает подлинность службы)'
+      : 'Нет актуального диагностического файла';
     get('status').textContent = 'Проверка выполнена. Защищённый DoT ещё не подтверждён.';
   } catch (error) {
     get('connection-title').textContent = 'Ошибка диагностики';
     get('status').textContent = 'Не удалось проверить DNS: ' + String(error);
   } finally {
+    dnsLoading = false;
     refresh.disabled = false;
   }
 }
