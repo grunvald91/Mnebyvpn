@@ -32,6 +32,12 @@ pub trait RecoveryJournal {
 /// It must restore both sources, including DHCP/RA, exactly as captured.
 pub trait NetworkBackend {
     fn capture(&mut self, interface_guid: &str) -> Result<Snapshot, String>;
+    /// Must confirm the selected adapter and both DNS source modes are still
+    /// identical AFTER the journal is durable, BEFORE touching either stack.
+    fn verify_pre_apply(&mut self, original: &Snapshot) -> Result<(), String>;
+    /// Must re-check adapter identity, interface type and ownership on every
+    /// restore attempt (including reboot). Never target a recycled GUID.
+    fn verify_restore_target(&mut self, original: &Snapshot) -> Result<(), String>;
     fn apply_ipv4_loopback(&mut self, interface_guid: &str) -> Result<(), String>;
     fn apply_ipv6_loopback(&mut self, interface_guid: &str) -> Result<(), String>;
     fn verify_active(&mut self, interface_guid: &str) -> Result<(), String>;
@@ -61,6 +67,12 @@ pub fn restore<B: NetworkBackend, J: RecoveryJournal>(
     let original = journal
         .read()?
         .ok_or_else(|| "No saved DNS configuration in recovery journal".to_owned())?;
+    // Restore is a privileged mutation too. Validate even when the record
+    // originated from a different service version or survived a reboot.
+    validate(&original, &original.interface_guid)?;
+    backend.verify_restore_target(&original).map_err(|error| {
+        format!("Unsafe restore target: {error}; recovery journal kept")
+    })?;
     let v4 = backend.restore_ipv4(&original);
     let v6 = backend.restore_ipv6(&original);
     if let (Err(a), Err(b)) = (&v4, &v6) {
@@ -98,6 +110,11 @@ pub fn activate<B: NetworkBackend, J: RecoveryJournal>(
     let original = backend.capture(requested_guid)?;
     validate(&original, requested_guid)?;
     journal.save_before_changes(&original)?;
+    // A simultaneous VPN, DHCP renewal or adapter replacement must stop
+    // activation. Preserve the journal for human review if this fails.
+    backend.verify_pre_apply(&original).map_err(|error| {
+        format!("DNS settings changed during capture: {error}; recovery journal kept")
+    })?;
 
     let applied = backend
         .apply_ipv4_loopback(requested_guid)
@@ -148,6 +165,8 @@ mod tests {
         fail_v4_restore: bool,
         fail_health: bool,
         unknown_mode: bool,
+        changed_before_apply: bool,
+        changed_restore_target: bool,
     }
     impl NetworkBackend for MockBackend {
         fn capture(&mut self, guid: &str) -> Result<Snapshot, String> {
@@ -162,6 +181,22 @@ mod tests {
                     SourceMode::Static(vec!["2001:4860:4860::8888".to_owned()])
                 },
             })
+        }
+        fn verify_pre_apply(&mut self, _: &Snapshot) -> Result<(), String> {
+            self.calls.push("verify_before_apply");
+            if self.changed_before_apply {
+                Err("adapter DNS changed".to_owned())
+            } else {
+                Ok(())
+            }
+        }
+        fn verify_restore_target(&mut self, _: &Snapshot) -> Result<(), String> {
+            self.calls.push("verify_restore_target");
+            if self.changed_restore_target {
+                Err("adapter replaced".to_owned())
+            } else {
+                Ok(())
+            }
         }
         fn apply_ipv4_loopback(&mut self, _: &str) -> Result<(), String> {
             self.calls.push("apply4");
@@ -265,6 +300,50 @@ mod tests {
         assert!(activate("adapter-1", &mut backend, &mut disk).is_err());
         assert!(backend.calls.contains(&"verify_restore"));
         assert!(disk.saved.is_none());
+    }
+
+    #[test]
+    fn adapter_changes_during_snapshot_block_all_dns_writes() {
+        let mut backend = MockBackend {
+            changed_before_apply: true,
+            ..Default::default()
+        };
+        let mut disk = journal();
+        let error = activate("adapter-1", &mut backend, &mut disk).unwrap_err();
+        assert!(error.contains("recovery journal kept"));
+        assert!(disk.saved.is_some());
+        assert_eq!(
+            backend.calls,
+            vec!["capture", "verify_before_apply"]
+        );
+    }
+
+    #[test]
+    fn restore_refuses_replaced_adapter_and_retains_journal() {
+        let mut backend = MockBackend::default();
+        let mut disk = journal();
+        activate("adapter-1", &mut backend, &mut disk).unwrap();
+        backend.calls.clear();
+        backend.changed_restore_target = true;
+        let error = restore(&mut backend, &mut disk).unwrap_err();
+        assert!(error.contains("Unsafe restore target"));
+        assert_eq!(backend.calls, vec!["verify_restore_target"]);
+        assert!(disk.saved.is_some());
+    }
+
+    #[test]
+    fn unknown_recovery_source_never_writes_dns() {
+        let mut backend = MockBackend::default();
+        let mut disk = journal();
+        disk.saved = Some(Snapshot {
+            interface_guid: "adapter-1".to_owned(),
+            eligible_physical_adapter: true,
+            ipv4: SourceMode::Unknown,
+            ipv6: SourceMode::Automatic,
+        });
+        assert!(restore(&mut backend, &mut disk).is_err());
+        assert!(backend.calls.is_empty());
+        assert!(disk.saved.is_some());
     }
 
     #[test]
