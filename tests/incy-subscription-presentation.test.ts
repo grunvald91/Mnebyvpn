@@ -4,7 +4,8 @@ import {readFileSync} from 'node:fs';
 import {
   germanWebSocketOnly,keepSupportedAdditionalTransport,
   incySubscriptionHeaders,incyExpiredSubscriptionHeaders,
-  incyExpiredSubscriptionBody,INCY_SITE_URL,INCY_RENEW_URL,
+  incyExpiredSubscriptionBody,incyEncodeActiveSubscription,
+  INCY_SITE_URL,INCY_RENEW_URL,
   INCY_SUPPORT_URL,
 } from '../packages/provisioning/src/incy-subscription-presentation.ts';
 
@@ -110,4 +111,35 @@ test('expired INCY subscription keeps website and support with no network secret
   assert.ok(decoded.includes('#support-url: '+INCY_SUPPORT_URL));
   assert.ok(decoded.includes('#announce-url: '+INCY_RENEW_URL));
   assert.doesNotMatch(decoded,/vless:\/\/|vmess:\/\/|trojan:\/\/|awg:\/\/|amneziawg:\/\/|\[Interface\]/);
+});
+
+test('INCY body fallback shows website and renewal while preserving signed node lines',()=>{
+  const verified=[ws,'amneziawg://YWJjZA#'+encodeURIComponent('мне VPN Финляндия')].join('\n');
+  const encoded=incyEncodeActiveSubscription(verified,'incy');
+  const lines=Buffer.from(encoded.trim(),'base64').toString('utf8').trim().split('\n');
+  assert.equal(lines[0],'#profile-title: MNEBYVPN');
+  assert.ok(lines.includes('#profile-web-page-url: '+INCY_SITE_URL));
+  assert.ok(lines.includes('#support-url: '+INCY_SUPPORT_URL));
+  assert.ok(lines.includes('#announce-url: '+INCY_RENEW_URL));
+  const announce=lines.find(line=>line.startsWith('#announce: base64:'));
+  assert.ok(announce);
+  assert.match(Buffer.from(announce!.slice('#announce: base64:'.length),'base64')
+    .toString('utf8'),/Оплата и продление/);
+  assert.deepEqual(lines.filter(line=>!line.startsWith('#')),verified.split('\n'));
+  // Karing must retain the exact historical payload, byte-for-byte after decode.
+  const karing=incyEncodeActiveSubscription(verified,'karing');
+  assert.equal(Buffer.from(karing.trim(),'base64').toString('utf8'),verified+'\n');
+  // Direct bearer subscription (no client parameter) is also imported by INCY.
+  const canonical=incyEncodeActiveSubscription(verified,null);
+  assert.ok(Buffer.from(canonical.trim(),'base64').toString('utf8')
+    .includes('#profile-web-page-url: '+INCY_SITE_URL));
+  assert.throws(()=>incyEncodeActiveSubscription('',null));
+  assert.throws(()=>incyEncodeActiveSubscription('#support-url: bad',null));
+});
+
+test('active INCY metadata provides non-Premium announcement link to payment',()=>{
+  const h=incySubscriptionHeaders(new Date('2026-12-20T20:00:00Z'));
+  assert.equal(h['announce-url'],INCY_RENEW_URL);
+  assert.match(Buffer.from(h.announce.slice(7),'base64').toString('utf8'),
+    /Оплата и продление/);
 });
