@@ -789,7 +789,9 @@ pub fn verify_adapter_restored(snapshot: &AdapterDnsSnapshot) -> Result<(), Stri
     let current = capture_adapter_dns(&snapshot.interface_guid)?;
     // A Windows interface rename does not invalidate an otherwise exact DNS
     // restoration. Identity is the stable GUID; compare all four source modes.
-    if !current.interface_guid.eq_ignore_ascii_case(&snapshot.interface_guid)
+    if !current
+        .interface_guid
+        .eq_ignore_ascii_case(&snapshot.interface_guid)
         || current.ipv4 != snapshot.ipv4
         || current.ipv6 != snapshot.ipv6
         || current.ipv4_profile != snapshot.ipv4_profile
