@@ -76,7 +76,8 @@ export function incySubscriptionHeaders(expiresAt:Date,client:string|null=null):
     // Keep the separate Premium action pointed at the tariffs page.
     'premium-url':INCY_RENEW_URL,
     // INCY's existing "Канал / Бот" action is driven by announce-url.
-    // It now opens the Telegram bot; profile-web-page-url opens the website.
+    // It opens the Telegram bot. Website metadata is also provided, but a
+    // visible website action is not guaranteed in every INCY build.
     ...(client==='karing'?{}:{
       'announce':'base64:'+Buffer.from(
         'Связаться с поддержкой в Telegram: @MNEBYVPN_bot','utf8').toString('base64'),
@@ -97,7 +98,7 @@ export function incyExpiredSubscriptionHeaders(
     ...incySubscriptionHeaders(expiresAt,client),
     'announce':'base64:'+Buffer.from(
       karing?'Срок VPN истёк. Продлите доступ на mnebyvpn.site':
-        'Поддержка и связь в Telegram: @MNEBYVPN_bot','utf8').toString('base64'),
+        'Срок VPN истёк. Продление: mnebyvpn.site/#plans; бот: @MNEBYVPN_bot','utf8').toString('base64'),
     // Preserve Karing's historical expired-subscription link. INCY's
     // Channel / Bot action opens Telegram; the website is a separate action.
     'announce-url':karing?INCY_RENEW_URL:INCY_SUPPORT_URL,
@@ -116,7 +117,7 @@ export function incyExpiredSubscriptionBody(client:string|null=null):string{
     '#profile-update-interval: 1',
     '#announce: base64:'+Buffer.from(
       karing?'Срок VPN истёк. Продлите доступ на mnebyvpn.site':
-        'Поддержка и связь в Telegram: @MNEBYVPN_bot','utf8').toString('base64'),
+        'Срок VPN истёк. Продление: mnebyvpn.site/#plans; бот: @MNEBYVPN_bot','utf8').toString('base64'),
     '#announce-url: '+(karing?INCY_RENEW_URL:INCY_SUPPORT_URL),
   ].join('\n')+'\n','utf8').toString('base64')+'\n';
 }
