@@ -102,7 +102,7 @@ export function incyExpiredSubscriptionHeaders(
   };
 }
 
-/** INCY recognizes these # comments/** INCY recognizes these # comments in base64 text subscriptions as fallback
+/** INCY recognizes these # comments in base64 text subscriptions as fallback
  * navigation metadata. Crucially NO VPN keys or server URIs are returned.
  */
 export function incyExpiredSubscriptionBody(client:string|null=null):string{
@@ -119,7 +119,7 @@ export function incyExpiredSubscriptionBody(client:string|null=null):string{
   ].join('\n')+'\n','utf8').toString('base64')+'\n';
 }
 
-/** INCY documents/** INCY documents #profile-web-page-url/#support-url/#announce as body
+/** INCY documents #profile-web-page-url/#support-url/#announce as body
  * fallbacks when HTTP headers are removed by a gateway or ignored by a
  * particular importer. Keep the exact server-verified connection lines.
  * Karing continues receiving its historical, comment-free base64 payload.
