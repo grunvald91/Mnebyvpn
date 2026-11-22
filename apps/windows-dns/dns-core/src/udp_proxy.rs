@@ -151,11 +151,7 @@ impl PinnedDotUpstream {
     }
 
     fn connect(&self) -> Result<AuthenticatedStream, String> {
-        connect_authenticated(
-            &self.host,
-            self.addresses.iter().copied(),
-            &self.connector,
-        )
+        connect_authenticated(&self.host, self.addresses.iter().copied(), &self.connector)
     }
 
     fn forward_on(
@@ -214,9 +210,9 @@ impl Upstream for PinnedDotUpstream {
                 // A pooled TLS socket may have been closed by the upstream.
                 // Discard it and retry exactly once with a fresh authenticated
                 // connection; never downgrade to plaintext DNS.
-                let connection = self.connect().map_err(|second| {
-                    format!("{first_error}; reconnect failed: {second}")
-                })?;
+                let connection = self
+                    .connect()
+                    .map_err(|second| format!("{first_error}; reconnect failed: {second}"))?;
                 match self.forward_on(connection, query) {
                     Ok((connection, response)) => {
                         self.return_to_pool(connection);
