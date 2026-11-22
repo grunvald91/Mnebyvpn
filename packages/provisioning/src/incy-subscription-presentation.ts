@@ -73,6 +73,11 @@ export function incySubscriptionHeaders(expiresAt:Date):Record<string,string>{
     // INCY's optional "Premium" action must lead to the actual website
     // tariffs, not duplicate the Telegram support bot link.
     'premium-url':INCY_RENEW_URL,
+    // Non-Premium INCY supports announcements independently of provider
+    // banner-* fields. This is a second navigable route to renew access.
+    'announce':'base64:'+Buffer.from(
+      'Оплата и продление VPN: mnebyvpn.site','utf8').toString('base64'),
+    'announce-url':INCY_RENEW_URL,
   };
 }
 
@@ -102,4 +107,28 @@ export function incyExpiredSubscriptionBody():string{
       'Срок VPN истёк. Продлите доступ на mnebyvpn.site','utf8').toString('base64'),
     '#announce-url: '+INCY_RENEW_URL,
   ].join('\n')+'\n','utf8').toString('base64')+'\n';
+}
+
+/** INCY documents #profile-web-page-url/#support-url/#announce as body
+ * fallbacks when HTTP headers are removed by a gateway or ignored by a
+ * particular importer. Keep the exact server-verified connection lines.
+ * Karing continues receiving its historical, comment-free base64 payload.
+ * Neither provider metadata nor announcements confer VPN access.
+ */
+export function incyEncodeActiveSubscription(
+  verifiedProfile:string,client:string|null,
+):string{
+  if(!verifiedProfile||verifiedProfile.split('\n').some(line=>!line||line.startsWith('#')))
+    throw Error('Invalid verified VPN profile lines');
+  const lines=client==='karing'?[]:[
+    '#profile-title: MNEBYVPN',
+    '#profile-web-page-url: '+INCY_SITE_URL,
+    '#support-url: '+INCY_SUPPORT_URL,
+    '#profile-update-interval: 1',
+    '#announce: base64:'+Buffer.from(
+      'Оплата и продление VPN: mnebyvpn.site','utf8').toString('base64'),
+    '#announce-url: '+INCY_RENEW_URL,
+  ];
+  return Buffer.from([...lines,verifiedProfile].join('\n')+'\n','utf8')
+    .toString('base64')+'\n';
 }
