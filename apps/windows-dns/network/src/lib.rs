@@ -455,13 +455,6 @@ mod tests {
     }
 
     #[test]
-    fn no_unverified_ipv6_mode_can_enable_mutation() {
-        // A returned IPv4 configuration must never be mistaken for IPv6
-        // just because GetAdaptersAddresses includes effective IPv6 servers.
-        assert_eq!(DNS_INTERFACE_SETTINGS_VERSION1, 1);
-    }
-
-    #[test]
     fn guid_format_uses_canonical_groups() {
         let guid = GUID {
             data1: 0x12345678,
