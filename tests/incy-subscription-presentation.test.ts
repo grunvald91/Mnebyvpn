@@ -172,6 +172,15 @@ test('active INCY metadata provides the existing non-Premium payment action',()=
   assert.equal(karing['premium-url'],INCY_RENEW_URL);
 });
 
+test('website checkout destination points to an existing #plans section',()=>{
+  const html=readFileSync(
+    new URL('../apps/web/public/index.html',import.meta.url),'utf8');
+  const url=new URL(INCY_RENEW_URL);
+  assert.equal(url.origin,INCY_SITE_URL);
+  assert.equal(url.hash,'#plans');
+  assert.match(html,/id=["']plans["']/);
+});
+
 // The Desktop client may not expose the documented website field as a button.
 // Retain two actionable links in the fields the client visibly consumes.
 test('INCY Desktop fallback exposes both bot and checkout without Premium',()=>{
