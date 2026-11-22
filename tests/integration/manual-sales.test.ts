@@ -2,7 +2,7 @@ import test,{after} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
-import {registerOfflineSale,showOfflineSale} from '../../apps/service/src/manual-sales.ts';
+import {registerOfflineSale,registerOfflineSalePair,showOfflineSale} from '../../apps/service/src/manual-sales.ts';
 import {issueOwnerOfflineSubscriptionLink} from '../../packages/provisioning/src/owner-offline-subscriptions.ts';
 import {sealProxySecret} from '../../packages/web/src/telegram-proxy-bonus.ts';
 
@@ -371,5 +371,54 @@ test('two separate owner sales: one stable VPN subscription per buyer, no custom
       'WHERE entitlement_id=$1',[vpnEntitlements[i]])).rows[0].n;
     assert.equal(count,1,
       'repeated reads must not create three device-specific VPN subscription links');
+  }
+});
+
+
+test('owner batch registers exactly two full-price monthly sales, no Telegram start and no duplicate links',async()=>{
+  const owner=991189;
+  const tag=randomUUID().replace(/-/g,'').slice(0,10);
+  const a='alice_'+tag;
+  const b='bob_'+tag;
+  const raw='@'+a+' @'+b;
+  const first=await registerOfflineSalePair(pool,owner,owner,'55440001',raw);
+  assert.match(first.text,/Две личные продажи учтены/);
+  assert.equal(first.reply_markup.inline_keyboard.filter(r=>
+    r[0]?.callback_data?.startsWith('offsale:links:')).length,2);
+  const all=await pool.query(
+    'SELECT m.customer_label,m.order_id,o.amount_minor,o.provider,o.state,'+
+    't.plan_id FROM manual_sales m JOIN orders o ON o.id=m.order_id '+
+    'JOIN order_terms t ON t.order_id=o.id '+
+    'WHERE m.operator_telegram_id=$1 AND m.customer_label=ANY($2::text[]) '+
+    'ORDER BY m.customer_label',[String(owner),[a,b]]);
+  assert.equal(all.rows.length,2);
+  assert.deepEqual(all.rows.map(r=>r.customer_label),[a,b]);
+  for(const entry of all.rows){
+    assert.equal(entry.provider,'manual_sale');
+    assert.equal(entry.state,'PAID');
+    assert.equal(entry.plan_id,'bundle_30d_3device');
+    assert.equal(Number(entry.amount_minor),39900);
+    const ets=await pool.query(
+      'SELECT e.product,acc.telegram_user_id FROM entitlements e '+
+      'JOIN accounts acc ON acc.id=e.account_id '+
+      'WHERE e.source_order_id=$1 ORDER BY e.product',[entry.order_id]);
+    assert.deepEqual(ets.rows.map(x=>x.product),['smart_dns','vpn']);
+    assert.ok(ets.rows.every(x=>x.telegram_user_id===null));
+  }
+  const again=await registerOfflineSalePair(pool,owner,owner,'55440002',raw);
+  assert.match(again.text,/Две личные продажи учтены/);
+  const after=await pool.query(
+    'SELECT count(*)::int n FROM manual_sales WHERE operator_telegram_id=$1 '+
+    'AND customer_label=ANY($2::text[])',[String(owner),[a,b]]);
+  assert.equal(after.rows[0].n,2,'different Telegram update must not charge twice');
+  assert.equal((await registerOfflineSalePair(pool,owner+1,owner,'55440003',raw)).text,
+    'Недостаточно прав.');
+  assert.match((await registerOfflineSalePair(
+    pool,owner,owner,'55440004','@'+a+' @'+a)).text,/разных/);
+  // A pending node must NEVER reveal either private subscription.
+  for(const entry of all.rows){
+    const details=await showOfflineSale(
+      pool,owner,owner,entry.order_id,true,false,randomBytes(32));
+    assert.match(details.text,/VPN-ссылка ещё недоступна/);
   }
 });
