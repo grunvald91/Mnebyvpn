@@ -7,6 +7,13 @@ use tauri::{
 };
 
 #[tauri::command]
+async fn preflight_dns_adapter(guid: String) -> Result<mnebydns_network::AdapterPreflight, String> {
+    tauri::async_runtime::spawn_blocking(move || mnebydns_network::preflight_adapter(&guid))
+        .await
+        .map_err(|error| format!("Предпроверка DNS не выполнена: {error}"))?
+}
+
+#[tauri::command]
 async fn list_network_adapters() -> Result<Vec<mnebydns_network::AdapterInfo>, String> {
     tauri::async_runtime::spawn_blocking(mnebydns_network::list_adapters)
         .await
@@ -50,7 +57,8 @@ pub fn run() {
             get_ui_mode,
             hide_to_tray,
             inspect_dns,
-            list_network_adapters
+            list_network_adapters,
+            preflight_dns_adapter
         ])
         .setup(|app| {
             let open = MenuItem::with_id(app, "open", "Открыть мнебыDNS", true, None::<&str>)?;

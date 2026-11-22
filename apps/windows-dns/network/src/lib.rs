@@ -193,9 +193,167 @@ pub fn list_adapters() -> Result<Vec<AdapterInfo>, String> {
     }
 }
 
+// Stage 4: non-privileged DNS configuration inspection, no mutating calls.
+// Microsoft: GetInterfaceDnsSettings / FreeInterfaceDnsSettings, Windows 10 build 19041+.
+use windows_sys::Win32::NetworkManagement::IpHelper::{
+    DNS_INTERFACE_SETTINGS, DNS_INTERFACE_SETTINGS_VERSION1, DNS_SETTING_IPV6,
+    FreeInterfaceDnsSettings, GetInterfaceDnsSettings,
+};
+
+#[derive(Clone, Debug, Serialize)]
+pub struct FamilyDnsConfig {
+    pub static_servers: Vec<String>,
+    pub profile_servers: Vec<String>,
+    pub flags: u64,
+    pub interpretation: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct AdapterPreflight {
+    pub guid: String,
+    pub adapter_name: String,
+    pub adapter_kind: String,
+    pub ipv4: Option<FamilyDnsConfig>,
+    pub ipv6: Option<FamilyDnsConfig>,
+    pub ipv4_error: Option<String>,
+    pub ipv6_error: Option<String>,
+    pub local_dns_targets: Vec<String>,
+    pub mutation_enabled: bool,
+    pub warning: String,
+}
+
+/// Convert only canonical Windows interface GUID strings returned by list_adapters().
+fn parse_guid(input: &str) -> Result<GUID, String> {
+    let chunks: Vec<&str> = input.split('-').collect();
+    if chunks.len() != 5 || chunks.iter().map(|s|s.len()).collect::<Vec<_>>()
+        != [8, 4, 4, 4, 12] {
+        return Err("Некорректный GUID сетевого адаптера".to_owned());
+    }
+    let data1 = u32::from_str_radix(chunks[0], 16).map_err(|_| "Некорректный GUID")?;
+    let data2 = u16::from_str_radix(chunks[1], 16).map_err(|_| "Некорректный GUID")?;
+    let data3 = u16::from_str_radix(chunks[2], 16).map_err(|_| "Некорректный GUID")?;
+    let hex = format!("{}{}", chunks[3], chunks[4]);
+    let mut data4 = [0u8; 8];
+    for (idx, slot) in data4.iter_mut().enumerate() {
+        *slot = u8::from_str_radix(&hex[idx * 2..idx * 2 + 2], 16)
+            .map_err(|_| "Некорректный GUID")?;
+    }
+    Ok(GUID { data1, data2, data3, data4 })
+}
+
+fn parse_servers(value: &str) -> Vec<String> {
+    value
+        .split([',', ' ', '\t', '\n'])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .take(32)
+        .map(str::to_owned)
+        .collect()
+}
+
+fn interpret_family(static_servers: &[String], profile_servers: &[String]) -> String {
+    if !profile_servers.is_empty() {
+        "Есть DNS профильного подключения; точный способ восстановления требует дополнительной проверки".to_owned()
+    } else if !static_servers.is_empty() {
+        "Настроены статические DNS-серверы; для отката нужно сохранить их точный порядок".to_owned()
+    } else {
+        "Статический DNS не указан; это не доказывает режим DHCP/RA".to_owned()
+    }
+}
+
+fn read_dns_family(guid: GUID, ipv6: bool) -> Result<FamilyDnsConfig, String> {
+    // Windows API docs recommend a zero-initialized V1 struct. IPv6 flag on input
+    // selects the IPv6 stack; errors are displayed explicitly, never guessed.
+    let mut settings: DNS_INTERFACE_SETTINGS = unsafe { std::mem::zeroed() };
+    settings.Version = DNS_INTERFACE_SETTINGS_VERSION1;
+    if ipv6 {
+        settings.Flags = DNS_SETTING_IPV6;
+    }
+    let result = unsafe { GetInterfaceDnsSettings(guid, &mut settings) };
+    if result != 0 {
+        return Err(format!(
+            "Не удалось прочитать настройки DNS {} (Windows API код {})",
+            if ipv6 { "IPv6" } else { "IPv4" },
+            result
+        ));
+    }
+    // Windows owns the allocations returned in fields; extract owned Strings
+    // before releasing the settings object.
+    let raw_static = unsafe { read_wide_string(settings.NameServer) };
+    let raw_profile = unsafe { read_wide_string(settings.ProfileNameServer) };
+    let flags = settings.Flags;
+    unsafe { FreeInterfaceDnsSettings(&mut settings) };
+
+    let static_servers = parse_servers(&raw_static);
+    let profile_servers = parse_servers(&raw_profile);
+    let interpretation = interpret_family(&static_servers, &profile_servers);
+    Ok(FamilyDnsConfig {
+        static_servers,
+        profile_servers,
+        flags,
+        interpretation,
+    })
+}
+
+/// Strictly read-only preflight for one adapter selected by GUID.
+/// The caller must not infer that the snapshot is a safe backup or restore plan.
+pub fn preflight_adapter(guid: &str) -> Result<AdapterPreflight, String> {
+    let _ = parse_guid(guid)?;
+    let adapter = list_adapters()?
+        .into_iter()
+        .find(|item| item.guid.eq_ignore_ascii_case(guid))
+        .ok_or_else(|| "Сетевой адаптер больше не существует — обновите список".to_owned())?;
+
+    let interface_guid = parse_guid(&adapter.guid)?;
+    let (ipv4, ipv4_error) = match read_dns_family(interface_guid, false) {
+        Ok(value) => (Some(value), None),
+        Err(error) => (None, Some(error)),
+    };
+    let (ipv6, ipv6_error) = match read_dns_family(interface_guid, true) {
+        Ok(value) => (Some(value), None),
+        Err(error) => (None, Some(error)),
+    };
+
+    let warning = if adapter.is_tunnel || adapter.is_loopback || !adapter.likely_physical {
+        "Этот интерфейс не подтверждён как физический Wi-Fi/Ethernet. Настройка заблокирована."
+    } else if ipv4_error.is_some() || ipv6_error.is_some() {
+        "Не удалось прочитать оба стека DNS — настройка заблокирована."
+    } else {
+        "Параметры прочитаны, но точный DHCP/RA-режим, защищённый журнал и проверенный откат ещё не реализованы."
+    };
+    Ok(AdapterPreflight {
+        guid: adapter.guid,
+        adapter_name: adapter.name,
+        adapter_kind: adapter.kind,
+        ipv4,
+        ipv6,
+        ipv4_error,
+        ipv6_error,
+        local_dns_targets: vec!["127.0.0.1".to_owned(), "::1".to_owned()],
+        mutation_enabled: false,
+        warning: warning.to_owned(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn guid_parse_roundtrips_and_rejects_invalid_strings() {
+        let original = "12345678-9abc-def0-1234-56789abcdef0";
+        assert_eq!(guid_to_string(&parse_guid(original).unwrap()), original);
+        assert!(parse_guid("deadbeef").is_err());
+        assert!(parse_guid("zzzzzzzz-1111-1111-1111-111111111111").is_err());
+    }
+
+    #[test]
+    fn dns_family_interpretation_is_fail_closed() {
+        assert!(interpret_family(&[], &[]).contains("не доказывает"));
+        assert!(interpret_family(&["1.1.1.1".into()], &[]).contains("статические"));
+        assert!(interpret_family(&[], &["1.1.1.1".into()]).contains("профильного"));
+        assert_eq!(parse_servers("1.1.1.1, 8.8.8.8"), vec!["1.1.1.1", "8.8.8.8"]);
+    }
 
     #[test]
     fn guid_format_uses_canonical_groups() {

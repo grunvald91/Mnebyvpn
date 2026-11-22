@@ -4,6 +4,7 @@ const get = (id) => document.getElementById(id);
 const invoke = window.__TAURI__?.core?.invoke;
 let adapters = [];
 let selectedAdapterGuid = null;
+let preflightLoading = false;
 let adaptersLoading = false;
 let dnsLoading = false;
 
@@ -99,12 +100,15 @@ function renderAdapters() {
     button.append(name, meta);
     button.addEventListener('click', () => {
       selectedAdapterGuid = adapter.guid;
+      get('preflight-result').textContent = 'Для нового адаптера предпроверка ещё не выполнена.';
       renderAdapters();
       renderAdapterDetails(adapter);
     });
     target.append(button);
   }
   renderAdapterDetails(adapters.find(item => item.guid === selectedAdapterGuid) || null);
+  get('preflight-dns').disabled = !selectedAdapterGuid || preflightLoading;
+
 }
 
 async function refreshAdapters() {
@@ -122,6 +126,7 @@ async function refreshAdapters() {
   try {
     adapters = await invoke('list_network_adapters');
     if (!adapters.some(item => item.guid === selectedAdapterGuid)) selectedAdapterGuid = null;
+    get('preflight-result').textContent = 'Обновлены данные Windows. Запусти предпроверку ещё раз.';
     renderAdapters();
     get('status').textContent = 'Список адаптеров обновлён. Сетевые настройки не менялись.';
   } catch (error) {
@@ -129,6 +134,49 @@ async function refreshAdapters() {
   } finally {
     adaptersLoading = false;
     button.disabled = false;
+  }
+}
+
+async function preflightDns() {
+  if (preflightLoading || !selectedAdapterGuid) return;
+  preflightLoading = true;
+  const selectedGuid = selectedAdapterGuid;
+  const button = get('preflight-dns');
+  button.disabled = true;
+  const result = get('preflight-result');
+  result.replaceChildren();
+  result.textContent = 'Читаю настройки DNS выбранного адаптера…';
+  try {
+    if (typeof invoke !== 'function') throw new Error('Доступно только в Windows-приложении.');
+    const snapshot = await invoke('preflight_dns_adapter', { guid: selectedGuid });
+    if (selectedAdapterGuid !== selectedGuid) return;
+    result.replaceChildren();
+    const title = document.createElement('strong');
+    title.textContent = snapshot.adapter_name + ' — только чтение';
+    result.append(title);
+    const showFamily = (family, value, error) => {
+      const item = document.createElement('p');
+      if (error) {
+        item.textContent = family + ': ошибка чтения — ' + error;
+      } else {
+        const servers = value.static_servers.length ? value.static_servers.join(', ') : 'не заданы';
+        const profile = value.profile_servers.length ? value.profile_servers.join(', ') : 'не заданы';
+        item.textContent = family + ' · статические: ' + servers
+          + '; профильные: ' + profile + '. ' + value.interpretation;
+      }
+      result.append(item);
+    };
+    showFamily('IPv4', snapshot.ipv4, snapshot.ipv4_error);
+    showFamily('IPv6', snapshot.ipv6, snapshot.ipv6_error);
+    const note = document.createElement('p');
+    note.className = 'adapter-warning';
+    note.textContent = snapshot.warning + ' Переключение DNS пока отключено.';
+    result.append(note);
+  } catch (error) {
+    result.textContent = 'Ошибка предпроверки: ' + String(error);
+  } finally {
+    preflightLoading = false;
+    button.disabled = !selectedAdapterGuid;
   }
 }
 
@@ -172,6 +220,7 @@ get('tray-button').addEventListener('click', hideToTray);
 get('settings-tray').addEventListener('click', hideToTray);
 get('refresh-dns').addEventListener('click', refreshStatus);
 get('refresh-adapters').addEventListener('click', refreshAdapters);
+get('preflight-dns').addEventListener('click', preflightDns);
 
 if (typeof invoke === 'function') {
   invoke('get_ui_mode').then((mode) => {

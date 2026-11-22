@@ -12,7 +12,7 @@
   <main class="app">
     <header class="brandbar">
       <div class="brand"><div class="mark" aria-hidden="true">◈</div>мнебы<span>DNS</span></div>
-      <div class="version">ДИАГНОСТИКА · 0.4</div>
+      <div class="version">ПРЕДПРОВЕРКА · 0.5</div>
     </header>
     <nav class="tabs" aria-label="Разделы приложения">
       <button class="tab active" data-tab="home" aria-current="page">Главная</button>
@@ -49,6 +49,8 @@
         <button class="secondary" id="refresh-adapters">Обновить список адаптеров</button>
         <div id="adapters-list" class="adapter-list" aria-live="polite"><p class="muted">Список ещё не загружен.</p></div>
         <div id="adapter-details" class="adapter-details"><p class="muted">Выбор адаптера не выполняет никаких изменений.</p></div>
+        <button class="secondary" id="preflight-dns" disabled>Проверить настройки перед включением</button>
+        <div id="preflight-result" class="preflight-result" role="status" aria-live="polite">Предпроверка ещё не выполнялась. Включение DNS из приложения недоступно.</div>
       </section>
     </section>
     <section id="settings" class="view hidden">

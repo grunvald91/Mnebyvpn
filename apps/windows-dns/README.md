@@ -55,3 +55,21 @@ Before any DNS write:
 - Effective DNS addresses are not a recoverable snapshot of DHCP/static configuration. There is **still no privileged DNS control** and no automatic network changes.
 
 Before commercial deployment, the service status mechanism needs protected ACLs, an authenticated IPC channel and crash-safe persistence. The current service writes a JSON file for non-authoritative diagnostics only.
+
+## Stage 4 (0.5): Windows DNS API preflight
+
+Added `preflight_dns_adapter`: native Rust read-only access to Windows
+`GetInterfaceDnsSettings` / `FreeInterfaceDnsSettings`, with separate IPv4 and IPv6
+inspection for an explicitly selected adapter GUID. The GUI shows existing static/profile DNS
+values and clearly refuses to infer automatic configuration from an empty static field.
+
+**Safety lock:** `mutation_enabled` is hard-coded to `false`; this is not a DNS
+switcher yet. The Windows API snapshot alone is not a complete crash-safe rollback
+journal and is not stored as a privileged backup. DNSProxy service management,
+authenticated IPC, Windows SCM setup, an atomic protected journal and verified
+Windows 10 recovery tests are still required before enabling any DNS changes.
+
+Microsoft references:
+- https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-getinterfacednssettings
+- https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-freeinterfacednssettings
+- https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-dns_interface_settings

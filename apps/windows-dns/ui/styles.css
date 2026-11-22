@@ -47,3 +47,7 @@ footer { margin-top: auto; font-size: 11px; color: #8fa8ad; }
 .adapter-detail-line span { color: #9fb7ba; }
 .adapter-detail-line strong { text-align: right; font-weight: 550; overflow-wrap: anywhere; }
 .adapter-warning { color: #f0b79d; font-size: 12px; line-height: 1.5; margin: 12px 0 0; }
+
+.preflight-result { margin-top: 10px; border-top: 1px solid #244047; padding-top: 12px; line-height: 1.55; font-size: 12px; color: #bacbcc; overflow-wrap: anywhere; }
+.preflight-result p { margin: 8px 0; }
+.preflight-result strong { color: #ecf7f5; font-weight: 650; }
