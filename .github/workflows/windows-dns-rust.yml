@@ -75,6 +75,10 @@ jobs:
             apps/windows-dns/setup/INSTALL-WINDOWS.md
           if-no-files-found: error
           retention-days: 14
+      - name: Smoke test read-only SCM and authenticated IPC on disposable runner
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/windows-dns-rust-tray'
+        shell: pwsh
+        run: ./apps/windows-dns/setup/smoke-runner.ps1
       - name: Build standalone Windows GUI preview
         run: cargo build --release --manifest-path apps/windows-dns/src-tauri/Cargo.toml
       - name: Upload unsigned read-only Windows GUI preview

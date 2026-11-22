@@ -41,3 +41,12 @@ force reinstallation.
 
 Build:
 `cargo test --manifest-path apps/windows-dns/setup/Cargo.toml`
+
+## CI smoke test
+
+The branch push workflow runs `smoke-runner.ps1` on an **ephemeral
+GitHub-hosted Windows runner** only (never on an untrusted pull request).
+The script installs this read-only service, tests status over the actual
+LocalSystem named pipe, uninstalls it, and compares adapter DNS settings
+before/after. On failure the workflow reports the error. It does not
+simulate Windows 10 22H2 and does not verify DNSProxy or encrypted DoT.
