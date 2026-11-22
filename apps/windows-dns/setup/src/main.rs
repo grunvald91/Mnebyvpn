@@ -62,7 +62,7 @@ fn install_directory() -> io::Result<PathBuf> {
 
 fn copy_new_binary(source: &Path, target: &Path) -> io::Result<()> {
     let expected_size = ensure_regular_file(source)?;
-    let mut input = File::open(source)?;
+    let input = File::open(source)?;
     let mut output = OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -159,6 +159,30 @@ fn status() -> io::Result<()> {
     Ok(())
 }
 
+/// SCM can store its service binary path enclosed in quotes because the
+/// installation directory contains spaces. A different executable or any
+/// command-line arguments are rejected, even when this app runs elevated.
+fn is_our_service_path(configured: &Path, expected: &Path) -> bool {
+    let raw = configured.to_string_lossy();
+    let text = raw
+        .strip_prefix('"')
+        .and_then(|part| part.strip_suffix('"'))
+        .unwrap_or(raw.as_ref());
+    if text.contains('"') || text.is_empty() {
+        return false;
+    }
+    let actual_path = Path::new(text);
+    if !actual_path.is_absolute() {
+        return false;
+    }
+    match (fs::canonicalize(actual_path), fs::canonicalize(expected)) {
+        (Ok(actual), Ok(expected)) => actual
+            .to_string_lossy()
+            .eq_ignore_ascii_case(expected.to_string_lossy().as_ref()),
+        _ => false,
+    }
+}
+
 fn uninstall() -> io::Result<()> {
     // A pending, missing, corrupt or inaccessible recovery record MUST block
     // removal. This applies even to the current diagnostics-only service.
@@ -182,10 +206,11 @@ fn uninstall() -> io::Result<()> {
         PathBuf::from(env::var_os("ProgramFiles").ok_or_else(|| error("ProgramFiles missing"))?)
             .join(INSTALL_DIR)
             .join(SERVICE_BIN);
-    if config.executable_path != expected {
-        return Err(error(
-            "Service executable path mismatch: refusing to modify another service",
-        ));
+    if !is_our_service_path(&config.executable_path, &expected) {
+        return Err(error(format!(
+            "Service executable path mismatch: configured={:?}, expected={:?}; refusing to modify another service",
+            config.executable_path, expected,
+        )));
     }
     if service.query_status().map_err(map_service)?.current_state != ServiceState::Stopped {
         service.stop().map_err(map_service)?;
@@ -246,6 +271,21 @@ mod tests {
         fs::write(&file, b"mock service binary").unwrap();
         assert_eq!(ensure_regular_file(&file).unwrap(), 19);
         assert!(ensure_regular_file(&dir.path().join("missing")).is_err());
+    }
+
+    #[test]
+    fn normalized_windows_service_path_rejects_other_executables() {
+        let dir = tempdir().unwrap();
+        let expected = dir.path().join("diagnostic service.exe");
+        fs::write(&expected, b"test").unwrap();
+        assert!(is_our_service_path(&expected, &expected));
+        let quoted = PathBuf::from(format!("\\\"{}\\\"", expected.display()));
+        assert!(is_our_service_path(&quoted, &expected));
+        let other = dir.path().join("other.exe");
+        fs::write(&other, b"test").unwrap();
+        assert!(!is_our_service_path(&other, &expected));
+        let injected = PathBuf::from(format!("\\\"{}\\\" --other", expected.display()));
+        assert!(!is_our_service_path(&injected, &expected));
     }
 
     #[test]
