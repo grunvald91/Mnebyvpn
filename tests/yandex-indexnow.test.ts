@@ -127,3 +127,15 @@ test('automation only sends on main, never from PR/test branch',()=>{
   assert.match(yaml,/scripts\/yandex-indexnow\.ts --preflight/);
   assert.match(yaml,/scripts\/yandex-indexnow\.ts\s*$/m);
 });
+
+test('bounded 202 retries stop at first HTTP 200 and cannot repeat forever',()=>{
+  const yaml=readFileSync(new URL('../.github/workflows/yandex-indexnow.yml',import.meta.url),'utf8');
+  assert.match(yaml,/cron: '17 6 23-26 11 \*'/);
+  assert.match(yaml,/\$today" < 2026-11-23/);
+  assert.match(yaml,/\$today" > 2026-11-26/);
+  assert.match(yaml,/actions\/cache\/restore@v4/);
+  assert.match(yaml,/actions\/cache\/save@v4/);
+  assert.match(yaml,/steps\.receipt\.outputs\.cache-hit != 'true'/);
+  assert.match(yaml,/steps\.notify\.outcome == 'success'/);
+  assert.match(yaml,/Only a verified 200 response reaches this line/);
+});
