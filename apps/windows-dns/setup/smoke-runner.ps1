@@ -42,6 +42,16 @@ try {
     } finally {
         $stalled.Dispose()
     }
+    # A client that immediately closes must not permanently stop the IPC loop.
+    $early = [System.IO.Pipes.NamedPipeClientStream]::new(
+        '.', 'mnebydns-status-v1', [System.IO.Pipes.PipeDirection]::InOut)
+    try {
+        $early.Connect(2000)
+    } finally {
+        $early.Dispose()
+    }
+    Start-Sleep -Milliseconds 250
+
     $recovered = $false
     for ($attempt = 0; $attempt -lt 6; $attempt++) {
         & cargo run --release --manifest-path apps/windows-dns/ipc/Cargo.toml --example read_status --quiet
