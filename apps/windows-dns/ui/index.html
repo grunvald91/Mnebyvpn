@@ -72,7 +72,9 @@
         <p class="muted">Приложения с собственным DoH/DoT и отдельные VPN-политики могут использовать независимый DNS. Их состояние показывается диагностикой.</p>
       </section>
     <section class="detail profile-card" aria-label="Адрес DNS и проверки подключения">
-      <div class="detailhead"><h2>Подключение</h2><span class="chip">DoT · TLS 853</span></div>
+      <div class="detailhead"><h2>Персональный DNS</h2><span class="chip">DoT · TLS 853</span></div>
+      <h3 id="connection-title" class="test-heading">Диагностика подключения</h3>
+      <p id="connection-hint" class="hint">Проверка DoT-сервера без изменения настроек Windows.</p>
       <label class="dot-label" for="dot-host">Адрес персонального DNS</label>
       <input class="dot-input" id="dot-host" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="253" placeholder="ваш-ключ.dns.mnebyvpn.site" aria-describedby="dot-help">
       <p class="muted dot-help" id="dot-help">Только имя сервера, без https:// и порта. При включении адрес сохраняется в защищённой конфигурации Windows; в интерфейсе ключ не сохраняется.</p>
