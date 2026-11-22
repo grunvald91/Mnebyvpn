@@ -7,7 +7,15 @@
   const root=document.body;
   const landing=el('journey-landing'),setup=el('journey-setup'),paymentIntro=el('journey-payment-intro'),trialAuth=el('journey-trial-auth'),orderView=el('journey-order');
   const emailPanel=el('email-auth-panel'),emailHome=emailPanel?.parentNode;
-  if(!landing||!setup||typeof state==='undefined')return;
+  // If the interactive storefront cannot initialize, restore the readable
+  // static site instead of leaving the first-paint loading state indefinitely.
+  window.addEventListener('load',()=>{
+    if(!root.classList.contains('journey-active'))root.classList.add('journey-fallback');
+  },{once:true});
+  if(!landing||!setup||typeof state==='undefined'){
+    root.classList.add('journey-fallback');
+    return;
+  }
   const allViews=new Set(['plans','account','checkout','payment','setup','support','trial-auth']);
   let view='plans', lastAccount=null, chosenPlatform='android', installed=false;
   const frontFrame=el('journey-front-frame');
