@@ -87,6 +87,24 @@ test('report differentiates Google inspection verdicts from absence of impressio
   assert.throws(()=>buildReport({...input,property:'sc-domain:another.example'}),/PROPERTY_NOT_ALLOWED/);
 });
 
+test('private report explains actual query-to-canonical-page evidence, never public metrics',()=>{
+  const input={...fixture(),pageQueryCurrent:{rows:[
+    {keys:[GSC_ORIGIN+'/gemini','как открыть gemini'],clicks:1,impressions:24,position:7.5},
+    {keys:[GSC_ORIGIN+'/vpn','впн не запускается'],clicks:0,impressions:17,position:11.3},
+    {keys:[GSC_ORIGIN+'/payment/success','секрет покупки'],clicks:0,impressions:999},
+  ]}};
+  const privateReport=formatTelegramReport(input);
+  assert.match(privateReport,/«как открыть gemini» → \/gemini/);
+  assert.match(privateReport,/показы: 24; клики: 1/);
+  assert.match(privateReport,/«впн не запускается» → \/vpn/);
+  assert.ok(!privateReport.includes('секрет покупки'));
+  assert.ok(privateReport.length<=3800);
+  const local=buildReport(input);
+  assert.match(local,/## Реальные запросы → канонические страницы/);
+  assert.match(local,/как открыть gemini/);
+  assert.ok(!local.includes('секрет покупки'));
+});
+
 test('new SEO pages report preliminary last three Pacific dates separately from finalized data',()=>{
   const input={...fixture(),fresh:{
     startDate:'2026-11-17',endDate:'2026-11-19',
@@ -166,6 +184,12 @@ test('Search Console API reads one approved property and eight static URLs only'
         assert.deepEqual(body.dimensionFilterGroups,[{
           filters:[{dimension:'page',operator:'includingRegex',expression:GSC_EXACT_PAGES_REGEX}]
         }]);
+        if(body.dimensions.length===2){
+          assert.deepEqual(body.dimensions,['page','query']);
+          assert.equal(body.rowLimit,2000);
+          return ok({rows:[{keys:[GSC_ORIGIN+'/gemini','как использовать gemini'],
+            clicks:1,impressions:13,position:6.2}]});
+        }
         assert.ok(body.dimensions[0]==='page'?body.rowLimit===100:
           body.rowLimit===1000||body.rowLimit===300);
         if(body.dimensions[0]==='query')return ok({rows:[{keys:['gemini'],clicks:1,impressions:2}]});
@@ -180,10 +204,12 @@ test('Search Console API reads one approved property and eight static URLs only'
     throw Error('UNEXPECTED_TEST_URL');
   };
   const report=await readSearchConsoleReport(property,creds,mocked,new Date('2026-11-19T12:00:00Z'));
-  assert.equal(calls.length,18); // OAuth, permission, eight analytics queries, eight inspections.
+  assert.equal(calls.length,19); // OAuth, permission, nine analytics queries, eight inspections.
   assert.equal(report.current.endDate,'2026-11-16');
   assert.equal(report.inspections['/gemini']?.inspectionResult?.indexStatusResult?.verdict,'PASS');
-  assert.equal(calls.filter(x=>x.url.includes('searchAnalytics')).length,8);
+  assert.equal(calls.filter(x=>x.url.includes('searchAnalytics')).length,9);
+  assert.equal(report.pageQueryCurrent?.rows?.length,1);
+  assert.equal(report.pageQueryCurrent?.rows?.[0]?.keys?.[0],GSC_ORIGIN+'/gemini');
   assert.equal(calls.filter(x=>x.body?.dataState==='all').length,3);
   assert.equal(report.fresh?.startDate,'2026-11-17');
   assert.equal(report.fresh?.endDate,'2026-11-19');

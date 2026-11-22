@@ -13,6 +13,8 @@ import {sign} from 'node:crypto';
 import {appendFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 import {createGscOwnerRelaySignature} from '../packages/support/src/gsc-owner-relay.ts';
+import {formatPrivatePageQueryLines,selectPageQueryOpportunities}
+  from './gsc-private-page-query.ts';
 
 export const GSC_ORIGIN='https://mnebyvpn.site';
 export const GSC_ALLOWED_PROPERTIES=Object.freeze([
@@ -44,6 +46,7 @@ export type GscReportInput={
   property:string;current:{startDate:string;endDate:string};previous:{startDate:string;endDate:string};
   totalsCurrent:GscResponse;totalsPrevious:GscResponse;pagesCurrent:GscResponse;
   pagesPrevious:GscResponse;queryData:GscResponse;
+  pageQueryCurrent?:GscResponse;
   fresh?:{startDate:string;endDate:string;totals:GscResponse;pages:GscResponse;queries:GscResponse};
   inspections:Record<string,GscIndexResult|null>;
 };
@@ -223,7 +226,22 @@ export function buildReport(input:GscReportInput):string{
   const groups=groupedQuerySamples(input.queryData.rows);
   if(groups.length===0)lines.push('| Нет данных | — | — |');
   for(const group of groups)lines.push(`| ${group.topic} | ${fmtNumber(group.clicks)} | ${fmtNumber(group.impressions)} |`);
+  // Full local operator report only. On GitHub Actions, these rows go via the
+  // signed owner relay directly to private Telegram, never stdout/artifacts.
+  const pairs=selectPageQueryOpportunities(input.pageQueryCurrent?.rows,
+    GSC_ORIGIN,GSC_URL_PATHS,15);
+  lines.push('','## Реальные запросы → канонические страницы (выборка Google)','',
+    '| Запрос | Страница | Показы | Клики | CTR | Средняя позиция |',
+    '|---|---|---:|---:|---:|---:|');
+  if(!pairs.length)lines.push('| Нет данных | — | — | — | — | — |');
+  for(const pair of pairs){
+    lines.push('| '+pair.query+' | `'+pair.path+'` | '+fmtNumber(pair.impressions)+
+      ' | '+fmtNumber(pair.clicks)+' | '+fmtRate(pair.ctr)+
+      ' | '+fmtPosition(pair.position)+' |');
+  }
   lines.push('',
+    'Данные ограничены доступной выборкой API; отсутствие строки не доказывает отсутствие показов.',
+    '',
     '## Что требует внимания',
     '');
   const reviewItems=identifySeoReviewItems(input);
@@ -234,7 +252,7 @@ export function buildReport(input:GscReportInput):string{
   }
   if(!reviewItems.length)lines.push('По данным текущего отчёта установленные правила не сработали.');
   lines.push('',
-    '> Важные ограничения: отсутствие показов **не равно** отсутствию индексации; URL Inspection показывает состояние версии в индексе, не тест живой страницы. Строки по запросам — только доступная выборка верхних запросов Google, а не полная статистика и не частотность рынка. Отчёт не содержит сами поисковые фразы, идентификаторы пользователей или приватные URL.',
+    '> Важные ограничения: отсутствие показов **не равно** отсутствию индексации; URL Inspection показывает состояние версии в индексе, не тест живой страницы. Строки по запросам — только доступная выборка верхних запросов Google, а не полная статистика и не частотность рынка. Локальный отчёт может содержать фразы по страницам, но публичные GitHub Actions не публикуют сами запросы.',
     '',
     'Документация: [Search Analytics](https://developers.google.com/webmaster-tools/v1/searchanalytics/query), [URL Inspection](https://developers.google.com/webmaster-tools/v1/urlInspection.index/inspect).',
     '');
@@ -320,6 +338,9 @@ export async function readSearchConsoleReport(
   const pagesPrevious=await search(requestBody(dates.previous,['page'],100,true));
   // Sampled/possibly anonymized: never infer market demand from this set.
   const queryData=await search(requestBody(dates.current,['query'],1000,true));
+  // Joint query + page attribution for exact canonical URLs, finalized dates.
+  // The data must NEVER appear in public logs, summaries, or artifacts.
+  const pageQueryCurrent=await search(requestBody(dates.current,['page','query'],2000,true));
   // Newly launched landing pages may be absent from finalized days. Fetch
   // the three most recent Pacific dates separately; never mix preliminary
   // metrics with final 28-day totals or describe them as complete.
@@ -344,7 +365,8 @@ export async function readSearchConsoleReport(
       inspections[urlPath]=null; // Do not convert API failures to 'not indexed'.
     }
   }
-  return {property,...dates,totalsCurrent,totalsPrevious,pagesCurrent,pagesPrevious,queryData,fresh,inspections};
+  return {property,...dates,totalsCurrent,totalsPrevious,pagesCurrent,pagesPrevious,
+    queryData,pageQueryCurrent,fresh,inspections};
 }
 
 
@@ -360,6 +382,8 @@ export function formatTelegramReport(input:GscReportInput):string{
     'Клики: '+(total.hasData?fmtNumber(total.clicks):'нет данных')+
       ' (ранее: '+(previous.hasData?fmtNumber(previous.clicks):'нет данных')+')',
     'CTR: '+fmtRate(total.ctr)+' · позиция: '+fmtPosition(total.position),
+    '',
+    ...formatPrivatePageQueryLines(input.pageQueryCurrent?.rows,GSC_ORIGIN,GSC_URL_PATHS,6),
     ...(input.fresh?(()=>{
       const freshMetrics=combineDailyRows(input.fresh.totals.rows);
       const freshTopics=groupedQuerySamples(input.fresh.queries.rows);
