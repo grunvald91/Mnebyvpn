@@ -57,6 +57,23 @@ fn guid_to_string(guid: &GUID) -> String {
     )
 }
 
+/// Windows may report filtering or debugging pseudo-interfaces as IF_TYPE_ETHERNET_CSMACD.
+/// Treat them as diagnostic-only: switching their DNS is unsafe and does not
+/// improve the user's system-wide resolution path.
+fn known_pseudo_interface(name: &str, description: &str) -> bool {
+    let identity = format!("{name} {description}").to_lowercase();
+    [
+        "qos packet scheduler",
+        "wfp",
+        "lightweight filter",
+        "light weight filter",
+        "kernel debug",
+        "отладчик ядра",
+    ]
+    .iter()
+    .any(|marker| identity.contains(marker))
+}
+
 fn adapter_kind(if_type: u32) -> (&'static str, bool, bool) {
     match if_type {
         IF_TYPE_ETHERNET_CSMACD => ("Ethernet", false, true),
@@ -178,9 +195,17 @@ pub fn list_adapters() -> Result<Vec<AdapterInfo>, String> {
                     let operational = adapter.OperStatus == 1; // IfOperStatusUp.
                     let ipv6_enabled = adapter.Ipv6IfIndex != 0;
                     let is_loopback = adapter.IfType == IF_TYPE_SOFTWARE_LOOPBACK;
-                    let likely_physical =
-                        operational && likely_physical_type && !is_tunnel && !is_loopback;
-                    let note = if is_tunnel {
+                    let name = read_wide_string(adapter.FriendlyName);
+                    let description = read_wide_string(adapter.Description);
+                    let pseudo_interface = known_pseudo_interface(&name, &description);
+                    let likely_physical = operational
+                        && likely_physical_type
+                        && !is_tunnel
+                        && !is_loopback
+                        && !pseudo_interface;
+                    let note = if pseudo_interface {
+                        "Служебный фильтр или виртуальный отладочный интерфейс: системный DNS здесь не меняется.".to_owned()
+                    } else if is_tunnel {
                         "Туннельный интерфейс. Не выбирать для первой настройки DNS.".to_owned()
                     } else if is_loopback {
                         "Системный loopback. Не является подключением к интернету.".to_owned()
@@ -191,7 +216,6 @@ pub fn list_adapters() -> Result<Vec<AdapterInfo>, String> {
                     } else {
                         "Тип адаптера не определён как физический. Проверьте, не является ли он виртуальным/VPN.".to_owned()
                     };
-                    let name = read_wide_string(adapter.FriendlyName);
                     result.push(AdapterInfo {
                         guid: guid_to_string(&guid),
                         name: if name.is_empty() {
@@ -199,7 +223,7 @@ pub fn list_adapters() -> Result<Vec<AdapterInfo>, String> {
                         } else {
                             name
                         },
-                        kind: kind.to_owned(),
+                        kind: if pseudo_interface { "Служебный / виртуальный".to_owned() } else { kind.to_owned() },
                         operational,
                         ipv6_enabled,
                         is_tunnel,
@@ -848,6 +872,21 @@ mod tests {
             guid_to_string(&guid),
             "12345678-9abc-def0-1234-56789abcdef0"
         );
+    }
+
+    #[test]
+    fn windows_filter_and_debug_interfaces_are_never_dns_targets() {
+        for name in [
+            "Ethernet-QoS Packet Scheduler-0000",
+            "Ethernet-WFP 802.3 MAC Layer LightWeight Filter-0000",
+            "Ethernet-WFP Native MAC Layer LightWeight Filter-0000",
+            "Ethernet (отладчик ядра)",
+        ] {
+            assert!(known_pseudo_interface(name, ""), "{name}");
+        }
+        assert!(known_pseudo_interface("Ethernet 2", "Microsoft Kernel Debug Network Adapter"));
+        assert!(!known_pseudo_interface("Ethernet", "Intel(R) Ethernet Controller"));
+        assert!(!known_pseudo_interface("Wi-Fi", "Qualcomm Atheros Wireless Adapter"));
     }
 
     #[test]
