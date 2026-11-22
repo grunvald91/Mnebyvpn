@@ -110,7 +110,7 @@ fn ensure_snapshots(
     let mut snapshots = system_journal.read_all()?;
     for adapter in adapters
         .iter()
-        .filter(|item| item.operational && !item.is_loopback)
+        .filter(|item| item.operational && item.likely_physical && !item.is_tunnel)
     {
         if snapshots
             .iter()
@@ -133,7 +133,7 @@ fn apply_all(
     let adapters = list_adapters()?;
     let targets: Vec<_> = adapters
         .iter()
-        .filter(|adapter| adapter.operational && !adapter.is_loopback)
+        .filter(|adapter| adapter.operational && adapter.likely_physical && !adapter.is_tunnel)
         .collect();
     if targets.is_empty() {
         return Err("Windows не обнаружила сетевых адаптеров для системного DNS".into());
@@ -155,7 +155,7 @@ fn apply_all(
             !already_applied
         };
         if needs_apply {
-            if let Err(apply_error) = apply_adapter_loopback_dns(&guid) {
+            if let Err(apply_error) = apply_adapter_loopback_dns(saved) {
                 let rollback = restore_adapter_dns(saved)
                     .and_then(|_| verify_adapter_restored(saved))
                     .and_then(|_| system_journal.clear_verified(&guid));

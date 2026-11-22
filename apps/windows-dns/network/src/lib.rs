@@ -719,9 +719,17 @@ pub fn apply_adapter_loopback_dns(snapshot: &AdapterDnsSnapshot) -> Result<(), S
 /// Restore exact static DNS with SetInterfaceDnsSettings and return automatic
 /// DNS to DHCP/RA using netsh's documented source=dhcp operation.
 pub fn restore_adapter_dns(snapshot: &AdapterDnsSnapshot) -> Result<(), String> {
+    // The interface can be renamed while the controller is active.
+    // Restore automatic DNS by the CURRENT name belonging to the saved GUID,
+    // never by a stale name that may now point to a different adapter.
+    let current_name = list_adapters()?
+        .into_iter()
+        .find(|adapter| adapter.guid.eq_ignore_ascii_case(&snapshot.interface_guid))
+        .ok_or_else(|| "Исходный сетевой адаптер не найден по GUID; backup сохранён".to_owned())?
+        .name;
     let mut errors = Vec::new();
     let ipv4 = match &snapshot.ipv4 {
-        DnsServerMode::Automatic => reset_interface_dns_to_automatic(&snapshot.adapter_name, false),
+        DnsServerMode::Automatic => reset_interface_dns_to_automatic(&current_name, false),
         DnsServerMode::Static(servers) => {
             set_interface_static_dns(&snapshot.interface_guid, false, servers)
         }
@@ -734,7 +742,7 @@ pub fn restore_adapter_dns(snapshot: &AdapterDnsSnapshot) -> Result<(), String> 
     }
 
     let ipv6 = match &snapshot.ipv6 {
-        DnsServerMode::Automatic => reset_interface_dns_to_automatic(&snapshot.adapter_name, true),
+        DnsServerMode::Automatic => reset_interface_dns_to_automatic(&current_name, true),
         DnsServerMode::Static(servers) => {
             set_interface_static_dns(&snapshot.interface_guid, true, servers)
         }
@@ -779,7 +787,14 @@ pub fn verify_adapter_loopback_dns(interface_guid: &str) -> Result<(), String> {
 /// including DHCP/RA-vs-static mode and profile DNS, not just effective IPs.
 pub fn verify_adapter_restored(snapshot: &AdapterDnsSnapshot) -> Result<(), String> {
     let current = capture_adapter_dns(&snapshot.interface_guid)?;
-    if current != *snapshot {
+    // A Windows interface rename does not invalidate an otherwise exact DNS
+    // restoration. Identity is the stable GUID; compare all four source modes.
+    if !current.interface_guid.eq_ignore_ascii_case(&snapshot.interface_guid)
+        || current.ipv4 != snapshot.ipv4
+        || current.ipv6 != snapshot.ipv6
+        || current.ipv4_profile != snapshot.ipv4_profile
+        || current.ipv6_profile != snapshot.ipv6_profile
+    {
         return Err(format!(
             "DNS адаптера {} отличается от исходного снимка",
             snapshot.adapter_name
