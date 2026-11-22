@@ -138,6 +138,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.equal(Buffer.from((await dual.text()).trim(),'base64').toString('utf8').trim().split('\n').filter(line=>!line.startsWith('#')).join('\n'),displayedWs);
    const karing=await fetch(root+'/sub/'+issued!.token+'?client=karing');
    assert.equal(karing.status,200);
+   assert.equal(karing.headers.get('profile-web-page-url'),'https://mnebyvpn.site');
    assert.equal(karing.headers.get('premium-url'),'https://mnebyvpn.site/#plans');
    // Karing keeps the previous exact comment-free body to avoid regressions.
    assert.equal(Buffer.from((await karing.text()).trim(),'base64')
@@ -266,9 +267,11 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    assert.equal(expiredKaring.status,200);
    assert.equal(expiredKaring.headers.get('support-url'),
      'https://t.me/MNEBYVPN_bot?start=support');
+   assert.equal(expiredKaring.headers.get('profile-web-page-url'),'https://mnebyvpn.site');
    assert.equal(expiredKaring.headers.get('announce-url'),'https://mnebyvpn.site/#plans');
    const expiredKaringText=Buffer.from((await expiredKaring.text()).trim(),'base64')
      .toString('utf8');
+   assert.ok(expiredKaringText.includes('#profile-web-page-url: https://mnebyvpn.site'));
    assert.ok(expiredKaringText.includes('#support-url: https://t.me/MNEBYVPN_bot?start=support'));
    assert.ok(expiredKaringText.includes('#announce-url: https://mnebyvpn.site/#plans'));
    assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=incy')).status,200);
