@@ -114,7 +114,10 @@ pub fn probe_dot_strict(input: &str) -> Result<DotProbeReport, String> {
         .and_then(|_| connection.set_write_timeout(Some(IO_TIMEOUT)))
         .and_then(|_| connection.set_nodelay(true))
         .map_err(|_| "Не удалось настроить таймауты защищённого соединения".to_owned())?;
-    let connector = TlsConnector::new()
+    let mut tls_builder = TlsConnector::builder();
+    // Explicitly disallow TLS 1.0/1.1 even when an older Windows policy allows them.
+    tls_builder.min_protocol_version(Some(native_tls::Protocol::Tlsv12));
+    let connector = tls_builder.build()
         .map_err(|_| "Не удалось создать системный TLS-контекст Windows".to_owned())?;
     let mut tls = connector
         .connect(&host, connection)
