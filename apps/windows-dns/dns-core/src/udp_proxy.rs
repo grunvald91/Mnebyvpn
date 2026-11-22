@@ -17,6 +17,7 @@ use serde::Serialize;
 use std::io::Write;
 use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
+use super::NEXT_DNS_ID;
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -50,10 +51,12 @@ fn read_query(packet: &[u8]) -> Option<QueryInfo> {
 
     let mut cursor = 12usize;
     let mut name_length = 1usize;
+    let mut terminated = false;
     for _ in 0..127 {
         let label = *packet.get(cursor)? as usize;
         if label == 0 {
             cursor += 1;
+            terminated = true;
             break;
         }
         // Compression in client questions is rejected; only plain QNAME.
@@ -67,7 +70,7 @@ fn read_query(packet: &[u8]) -> Option<QueryInfo> {
         name_length += label + 1;
     }
     // A valid DNS QNAME must end with the zero root label.
-    if cursor == 0 || *packet.get(cursor - 1)? != 0 {
+    if !terminated {
         return None;
     }
     let question_end = cursor.checked_add(4)?;
@@ -111,7 +114,7 @@ fn response_header(request: &[u8], info: QueryInfo, truncated: bool) -> Vec<u8> 
     reply[0..2].copy_from_slice(&request[0..2]);
     reply[2] = 0x80 | (request[2] & 1) | if truncated { 0x02 } else { 0 };
     // SERVFAIL when not truncated, otherwise TC causes a TCP retry (not yet served here).
-    reply[3] = (request[3] & 0x30) | if truncated { 0 } else { 2 };
+    reply[3] = (request[3] & 0x10) | if truncated { 0 } else { 2 };
     reply[5] = 1;
     reply.extend_from_slice(&request[12..info.end_of_question]);
     reply
@@ -264,7 +267,7 @@ pub fn smoke_udp_dot_preview(host: &str) -> Result<UdpDotSmokeReport, String> {
         .map_err(|_| "Cannot bind temporary UDP probe socket".to_owned())?;
     socket.set_read_timeout(Some(SMOKE_TIMEOUT))
         .map_err(|_| "Cannot set UDP smoke timeout".to_owned())?;
-    let query_id = 0x7b29;
+    let query_id = NEXT_DNS_ID.fetch_add(1, Ordering::Relaxed);
     let query = query_packet(query_id, 1);
     socket.send_to(&query, proxy.local_address())
         .map_err(|_| "Cannot send local UDP DNS query".to_owned())?;
@@ -326,7 +329,8 @@ mod tests {
         edns[11] = 1;
         edns.extend_from_slice(&[0, 0, 41, 0x04, 0xd0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(read_query(&edns).unwrap().udp_limit, 1232);
-        edns[edns.len()-1] = 1;
+        let last = edns.len() - 1;
+        edns[last] = 1;
         assert!(read_query(&edns).is_none());
         let mut multiple = q.clone();
         multiple[5] = 2;
