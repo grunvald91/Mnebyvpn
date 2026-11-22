@@ -31,6 +31,24 @@ try {
         Start-Sleep -Milliseconds 400
     }
     if (-not $ready) { throw "Protected named pipe did not respond on temporary runner" }
+
+    # Deliberately open the authenticated status pipe without reading or
+    # acknowledging. A stuck client must not monopolize the next request.
+    $stalled = [System.IO.Pipes.NamedPipeClientStream]::new(
+        '.', 'mnebydns-status-v1', [System.IO.Pipes.PipeDirection]::InOut)
+    try {
+        $stalled.Connect(2000)
+        Start-Sleep -Milliseconds 1800
+    } finally {
+        $stalled.Dispose()
+    }
+    $recovered = $false
+    for ($attempt = 0; $attempt -lt 6; $attempt++) {
+        & cargo run --release --manifest-path apps/windows-dns/ipc/Cargo.toml --example read_status --quiet
+        if ($LASTEXITCODE -eq 0) { $recovered = $true; break }
+        Start-Sleep -Milliseconds 400
+    }
+    if (-not $recovered) { throw "Named pipe did not recover after unresponsive client" }
 } catch {
     $smokeFailure = $_
 } finally {
