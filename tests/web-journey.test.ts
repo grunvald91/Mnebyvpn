@@ -10,6 +10,24 @@ const css=file('apps/web/public/journey.css');
 const server=file('apps/web/src/server.ts');
 const yookassa=file('packages/billing/src/yookassa.ts');
 
+test('first paint hides the legacy storefront only while JS is initializing',()=>{
+  // No inline bootstrap is permitted by the main site's strict CSP.
+  assert.match(server,/"script-src 'self'"/);
+  assert.match(server,/"style-src 'self'"/);
+  assert.match(css,/@media\s*\(scripting:\s*enabled\)/);
+  const guarded=['hero','features','seo-home','plans-section','launch-support','contact-support','account-section'];
+  for(const selector of guarded){
+    assert.ok(css.includes('body:not(.journey-active):not(.journey-fallback) > main > .'+selector),
+      'Unprotected legacy section: '+selector);
+  }
+  assert.match(css,/body:not\(\.journey-active\):not\(\.journey-fallback\) > main::before/);
+  assert.match(index,/id="journey-landing"[^>]*hidden/);
+  assert.match(index,/id="legacy-hero-title"/);
+  assert.match(journey,/root\.classList\.add\('journey-active'\)/);
+  assert.match(journey,/root\.classList\.add\('journey-fallback'\)/);
+  assert.match(journey,/if\(!root\.classList\.contains\('journey-active'\)\)/);
+});
+
 test('journey assets are valid JavaScript and served by the same-origin website',()=>{
   const check=spawnSync(process.execPath,['--check',fileURLToPath(new URL('../apps/web/public/journey.js',import.meta.url))],{encoding:'utf8'});
   assert.equal(check.status,0,check.stderr);
