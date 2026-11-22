@@ -72,17 +72,17 @@ fn query_packet(id: u16, query_type: u16) -> Vec<u8> {
     request
 }
 
-/// Returns a nonzero answer count for a syntactically plausible response to our query.
-/// This is not DNSSEC, TLS, or upstream identity verification.
-fn parse_reply(packet: &[u8], id: u16) -> Result<u16, &'static str> {
+/// Validate a full positive DNS answer for the exact name and type we queried.
+/// A response on localhost proves only local DNS functionality, not TLS/DoT.
+fn parse_reply(packet: &[u8], id: u16, requested_type: u16) -> Result<u16, &'static str> {
     if packet.len() < 12 {
         return Err("Короткий DNS-ответ");
     }
     if u16::from_be_bytes([packet[0], packet[1]]) != id {
         return Err("Не совпадает идентификатор DNS-запроса");
     }
-    if packet[2] & 0x80 == 0 {
-        return Err("Получено не DNS-сообщение ответа");
+    if packet[2] & 0x80 == 0 || packet[2] & 0x78 != 0 {
+        return Err("Некорректные флаги DNS-ответа");
     }
     if packet[2] & 0x02 != 0 {
         return Err("Ответ DNS усечён");
@@ -93,11 +93,81 @@ fn parse_reply(packet: &[u8], id: u16) -> Result<u16, &'static str> {
     if u16::from_be_bytes([packet[4], packet[5]]) != 1 {
         return Err("Некорректный счётчик вопросов DNS");
     }
+
+    const QUERY_NAME: &[u8] = b"\x07example\x03com\x00";
+    let question_end = 12 + QUERY_NAME.len() + 4;
+    if packet.len() < question_end || &packet[12..12 + QUERY_NAME.len()] != QUERY_NAME {
+        return Err("DNS-ответ содержит другой вопрос");
+    }
+    let qtype = u16::from_be_bytes([
+        packet[12 + QUERY_NAME.len()],
+        packet[13 + QUERY_NAME.len()],
+    ]);
+    let qclass = u16::from_be_bytes([
+        packet[14 + QUERY_NAME.len()],
+        packet[15 + QUERY_NAME.len()],
+    ]);
+    if qtype != requested_type || qclass != 1 {
+        return Err("DNS-ответ содержит другой тип вопроса");
+    }
+
     let count = u16::from_be_bytes([packet[6], packet[7]]);
     if count == 0 {
         return Err("Пустой DNS-ответ");
     }
-    Ok(count)
+
+    let mut cursor = question_end;
+    let mut matching_records = 0u16;
+    for _ in 0..count {
+        cursor = skip_dns_name(packet, cursor).ok_or("Некорректное имя в DNS-ответе")?;
+        if packet.len() < cursor + 10 {
+            return Err("Повреждена запись DNS-ответа");
+        }
+        let record_type = u16::from_be_bytes([packet[cursor], packet[cursor + 1]]);
+        let record_class = u16::from_be_bytes([packet[cursor + 2], packet[cursor + 3]]);
+        let data_len = u16::from_be_bytes([packet[cursor + 8], packet[cursor + 9]]) as usize;
+        cursor += 10;
+        let data_end = cursor.checked_add(data_len).ok_or("Некорректная длина DNS-ответа")?;
+        if data_end > packet.len() {
+            return Err("Обрезанные данные DNS-ответа");
+        }
+        if record_type == requested_type && record_class == 1
+            && ((requested_type == 1 && data_len == 4)
+                || (requested_type == 28 && data_len == 16))
+        {
+            matching_records += 1;
+        }
+        cursor = data_end;
+    }
+
+    if matching_records == 0 {
+        return Err("DNS-ответ не содержит запрошенного IP-адреса");
+    }
+    Ok(matching_records)
+}
+
+/// Walk the wire-format owner name without following compression pointers.
+/// Compression pointers must point backward into this DNS packet.
+fn skip_dns_name(packet: &[u8], mut cursor: usize) -> Option<usize> {
+    for _ in 0..128 {
+        let label = *packet.get(cursor)?;
+        if label == 0 {
+            return Some(cursor + 1);
+        }
+        if label & 0xc0 == 0xc0 {
+            let next = *packet.get(cursor + 1)?;
+            let target = (((label & 0x3f) as usize) << 8) | next as usize;
+            return (target >= 12 && target < cursor).then_some(cursor + 2);
+        }
+        if label & 0xc0 != 0 || label > 63 {
+            return None;
+        }
+        cursor = cursor.checked_add(1 + label as usize)?;
+        if cursor > packet.len() {
+            return None;
+        }
+    }
+    None
 }
 
 fn probe_one(address: SocketAddr, qtype: u16) -> EndpointProbe {
@@ -126,7 +196,7 @@ fn probe_one(address: SocketAddr, qtype: u16) -> EndpointProbe {
     if sender != address {
         return EndpointProbe::failure("DNS-ответ получен с другого адреса");
     }
-    match parse_reply(&response[..len], id) {
+    match parse_reply(&response[..len], id, qtype) {
         Ok(answer_count) => EndpointProbe {
             ok: true,
             latency_ms: Some(started.elapsed().as_millis().try_into().unwrap_or(u64::MAX)),
@@ -160,24 +230,48 @@ mod tests {
         assert_eq!(&aaaa[aaaa.len() - 4..], &[0, 28, 0, 1]);
     }
 
-    #[test]
-    fn parser_requires_matching_id_and_answer() {
-        let good = [0x12, 0x34, 0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0];
-        assert_eq!(parse_reply(&good, 0x1234), Ok(1));
-        assert!(parse_reply(&good, 0x4321).is_err());
-        assert!(parse_reply(&good[..11], 0x1234).is_err());
+    fn dns_reply(query_type: u16, data: &[u8]) -> Vec<u8> {
+        let mut answer = query_packet(0x1234, query_type);
+        answer[2] = 0x81;
+        answer[3] = 0x80;
+        answer[7] = 1;
+        answer.extend_from_slice(&[0xc0, 0x0c]); // compression pointer to question
+        answer.extend_from_slice(&query_type.to_be_bytes());
+        answer.extend_from_slice(&1u16.to_be_bytes());
+        answer.extend_from_slice(&60u32.to_be_bytes());
+        answer.extend_from_slice(&(data.len() as u16).to_be_bytes());
+        answer.extend_from_slice(data);
+        answer
     }
 
     #[test]
-    fn parser_rejects_truncation_errors_and_empty_answers() {
-        let mut packet = [0x12, 0x34, 0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0];
-        packet[2] = 0x83;
-        assert!(parse_reply(&packet, 0x1234).is_err());
-        packet[2] = 0x81;
-        packet[3] = 0x83;
-        assert!(parse_reply(&packet, 0x1234).is_err());
-        packet[3] = 0x80;
-        packet[7] = 0;
-        assert!(parse_reply(&packet, 0x1234).is_err());
+    fn parser_validates_complete_positive_a_and_aaaa_answers() {
+        let a = dns_reply(1, &[93, 184, 215, 14]);
+        assert_eq!(parse_reply(&a, 0x1234, 1), Ok(1));
+        assert!(parse_reply(&a, 0x4321, 1).is_err());
+        assert!(parse_reply(&a, 0x1234, 28).is_err());
+
+        let aaaa = dns_reply(28, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+        assert_eq!(parse_reply(&aaaa, 0x1234, 28), Ok(1));
+    }
+
+    #[test]
+    fn parser_rejects_incomplete_and_mismatched_payloads() {
+        let a = dns_reply(1, &[93, 184, 215, 14]);
+        assert!(parse_reply(&a[..12], 0x1234, 1).is_err());
+        assert!(parse_reply(&a[..a.len() - 2], 0x1234, 1).is_err());
+        let mut wrong_question = a.clone();
+        wrong_question[13] = b'X';
+        assert!(parse_reply(&wrong_question, 0x1234, 1).is_err());
+        let mut truncated = a.clone();
+        truncated[2] |= 0x02;
+        assert!(parse_reply(&truncated, 0x1234, 1).is_err());
+        let mut rcode = a.clone();
+        rcode[3] |= 0x03;
+        assert!(parse_reply(&rcode, 0x1234, 1).is_err());
+        let mut pointer_loop = a.clone();
+        pointer_loop[29] = 0xc0;
+        pointer_loop[30] = 29;
+        assert!(parse_reply(&pointer_loop, 0x1234, 1).is_err());
     }
 }
