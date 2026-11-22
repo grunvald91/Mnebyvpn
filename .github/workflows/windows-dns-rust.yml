@@ -107,7 +107,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $vswhere = Join-Path \${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
           if (-not (Test-Path -LiteralPath $vswhere)) { throw 'vswhere unavailable' }
           $vsroot = (& $vswhere -latest -products '*' -property installationPath | Select-Object -First 1)
           if (-not $vsroot) { throw 'Visual Studio root unavailable' }
@@ -121,7 +121,7 @@ jobs:
             'apps/windows-dns/service/target/release/mnebydns-health-service.exe'
           )
           foreach ($exe in $executables) {
-            $imports = (& $dumpbin.FullName /dependents $exe) -join "\`n"
+            $imports = (& $dumpbin.FullName /dependents $exe) -join "`n"
             if ($LASTEXITCODE -ne 0) { throw "Dependency inspection failed: $exe" }
             if ($imports -match '(?im)^\s*(VCRUNTIME140(?:_1)?|MSVCP140|CONCRT140)\.dll\s*$') {
               throw "VC runtime DLL imported by $exe"
