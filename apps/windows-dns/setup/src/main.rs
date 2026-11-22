@@ -195,17 +195,38 @@ fn ensure_service_installed() -> io::Result<()> {
     }
 }
 
-fn enable(hostname: &str) -> io::Result<()> {
-    let host = hostname.trim().to_ascii_lowercase();
-    let addresses = mnebydns_core::resolve_dot_addresses(&host).map_err(error)?;
+fn enable(hostname: Option<&str>) -> io::Result<()> {
+    // A user can choose a new hostname in Settings, or reuse the pinned DoT
+    // endpoint already stored in protected ProgramData after a prior activation.
+    let fresh = match hostname {
+        Some(value) => {
+            let host = value.trim().to_ascii_lowercase();
+            let addresses = mnebydns_core::resolve_dot_addresses(&host).map_err(error)?;
+            Some((host, addresses))
+        }
+        None => None,
+    };
     ensure_service_installed()?;
     let journal = ProtectedJournal::open_service().map_err(error)?;
-    let config = ControllerConfig {
-        version: 1,
-        enabled: true,
-        dot_host: host,
-        upstream_addresses: addresses,
+    let config = if let Some((host, addresses)) = fresh {
+        ControllerConfig {
+            version: 1,
+            enabled: true,
+            dot_host: host,
+            upstream_addresses: addresses,
+        }
+    } else {
+        let mut saved = journal
+            .read_controller_config()
+            .map_err(error)?
+            .ok_or_else(|| error("Не найден сохранённый DoT-адрес. Укажите его в настройках клиента."))?;
+        if saved.upstream_addresses.is_empty() {
+            return Err(error("Сохранённый DoT-адрес не имеет закреплённых IP. Укажите его заново в настройках."));
+        }
+        saved.enabled = true;
+        saved
     };
+    config.validate().map_err(error)?;
     journal.write_controller_config(&config).map_err(error)?;
     let manager = service_manager(false)?;
     let service = manager
@@ -372,7 +393,7 @@ fn uninstall() -> io::Result<()> {
 }
 
 fn usage() {
-    eprintln!("mnebydns-setup.exe [install|enable <DoT-host>|disable|restore|status|uninstall]");
+    eprintln!("mnebydns-setup.exe [install|enable [DoT-host]|disable|restore|status|uninstall]");
     eprintln!("System DNS changes require Windows Administrator approval (UAC).");
 }
 
@@ -380,7 +401,7 @@ fn main() {
     let mut args = env::args().skip(1);
     let result = match (args.next().as_deref(), args.next()) {
         (Some("install"), None) => install(),
-        (Some("enable"), Some(host)) if args.next().is_none() => enable(&host),
+        (Some("enable"), host) if args.next().is_none() => enable(host.as_deref()),
         (Some("disable" | "restore"), None) => disable(),
         (Some("status"), None) => status(),
         (Some("uninstall"), None) => uninstall(),
