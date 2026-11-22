@@ -471,7 +471,6 @@ pub fn preflight_adapter(guid: &str) -> Result<AdapterPreflight, String> {
     })
 }
 
-
 /// Exact per-stack DNS source captured before the client takes ownership.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DnsServerMode {
@@ -515,11 +514,7 @@ fn validate_mode(mode: &DnsServerMode, ipv6: bool) -> Result<(), String> {
     Ok(())
 }
 
-fn mode_from_api(
-    servers: Vec<String>,
-    flags: u64,
-    flag: u64,
-) -> DnsServerMode {
+fn mode_from_api(servers: Vec<String>, flags: u64, flag: u64) -> DnsServerMode {
     if flags & flag == 0 {
         DnsServerMode::Automatic
     } else {
@@ -550,7 +545,9 @@ pub fn capture_adapter_dns(interface_guid: &str) -> Result<AdapterDnsSnapshot, S
     );
     let ipv4_registry = mode_from_servers(registry.ipv4_static.clone());
     if ipv4 != ipv4_registry {
-        return Err("IPv4 DNS API и реестр не совпадают; точное восстановление не подтверждено".into());
+        return Err(
+            "IPv4 DNS API и реестр не совпадают; точное восстановление не подтверждено".into(),
+        );
     }
     let ipv4_profile = mode_from_api(
         ipv4_api.profile_servers.clone(),
@@ -604,7 +601,11 @@ fn set_interface_static_dns(
 ) -> Result<(), String> {
     validate_mode(&DnsServerMode::Static(servers.to_vec()), ipv6)?;
     let guid = parse_guid(interface_guid)?;
-    let mut name_server = servers.join(",").encode_utf16().chain([0]).collect::<Vec<_>>();
+    let mut name_server = servers
+        .join(",")
+        .encode_utf16()
+        .chain([0])
+        .collect::<Vec<_>>();
     let mut settings: DNS_INTERFACE_SETTINGS = unsafe { std::mem::zeroed() };
     settings.Version = DNS_INTERFACE_SETTINGS_VERSION1;
     settings.Flags = DNS_SETTING_NAMESERVER as u64;
@@ -631,7 +632,11 @@ fn set_profile_static_dns(
 ) -> Result<(), String> {
     validate_mode(&DnsServerMode::Static(servers.to_vec()), ipv6)?;
     let guid = parse_guid(interface_guid)?;
-    let mut profile_server = servers.join(",").encode_utf16().chain([0]).collect::<Vec<_>>();
+    let mut profile_server = servers
+        .join(",")
+        .encode_utf16()
+        .chain([0])
+        .collect::<Vec<_>>();
     let mut settings: DNS_INTERFACE_SETTINGS = unsafe { std::mem::zeroed() };
     settings.Version = DNS_INTERFACE_SETTINGS_VERSION1;
     settings.Flags = DNS_SETTING_PROFILE_NAMESERVER as u64;
@@ -699,17 +704,9 @@ fn restore_profile_dns(
 /// profile originally had its own static resolver. Automatic profiles remain
 /// automatic and inherit the interface DNS configuration.
 pub fn apply_adapter_loopback_dns(snapshot: &AdapterDnsSnapshot) -> Result<(), String> {
-    set_interface_static_dns(
-        &snapshot.interface_guid,
-        false,
-        &["127.0.0.1".to_owned()],
-    )?;
+    set_interface_static_dns(&snapshot.interface_guid, false, &["127.0.0.1".to_owned()])?;
     if matches!(snapshot.ipv4_profile, DnsServerMode::Static(_)) {
-        set_profile_static_dns(
-            &snapshot.interface_guid,
-            false,
-            &["127.0.0.1".to_owned()],
-        )?;
+        set_profile_static_dns(&snapshot.interface_guid, false, &["127.0.0.1".to_owned()])?;
     }
     set_interface_static_dns(&snapshot.interface_guid, true, &["::1".to_owned()])?;
     if matches!(snapshot.ipv6_profile, DnsServerMode::Static(_)) {
@@ -723,9 +720,7 @@ pub fn apply_adapter_loopback_dns(snapshot: &AdapterDnsSnapshot) -> Result<(), S
 pub fn restore_adapter_dns(snapshot: &AdapterDnsSnapshot) -> Result<(), String> {
     let mut errors = Vec::new();
     let ipv4 = match &snapshot.ipv4 {
-        DnsServerMode::Automatic => {
-            reset_interface_dns_to_automatic(&snapshot.adapter_name, false)
-        }
+        DnsServerMode::Automatic => reset_interface_dns_to_automatic(&snapshot.adapter_name, false),
         DnsServerMode::Static(servers) => {
             set_interface_static_dns(&snapshot.interface_guid, false, servers)
         }
@@ -738,9 +733,7 @@ pub fn restore_adapter_dns(snapshot: &AdapterDnsSnapshot) -> Result<(), String> 
     }
 
     let ipv6 = match &snapshot.ipv6 {
-        DnsServerMode::Automatic => {
-            reset_interface_dns_to_automatic(&snapshot.adapter_name, true)
-        }
+        DnsServerMode::Automatic => reset_interface_dns_to_automatic(&snapshot.adapter_name, true),
         DnsServerMode::Static(servers) => {
             set_interface_static_dns(&snapshot.interface_guid, true, servers)
         }
@@ -795,7 +788,6 @@ pub fn verify_adapter_restored(snapshot: &AdapterDnsSnapshot) -> Result<(), Stri
     }
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {

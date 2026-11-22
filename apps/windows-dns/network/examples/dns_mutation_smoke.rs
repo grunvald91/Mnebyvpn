@@ -13,8 +13,8 @@ fn main() -> Result<(), String> {
     let snapshot = capture_adapter_dns(&adapter.guid)?;
     let apply_result = apply_adapter_loopback_dns(&snapshot)
         .and_then(|_| verify_adapter_loopback_dns(&adapter.guid));
-    let restore_result = restore_adapter_dns(&snapshot)
-        .and_then(|_| verify_adapter_restored(&snapshot));
+    let restore_result =
+        restore_adapter_dns(&snapshot).and_then(|_| verify_adapter_restored(&snapshot));
     if let Err(error) = restore_result {
         return Err(format!(
             "CRITICAL: DNS mutation smoke test could not restore {}: {}",
