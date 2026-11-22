@@ -70,7 +70,7 @@ test('INCY metadata uses exact paid or trial entitlement expiry in Unix seconds'
     assert.equal(h['profile-description'],
       'base64:'+Buffer.from('Оплата и продление: mnebyvpn.site').toString('base64'));
     assert.equal(h['profile-web-page-url'],INCY_RENEW_URL);
-    assert.equal(h['support-url'],undefined);
+    assert.equal(h['support-url'],INCY_RENEW_URL);
     assert.equal(h['premium-url'],INCY_RENEW_URL);
     assert.equal(h['announce-url'],INCY_SUPPORT_URL);
     assert.equal(new URL(h['premium-url']).origin,new URL(h['profile-web-page-url']).origin);
@@ -101,7 +101,7 @@ test('expired INCY subscription keeps website and bot actions with no network se
   const headers=incyExpiredSubscriptionHeaders(expiry);
   assert.equal(headers['profile-web-page-url'],INCY_RENEW_URL);
   assert.equal(headers['premium-url'],INCY_RENEW_URL);
-  assert.equal(headers['support-url'],undefined);
+  assert.equal(headers['support-url'],INCY_RENEW_URL);
   assert.equal(headers['announce-url'],INCY_SUPPORT_URL);
   assert.match(Buffer.from(headers['announce'].slice(7),'base64').toString('utf8'),
     /Поддержка и связь/);
@@ -110,7 +110,7 @@ test('expired INCY subscription keeps website and bot actions with no network se
   const decoded=Buffer.from(incyExpiredSubscriptionBody().trim(),'base64')
     .toString('utf8');
   assert.ok(decoded.includes('#profile-web-page-url: '+INCY_RENEW_URL));
-  assert.ok(!decoded.includes('#support-url:'));
+  assert.ok(decoded.includes('#support-url: '+INCY_RENEW_URL));
   assert.ok(decoded.includes('#announce-url: '+INCY_SUPPORT_URL));
   assert.doesNotMatch(decoded,/vless:\/\/|vmess:\/\/|trojan:\/\/|awg:\/\/|amneziawg:\/\/|\[Interface\]/);
 });
@@ -135,7 +135,7 @@ test('INCY body fallback shows website and renewal while preserving signed node 
   const lines=Buffer.from(encoded.trim(),'base64').toString('utf8').trim().split('\n');
   assert.equal(lines[0],'#profile-title: MNEBYVPN');
   assert.ok(lines.includes('#profile-web-page-url: '+INCY_RENEW_URL));
-  assert.ok(!lines.some(line=>line.startsWith('#support-url:')));
+  assert.ok(lines.includes('#support-url: '+INCY_RENEW_URL));
   assert.ok(lines.includes('#announce-url: '+INCY_SUPPORT_URL));
   const announce=lines.find(line=>line.startsWith('#announce: base64:'));
   assert.ok(announce);
@@ -157,7 +157,7 @@ test('active INCY metadata provides the existing non-Premium payment action',()=
   const h=incySubscriptionHeaders(new Date('2026-12-20T20:00:00Z'));
   assert.equal(h['announce-url'],INCY_SUPPORT_URL);
   assert.equal(h['profile-web-page-url'],INCY_RENEW_URL);
-  assert.equal(h['support-url'],undefined);
+  assert.equal(h['support-url'],INCY_RENEW_URL);
   assert.match(Buffer.from(h.announce.slice(7),'base64').toString('utf8'),
     /Связаться с поддержкой/);
   const karing=incySubscriptionHeaders(new Date('2026-12-20T20:00:00Z'),'karing');
@@ -166,4 +166,19 @@ test('active INCY metadata provides the existing non-Premium payment action',()=
   assert.equal(karing['support-url'],INCY_SUPPORT_URL);
   assert.equal(karing['profile-web-page-url'],INCY_SITE_URL);
   assert.equal(karing['premium-url'],INCY_RENEW_URL);
+});
+
+// The Desktop client may not expose the documented website field as a button.
+// Retain two actionable links in the fields the client visibly consumes.
+test('INCY Desktop fallback exposes both bot and checkout without Premium',()=>{
+  const date=new Date('2026-12-20T20:00:00Z');
+  for(const client of [null,'incy']){
+    const headers=incySubscriptionHeaders(date,client);
+    assert.equal(headers['support-url'],INCY_RENEW_URL);
+    assert.equal(headers['announce-url'],INCY_SUPPORT_URL);
+    assert.equal(headers['profile-web-page-url'],INCY_RENEW_URL);
+    assert.notEqual(headers['support-url'],headers['announce-url']);
+    // Metadata cannot override the client's fixed Support button label.
+    assert.equal(Object.keys(headers).some(k=>k==='support-button-text'),false);
+  }
 });
