@@ -71,26 +71,36 @@ fn publish(
 fn restore_all(system_journal: &mut SystemDnsJournal) -> Result<(), String> {
     let snapshots = system_journal.read_all()?;
     let current = list_adapters()?;
+    let mut errors = Vec::new();
     for snapshot in snapshots {
         if !current
             .iter()
             .any(|adapter| adapter.guid.eq_ignore_ascii_case(&snapshot.interface_guid))
         {
-            // A disconnected adapter is still returned by IP Helper. If the
-            // GUID is absent altogether, retain its journal for manual review.
-            return Err(format!(
-                "Адаптер {} ({}) больше не обнаружен; исходный DNS backup сохранён",
+            // A disconnected adapter is normally still returned by IP Helper.
+            // If removed, retain its backup but continue restoring other NICs.
+            errors.push(format!(
+                "Адаптер {} ({}) больше не обнаружен; его backup сохранён",
                 snapshot.adapter_name, snapshot.interface_guid
             ));
+            continue;
         }
-        restore_adapter_dns(&snapshot)?;
-        verify_adapter_restored(&snapshot)?;
-        system_journal.clear_verified(&snapshot.interface_guid)?;
+        match restore_adapter_dns(&snapshot)
+            .and_then(|_| verify_adapter_restored(&snapshot))
+            .and_then(|_| system_journal.clear_verified(&snapshot.interface_guid))
+        {
+            Ok(()) => {}
+            Err(error) => errors.push(format!("{}: {error}", snapshot.adapter_name)),
+        }
     }
     if system_journal.has_pending()? {
-        return Err("Остались не восстановленные DNS snapshots".into());
+        errors.push("Остались не восстановленные DNS snapshots".into());
     }
-    Ok(())
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
 }
 
 fn ensure_snapshots(
@@ -98,7 +108,7 @@ fn ensure_snapshots(
     adapters: &[mnebydns_network::AdapterInfo],
 ) -> Result<Vec<AdapterDnsSnapshot>, String> {
     let mut snapshots = system_journal.read_all()?;
-    for adapter in adapters.iter().filter(|item| !item.is_loopback) {
+    for adapter in adapters.iter().filter(|item| item.operational && !item.is_loopback) {
         if snapshots.iter().any(|saved| {
             saved.interface_guid.eq_ignore_ascii_case(&adapter.guid)
         }) {
@@ -119,7 +129,7 @@ fn apply_all(
     let adapters = list_adapters()?;
     let targets: Vec<_> = adapters
         .iter()
-        .filter(|adapter| !adapter.is_loopback)
+        .filter(|adapter| adapter.operational && !adapter.is_loopback)
         .collect();
     if targets.is_empty() {
         return Err("Windows не обнаружила сетевых адаптеров для системного DNS".into());

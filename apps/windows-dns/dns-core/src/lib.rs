@@ -1,5 +1,5 @@
-//! Read-only localhost DNS diagnosis shared by the GUI and Windows health service.
-//! A successful local query does NOT prove upstream DoT or Smart DNS routing.
+//! DNS probe and authenticated DoT loopback resolver shared by the GUI and
+//! persistent Windows system DNS service. Local probes verify the active path.
 
 use serde::{Deserialize, Serialize};
 

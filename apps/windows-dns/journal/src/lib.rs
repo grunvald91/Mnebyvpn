@@ -796,3 +796,94 @@ mod tests {
         assert!(journal.read().unwrap().is_none());
     }
 }
+
+
+#[cfg(test)]
+mod system_dns_tests {
+    use super::*;
+    use mnebydns_network::DnsServerMode;
+
+    fn snapshot() -> mnebydns_network::AdapterDnsSnapshot {
+        mnebydns_network::AdapterDnsSnapshot {
+            interface_guid: "12345678-9abc-def0-1234-56789abcdef0".into(),
+            adapter_name: "Wi-Fi".into(),
+            ipv4: DnsServerMode::Automatic,
+            ipv6: DnsServerMode::Static(vec!["2001:4860:4860::8888".into()]),
+            ipv4_profile: DnsServerMode::Automatic,
+            ipv6_profile: DnsServerMode::Automatic,
+        }
+    }
+
+    #[test]
+    fn system_journal_persists_snapshot_until_verified_clear() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut journal = SystemDnsJournal::new(directory.path().to_path_buf());
+        let original = snapshot();
+        journal.save_before_change(&original).unwrap();
+        assert_eq!(journal.read_all().unwrap(), vec![original.clone()]);
+        assert!(journal.save_before_change(&original).is_err());
+        journal.clear_verified(&original.interface_guid).unwrap();
+        assert!(journal.read_all().unwrap().is_empty());
+    }
+
+    #[test]
+    fn interrupted_system_journal_write_blocks_activation_and_restore() {
+        let directory = tempfile::tempdir().unwrap();
+        let journal = SystemDnsJournal::new(directory.path().to_path_buf());
+        fs::write(
+            journal.staging_path("12345678-9abc-def0-1234-56789abcdef0").unwrap(),
+            b"incomplete",
+        )
+        .unwrap();
+        assert!(journal.read_all().is_err());
+        assert!(journal.has_pending().is_err());
+    }
+
+    #[test]
+    fn system_journal_checksum_corruption_fails_closed() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut journal = SystemDnsJournal::new(directory.path().to_path_buf());
+        let original = snapshot();
+        journal.save_before_change(&original).unwrap();
+        let path = journal.record_path(&original.interface_guid).unwrap();
+        let mut bytes = fs::read(&path).unwrap();
+        let index = bytes.iter().position(|byte| *byte == b'W').unwrap();
+        bytes[index] = b'X';
+        fs::write(path, bytes).unwrap();
+        assert!(journal.read_all().is_err());
+    }
+
+    #[test]
+    fn controller_config_requires_pinned_dot_address_when_enabled() {
+        let config = ControllerConfig {
+            version: 1,
+            enabled: true,
+            dot_host: "dns.example.net".into(),
+            upstream_addresses: Vec::new(),
+        };
+        assert!(config.validate().is_err());
+        let disabled = ControllerConfig {
+            enabled: false,
+            ..config
+        };
+        assert!(disabled.validate().is_ok());
+    }
+
+    #[test]
+    fn controller_config_rejects_invalid_host_and_non_dot_port() {
+        let invalid_host = ControllerConfig {
+            version: 1,
+            enabled: false,
+            dot_host: "https://dns.example.net/dns-query".into(),
+            upstream_addresses: Vec::new(),
+        };
+        assert!(invalid_host.validate().is_err());
+        let invalid_port = ControllerConfig {
+            version: 1,
+            enabled: true,
+            dot_host: "dns.example.net".into(),
+            upstream_addresses: vec!["192.0.2.1:443".parse().unwrap()],
+        };
+        assert!(invalid_port.validate().is_err());
+    }
+}

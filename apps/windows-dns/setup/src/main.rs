@@ -1,5 +1,6 @@
-//! Native Windows SCM bootstrap for the READ-ONLY diagnostic service.
-//! It never changes network adapters, DNSProxy, routes, or Windows DNS settings.
+//! Native Windows SCM installer and UAC control helper for the persistent
+//! mnebyDNS system resolver. It provisions a protected recovery directory,
+//! stores pinned DoT configuration and controls the privileged DNS service.
 //! This is an unsigned developer preview, NOT a production installer.
 
 use mnebydns_journal::{ControllerConfig, ProtectedJournal};
@@ -300,7 +301,7 @@ fn is_our_service_path(configured: &Path, expected: &Path) -> bool {
 
 fn uninstall() -> io::Result<()> {
     // A pending, missing, corrupt or inaccessible recovery record MUST block
-    // removal. This applies even to the current diagnostics-only service.
+    // removal while any adapter may still point at the local DNS listener.
     let journal = ProtectedJournal::open_service().map_err(error)?;
     if journal.check_recovery_pending().map_err(error)? {
         return Err(error("Recovery pending: service uninstall blocked"));

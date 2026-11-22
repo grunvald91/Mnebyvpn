@@ -115,7 +115,7 @@ fn response_header(request: &[u8], info: QueryInfo, truncated: bool) -> Vec<u8> 
     let mut reply = vec![0u8; 12];
     reply[0..2].copy_from_slice(&request[0..2]);
     reply[2] = 0x80 | (request[2] & 1) | if truncated { 0x02 } else { 0 };
-    // SERVFAIL when not truncated, otherwise TC causes a TCP retry (not yet served here).
+    // SERVFAIL when not truncated; TC tells the client to retry over our TCP listener.
     reply[3] = (request[3] & 0x10) | if truncated { 0 } else { 2 };
     reply[5] = 1;
     reply.extend_from_slice(&request[12..info.end_of_question]);

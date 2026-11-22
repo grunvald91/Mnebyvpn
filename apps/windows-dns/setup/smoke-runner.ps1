@@ -1,5 +1,5 @@
 # Disposable Windows runner only. DO NOT run this on a customer's PC.
-# The read-only diagnostic service must never mutate Windows DNS settings.
+# The controller starts idle without a saved DoT configuration; install/status/uninstall must not mutate adapter DNS.
 $ErrorActionPreference = 'Stop'
 $setup = (Resolve-Path 'apps/windows-dns/setup/target/release/mnebydns-setup.exe').Path
 $svc = (Resolve-Path 'apps/windows-dns/service/target/release/mnebydns-health-service.exe').Path
@@ -68,9 +68,9 @@ try {
     }
     $after = DnsSnapshot
     if ($before -ne $after) {
-        $cleanupFailure = "DNS configuration changed during read-only diagnostic service install"
+        $cleanupFailure = "DNS configuration changed during idle service install/uninstall"
     }
 }
 if ($cleanupFailure) { throw $cleanupFailure }
 if ($smokeFailure) { throw $smokeFailure }
-Write-Output 'Read-only Windows service and protected IPC smoke test PASSED.'
+Write-Output 'Idle Windows DNS controller service and protected IPC smoke test PASSED.'

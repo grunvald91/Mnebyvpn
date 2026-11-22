@@ -1,6 +1,6 @@
-//! Read-only adapter inventory. No DNS mutation API is exposed.
-//! Effective DNS addresses do not identify whether Windows obtained them statically,
-//! through DHCP, or through IPv6 router advertisements.
+//! Windows adapter inventory and reversible per-interface DNS controller.
+//! DNS source modes are captured before writes so DHCP/RA and static settings
+//! can be restored independently for IPv4, IPv6, and saved network profiles.
 
 use serde::{Deserialize, Serialize};
 
@@ -226,8 +226,9 @@ pub fn list_adapters() -> Result<Vec<AdapterInfo>, String> {
     }
 }
 
-// Stage 4: non-privileged DNS configuration inspection, no mutating calls.
-// Microsoft: GetInterfaceDnsSettings / FreeInterfaceDnsSettings, Windows 10 build 19041+.
+// Windows 10 build 19041+: GetInterfaceDnsSettings reads; SetInterfaceDnsSettings
+// applies per-interface IPv4 and IPv6 DNS. Every mutation is preceded by a
+// protected service-side snapshot and followed by read-back verification.
 use windows_sys::Win32::NetworkManagement::IpHelper::{
     FreeInterfaceDnsSettings, GetInterfaceDnsSettings, SetInterfaceDnsSettings,
     DNS_INTERFACE_SETTINGS, DNS_INTERFACE_SETTINGS_VERSION1, DNS_SETTING_IPV6,
@@ -564,9 +565,7 @@ pub fn capture_adapter_dns(interface_guid: &str) -> Result<AdapterDnsSnapshot, S
     if adapter.operational {
         for (mode, observed, family) in [
             (&ipv4, &adapter.dns_ipv4, "IPv4"),
-            (&ipv4_profile, &adapter.dns_ipv4, "IPv4 profile"),
             (&ipv6, &adapter.dns_ipv6, "IPv6"),
-            (&ipv6_profile, &adapter.dns_ipv6, "IPv6 profile"),
         ] {
             if let DnsServerMode::Static(expected) = mode {
                 if expected.iter().any(|server| !observed.contains(server)) {
