@@ -98,11 +98,44 @@ fn launch_system_dns_action(action: String, host: Option<String>) -> Result<Stri
     }
 }
 
+/// Distinguish first launch from a broken installed service. A connection
+/// failure to the IPC pipe alone is NOT evidence that DNS is safely disabled.
+#[cfg(windows)]
+fn service_not_installed() -> bool {
+    use windows_sys::Win32::Foundation::GetLastError;
+    use windows_sys::Win32::System::Services::{
+        CloseServiceHandle, OpenSCManagerW, OpenServiceW, SC_MANAGER_CONNECT, SERVICE_QUERY_STATUS,
+    };
+    let manager = unsafe {
+        OpenSCManagerW(std::ptr::null(), std::ptr::null(), SC_MANAGER_CONNECT)
+    };
+    if manager.is_null() {
+        return false;
+    }
+    let name: Vec<u16> = "MnebyDnsHealth".encode_utf16().chain([0]).collect();
+    let service = unsafe { OpenServiceW(manager, name.as_ptr(), SERVICE_QUERY_STATUS) };
+    let absent = service.is_null() && unsafe { GetLastError() } == 1060;
+    if !service.is_null() {
+        unsafe { CloseServiceHandle(service) };
+    }
+    unsafe { CloseServiceHandle(manager) };
+    absent
+}
+
 #[tauri::command]
 async fn system_dns_status() -> Result<mnebydns_core::ServiceReport, String> {
-    tauri::async_runtime::spawn_blocking(mnebydns_ipc::read_service_status)
-        .await
-        .map_err(|_| "Не удалось получить статус службы DNS".to_owned())?
+    tauri::async_runtime::spawn_blocking(|| match mnebydns_ipc::read_service_status() {
+        Ok(report) => Ok(report),
+        Err(error) => {
+            #[cfg(windows)]
+            if service_not_installed() {
+                return Err("SERVICE_NOT_INSTALLED".to_owned());
+            }
+            Err(error)
+        }
+    })
+    .await
+    .map_err(|_| "Не удалось получить статус службы DNS".to_owned())?
 }
 
 #[tauri::command]
