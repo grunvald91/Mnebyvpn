@@ -239,7 +239,10 @@ impl ProtectedJournal {
         let program_data = std::env::var_os("ProgramData")
             .ok_or_else(|| "ProgramData system directory is unknown".to_owned())?;
         let root = Path::new(&program_data).join("mnebydns-controller-v1");
-        windows_acl::create_or_verify_private_directory(&root)?;
+        // The INSTALLER must provision this directory first. Never create a
+        // fresh empty recovery directory on service restart: that would make
+        // deletion of a pending journal look like a clean configuration.
+        windows_acl::verify_existing_private_directory(&root)?;
         Ok(Self {
             inner: FileJournal::new(root),
         })

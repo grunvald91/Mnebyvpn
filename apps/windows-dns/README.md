@@ -139,3 +139,12 @@ DNS switch or actual recovery action.
   a separate installer/service-start concern.
 
 The current SCM service is still diagnostic, not a production DNS controller.
+
+## Cold-start review: explicit provisioning required
+
+`ProtectedJournal::open_service` now **refuses** to create a missing
+`%ProgramData%\\mnebydns-controller-v1` directory. This prevents an
+unexpected deletion across a reboot from being interpreted as a brand-new
+empty journal. A future elevated, authenticated installer must provision
+the directory with the required protected DACL **before** installing or
+starting the service. No installer or service registration is supplied yet.
