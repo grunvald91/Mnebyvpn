@@ -11,7 +11,7 @@ fn main() -> Result<(), String> {
         .find(|item| item.operational && !item.is_loopback)
         .ok_or_else(|| "No active non-loopback adapter on disposable runner".to_owned())?;
     let snapshot = capture_adapter_dns(&adapter.guid)?;
-    let apply_result = apply_adapter_loopback_dns(&adapter.guid)
+    let apply_result = apply_adapter_loopback_dns(&snapshot)
         .and_then(|_| verify_adapter_loopback_dns(&adapter.guid));
     let restore_result = restore_adapter_dns(&snapshot)
         .and_then(|_| verify_adapter_restored(&snapshot));

@@ -189,7 +189,7 @@ fn apply_all(
         } else if adapter.operational {
             // Verify effective resolvers every poll to detect VPN/DHCP changes.
             if let Err(verify_error) = verify_adapter_loopback_dns(&guid) {
-                apply_adapter_loopback_dns(&guid)?;
+                apply_adapter_loopback_dns(saved)?;
                 verify_adapter_loopback_dns(&guid).map_err(|retry_error| {
                     format!(
                         "DNS адаптера {} не проходит проверку: {}; повтор: {}",

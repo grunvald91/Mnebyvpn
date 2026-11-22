@@ -766,13 +766,15 @@ pub fn verify_adapter_loopback_dns(interface_guid: &str) -> Result<(), String> {
         .into_iter()
         .find(|item| item.guid.eq_ignore_ascii_case(interface_guid))
         .ok_or_else(|| "Адаптер исчез после применения DNS".to_owned())?;
-    if adapter.dns_ipv4 != ["127.0.0.1"] {
+    if adapter.dns_ipv4.len() != 1 || adapter.dns_ipv4[0] != "127.0.0.1" {
         return Err(format!(
             "IPv4 DNS не применился полностью: {}",
             adapter.dns_ipv4.join(", ")
         ));
     }
-    if adapter.dns_ipv6 != ["::1"] {
+    if adapter.ipv6_enabled
+        && (adapter.dns_ipv6.len() != 1 || adapter.dns_ipv6[0] != "::1")
+    {
         return Err(format!(
             "IPv6 DNS не применился полностью: {}",
             adapter.dns_ipv6.join(", ")
