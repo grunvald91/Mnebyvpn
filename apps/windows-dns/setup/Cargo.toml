@@ -1,11 +1,12 @@
 [package]
 name = "mnebydns-setup"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2021"
-description = "Read-only diagnostic Windows service installer for mnebyDNS"
+description = "Windows DNS controller installer and system DNS control"
 
 [dependencies]
 mnebydns-journal = { path = "../journal" }
+mnebydns-core = { path = "../dns-core" }
 windows-service = "0.8.1"
 
 [dev-dependencies]
