@@ -223,7 +223,11 @@ pub fn list_adapters() -> Result<Vec<AdapterInfo>, String> {
                         } else {
                             name
                         },
-                        kind: if pseudo_interface { "Служебный / виртуальный".to_owned() } else { kind.to_owned() },
+                        kind: if pseudo_interface {
+                            "Служебный / виртуальный".to_owned()
+                        } else {
+                            kind.to_owned()
+                        },
                         operational,
                         ipv6_enabled,
                         is_tunnel,
