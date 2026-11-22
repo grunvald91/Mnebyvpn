@@ -225,6 +225,23 @@ fn validate_server(host: &str, addresses: &[std::net::SocketAddr]) -> Result<(),
     Ok(())
 }
 
+/// An emergency latch must not be lifted merely because DoT comes back.
+/// A disabled configuration must first have been observed AFTER restoration,
+/// and the user must explicitly request a fresh enable with no pending backup.
+fn may_rearm_after_recovery(
+    emergency_latched: bool,
+    safe_disabled_seen: bool,
+    enable_requested: bool,
+    recovery_clear: bool,
+    listener_stopped: bool,
+) -> bool {
+    emergency_latched
+        && safe_disabled_seen
+        && enable_requested
+        && recovery_clear
+        && listener_stopped
+}
+
 fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
     let journal = ProtectedJournal::open_service().map_err(io::Error::other)?;
     let mut system_journal = journal.system_dns_journal().map_err(io::Error::other)?;
@@ -271,6 +288,9 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
     // configured as the system resolver.
     let mut emergency_reason: Option<String> = None;
     let mut unhealthy_dns_probes = 0u8;
+    // Allows an explicit re-enable only after the emergency rollback has
+    // finished and a durable disabled intent has been observed by the service.
+    let mut safe_disabled_seen = false;
 
     while !stop.load(Ordering::Acquire) {
         let config = match journal.read_controller_config() {
@@ -280,6 +300,17 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
                 None
             }
         };
+        if may_rearm_after_recovery(
+            emergency_reason.is_some(),
+            safe_disabled_seen,
+            config.as_ref().is_some_and(|value| value.enabled),
+            matches!(system_journal.has_pending(), Ok(false)),
+            server.is_none(),
+        ) {
+            emergency_reason = None;
+            safe_disabled_seen = false;
+            last_error = None;
+        }
         let mut should_enable =
             emergency_reason.is_none() && config.as_ref().is_some_and(|value| value.enabled);
         if should_enable {
@@ -293,6 +324,7 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
         }
 
         if should_enable {
+            safe_disabled_seen = false;
             let config = config.expect("enabled config checked above");
             let needs_server_restart = server.is_none()
                 || server_config.as_ref().is_none_or(|old| {
@@ -395,6 +427,15 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
                 };
                 last_error = emergency_reason.clone();
             }
+            // Only an observed disabled intent with *completed* restoration
+            // arms the service for the next explicit enable. In particular,
+            // a failed emergency config write must not cause auto-reenable.
+            if config.as_ref().is_some_and(|value| !value.enabled)
+                && matches!(system_journal.has_pending(), Ok(false))
+                && server.is_none()
+            {
+                safe_disabled_seen = true;
+            }
         }
 
         if let Ok(report) = publish(
@@ -464,4 +505,19 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
 
 fn main() -> windows_service::Result<()> {
     service_dispatcher::start(SERVICE_NAME, ffi_service_main)
+}
+
+#[cfg(test)]
+mod recovery_rearm_tests {
+    use super::may_rearm_after_recovery;
+
+    #[test]
+    fn emergency_requires_explicit_enable_after_verified_rollback() {
+        assert!(!may_rearm_after_recovery(true, false, true, true, true));
+        assert!(!may_rearm_after_recovery(true, true, true, false, true));
+        assert!(!may_rearm_after_recovery(true, true, true, true, false));
+        assert!(!may_rearm_after_recovery(true, true, false, true, true));
+        assert!(!may_rearm_after_recovery(false, true, true, true, true));
+        assert!(may_rearm_after_recovery(true, true, true, true, true));
+    }
 }
