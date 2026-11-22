@@ -6,6 +6,7 @@ fn main() -> Result<(), String> {
     let adapters = list_adapters()?;
     let mut inspected = 0usize;
     let mut ipv4_reads = 0usize;
+    let mut registry_reads = 0usize;
     for adapter in adapters
         .iter()
         .filter(|adapter| adapter.operational && !adapter.is_loopback)
@@ -23,6 +24,9 @@ fn main() -> Result<(), String> {
         if report.registry.is_some() == report.registry_error.is_some() {
             return Err("Registry evidence and error must be mutually exclusive".into());
         }
+        if report.registry.is_some() {
+            registry_reads += 1;
+        }
         if report.ipv4.is_some() {
             ipv4_reads += 1;
         }
@@ -31,6 +35,9 @@ fn main() -> Result<(), String> {
     if inspected == 0 || ipv4_reads == 0 {
         return Err("No operational adapter returned native IPv4 DNS evidence".into());
     }
-    println!("PASS: native read-only DNS preflight; no Windows DNS mutation");
+    if registry_reads == 0 {
+        return Err("No operational adapter yielded readable DNS registry evidence".into());
+    }
+    println!("PASS: native read-only DNS preflight and registry; no Windows DNS mutation");
     Ok(())
 }
