@@ -107,3 +107,29 @@ export async function subscriptionOwner(pool:Pool,token:string):
     entitlementId:String(rows[0].entitlement_id),revision,
     expiresAt:rows[0].expires_at as Date};
 }
+
+/** Only a *naturally expired*, non-revoked paid/trial entitlement may keep its
+ * old public import URL alive for provider renewal metadata. This never
+ * authorizes a node/profile: subscriptionOwner remains ACTIVE+ACK only.
+ * Refunded/cancelled orders, suspended/revoked entitlements and unknown links
+ * must not be represented as renewable subscriptions.
+ */
+export async function expiredSubscriptionMetadata(pool:Pool,token:string):
+  Promise<Date|null>{
+  if(!TOKEN.test(token))return null;
+  const {rows}=await pool.query(
+    "SELECT e.expires_at FROM vpn_subscription_links l "+
+    "JOIN entitlements e ON e.id=l.entitlement_id "+
+    "JOIN orders o ON o.id=e.source_order_id "+
+    "WHERE l.token_sha256=$1 AND l.revoked_at IS NULL "+
+    "AND e.product='vpn' AND e.state IN ('ACTIVE','EXPIRED') "+
+    "AND e.starts_at IS NOT NULL AND e.expires_at IS NOT NULL "+
+    "AND e.expires_at<=clock_timestamp() "+
+    "AND o.state IN ('PAID','TRIAL') LIMIT 1",
+    [digest(token)]);
+  if(rows.length!==1)return null;
+  const expiry=rows[0].expires_at;
+  if(!(expiry instanceof Date)||!Number.isFinite(expiry.getTime()))
+    throw Error('Invalid stored VPN subscription expiry');
+  return expiry;
+}
