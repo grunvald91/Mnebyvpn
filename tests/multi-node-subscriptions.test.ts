@@ -39,7 +39,7 @@ function signed(overrides:Partial<AdditionalNodeReceipt>={},source=receipt()){
   return row;
 }
 
-test('valid Ed25519 country node is appended with correct flag, without exposing signature',()=>{
+test('valid Ed25519 node shows country-only name, without exposing signature',()=>{
   const de=receipt('de-node-01','DE','Германия');
   const nl=receipt();
   const links=verifiedAdditionalVpnLinks([de,nl],owner,pub,now.getTime());
@@ -61,6 +61,7 @@ test('unsigned, tampered, expired or revoked node is not published',()=>{
     {...good,entitlement_id:'00000000-0000-4000-8000-000000000000'},
     {...good,revision:4},
     {...good,signature:'0'.repeat(86)},
+    signed({country_code:'DE',country_name_ru:'Нидерланды'}),
     signed({state:'degraded'}),
     signed({state:'disabled'}),
     signed({verified_at:new Date(now.getTime()-61*60_000)}),
