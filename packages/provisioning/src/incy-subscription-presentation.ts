@@ -67,19 +67,18 @@ export function incySubscriptionHeaders(expiresAt:Date,client:string|null=null):
     // either provider URL. The paid checkout itself still verifies entitlement.
     'profile-description':'base64:'+Buffer.from(
       'Оплата и продление: mnebyvpn.site','utf8').toString('base64'),
-    // INCY's standard support button opens the bot with an explicit
-    // support deep-link payload; the client does not need Premium API.
-    'support-url':INCY_SUPPORT_URL,
-    // INCY's optional "Premium" action must lead to the actual website
-    // tariffs, not duplicate the Telegram support bot link.
+    // INCY renders profile-web-page-url as the "Сайт" action. Its support-url
+    // label is fixed to "Поддержка", so do not send that field for INCY.
+    // Preserve Karing's existing Telegram support link unchanged.
+    ...(client==='karing'?{'support-url':INCY_SUPPORT_URL}:{}),
+    // Keep the separate Premium action pointed at the tariffs page.
     'premium-url':INCY_RENEW_URL,
-    // Keep the existing non-Premium payment action. INCY renders announce-url
-    // as its fixed "Канал / Бот" button; profile-web-page-url remains the
-    // separate website metadata field.
+    // INCY's existing "Канал / Бот" action is driven by announce-url.
+    // It now opens the Telegram bot; profile-web-page-url opens the website.
     ...(client==='karing'?{}:{
       'announce':'base64:'+Buffer.from(
-        'Оплата и продление VPN: mnebyvpn.site','utf8').toString('base64'),
-      'announce-url':INCY_RENEW_URL,
+        'Связаться с поддержкой в Telegram: @MNEBYVPN_bot','utf8').toString('base64'),
+      'announce-url':INCY_SUPPORT_URL,
     }),
   };
 }
@@ -88,27 +87,35 @@ export function incySubscriptionHeaders(expiresAt:Date,client:string|null=null):
  * may be present: no valid VPN entitlement or node ACK is implied by HTTP 200.
  * The site may be reached even when a subscription's servers have expired.
  */
-export function incyExpiredSubscriptionHeaders(expiresAt:Date):Record<string,string>{
+export function incyExpiredSubscriptionHeaders(
+  expiresAt:Date,client:string|null=null,
+):Record<string,string>{
+  const karing=client==='karing';
   return {
-    ...incySubscriptionHeaders(expiresAt),
+    ...incySubscriptionHeaders(expiresAt,client),
     'announce':'base64:'+Buffer.from(
-      'Срок VPN истёк. Продлите доступ на mnebyvpn.site','utf8').toString('base64'),
-    'announce-url':INCY_RENEW_URL,
+      karing?'Срок VPN истёк. Продлите доступ на mnebyvpn.site':
+        'Поддержка и связь в Telegram: @MNEBYVPN_bot','utf8').toString('base64'),
+    // Preserve Karing's historical expired-subscription link. INCY's
+    // Channel / Bot action opens Telegram; the website is a separate action.
+    'announce-url':karing?INCY_RENEW_URL:INCY_SUPPORT_URL,
   };
 }
 
 /** INCY recognizes these # comments in base64 text subscriptions as fallback
  * navigation metadata. Crucially NO VPN keys or server URIs are returned.
  */
-export function incyExpiredSubscriptionBody():string{
+export function incyExpiredSubscriptionBody(client:string|null=null):string{
+  const karing=client==='karing';
   return Buffer.from([
     '#profile-title: MNEBYVPN',
     '#profile-web-page-url: '+INCY_SITE_URL,
-    '#support-url: '+INCY_SUPPORT_URL,
+    ...(karing?['#support-url: '+INCY_SUPPORT_URL]:[]),
     '#profile-update-interval: 1',
     '#announce: base64:'+Buffer.from(
-      'Срок VPN истёк. Продлите доступ на mnebyvpn.site','utf8').toString('base64'),
-    '#announce-url: '+INCY_RENEW_URL,
+      karing?'Срок VPN истёк. Продлите доступ на mnebyvpn.site':
+        'Поддержка и связь в Telegram: @MNEBYVPN_bot','utf8').toString('base64'),
+    '#announce-url: '+(karing?INCY_RENEW_URL:INCY_SUPPORT_URL),
   ].join('\n')+'\n','utf8').toString('base64')+'\n';
 }
 
@@ -126,11 +133,10 @@ export function incyEncodeActiveSubscription(
   const lines=client==='karing'?[]:[
     '#profile-title: MNEBYVPN',
     '#profile-web-page-url: '+INCY_SITE_URL,
-    '#support-url: '+INCY_SUPPORT_URL,
     '#profile-update-interval: 1',
     '#announce: base64:'+Buffer.from(
-      'Оплата и продление VPN: mnebyvpn.site','utf8').toString('base64'),
-    '#announce-url: '+INCY_RENEW_URL,
+      'Связаться с поддержкой в Telegram: @MNEBYVPN_bot','utf8').toString('base64'),
+    '#announce-url: '+INCY_SUPPORT_URL,
   ];
   return Buffer.from([...lines,verifiedProfile].join('\n')+'\n','utf8')
     .toString('base64')+'\n';

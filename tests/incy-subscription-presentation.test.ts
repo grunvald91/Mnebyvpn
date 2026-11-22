@@ -68,12 +68,11 @@ test('INCY metadata uses exact paid or trial entitlement expiry in Unix seconds'
     assert.equal(h['homepage'],INCY_SITE_URL);
     assert.equal(h['profile-description'],
       'base64:'+Buffer.from('Оплата и продление: mnebyvpn.site').toString('base64'));
-    assert.equal(h['support-url'],INCY_SUPPORT_URL);
+    assert.equal(h['profile-web-page-url'],INCY_SITE_URL);
+    assert.equal(h['support-url'],undefined);
     assert.equal(h['premium-url'],INCY_RENEW_URL);
-    assert.equal(h['announce-url'],INCY_RENEW_URL);
-    assert.notEqual(h['premium-url'],h['support-url']);
+    assert.equal(h['announce-url'],INCY_SUPPORT_URL);
     assert.equal(new URL(h['premium-url']).origin,new URL(h['profile-web-page-url']).origin);
-    assert.equal(h['support-url'],'https://t.me/MNEBYVPN_bot?start=support');
   }
   assert.throws(()=>incySubscriptionHeaders(new Date(NaN)));
   assert.throws(()=>incySubscriptionHeaders(new Date(0)));
@@ -96,23 +95,35 @@ test('canonical GET /sub uses same metadata for every entitlement and keeps FI A
   assert.ok(site.includes("subscriptionOwner(subscriptionPool,subMatch[1])"));
 });
 
-test('expired INCY subscription keeps website and support with no network secrets',()=>{
+test('expired INCY subscription keeps website and bot actions with no network secrets',()=>{
   const expiry=new Date('2026-11-20T22:25:00Z');
   const headers=incyExpiredSubscriptionHeaders(expiry);
   assert.equal(headers['profile-web-page-url'],INCY_SITE_URL);
   assert.equal(headers['premium-url'],INCY_RENEW_URL);
-  assert.equal(headers['support-url'],INCY_SUPPORT_URL);
-  assert.equal(headers['announce-url'],INCY_RENEW_URL);
+  assert.equal(headers['support-url'],undefined);
+  assert.equal(headers['announce-url'],INCY_SUPPORT_URL);
   assert.match(Buffer.from(headers['announce'].slice(7),'base64').toString('utf8'),
-    /истёк/);
+    /Поддержка и связь/);
   assert.equal(headers['subscription-userinfo'].split('expire=')[1],
     String(Math.floor(expiry.getTime()/1000)));
   const decoded=Buffer.from(incyExpiredSubscriptionBody().trim(),'base64')
     .toString('utf8');
   assert.ok(decoded.includes('#profile-web-page-url: '+INCY_SITE_URL));
+  assert.ok(!decoded.includes('#support-url:'));
+  assert.ok(decoded.includes('#announce-url: '+INCY_SUPPORT_URL));
+  assert.doesNotMatch(decoded,/vless:\/\/|vmess:\/\/|trojan:\/\/|awg:\/\/|amneziawg:\/\/|\[Interface\]/);
+});
+
+
+test('expired Karing navigation remains unchanged while INCY uses Site and Channel/Bot',()=>{
+  const expiry=new Date('2026-11-20T22:25:00Z');
+  const headers=incyExpiredSubscriptionHeaders(expiry,'karing');
+  assert.equal(headers['support-url'],INCY_SUPPORT_URL);
+  assert.equal(headers['announce-url'],INCY_RENEW_URL);
+  const decoded=Buffer.from(incyExpiredSubscriptionBody('karing').trim(),'base64')
+    .toString('utf8');
   assert.ok(decoded.includes('#support-url: '+INCY_SUPPORT_URL));
   assert.ok(decoded.includes('#announce-url: '+INCY_RENEW_URL));
-  assert.doesNotMatch(decoded,/vless:\/\/|vmess:\/\/|trojan:\/\/|awg:\/\/|amneziawg:\/\/|\[Interface\]/);
 });
 
 test('INCY body fallback shows website and renewal while preserving signed node lines',()=>{
@@ -121,12 +132,12 @@ test('INCY body fallback shows website and renewal while preserving signed node 
   const lines=Buffer.from(encoded.trim(),'base64').toString('utf8').trim().split('\n');
   assert.equal(lines[0],'#profile-title: MNEBYVPN');
   assert.ok(lines.includes('#profile-web-page-url: '+INCY_SITE_URL));
-  assert.ok(lines.includes('#support-url: '+INCY_SUPPORT_URL));
-  assert.ok(lines.includes('#announce-url: '+INCY_RENEW_URL));
+  assert.ok(!lines.some(line=>line.startsWith('#support-url:')));
+  assert.ok(lines.includes('#announce-url: '+INCY_SUPPORT_URL));
   const announce=lines.find(line=>line.startsWith('#announce: base64:'));
   assert.ok(announce);
   assert.match(Buffer.from(announce!.slice('#announce: base64:'.length),'base64')
-    .toString('utf8'),/Оплата и продление/);
+    .toString('utf8'),/Связаться с поддержкой/);
   assert.deepEqual(lines.filter(line=>!line.startsWith('#')),verified.split('\n'));
   // Karing must retain the exact historical payload, byte-for-byte after decode.
   const karing=incyEncodeActiveSubscription(verified,'karing');
@@ -141,12 +152,15 @@ test('INCY body fallback shows website and renewal while preserving signed node 
 
 test('active INCY metadata provides the existing non-Premium payment action',()=>{
   const h=incySubscriptionHeaders(new Date('2026-12-20T20:00:00Z'));
-  assert.equal(h['announce-url'],INCY_RENEW_URL);
+  assert.equal(h['announce-url'],INCY_SUPPORT_URL);
+  assert.equal(h['profile-web-page-url'],INCY_SITE_URL);
+  assert.equal(h['support-url'],undefined);
   assert.match(Buffer.from(h.announce.slice(7),'base64').toString('utf8'),
-    /Оплата и продление/);
+    /Связаться с поддержкой/);
   const karing=incySubscriptionHeaders(new Date('2026-12-20T20:00:00Z'),'karing');
   assert.equal(karing.announce,undefined);
   assert.equal(karing['announce-url'],undefined);
   assert.equal(karing['support-url'],INCY_SUPPORT_URL);
+  assert.equal(karing['profile-web-page-url'],INCY_SITE_URL);
   assert.equal(karing['premium-url'],INCY_RENEW_URL);
 });

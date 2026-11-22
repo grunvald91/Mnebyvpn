@@ -891,9 +891,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
         json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
       }
       for(const [name,value] of Object.entries(
-        incyExpiredSubscriptionHeaders(expiresAt)))
+        incyExpiredSubscriptionHeaders(expiresAt,requestedClient)))
         res.setHeader(name,value);
-      send(res,200,incyExpiredSubscriptionBody(),'text/plain; charset=utf-8');
+      send(res,200,incyExpiredSubscriptionBody(requestedClient),'text/plain; charset=utf-8');
       return;
     }
     try{
