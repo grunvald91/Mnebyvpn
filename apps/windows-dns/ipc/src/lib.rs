@@ -89,6 +89,7 @@ mod tests {
             recovery_state: Some("clear".to_owned()),
             dns_state: Some("disabled".to_owned()),
             adapter_count: Some(0),
+            configured: false,
             last_error: None,
         }
     }
