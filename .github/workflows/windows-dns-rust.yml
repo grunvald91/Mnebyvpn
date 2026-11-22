@@ -92,6 +92,12 @@ jobs:
         shell: pwsh
         run: ./apps/windows-dns/setup/smoke-runner.ps1
 
+      # Run privileged mutation and exact rollback BEFORE shipping any artifact.
+      # The disposable runner must restore DNS even when the apply check fails.
+      - name: Native SetInterfaceDnsSettings apply and restore smoke test
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/windows-dns-rust-tray'
+        run: cargo run --release --manifest-path apps/windows-dns/network/Cargo.toml --example dns_mutation_smoke
+
       - name: Prepare complete portable Windows client and SHA-256
         shell: pwsh
         run: |
@@ -117,8 +123,3 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      # This is intentionally the last mutating test: it changes DNS only on
-      # the disposable GitHub-hosted runner, then verifies exact restoration.
-      - name: Native SetInterfaceDnsSettings apply and restore smoke test
-        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/windows-dns-rust-tray'
-        run: cargo run --release --manifest-path apps/windows-dns/network/Cargo.toml --example dns_mutation_smoke

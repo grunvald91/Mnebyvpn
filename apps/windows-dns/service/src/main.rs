@@ -266,14 +266,33 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut state = "disabled".to_owned();
     let mut last_error: Option<String> = None;
     let mut adapter_count = 0u32;
+    // A broken controller config or repeatedly failing DoT must trigger
+    // restoration instead of terminating the service with localhost still
+    // configured as the system resolver.
+    let mut emergency_reason: Option<String> = None;
+    let mut unhealthy_dns_probes = 0u8;
 
     while !stop.load(Ordering::Acquire) {
-        let config = journal.read_controller_config().map_err(io::Error::other)?;
-        let should_enable = config.as_ref().is_some_and(|value| value.enabled);
+        let config = match journal.read_controller_config() {
+            Ok(config) => config,
+            Err(error) => {
+                emergency_reason = Some(format!("Не удалось прочитать конфигурацию DNS: {error}"));
+                None
+            }
+        };
+        let mut should_enable = emergency_reason.is_none()
+            && config.as_ref().is_some_and(|value| value.enabled);
+        if should_enable {
+            if let Some(current) = config.as_ref() {
+                if let Err(error) = validate_server(&current.dot_host, &current.upstream_addresses) {
+                    emergency_reason = Some(format!("Неверная конфигурация DoT: {error}"));
+                    should_enable = false;
+                }
+            }
+        }
 
         if should_enable {
             let config = config.expect("enabled config checked above");
-            validate_server(&config.dot_host, &config.upstream_addresses)?;
             let needs_server_restart = server.is_none()
                 || server_config.as_ref().is_none_or(|old| {
                     old.dot_host != config.dot_host
@@ -348,12 +367,19 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
                         server_config = None;
                         applied.clear();
                         adapter_count = 0;
-                        state = "disabled".to_owned();
-                        last_error = None;
+                        state = if emergency_reason.is_some() {
+                            "error".to_owned()
+                        } else {
+                            "disabled".to_owned()
+                        };
+                        last_error = emergency_reason.clone();
                     }
                     Err(error) => {
                         state = "error".to_owned();
-                        last_error = Some(error);
+                        last_error = Some(match emergency_reason.as_ref() {
+                            Some(reason) => format!("{reason}; восстановление: {error}"),
+                            None => error,
+                        });
                     }
                 }
             } else {
@@ -361,8 +387,12 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
                 server_config = None;
                 applied.clear();
                 adapter_count = 0;
-                state = "disabled".to_owned();
-                last_error = None;
+                state = if emergency_reason.is_some() {
+                    "error".to_owned()
+                } else {
+                    "disabled".to_owned()
+                };
+                last_error = emergency_reason.clone();
             }
         }
 
@@ -373,6 +403,33 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
             adapter_count,
             last_error.as_deref(),
         ) {
+            if state == "active" {
+                if report.probe.ipv4.ok && report.probe.ipv6.ok {
+                    unhealthy_dns_probes = 0;
+                } else {
+                    unhealthy_dns_probes = unhealthy_dns_probes.saturating_add(1);
+                    if unhealthy_dns_probes >= 3 {
+                        emergency_reason = Some(
+                            "Три последовательные проверки DoT не прошли: восстановление исходного DNS".into(),
+                        );
+                        // Persist the disabled intent before restoring. Even
+                        // if storage fails, the in-memory emergency latch
+                        // prevents another adapter mutation in this process.
+                        if let Some(active) = server_config.as_ref() {
+                            if let Err(error) = journal.write_controller_config(&ControllerConfig {
+                                enabled: false,
+                                ..active.clone()
+                            }) {
+                                emergency_reason = Some(format!(
+                                    "Ошибка записи аварийного выключения: {error}; требуется восстановление"
+                                ));
+                            }
+                        }
+                    }
+                }
+            } else {
+                unhealthy_dns_probes = 0;
+            }
             if let Ok(mut current) = shared.write() {
                 *current = report;
             }
