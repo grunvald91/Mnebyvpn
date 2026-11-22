@@ -112,3 +112,24 @@ pub fn create_or_verify_private_directory(path: &Path) -> Result<(), String> {
     }
     verify_directory(path, &expected)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn private_directory_permissions_survive_reopen() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("private-state");
+        create_or_verify_private_directory(&root).unwrap();
+        create_or_verify_private_directory(&root).unwrap();
+    }
+
+    #[test]
+    fn existing_unprotected_directory_is_rejected() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("unprotected");
+        fs::create_dir(&root).unwrap();
+        assert!(create_or_verify_private_directory(&root).is_err());
+    }
+}

@@ -85,3 +85,28 @@ This crate does **not** modify Windows networking and has **no real privileged
 service backend or protected on-disk journal**. The journal must be durable and
 ACL-protected before the first production mutation. Do not present these mock
 tests as real Windows DNS rollback verification.
+
+## Stage 6: durable recovery journal source (no system DNS writes)
+
+The `journal/` crate implements the `RecoveryJournal` contract for a persistent
+on-disk journal. Its record contains the captured adapter GUID and IPv4/IPv6 DNS
+modes, but **no credentials, personal DNS hostnames or subscriptions**.
+
+- Save sequence: `create_new` staging file → write → `sync_all` → hard-link
+  to a unique final record → remove staging → read back and verify SHA-256.
+- The recovery record cannot be overwritten while present. A truncated,
+  corrupted or orphaned staging file blocks new activations.
+- After BOTH families are restored and verified, the transaction engine
+  permits clearing the recovery record. An interrupted restore leaves it.
+- On Windows, `ProtectedJournal::open_service` uses a new
+  `%ProgramData%\\mnebydns-controller-v1` directory, created with a
+  SYSTEM + Administrators-only protected DACL. It compares the stored DACL
+  with the expected one and rejects reparse points.
+
+**Limitations:** journal data is not encrypted or cryptographically signed;
+the checksum detects corruption, not tampering by an administrator. Flushes
+and filesystem operations still require explicit power-loss testing. Windows
+service installation, authentication, true DHCP/RA capture, DNSProxy process
+ownership and real network rollback remain unimplemented. No user-facing DNS
+enable/disable control has been unlocked. Do not install this as production
+DNS controller.

@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+#[cfg(windows)]
+use std::path::Path;
 
 #[cfg(windows)]
 mod windows_acl;
@@ -93,10 +95,11 @@ impl FileJournal {
     }
 
     fn no_staging_file(&self) -> Result<(), String> {
-        if fs::symlink_metadata(self.staging_path()).is_ok() {
-            return Err("Unfinished journal write detected; manual recovery review required".into());
+        match fs::symlink_metadata(self.staging_path()) {
+            Ok(_) => Err("Unfinished journal write detected; manual recovery review required".into()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!("Cannot inspect journal staging record: {error}")),
         }
-        Ok(())
     }
 
     fn load(&self) -> Result<Option<Snapshot>, String> {
