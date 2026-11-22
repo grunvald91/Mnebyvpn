@@ -100,6 +100,17 @@ fn verify_directory(path: &Path, expected: &SecurityDescriptor) -> Result<(), St
     Ok(())
 }
 
+/// Re-check an already established directory without silently recreating it.
+/// This is important while the service is live: a missing journal directory
+/// cannot be interpreted as an empty, safe recovery state.
+pub fn verify_existing_private_directory(path: &Path) -> Result<(), String> {
+    if !path.is_absolute() {
+        return Err("Recovery directory path must be absolute".into());
+    }
+    let expected = descriptor_from_sddl()?;
+    verify_directory(path, &expected)
+}
+
 pub fn create_or_verify_private_directory(path: &Path) -> Result<(), String> {
     if !path.is_absolute() {
         return Err("Recovery directory path must be absolute".into());
@@ -130,6 +141,16 @@ mod tests {
         let root = temp.path().join("private-state");
         create_or_verify_private_directory(&root).unwrap();
         create_or_verify_private_directory(&root).unwrap();
+    }
+
+    #[test]
+    fn disappeared_directory_is_not_recreated_during_runtime_check() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("was-private");
+        create_or_verify_private_directory(&root).unwrap();
+        fs::remove_dir(&root).unwrap();
+        assert!(verify_existing_private_directory(&root).is_err());
+        assert!(!root.exists());
     }
 
     #[test]

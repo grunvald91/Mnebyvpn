@@ -111,14 +111,6 @@ impl FileJournal {
         self.directory.join(STAGING_NAME)
     }
 
-    fn no_staging_file(&self) -> Result<(), String> {
-        match fs::symlink_metadata(self.staging_path()) {
-            Ok(_) => Err("Unfinished journal write detected; manual recovery review required".into()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(format!("Cannot inspect journal staging record: {error}")),
-        }
-    }
-
     /// Validate one bounded regular file independently. We do not interpret an
     /// absent file as an empty recovery journal until BOTH filenames are checked.
     fn read_valid_record(&self, path: &std::path::Path) -> Result<Option<Snapshot>, String> {
@@ -254,25 +246,30 @@ impl ProtectedJournal {
     }
 
     pub fn check_recovery_pending(&self) -> Result<bool, String> {
-        windows_acl::create_or_verify_private_directory(&self.inner.directory)?;
+        windows_acl::verify_existing_private_directory(&self.inner.directory)?;
         Ok(self.inner.load()?.is_some())
     }
 
     /// Only a privileged Windows service should use this path. The GUI must
     /// use authenticated IPC in a future stage, not open protected state files.
     pub fn protected_status_path(&self) -> Result<PathBuf, String> {
-        windows_acl::create_or_verify_private_directory(&self.inner.directory)?;
+        windows_acl::verify_existing_private_directory(&self.inner.directory)?;
         Ok(self.inner.directory.join("health-v1.json"))
     }
 }
 
 #[cfg(windows)]
 impl RecoveryJournal for ProtectedJournal {
-    fn read(&self) -> Result<Option<Snapshot>, String> { self.inner.read() }
+    fn read(&self) -> Result<Option<Snapshot>, String> {
+        windows_acl::verify_existing_private_directory(&self.inner.directory)?;
+        self.inner.read()
+    }
     fn save_before_changes(&mut self, original: &Snapshot) -> Result<(), String> {
+        windows_acl::verify_existing_private_directory(&self.inner.directory)?;
         self.inner.save_before_changes(original)
     }
     fn clear_after_verified_restore(&mut self) -> Result<(), String> {
+        windows_acl::verify_existing_private_directory(&self.inner.directory)?;
         self.inner.clear_after_verified_restore()
     }
 }

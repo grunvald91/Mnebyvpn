@@ -123,3 +123,19 @@ The GUI deliberately **stopped reading** the old untrusted
 to the user until a restricted and authenticated IPC channel is implemented.
 The service has not been installed on the user's Windows PC and performs no
 DNS switch or actual recovery action.
+
+## Review: failure handling improvements
+
+- A valid committed record remains readable even if an interrupted hard-link
+  commit left an identical staging record behind. This permits **restore**
+  rather than blocking it. New activation still refuses to overwrite pending
+  recovery, and verified restore removes staging BEFORE the committed file.
+- A staging-only file, mismatched contents, invalid GUID or wrong-family DNS
+  address is rejected without modifying network settings.
+- During service operation, the private directory must already exist and its
+  DACL must still match the required policy. If it disappears, the service
+  MUST NOT silently recreate an empty directory and interpret that as
+  absence of an earlier recovery record. The initial bootstrap path remains
+  a separate installer/service-start concern.
+
+The current SCM service is still diagnostic, not a production DNS controller.
