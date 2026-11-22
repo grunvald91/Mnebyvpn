@@ -373,11 +373,11 @@ export async function registerOfflineSalePair(
       'o.amount_minor AS order_amount_minor,o.state,t.plan_id '+
       'FROM manual_sales m JOIN orders o ON o.id=m.order_id '+
       'JOIN order_terms t ON t.order_id=o.id '+
-      'JOIN entitlements e ON e.source_order_id=o.id AND e.product=$4 '+
+      'JOIN entitlements e ON e.source_order_id=o.id AND e.product=$3 '+
       'WHERE m.operator_telegram_id=$1 AND m.customer_label=$2 '+
       'AND e.expires_at>clock_timestamp() '+
       'ORDER BY m.recorded_at DESC LIMIT 2',
-      [String(operatorId),handle,PLAN,'vpn']);
+      [String(operatorId),handle,'vpn']);
     if(existing.rows.length>1)
       return page('Найдены неоднозначные продажи: ручная проверка необходима.',[[back]]);
     let orderId:string|undefined;
