@@ -277,13 +277,13 @@ mod tests {
     #[test]
     fn reply_does_not_accept_an_address_for_a_different_owner() {
         let original = dns_reply(1, &[93, 184, 215, 14]);
-        let answer_start = 12 + b"\\x07example\\x03com\\x00".len() + 4;
+        let answer_start = 12 + b"\x07example\x03com\x00".len() + 4;
         let mut forged = original[..answer_start].to_vec();
-        forged.extend_from_slice(b"\\x05wrong\\x03com\\x00");
+        forged.extend_from_slice(b"\x05wrong\x03com\x00");
         forged.extend_from_slice(&original[answer_start + 2..]);
         assert!(parse_reply(&forged, 0x1234, 1).is_err());
         let (owner, next) = decode_dns_name(&original, answer_start).unwrap();
-        assert_eq!(owner, b"\\x07example\\x03com\\x00");
+        assert_eq!(owner, b"\x07example\x03com\x00");
         assert_eq!(next, answer_start + 2);
         let mut looping = original;
         looping[answer_start] = 0xc0;
