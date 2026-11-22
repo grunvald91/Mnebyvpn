@@ -142,4 +142,9 @@ test('active INCY metadata provides non-Premium announcement link to payment',()
   assert.equal(h['announce-url'],INCY_RENEW_URL);
   assert.match(Buffer.from(h.announce.slice(7),'base64').toString('utf8'),
     /Оплата и продление/);
+  const karing=incySubscriptionHeaders(new Date('2026-12-20T20:00:00Z'),'karing');
+  assert.equal(karing.announce,undefined);
+  assert.equal(karing['announce-url'],undefined);
+  assert.equal(karing['support-url'],INCY_SUPPORT_URL);
+  assert.equal(karing['premium-url'],INCY_RENEW_URL);
 });
