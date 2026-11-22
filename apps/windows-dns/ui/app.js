@@ -115,6 +115,7 @@ async function refreshAdapters() {
   get('adapters-list').textContent = 'Получаю список адаптеров Windows…';
   if (typeof invoke !== 'function') {
     get('adapters-list').textContent = 'Список доступен только в приложении Windows.';
+    adaptersLoading = false;
     button.disabled = false;
     return;
   }
