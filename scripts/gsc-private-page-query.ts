@@ -73,7 +73,7 @@ export function formatPrivatePageQueryLines(
   return [
     'Запросы × страницы (выборка GSC, финальные 28 дней):',
     ...selected.map((r,i)=>String(i+1)+'. «'+r.query+'» → '+r.path+
-      ' · '+r.impressions+' показов, '+r.clicks+' кликов'+
+      ' · показы: '+r.impressions+'; клики: '+r.clicks+
       ', CTR '+(r.ctr*100).toFixed(1)+'%'+
       (r.position===null?'':', поз. '+r.position.toFixed(1))),
     'Строки ограничены выборкой API; это не частотность рынка.',
