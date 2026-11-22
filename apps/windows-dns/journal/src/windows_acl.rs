@@ -10,7 +10,8 @@ use std::ptr::{null_mut};
 use std::slice;
 use windows_sys::Win32::Foundation::{GetLastError, LocalFree, ERROR_ALREADY_EXISTS};
 use windows_sys::Win32::Security::{
-    ACL, DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl, SECURITY_ATTRIBUTES,
+    ACL, DACL_SECURITY_INFORMATION, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
+    SECURITY_ATTRIBUTES,
 };
 use windows_sys::Win32::Security::Authorization::{
     ConvertStringSecurityDescriptorToSecurityDescriptorW, GetNamedSecurityInfoW,
@@ -87,6 +88,12 @@ fn verify_directory(path: &Path, expected: &SecurityDescriptor) -> Result<(), St
         return Err(format!("Cannot verify recovery directory ACL: {code}"));
     }
     let actual = SecurityDescriptor(raw_sd);
+    let mut control = 0u16;
+    let mut revision = 0u32;
+    let ok = unsafe { GetSecurityDescriptorControl(actual.0, &mut control, &mut revision) };
+    if ok == 0 || (control & 0x1000) == 0 {
+        return Err("Recovery directory DACL must be protected from inheritance".into());
+    }
     if dacl_bytes(actual.0)? != dacl_bytes(expected.0)? {
         return Err("Recovery directory ACL differs from SYSTEM+Administrators-only policy".into());
     }

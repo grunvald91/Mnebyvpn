@@ -110,3 +110,16 @@ service installation, authentication, true DHCP/RA capture, DNSProxy process
 ownership and real network rollback remain unimplemented. No user-facing DNS
 enable/disable control has been unlocked. Do not install this as production
 DNS controller.
+
+## Service status storage hardening
+
+The experimental SCM health service now refuses to start unless it can open
+the SYSTEM+Administrators-only controller directory. Its internal report is
+written **inside** that directory and contains a non-sensitive pending-journal
+indicator (`pending`, `clear`, `unreadable`) alongside a local DNS probe.
+
+The GUI deliberately **stopped reading** the old untrusted
+`%ProgramData%\\mnebyDNS\\health-v1.json` path. These fields are not exposed
+to the user until a restricted and authenticated IPC channel is implemented.
+The service has not been installed on the user's Windows PC and performs no
+DNS switch or actual recovery action.

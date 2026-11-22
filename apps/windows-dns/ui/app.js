@@ -203,9 +203,7 @@ async function refreshStatus() {
     get('connection-hint').textContent = response.caution;
     updateEndpoint('ipv4', response.local.ipv4);
     updateEndpoint('ipv6', response.local.ipv6);
-    get('service-state').textContent = response.service
-      ? 'Получен свежий диагностический файл (не подтверждает подлинность службы)'
-      : 'Нет актуального диагностического файла';
+    get('service-state').textContent = 'Состояние службы — только после подключения защищённого IPC';
     get('status').textContent = 'Проверка выполнена. Защищённый DoT ещё не подтверждён.';
   } catch (error) {
     get('connection-title').textContent = 'Ошибка диагностики';

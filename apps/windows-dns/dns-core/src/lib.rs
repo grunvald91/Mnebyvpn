@@ -40,6 +40,9 @@ pub struct ServiceReport {
     pub schema_version: u8,
     pub updated_at_ms: u64,
     pub probe: DnsProbeReport,
+    /// Internal service state only; not an authorization or truth signal for GUI.
+    #[serde(default)]
+    pub recovery_state: Option<String>,
 }
 
 pub fn now_ms() -> u64 {

@@ -205,6 +205,18 @@ impl ProtectedJournal {
             inner: FileJournal::new(root),
         })
     }
+
+    pub fn check_recovery_pending(&self) -> Result<bool, String> {
+        windows_acl::create_or_verify_private_directory(&self.inner.directory)?;
+        Ok(self.inner.load()?.is_some())
+    }
+
+    /// Only a privileged Windows service should use this path. The GUI must
+    /// use authenticated IPC in a future stage, not open protected state files.
+    pub fn protected_status_path(&self) -> Result<PathBuf, String> {
+        windows_acl::create_or_verify_private_directory(&self.inner.directory)?;
+        Ok(self.inner.directory.join("health-v1.json"))
+    }
 }
 
 #[cfg(windows)]

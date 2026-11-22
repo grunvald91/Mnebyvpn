@@ -1,12 +1,13 @@
-//! An independent read-only Windows SCM service.
-//! Does not manage DNSProxy, adapters, routes, VPNs, or system configuration.
-//! Not installed automatically; setup/ACL hardening is a separate release gate.
+//! An independent read-only Windows SCM service. Never changes DNS or VPN.
+//! All service writes use a protected SYSTEM+Administrators directory.
+//! Not registered automatically. IPC/authentication is a future release gate.
 
 use mnebydns_core::{now_ms, probe_loopback, ServiceReport};
+use mnebydns_journal::ProtectedJournal;
+use std::error::Error;
 use std::ffi::OsString;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -29,30 +30,28 @@ fn service_main(_args: Vec<OsString>) {
     }
 }
 
-fn status_path() -> io::Result<PathBuf> {
-    let program_data = std::env::var_os("ProgramData")
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "ProgramData is missing"))?;
-    Ok(PathBuf::from(program_data)
-        .join("mnebyDNS")
-        .join("health-v1.json"))
-}
-
-fn publish(path: &PathBuf) -> io::Result<()> {
+fn publish(journal: &ProtectedJournal) -> io::Result<()> {
+    let recovery_state = match journal.check_recovery_pending() {
+        Ok(true) => "pending",
+        Ok(false) => "clear",
+        Err(_) => "unreadable",
+    };
     let report = ServiceReport {
         schema_version: 1,
         updated_at_ms: now_ms(),
         probe: probe_loopback(),
+        recovery_state: Some(recovery_state.to_owned()),
     };
-    let json = serde_json::to_vec(&report)?;
-    let directory = path
-        .parent()
-        .ok_or_else(|| io::Error::other("No status directory"))?;
-    fs::create_dir_all(directory)?;
-    // This file only carries read-only diagnostic data and is never used for control.
-    fs::write(path, json)
+    let payload = serde_json::to_vec(&report)?;
+    let path = journal.protected_status_path().map_err(io::Error::other)?;
+    // Only the privileged service owns this file; never publish snapshots or secrets.
+    fs::write(path, payload)
 }
 
-fn run_service() -> windows_service::Result<()> {
+fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
+    // Fail closed: if the directory ACL is unsafe or ownership cannot be
+    // verified, the privileged service does not start.
+    let journal = ProtectedJournal::open_service().map_err(io::Error::other)?;
     let stop = Arc::new(AtomicBool::new(false));
     let cancel = Arc::clone(&stop);
     let handler = move |control_event| match control_event {
@@ -75,10 +74,9 @@ fn run_service() -> windows_service::Result<()> {
     };
     status_handle.set_service_status(status.clone())?;
 
-    let path = status_path().ok();
     while !stop.load(Ordering::Acquire) {
-        if let Some(ref path) = path {
-            let _ = publish(path);
+        if let Err(error) = publish(&journal) {
+            eprintln!("Cannot publish protected health report: {error}");
         }
         for _ in 0..20 {
             if stop.load(Ordering::Acquire) {
@@ -87,9 +85,8 @@ fn run_service() -> windows_service::Result<()> {
             thread::sleep(Duration::from_millis(250));
         }
     }
-    if let Some(ref path) = path {
-        let _ = fs::remove_file(path);
-    }
+    // Protected status file remains for later forensic review; consumers must
+    // verify a freshness timestamp and must never treat it as authenticated IPC.
     status.current_state = ServiceState::Stopped;
     status.controls_accepted = ServiceControlAccept::empty();
     status_handle.set_service_status(status)?;
