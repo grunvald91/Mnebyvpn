@@ -4,6 +4,7 @@ const get = (id) => document.getElementById(id);
 const invoke = window.__TAURI__?.core?.invoke;
 let adapters = [];
 let selectedAdapterGuid = null;
+let showAllAdapters = false;
 let preflightLoading = false;
 let adaptersLoading = false;
 let dnsLoading = false;
@@ -85,15 +86,24 @@ function renderAdapterDetails(adapter) {
 function renderAdapters() {
   const target = get('adapters-list');
   target.replaceChildren();
-  if (!adapters.length) {
+  const visible = showAllAdapters ? adapters : adapters.filter(item => item.operational && item.likely_physical);
+  const toggle = get('toggle-all-adapters');
+  toggle.textContent = showAllAdapters
+    ? 'Скрыть служебные интерфейсы'
+    : 'Показать служебные интерфейсы (' + (adapters.length - visible.length) + ')';
+  if (!visible.length) {
     const empty = document.createElement('p');
     empty.className = 'muted';
-    empty.textContent = 'Windows не вернула сетевые адаптеры.';
+    empty.textContent = adapters.length
+      ? 'Подходящие активные Wi-Fi/Ethernet не найдены. Можно просмотреть все интерфейсы для диагностики.'
+      : 'Windows не вернула сетевые адаптеры.';
     target.append(empty);
     renderAdapterDetails(null);
+    get('preflight-dns').disabled = true;
     return;
   }
-  for (const adapter of adapters) {
+  if (!visible.some(item => item.guid === selectedAdapterGuid)) selectedAdapterGuid = null;
+  for (const adapter of visible) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'adapter-card' + (adapter.guid === selectedAdapterGuid ? ' selected' : '');
@@ -111,7 +121,7 @@ function renderAdapters() {
     });
     target.append(button);
   }
-  renderAdapterDetails(adapters.find(item => item.guid === selectedAdapterGuid) || null);
+  renderAdapterDetails(visible.find(item => item.guid === selectedAdapterGuid) || null);
   get('preflight-dns').disabled = !selectedAdapterGuid || preflightLoading;
 
 }
@@ -395,6 +405,10 @@ get('refresh-system-dns').addEventListener('click', refreshSystemDns);
 
 get('refresh-dns').addEventListener('click', refreshStatus);
 get('refresh-adapters').addEventListener('click', refreshAdapters);
+get('toggle-all-adapters').addEventListener('click', () => {
+  showAllAdapters = !showAllAdapters;
+  renderAdapters();
+});
 get('preflight-dns').addEventListener('click', preflightDns);
 
 async function smokeProxy() {
