@@ -1,3 +1,54 @@
+/* First paint: while deferred scripts initialise the interactive storefront, do not
+ * reveal the original static hero and checkout before the new journey takes over.
+ * The CSS scripting media query preserves the searchable static fallback for
+ * browsers with JavaScript disabled; the journey-fallback class also recovers if
+ * interactive initialization fails after the script is loaded.
+ * No inline JS/CSS: the main site's strict Content-Security-Policy stays intact. */
+@media (scripting: enabled) {
+  body:not(.journey-active):not(.journey-fallback) > main > .hero,
+  body:not(.journey-active):not(.journey-fallback) > main > .features,
+  body:not(.journey-active):not(.journey-fallback) > main > .seo-home,
+  body:not(.journey-active):not(.journey-fallback) > main > .plans-section,
+  body:not(.journey-active):not(.journey-fallback) > main > .launch-support,
+  body:not(.journey-active):not(.journey-fallback) > main > .contact-support,
+  body:not(.journey-active):not(.journey-fallback) > main > .account-section {
+    display: none !important;
+  }
+  body:not(.journey-active):not(.journey-fallback) .desktop-nav,
+  body:not(.journey-active):not(.journey-fallback) #auth-link {
+    display: none !important;
+  }
+  body:not(.journey-active):not(.journey-fallback) .journey-header-account {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    border: 1px solid rgba(92,211,239,.38);
+    border-radius: 12px;
+    padding: 8px 14px;
+    background: rgba(17,32,64,.8);
+  }
+  body:not(.journey-active):not(.journey-fallback) .header {
+    background: rgba(7,12,29,.82);
+  }
+  body:not(.journey-active):not(.journey-fallback) > main {
+    min-height: 65dvh;
+    display: grid;
+    place-items: center;
+  }
+  body:not(.journey-active):not(.journey-fallback) > main::before {
+    content: "Подготавливаем MNEBYVPN…";
+    display: block;
+    padding: 18px 24px;
+    font-weight: 650;
+    color: #b9d9f0;
+    text-align: center;
+  }
+  body:not(.journey-active):not(.journey-fallback) > .footer {
+    visibility: hidden;
+  }
+}
+
 /* Progressive enhancement: original page remains available without JavaScript. */
 body.journey-active .hero,
 body.journey-active .features,
