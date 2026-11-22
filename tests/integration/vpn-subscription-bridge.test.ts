@@ -138,8 +138,9 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const karing=await fetch(root+'/sub/'+issued!.token+'?client=karing');
    assert.equal(karing.status,200);
    assert.equal(karing.headers.get('premium-url'),'https://mnebyvpn.site/#plans');
+   // Karing keeps the previous exact comment-free body to avoid regressions.
    assert.equal(Buffer.from((await karing.text()).trim(),'base64')
-     .toString('utf8').trim().split('\n').filter(line=>!line.startsWith('#')).join('\n'),displayedWs);
+     .toString('utf8').trim(),displayedWs);
    assert.equal((await fetch(root+'/sub/'+issued!.token+'?client=other')).status,400);
    // Never publish a profile from an unexpected node, even on an authenticated
    // internal response.
@@ -276,7 +277,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    const restored=await fetch(root+'/sub/'+issued!.token);
    assert.equal(restored.status,200);
    assert.equal(Buffer.from((await restored.text()).trim(),'base64')
-     .toString('utf8').trim(),displayedWs);
+     .toString('utf8').trim().split('\n').filter(line=>!line.startsWith('#')).join('\n'),displayedWs);
    // Revoked links are not eligible for the expired-metadata exception.
    await pool.query('UPDATE vpn_subscription_links SET revoked_at=now() WHERE entitlement_id=$1',[entitlement]);
    assert.equal((await fetch(root+'/sub/'+issued!.token)).status,404);
