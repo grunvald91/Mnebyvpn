@@ -60,9 +60,9 @@ export function incySubscriptionHeaders(expiresAt:Date,client:string|null=null):
     'subscription-userinfo':'upload=0;download=0;total=0;expire='+expire,
     'profile-title':'base64:'+Buffer.from('MNEBYVPN','utf8').toString('base64'),
     'profile-update-interval':'1',
-    'profile-web-page-url':INCY_RENEW_URL,
+    'profile-web-page-url':client==='karing'?INCY_SITE_URL:INCY_RENEW_URL,
     // Legacy INCY-compatible alias; use the same public provider website.
-    'homepage':INCY_RENEW_URL,
+    'homepage':client==='karing'?INCY_SITE_URL:INCY_RENEW_URL,
     // A visible description remains useful if the client's button layout hides
     // either provider URL. The paid checkout itself still verifies entitlement.
     'profile-description':'base64:'+Buffer.from(
@@ -109,7 +109,7 @@ export function incyExpiredSubscriptionBody(client:string|null=null):string{
   const karing=client==='karing';
   return Buffer.from([
     '#profile-title: MNEBYVPN',
-    '#profile-web-page-url: '+INCY_RENEW_URL,
+    '#profile-web-page-url: '+(karing?INCY_SITE_URL:INCY_RENEW_URL),
     ...(karing?['#support-url: '+INCY_SUPPORT_URL]:[]),
     '#profile-update-interval: 1',
     '#announce: base64:'+Buffer.from(
