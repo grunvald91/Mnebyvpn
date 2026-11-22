@@ -59,12 +59,13 @@
     </section>
     <section class="detail adapter-section" aria-label="Сетевые адаптеры">
       <div class="detailhead"><h2>Сетевые адаптеры</h2><span class="chip">Без изменений</span></div>
-      <p class="section-intro adapter-hint">Проверяйте выбранный Wi-Fi или Ethernet. VPN тоже может выглядеть как Ethernet; автоматического выбора нет.</p>
+      <p class="section-intro adapter-hint">Системный DNS автоматически настраивается на подходящих активных Wi-Fi/Ethernet. Нажатие на карточку только показывает сведения и не меняет DNS.</p>
       <button class="secondary" id="refresh-adapters" type="button">Обновить список адаптеров</button>
       <div id="adapters-list" class="adapter-list" aria-live="polite"><p class="muted">Список ещё не загружен.</p></div>
+      <button class="secondary" id="toggle-all-adapters" type="button">Показать служебные интерфейсы</button>
       <div id="adapter-details" class="adapter-details"><p class="muted">Выбор адаптера ничего не изменяет.</p></div>
       <button class="secondary" id="preflight-dns" type="button" disabled>Проверить настройки перед включением</button>
-      <div id="preflight-result" class="preflight-result" role="status" aria-live="polite">Предпроверка ещё не выполнялась. Включение DNS из приложения недоступно.</div>
+      <div id="preflight-result" class="preflight-result" role="status" aria-live="polite">Предпроверка только читает сведения. Для включения системного DNS откройте вкладку «Настройки».</div>
     </section>
   </section>
   <section id="settings" class="view hidden">
