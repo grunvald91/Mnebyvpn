@@ -5,6 +5,7 @@
  * longer advertised to customers until independently proven functional.
  */
 export const INCY_SITE_URL='https://mnebyvpn.site';
+export const INCY_RENEW_URL='https://mnebyvpn.site/#plans';
 export const INCY_BOT_URL='https://t.me/MNEBYVPN_bot';
 export const INCY_SUPPORT_URL='https://t.me/MNEBYVPN_bot?start=support';
 
@@ -60,11 +61,17 @@ export function incySubscriptionHeaders(expiresAt:Date):Record<string,string>{
     'profile-title':'base64:'+Buffer.from('MNEBYVPN','utf8').toString('base64'),
     'profile-update-interval':'1',
     'profile-web-page-url':INCY_SITE_URL,
+    // Legacy INCY-compatible alias; use the same public provider website.
+    'homepage':INCY_SITE_URL,
+    // A visible description remains useful if the client's button layout hides
+    // either provider URL. The paid checkout itself still verifies entitlement.
+    'profile-description':'base64:'+Buffer.from(
+      'Оплата и продление: mnebyvpn.site','utf8').toString('base64'),
     // INCY's standard support button opens the bot with an explicit
     // support deep-link payload; the client does not need Premium API.
     'support-url':INCY_SUPPORT_URL,
-    // INCY's optional "Premium" action is a provider account/purchase link.
-    // The existing bot is the subscription/renewal management entrypoint.
-    'premium-url':INCY_BOT_URL,
+    // INCY's optional "Premium" action must lead to the actual website
+    // tariffs, not duplicate the Telegram support bot link.
+    'premium-url':INCY_RENEW_URL,
   };
 }
