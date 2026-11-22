@@ -1,0 +1,12 @@
+[package]
+name = "mnebydns-setup"
+version = "0.8.0"
+edition = "2021"
+description = "Read-only diagnostic Windows service installer for mnebyDNS"
+
+[dependencies]
+mnebydns-journal = { path = "../journal" }
+windows-service = "0.8.1"
+
+[dev-dependencies]
+tempfile = "3"

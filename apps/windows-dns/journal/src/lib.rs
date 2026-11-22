@@ -232,6 +232,16 @@ impl RecoveryJournal for FileJournal {
 
 /// Only a privileged Windows service should be allowed to construct this type.
 /// The directory DACL is checked every time it is opened.
+/// Installer-only one-time provision. Never called by the Windows service or GUI.
+/// Rejects preexisting directories whose DACL is not the expected protected ACL.
+#[cfg(windows)]
+pub fn provision_for_installer() -> Result<(), String> {
+    let program_data = std::env::var_os("ProgramData")
+        .ok_or_else(|| "ProgramData system directory is unknown".to_owned())?;
+    let root = Path::new(&program_data).join("mnebydns-controller-v1");
+    windows_acl::create_or_verify_private_directory(&root)
+}
+
 #[cfg(windows)]
 pub struct ProtectedJournal {
     inner: FileJournal,

@@ -174,3 +174,20 @@ the recovery record's **status only** (`clear/pending/unreadable`).
   client/service runtime tests remain a pre-production requirement.
 - Do not claim this is validated on the user's Windows 10. CI compiles and
   tests protocol helpers and the UI, not live service installation.
+
+## Stage 8: native read-only service setup preview
+
+A separate `setup/` Rust CLI can register/unregister the **diagnostic-only**
+service in the Windows SCM, provision protected recovery storage, and query
+status. It requires administrator privileges for install/uninstall and deliberately
+preserves the protected journal and installed EXE after unregistering.
+
+New GitHub Actions artifact: `mnebydns-win10-service-setup-unsigned`
+contains `mnebydns-health-service.exe`, `mnebydns-setup.exe` and
+`INSTALL-WINDOWS.md`. This artifact is an unsigned developer preview,
+not a production installer, and not yet deployed or runtime-tested in a
+Windows 10 VM. See `setup/INSTALL-WINDOWS.md`.
+
+This stage does not alter network configuration or copy third-party DNSProxy.
+It has no automatic elevation, in-place upgrade, signed publishing or
+automatic cleanup, and must be validated on a disposable VM before release.
