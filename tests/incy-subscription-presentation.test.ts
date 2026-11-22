@@ -65,7 +65,8 @@ test('INCY metadata uses exact paid or trial entitlement expiry in Unix seconds'
       'base64:'+Buffer.from('MNEBYVPN').toString('base64'));
     assert.equal(h['profile-update-interval'],'1');
     assert.equal(h['profile-web-page-url'],INCY_RENEW_URL);
-    assert.equal(h['homepage'],INCY_SITE_URL);
+    assert.equal(h['homepage'],INCY_RENEW_URL);
+    assert.equal(new URL(h['profile-web-page-url']).origin,INCY_SITE_URL);
     assert.equal(h['profile-description'],
       'base64:'+Buffer.from('Оплата и продление: mnebyvpn.site').toString('base64'));
     assert.equal(h['profile-web-page-url'],INCY_RENEW_URL);
