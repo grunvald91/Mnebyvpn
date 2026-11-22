@@ -765,9 +765,7 @@ pub fn verify_adapter_loopback_dns(interface_guid: &str) -> Result<(), String> {
             adapter.dns_ipv4.join(", ")
         ));
     }
-    if adapter.ipv6_enabled
-        && (adapter.dns_ipv6.len() != 1 || adapter.dns_ipv6[0] != "::1")
-    {
+    if adapter.ipv6_enabled && (adapter.dns_ipv6.len() != 1 || adapter.dns_ipv6[0] != "::1") {
         return Err(format!(
             "IPv6 DNS не применился полностью: {}",
             adapter.dns_ipv6.join(", ")
