@@ -81,7 +81,8 @@ test('canonical GET /sub uses same metadata for every entitlement and keeps FI A
   const site=readFileSync(
     new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
   assert.ok(site.includes('germanWebSocketOnly(nodeProfile)'));
-  assert.ok(site.includes('incySubscriptionHeaders(owner.expiresAt)'));
+  assert.ok(site.includes('incySubscriptionHeaders(owner.expiresAt,requestedClient)'));
+  assert.ok(site.includes('incyEncodeActiveSubscription(profile,requestedClient)'));
   assert.ok(site.includes('verifiedIncyAwgLine(material,identity)'));
   // Karing and INCY share one verified FI grant: never discard AWG solely
   // because the subscription installer includes ?client=karing.
