@@ -8,6 +8,7 @@ mod registry_source;
 pub use registry_source::RegistryDnsEvidence;
 use std::ffi::c_void;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::process::Command;
 use std::ptr::null;
 use std::slice;
 use windows_sys::core::GUID;
