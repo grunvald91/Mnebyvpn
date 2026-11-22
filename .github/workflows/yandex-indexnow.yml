@@ -1,12 +1,19 @@
 name: MNEBYVPN notify Yandex IndexNow (public SEO changes only)
 on:
-  # Trigger manually after production confirms the IndexNow ownership key.
-  # Google URL Inspection remains separate, read-only and daily.
+  # Run a read-only production preflight for branch changes; submit only from
+  # the merged main workflow. Do not repeatedly submit unchanged URLs daily.
+  push:
+    paths:
+      - '.github/workflows/yandex-indexnow.yml'
+      - 'scripts/yandex-indexnow.ts'
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: mnebyvpn-indexnow-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  notify:
+  verify-and-notify:
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
@@ -16,7 +23,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.16.0'
-      - name: Prove IndexNow sends only public canonical pages
+      - name: Prove IndexNow sends only approved public canonical pages
         run: node --experimental-strip-types --test tests/yandex-indexnow.test.ts tests/seo-core.test.ts
-      - name: Confirm public TXT ownership and notify Yandex about new pages
+      - name: Read-only production preflight for key and all eight public pages
+        run: node --experimental-strip-types scripts/yandex-indexnow.ts --preflight
+      - name: Notify Yandex only after verified main release
+        if: github.ref == 'refs/heads/main'
         run: node --experimental-strip-types scripts/yandex-indexnow.ts
