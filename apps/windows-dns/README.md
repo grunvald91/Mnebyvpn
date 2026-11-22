@@ -191,3 +191,25 @@ Windows 10 VM. See `setup/INSTALL-WINDOWS.md`.
 This stage does not alter network configuration or copy third-party DNSProxy.
 It has no automatic elevation, in-place upgrade, signed publishing or
 automatic cleanup, and must be validated on a disposable VM before release.
+
+## Stage 9: bounded local IPC status delivery (read-only)
+
+The GUI already reads authenticated service state from the LocalSystem named pipe
+when the user requests DNS diagnostics. The earlier service used synchronous
+`FlushFileBuffers`, which Microsoft documents as waiting until a client reads
+all bytes. A client that did not read could monopolize the only pipe instance.
+
+- The pipe now supports a single-byte delivery ACK from the GUI **only after**
+  the bounded status frame passes schema, timestamp and state validation.
+- Interactive clients get pipe read/write permission for **this ACK only**;
+  the service does not accept DNS commands, profile changes or other actions.
+- Service I/O uses overlapped operations and a 1000 ms per-client deadline,
+  then cancels/reaps unfinished I/O before reusing the pipe instance.
+- The temporary Windows GitHub runner smoke test opens a client that refuses
+  to read/ACK, then verifies a subsequent client can receive service status.
+- The protocol remains local-only, LocalSystem-authenticated, and untrusted
+  process identities are rejected by the GUI.
+
+This does not enable DNS switching. Actual Windows 10 22H2 and hostile-client
+security testing, safe DNSProxy ownership, DHCP/RA restore, and recovery on
+power failure are still release gates.
