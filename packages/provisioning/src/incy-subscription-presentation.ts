@@ -67,10 +67,12 @@ export function incySubscriptionHeaders(expiresAt:Date,client:string|null=null):
     // either provider URL. The paid checkout itself still verifies entitlement.
     'profile-description':'base64:'+Buffer.from(
       'Оплата и продление: mnebyvpn.site','utf8').toString('base64'),
-    // INCY renders profile-web-page-url as the "Сайт" action. Its support-url
-    // label is fixed to "Поддержка", so do not send that field for INCY.
-    // Preserve Karing's existing Telegram support link unchanged.
-    ...(client==='karing'?{'support-url':INCY_SUPPORT_URL}:{}),
+    // Desktop INCY may ignore profile-web-page-url even though documented.
+    // Retain the visible support-url button as a website fallback, instead
+    // of silently removing the customer's only payment action. Its built-in
+    // label is client-controlled and cannot be renamed by subscription data.
+    // Karing keeps its original Telegram support action unchanged.
+    'support-url':client==='karing'?INCY_SUPPORT_URL:INCY_RENEW_URL,
     // Keep the separate Premium action pointed at the tariffs page.
     'premium-url':INCY_RENEW_URL,
     // INCY's existing "Канал / Бот" action is driven by announce-url.
@@ -110,7 +112,7 @@ export function incyExpiredSubscriptionBody(client:string|null=null):string{
   return Buffer.from([
     '#profile-title: MNEBYVPN',
     '#profile-web-page-url: '+(karing?INCY_SITE_URL:INCY_RENEW_URL),
-    ...(karing?['#support-url: '+INCY_SUPPORT_URL]:[]),
+    '#support-url: '+(karing?INCY_SUPPORT_URL:INCY_RENEW_URL),
     '#profile-update-interval: 1',
     '#announce: base64:'+Buffer.from(
       karing?'Срок VPN истёк. Продлите доступ на mnebyvpn.site':
@@ -133,6 +135,8 @@ export function incyEncodeActiveSubscription(
   const lines=client==='karing'?[]:[
     '#profile-title: MNEBYVPN',
     '#profile-web-page-url: '+INCY_RENEW_URL,
+    // Visible website fallback for Desktop variants that ignore site metadata.
+    '#support-url: '+INCY_RENEW_URL,
     '#profile-update-interval: 1',
     '#announce: base64:'+Buffer.from(
       'Связаться с поддержкой в Telegram: @MNEBYVPN_bot','utf8').toString('base64'),
