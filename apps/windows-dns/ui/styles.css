@@ -33,3 +33,17 @@ h2 { margin: 0; font-size: 17px; }
 footer { margin-top: auto; font-size: 11px; color: #8fa8ad; }
 @media (max-width:420px) { .app{ padding:14px; gap:15px; } .hero{padding:21px 13px;} .brand {font-size:20px;} .version{font-size:10px;} .item{align-items:flex-start;} }
 @media (prefers-reduced-motion: no-preference) { button { transition: background-color .14s ease, filter .14s ease; } }
+
+.adapter-section { margin-top: 18px; }
+.adapter-hint { margin: 12px 0; max-width: none; }
+.adapter-list { display: grid; gap: 8px; margin-top: 12px; }
+.adapter-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; min-height: 54px; padding: 11px 13px; border: 1px solid #29454b; border-radius: 12px; background: #102027; color: #e8f4f2; text-align: left; }
+.adapter-card strong { font-size: 13px; font-weight: 650; }
+.adapter-card span { font-size: 12px; color: #9fb7ba; }
+.adapter-card.selected { border-color: #67dac9; background: #173239; }
+.adapter-details { margin-top: 12px; padding-top: 12px; border-top: 1px solid #244047; }
+.adapter-details h3 { margin: 0 0 8px; font-size: 14px; }
+.adapter-detail-line { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #1e363d; font-size: 12px; }
+.adapter-detail-line span { color: #9fb7ba; }
+.adapter-detail-line strong { text-align: right; font-weight: 550; overflow-wrap: anywhere; }
+.adapter-warning { color: #f0b79d; font-size: 12px; line-height: 1.5; margin: 12px 0 0; }

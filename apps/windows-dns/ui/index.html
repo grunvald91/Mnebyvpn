@@ -12,7 +12,7 @@
   <main class="app">
     <header class="brandbar">
       <div class="brand"><div class="mark" aria-hidden="true">◈</div>мнебы<span>DNS</span></div>
-      <div class="version">ДИАГНОСТИКА · 0.3</div>
+      <div class="version">ДИАГНОСТИКА · 0.4</div>
     </header>
     <nav class="tabs" aria-label="Разделы приложения">
       <button class="tab active" data-tab="home" aria-current="page">Главная</button>
@@ -43,6 +43,13 @@
       <div class="item"><span>Служба Windows</span><strong id="service-state">Не проверено</strong></div>
       <div class="item"><span>DoT, TLS и Smart DNS</span><strong>Не проверено</strong></div>
       <div class="item"><span>VPN / TUN</span><strong>Не изменяются</strong></div>
+      <section class="detail adapter-section" aria-label="Сетевые адаптеры">
+        <div class="detailhead"><h2>Сетевой адаптер</h2><span class="chip">Только чтение</span></div>
+        <p class="hint adapter-hint">Выбери физический Wi-Fi или Ethernet для будущего этапа. Пока настройки не меняются.</p>
+        <button class="secondary" id="refresh-adapters">Обновить список адаптеров</button>
+        <div id="adapters-list" class="adapter-list" aria-live="polite"><p class="muted">Список ещё не загружен.</p></div>
+        <div id="adapter-details" class="adapter-details"><p class="muted">Выбор адаптера не выполняет никаких изменений.</p></div>
+      </section>
     </section>
     <section id="settings" class="view hidden">
       <h1>Настройки</h1>
@@ -50,6 +57,7 @@
       <div class="item"><span>Возврат окна</span><strong>Нажать значок в трее</strong></div>
       <div class="item"><span>Выход</span><strong>Правый клик → Выйти</strong></div>
       <div class="item"><span>Изменение DNS Windows</span><strong>Отключено</strong></div>
+      <div class="item"><span>Выбор сетевого адаптера</span><strong>Вручную, без автоприменения</strong></div>
       <button class="secondary" id="settings-tray">Свернуть в трей</button>
     </section>
     <footer><span id="status" role="status" aria-live="polite">Без изменений системных настроек</span><span>mnebyvpn.site</span></footer>
