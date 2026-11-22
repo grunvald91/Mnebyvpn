@@ -1,12 +1,15 @@
 name: MNEBYVPN notify Yandex IndexNow (public SEO changes only)
 on:
-  # Run a read-only production preflight for branch changes; submit only from
-  # the merged main workflow. Do not repeatedly submit unchanged URLs daily.
+  # Source-only pushes require an updated batch key if these URLs change later.
+  # Workflow-only changes must not cause an immediate duplicate POST.
   push:
     paths:
-      - '.github/workflows/yandex-indexnow.yml'
       - 'scripts/yandex-indexnow.ts'
   workflow_dispatch:
+  # Bounded retry for Yandex 202 (new owner key pending verification).
+  # 2026 only: guard year/date below; no recurring notification after the window.
+  schedule:
+    - cron: '17 6 23-26 11 *'
 permissions:
   contents: read
 concurrency:
@@ -15,18 +18,58 @@ concurrency:
 jobs:
   verify-and-notify:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 5
     steps:
+      - name: Enforce one-time 2026 verification window for scheduled retries
+        id: window
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == schedule ]]; then
+            today="$(date -u +%F)"
+            if [[ "$today" < 2026-11-23 || "$today" > 2026-11-26 ]]; then
+              echo 'active=false' >> "$GITHUB_OUTPUT"
+              echo 'INDEXNOW_RETRY_WINDOW=EXPIRED'
+              exit 0
+            fi
+          fi
+          echo 'active=true' >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
+        if: steps.window.outputs.active == 'true'
         with:
           persist-credentials: false
       - uses: actions/setup-node@v4
+        if: steps.window.outputs.active == 'true'
         with:
           node-version: '22.16.0'
-      - name: Prove IndexNow sends only approved public canonical pages
+      - name: Check successful delivery receipt on main
+        id: receipt
+        if: steps.window.outputs.active == 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/restore@v4
+        with:
+          key: mnebyvpn-indexnow-20261119-eight-pages-v1
+          path: .indexnow-one-time-200.receipt
+      - name: Explain previously accepted batch
+        if: steps.receipt.outputs.cache-hit == 'true'
+        run: echo 'YANDEX_INDEXNOW=ALREADY_ACCEPTED; request_sent=no'
+      - name: Prove payload and security contracts
+        if: steps.window.outputs.active == 'true' && steps.receipt.outputs.cache-hit != 'true'
         run: node --experimental-strip-types --test tests/yandex-indexnow.test.ts tests/seo-core.test.ts
-      - name: Read-only production preflight for key and all eight public pages
+      - name: Read-only production preflight for owner key and published pages
+        if: steps.window.outputs.active == 'true' && steps.receipt.outputs.cache-hit != 'true'
         run: node --experimental-strip-types scripts/yandex-indexnow.ts --preflight
-      - name: Notify Yandex only after verified main release
-        if: github.ref == 'refs/heads/main'
-        run: node --experimental-strip-types scripts/yandex-indexnow.ts
+      - name: Notify Yandex only on verified main
+        id: notify
+        if: steps.window.outputs.active == 'true' && github.ref == 'refs/heads/main' && steps.receipt.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/yandex-indexnow.ts
+          # Only a verified 200 response reaches this line. 202 must not save a receipt.
+          printf 'IndexNow HTTP 200 batch 2026-11-19 accepted at %s UTC\n' "$(date -u +%FT%TZ)" > .indexnow-one-time-200.receipt
+      - name: Persist proof of 200 to suppress future retries
+        if: steps.notify.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          key: mnebyvpn-indexnow-20261119-eight-pages-v1
+          path: .indexnow-one-time-200.receipt
