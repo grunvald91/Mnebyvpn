@@ -219,9 +219,13 @@ fn enable(hostname: Option<&str>) -> io::Result<()> {
         let mut saved = journal
             .read_controller_config()
             .map_err(error)?
-            .ok_or_else(|| error("Не найден сохранённый DoT-адрес. Укажите его в настройках клиента."))?;
+            .ok_or_else(|| {
+                error("Не найден сохранённый DoT-адрес. Укажите его в настройках клиента.")
+            })?;
         if saved.upstream_addresses.is_empty() {
-            return Err(error("Сохранённый DoT-адрес не имеет закреплённых IP. Укажите его заново в настройках."));
+            return Err(error(
+                "Сохранённый DoT-адрес не имеет закреплённых IP. Укажите его заново в настройках.",
+            ));
         }
         saved.enabled = true;
         saved
