@@ -280,11 +280,12 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
                 None
             }
         };
-        let mut should_enable = emergency_reason.is_none()
-            && config.as_ref().is_some_and(|value| value.enabled);
+        let mut should_enable =
+            emergency_reason.is_none() && config.as_ref().is_some_and(|value| value.enabled);
         if should_enable {
             if let Some(current) = config.as_ref() {
-                if let Err(error) = validate_server(&current.dot_host, &current.upstream_addresses) {
+                if let Err(error) = validate_server(&current.dot_host, &current.upstream_addresses)
+                {
                     emergency_reason = Some(format!("Неверная конфигурация DoT: {error}"));
                     should_enable = false;
                 }
