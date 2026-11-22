@@ -13,20 +13,22 @@ let proxySmokeLoading = false;
 let dotInputRevision = 0;
 let fullTestLoading = false;
 
+function openTab(tab) {
+  for (const candidate of document.querySelectorAll('[data-tab]')) {
+    const active = candidate.dataset.tab === tab;
+    candidate.classList.toggle('active', active);
+    if (active) candidate.setAttribute('aria-current', 'page');
+    else candidate.removeAttribute('aria-current');
+  }
+  for (const panel of document.querySelectorAll('.view')) {
+    panel.classList.toggle('hidden', panel.id !== tab);
+  }
+  if (tab === 'diagnostics') void refreshAdapters();
+  if (tab === 'settings') void refreshSystemDns();
+}
+
 for (const button of document.querySelectorAll('[data-tab]')) {
-  button.addEventListener('click', () => {
-    for (const candidate of document.querySelectorAll('[data-tab]')) {
-      const active = candidate === button;
-      candidate.classList.toggle('active', active);
-      if (active) candidate.setAttribute('aria-current', 'page');
-      else candidate.removeAttribute('aria-current');
-    }
-    for (const panel of document.querySelectorAll('.view')) {
-      panel.classList.toggle('hidden', panel.id !== button.dataset.tab);
-    }
-    if (button.dataset.tab === 'diagnostics') refreshAdapters();
-    if (button.dataset.tab === 'settings') refreshSystemDns();
-  });
+  button.addEventListener('click', () => openTab(button.dataset.tab));
 }
 
 async function hideToTray() {
@@ -323,23 +325,72 @@ get('settings-tray').addEventListener('click', hideToTray);
 
 let systemDnsLoading = false;
 let systemDnsPollGeneration = 0;
+let systemDnsOperationPending = false;
+let systemDnsPendingAction = null;
+let systemDnsState = 'checking';
+let systemDnsConfigured = false;
 const SYSTEM_DNS_POLL_INTERVAL_MS = 2000;
 const SYSTEM_DNS_POLL_MAX_ATTEMPTS = 24;
 
+function renderHomeConnection() {
+  const button = get('toggle-system-dns');
+  const summary = get('home-summary');
+  const hint = get('home-action-hint');
+  const home = document.querySelector('.home-dashboard');
+  const labels = {
+    checking: 'Проверяю состояние подключения…',
+    'not-installed': 'Smart DNS выключен',
+    disabled: 'Smart DNS выключен',
+    starting: 'Подключение…',
+    active: 'Smart DNS включён',
+    restoring: 'Отключение…',
+    error: 'Ошибка системного DNS',
+    unknown: 'Не удалось проверить службу DNS'
+  };
+  const active = systemDnsState === 'active';
+  const transitional = systemDnsState === 'starting' || systemDnsState === 'restoring';
+  const busy = systemDnsLoading || systemDnsOperationPending || transitional;
+  summary.textContent = labels[systemDnsState] || labels.unknown;
+  button.textContent = systemDnsOperationPending
+    ? (systemDnsPendingAction === 'Disable' ? 'Отключение…' : 'Подключение…')
+    : active ? 'Выключить' : 'Включить';
+  // Unknown or failed service state must never be mistaken for "off".
+  button.disabled = busy || ['checking', 'unknown', 'error'].includes(systemDnsState);
+  button.setAttribute('aria-pressed', String(active));
+  home.classList.toggle('is-active', active);
+  home.classList.toggle('is-error', ['error', 'unknown'].includes(systemDnsState));
+  hint.textContent = systemDnsOperationPending
+    ? 'Подтвердите запрос Windows. Состояние обновится автоматически.'
+    : active ? 'Системные DNS-запросы направляются через защищённый DoT.'
+    : systemDnsState === 'not-installed' || systemDnsState === 'disabled'
+      ? (systemDnsConfigured || get('dot-host').value.trim()
+        ? 'Нажмите «Включить», чтобы использовать Smart DNS в Windows.'
+        : 'Для первого подключения укажите персональный адрес в «Настройках».')
+      : systemDnsState === 'error' || systemDnsState === 'unknown'
+        ? 'Откройте «Настройки» для диагностики и восстановления.'
+        : 'Проверяю состояние Windows DNS.';
+}
+
 async function refreshSystemDns() {
   if (typeof invoke !== 'function') {
-    get('system-dns-message').textContent = 'Доступно только в Windows-приложении.';
-    return;
+    systemDnsState = 'unknown';
+    get('system-dns-state').textContent = 'Недоступно в браузере';
+    get('system-dns-message').textContent = 'Откройте Windows-приложение.';
+    renderHomeConnection();
+    return systemDnsState;
   }
   try {
     const report = await invoke('system_dns_status');
-    const state = report.dns_state || 'disabled';
+    const state = report.dns_state || 'unknown';
+    systemDnsState = state;
+    systemDnsConfigured = report.configured === true;
     const labels = {
       disabled: 'Выключен',
-      starting: 'Запуск и настройка адаптеров',
-      active: 'Включён · системный DNS работает',
-      restoring: 'Восстанавливаю исходные настройки',
-      error: 'Ошибка · требуется диагностика'
+      starting: 'Настраивается',
+      active: 'Включён',
+      restoring: 'Восстановление',
+      error: 'Ошибка',
+      unknown: 'Неизвестно'
     };
     get('system-dns-state').textContent = labels[state] || state;
     get('system-dns-state').classList.toggle('good', state === 'active');
@@ -350,58 +401,108 @@ async function refreshSystemDns() {
     }
     if (report.last_error) details.push(report.last_error);
     if (report.probe) {
-      details.push('Локальный DNS IPv4: ' + (report.probe.ipv4.ok ? 'OK' : 'ошибка'));
-      details.push('Локальный DNS IPv6: ' + (report.probe.ipv6.ok ? 'OK' : 'ошибка'));
+      details.push('DNS IPv4: ' + (report.probe.ipv4.ok ? 'OK' : 'ошибка'));
+      details.push('DNS IPv6: ' + (report.probe.ipv6.ok ? 'OK' : 'ошибка'));
     }
-    get('system-dns-message').textContent = details.join(' · ') || 'Статус службы получен.';
+    get('system-dns-message').textContent = details.join(' · ') || 'Состояние службы получено.';
+    renderHomeConnection();
     return state;
   } catch (error) {
-    get('system-dns-state').textContent = 'Служба недоступна';
-    get('system-dns-message').textContent = 'Не удалось получить состояние системного DNS: ' + String(error);
-    return null;
+    const uninstalled = String(error).includes('SERVICE_NOT_INSTALLED');
+    systemDnsState = uninstalled ? 'not-installed' : 'unknown';
+    if (uninstalled) systemDnsConfigured = false;
+    get('system-dns-state').textContent = uninstalled ? 'Не установлена' : 'Служба недоступна';
+    get('system-dns-message').textContent = uninstalled
+      ? 'Служба установится автоматически при первом включении.'
+      : 'Не удалось прочитать состояние DNS: ' + String(error);
+    renderHomeConnection();
+    return systemDnsState;
   }
 }
 
-// UAC returns before the elevated helper finishes. Poll only after a user
-// action, with a strict deadline; never keep a hidden window busy indefinitely.
 async function watchSystemDnsAction(action, generation) {
   const expected = action === 'Enable' ? 'active' : 'disabled';
   for (let attempt = 0; attempt < SYSTEM_DNS_POLL_MAX_ATTEMPTS; attempt += 1) {
     await new Promise(resolve => window.setTimeout(resolve, SYSTEM_DNS_POLL_INTERVAL_MS));
-    if (generation !== systemDnsPollGeneration || document.visibilityState === 'hidden') return;
+    if (generation !== systemDnsPollGeneration) return;
+    if (document.visibilityState === 'hidden') break;
     const state = await refreshSystemDns();
-    if (generation !== systemDnsPollGeneration || state === expected || state === 'error') return;
+    if (generation !== systemDnsPollGeneration) return;
+    if (state === expected || state === 'error') {
+      systemDnsOperationPending = false;
+      systemDnsPendingAction = null;
+      renderHomeConnection();
+      return;
+    }
   }
-  get('system-dns-message').textContent = 'Операция ещё не подтверждена. Проверьте UAC и нажмите «Обновить состояние».';
+  if (generation !== systemDnsPollGeneration) return;
+  systemDnsOperationPending = false;
+  systemDnsPendingAction = null;
+  await refreshSystemDns();
+  get('home-action-hint').textContent =
+    'Изменение не подтверждено. Проверьте запрос UAC и откройте «Настройки».';
 }
 
 async function requestSystemDns(action) {
-  if (systemDnsLoading || typeof invoke !== 'function') return;
+  if (systemDnsLoading || systemDnsOperationPending || typeof invoke !== 'function') return;
   const host = action === 'Enable' ? get('dot-host').value.trim() : null;
-  if (action === 'Enable' && !host) {
-    get('system-dns-message').textContent = 'Сначала укажите персональный DoT-хост на главной странице.';
+  if (action === 'Enable' && !host && !systemDnsConfigured) {
+    openTab('settings');
+    get('dot-host').focus();
+    get('system-dns-message').textContent =
+      'Введите персональный DoT-адрес. Затем вернитесь на главную и нажмите «Включить».';
     return;
   }
+  if (action === 'Enable' && !['disabled', 'not-installed'].includes(systemDnsState)) return;
+  if (action === 'Disable' && systemDnsState !== 'active') return;
   systemDnsLoading = true;
+  systemDnsOperationPending = true;
+  systemDnsPendingAction = action;
   const generation = ++systemDnsPollGeneration;
-  for (const id of ['enable-system-dns', 'disable-system-dns', 'restore-system-dns']) get(id).disabled = true;
+  renderHomeConnection();
   try {
-    const message = await invoke('launch_system_dns_action', { action, host });
+    const message = await invoke('launch_system_dns_action', { action, host: host || null });
     get('system-dns-message').textContent = message;
+    systemDnsLoading = false;
+    renderHomeConnection();
     void watchSystemDnsAction(action, generation);
   } catch (error) {
-    get('system-dns-message').textContent = 'Не удалось запустить управление DNS: ' + String(error);
-  } finally {
+    systemDnsOperationPending = false;
+    systemDnsPendingAction = null;
+    get('system-dns-message').textContent = 'Не удалось управлять DNS: ' + String(error);
+    get('home-action-hint').textContent = 'Ошибка запуска: ' + String(error);
     systemDnsLoading = false;
-    for (const id of ['enable-system-dns', 'disable-system-dns', 'restore-system-dns']) get(id).disabled = false;
+    renderHomeConnection();
+    // Show the error on the main screen after rendering its current state.
+    get('home-action-hint').textContent = 'Ошибка запуска: ' + String(error);
   }
 }
 
-get('enable-system-dns').addEventListener('click', () => requestSystemDns('Enable'));
-get('disable-system-dns').addEventListener('click', () => requestSystemDns('Disable'));
-get('restore-system-dns').addEventListener('click', () => requestSystemDns('Disable'));
-get('refresh-system-dns').addEventListener('click', refreshSystemDns);
-
+get('toggle-system-dns').addEventListener('click', () => {
+  void requestSystemDns(systemDnsState === 'active' ? 'Disable' : 'Enable');
+});
+get('restore-system-dns').addEventListener('click', () => {
+  if (systemDnsOperationPending) return;
+  // Manual recovery is available even when service status is unknown.
+  // The elevated helper always restores from its protected journal.
+  const generation = ++systemDnsPollGeneration;
+  systemDnsOperationPending = true;
+  systemDnsPendingAction = 'Disable';
+  renderHomeConnection();
+  invoke('launch_system_dns_action', { action: 'Disable', host: null })
+    .then(() => watchSystemDnsAction('Disable', generation))
+    .catch(error => {
+      systemDnsOperationPending = false;
+      systemDnsPendingAction = null;
+      get('system-dns-message').textContent = 'Не удалось начать восстановление: ' + String(error);
+      renderHomeConnection();
+    });
+});
+get('refresh-system-dns').addEventListener('click', () => { void refreshSystemDns(); });
+// No background polling: refresh when the user returns to the window.
+window.addEventListener('focus', () => {
+  if (document.visibilityState !== 'hidden' && !systemDnsOperationPending) void refreshSystemDns();
+});
 
 get('refresh-dns').addEventListener('click', refreshStatus);
 get('refresh-adapters').addEventListener('click', refreshAdapters);
@@ -517,7 +618,7 @@ async function runAllTests() {
     }
     setTestStep('proxy-status', 'proxy-diag-state',
       'UDP → DoT подтверждён · ' + proxy.elapsed_ms + ' мс · прокси закрыт', 'good');
-    showTestHeading('Проверки пройдены', 'DoT и тестовый UDP-прокси работают. Системный DNS Windows по-прежнему не переключён.');
+    showTestHeading('Проверки пройдены', 'DoT и UDP-прокси отвечают. Текущее состояние системного DNS показано на главной.');
   } catch (error) {
     if (revision !== dotInputRevision) return;
     if (phase === 'dot') {
@@ -543,8 +644,9 @@ get('dot-host').addEventListener('keydown', (event) => {
 get('dot-host').addEventListener('input', () => {
   dotInputRevision += 1;
   get('dot-host').removeAttribute('aria-invalid');
-  showTestHeading('Проверим ваш DNS', 'Запустите проверку для нового адреса. Настройки Windows останутся без изменений.');
+  showTestHeading('Проверка нового DNS-адреса', 'Проверьте новый адрес перед включением на главной.');
   get('dot-status').textContent = 'Адрес изменён — проверка требуется заново.';
+  renderHomeConnection();
   get('dot-status').classList.remove('good', 'bad');
   get('dot-diag-state').textContent = 'Не проверено';
   get('proxy-status').textContent = 'Адрес изменился — проверка локального прокси сброшена.';
@@ -558,6 +660,7 @@ if (typeof invoke === 'function') {
   }).catch(() => {
     get('status').textContent = 'Нет связи с Rust-интерфейсом';
   });
-  // No background polling while the window is hidden; keep CPU usage low.
-  refreshStatus();
+  // The only operation on startup is a read-only status refresh.
+  renderHomeConnection();
+  void refreshSystemDns();
 }
