@@ -99,6 +99,7 @@ function safeRow(row:AdditionalNodeReceipt,owner:ActiveAdditionalEntitlement,
                  key:KeyObject,now:number):boolean {
   if(!NODE_ID.test(row.node_id)||row.node_id.endsWith('-')||
      !COUNTRY.test(row.country_code)||row.country_code==='ZZ'||
+     (row.country_code==='DE'&&row.country_name_ru!=='Германия')||
      !/^[А-Яа-яЁёA-Za-z ()-]{2,70}$/.test(row.country_name_ru)||
      !validHost(row.endpoint_host)||row.endpoint_host==='cdn.servgo.ru'||
      row.state!=='enabled'||!Number.isInteger(row.endpoint_port)||
