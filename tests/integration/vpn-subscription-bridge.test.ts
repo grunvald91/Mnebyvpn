@@ -241,7 +241,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    // A naturally expired entitlement must retain PUBLIC renewal navigation
    // without returning any of the (now invalid) VPN network credentials.
    await pool.query(
-     "UPDATE entitlements SET state='EXPIRED', expires_at=now()-interval '1 second' WHERE id=$1",
+     "UPDATE entitlements SET state='EXPIRED', starts_at=now()-interval '2 days', expires_at=now()-interval '1 second' WHERE id=$1",
      [entitlement]);
    const expired=await fetch(root+'/sub/'+issued!.token);
    assert.equal(expired.status,200);
