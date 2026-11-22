@@ -135,7 +135,9 @@ fn install() -> io::Result<()> {
         )
         .map_err(map_service)?;
     service
-        .set_description("Persistent mnebyDNS DNS-over-TLS resolver and per-interface DNS controller.")
+        .set_description(
+            "Persistent mnebyDNS DNS-over-TLS resolver and per-interface DNS controller.",
+        )
         .map_err(map_service)?;
     configure_service_recovery()?;
     service.start::<&str>(&[]).map_err(map_service)?;
@@ -143,7 +145,6 @@ fn install() -> io::Result<()> {
     println!("It will start at Windows boot and restore saved DNS settings when disabled.");
     Ok(())
 }
-
 
 fn configure_service_recovery() -> io::Result<()> {
     let root = env::var_os("SystemRoot").ok_or_else(|| error("SystemRoot missing"))?;
@@ -181,7 +182,9 @@ fn ensure_service_installed() -> io::Result<()> {
             .join(INSTALL_DIR)
             .join(SERVICE_BIN);
             if !is_our_service_path(&config.executable_path, &expected) {
-                return Err(error("Existing service path does not belong to this client"));
+                return Err(error(
+                    "Existing service path does not belong to this client",
+                ));
             }
             if service.query_status().map_err(map_service)?.current_state == ServiceState::Stopped {
                 service.start::<&str>(&[]).map_err(map_service)?;
@@ -206,7 +209,10 @@ fn enable(hostname: &str) -> io::Result<()> {
     journal.write_controller_config(&config).map_err(error)?;
     let manager = service_manager(false)?;
     let service = manager
-        .open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS | ServiceAccess::START)
+        .open_service(
+            SERVICE_NAME,
+            ServiceAccess::QUERY_STATUS | ServiceAccess::START,
+        )
         .map_err(map_service)?;
     if service.query_status().map_err(map_service)?.current_state == ServiceState::Stopped {
         service.start::<&str>(&[]).map_err(map_service)?;
@@ -265,7 +271,14 @@ fn status() -> io::Result<()> {
                 Err(reason) => println!("System DNS journal unavailable: {reason}"),
             }
             match journal.read_controller_config() {
-                Ok(Some(config)) => println!("System DNS configured: {}", if config.enabled { "enabled" } else { "disabled" }),
+                Ok(Some(config)) => println!(
+                    "System DNS configured: {}",
+                    if config.enabled {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
+                ),
                 Ok(None) => println!("System DNS configured: no"),
                 Err(reason) => println!("Controller config unreadable: {reason}"),
             }
@@ -306,7 +319,12 @@ fn uninstall() -> io::Result<()> {
     if journal.check_recovery_pending().map_err(error)? {
         return Err(error("Recovery pending: service uninstall blocked"));
     }
-    if journal.system_dns_journal().map_err(error)?.has_pending().map_err(error)? {
+    if journal
+        .system_dns_journal()
+        .map_err(error)?
+        .has_pending()
+        .map_err(error)?
+    {
         return Err(error("System DNS recovery pending: disable the DNS client and restore all adapters before uninstall"));
     }
 

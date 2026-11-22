@@ -108,10 +108,14 @@ fn ensure_snapshots(
     adapters: &[mnebydns_network::AdapterInfo],
 ) -> Result<Vec<AdapterDnsSnapshot>, String> {
     let mut snapshots = system_journal.read_all()?;
-    for adapter in adapters.iter().filter(|item| item.operational && !item.is_loopback) {
-        if snapshots.iter().any(|saved| {
-            saved.interface_guid.eq_ignore_ascii_case(&adapter.guid)
-        }) {
+    for adapter in adapters
+        .iter()
+        .filter(|item| item.operational && !item.is_loopback)
+    {
+        if snapshots
+            .iter()
+            .any(|saved| saved.interface_guid.eq_ignore_ascii_case(&adapter.guid))
+        {
             continue;
         }
         // The per-adapter recovery record is committed before any DNS write.
@@ -203,10 +207,7 @@ fn apply_all(
     Ok(applied_count)
 }
 
-fn validate_server(
-    host: &str,
-    addresses: &[std::net::SocketAddr],
-) -> Result<(), String> {
+fn validate_server(host: &str, addresses: &[std::net::SocketAddr]) -> Result<(), String> {
     if addresses.is_empty()
         || addresses.len() > 5
         || addresses.iter().any(|address| {

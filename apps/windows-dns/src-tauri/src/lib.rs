@@ -56,7 +56,9 @@ fn launch_system_dns_action(action: String, host: Option<String>) -> Result<Stri
             .ok_or_else(|| "Не удалось определить каталог приложения".to_owned())?
             .join("mnebydns-setup.exe");
         if !helper.is_file() {
-            return Err("Рядом с приложением не найден mnebydns-setup.exe. Распакуйте полный архив.".into());
+            return Err(
+                "Рядом с приложением не найден mnebydns-setup.exe. Распакуйте полный архив.".into(),
+            );
         }
 
         let args = if action == "Enable" {
