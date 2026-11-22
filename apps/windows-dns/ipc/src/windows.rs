@@ -145,7 +145,7 @@ pub fn read_service_status() -> Result<ServiceReport, String> {
         .map_err(|err| format!("Не удалось открыть канал службы: {err}"))?;
     validate_server_is_local_system(file.as_raw_handle().cast())?;
     let mut buf = Vec::new();
-    let mut reader = BufReader::new(file).take(MAX_FRAME as u64 + 1);
+    let mut reader = BufReader::new(&file).take(MAX_FRAME as u64 + 1);
     // The server sends one newline-terminated, bounded JSON object.
     reader
         .read_until(b'\n', &mut buf)
