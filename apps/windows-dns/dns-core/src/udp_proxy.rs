@@ -181,7 +181,6 @@ fn reply_for_query(upstream: &dyn Upstream, query: &[u8]) -> Option<Vec<u8>> {
     }
 }
 
-
 /// TCP DNS shares the exact validation and TLS upstream but does not apply
 /// UDP's 512/EDNS0 size limit. It always emits a full framed response.
 fn reply_for_tcp(upstream: &dyn Upstream, query: &[u8]) -> Option<Vec<u8>> {
@@ -203,18 +202,34 @@ fn handle_tcp(mut stream: TcpStream, upstream: &dyn Upstream, stopping: &AtomicB
     // Query reuse on a single TCP session is supported, but bounded. This
     // preview does not support pipelining (queries on the wire before replies).
     for _ in 0..16 {
-        if stopping.load(Ordering::Acquire) { return; }
+        if stopping.load(Ordering::Acquire) {
+            return;
+        }
         let mut header = [0u8; 2];
-        if stream.read_exact(&mut header).is_err() { return; }
+        if stream.read_exact(&mut header).is_err() {
+            return;
+        }
         let len = usize::from(u16::from_be_bytes(header));
-        if !(17..=MAX_TCP_FRAME).contains(&len) { return; }
+        if !(17..=MAX_TCP_FRAME).contains(&len) {
+            return;
+        }
         let mut packet = vec![0u8; len];
-        if stream.read_exact(&mut packet).is_err() { return; }
-        let Some(answer) = reply_for_tcp(upstream, &packet) else { return; };
-        let Ok(size) = u16::try_from(answer.len()) else { return; };
-        if stream.write_all(&size.to_be_bytes())
+        if stream.read_exact(&mut packet).is_err() {
+            return;
+        }
+        let Some(answer) = reply_for_tcp(upstream, &packet) else {
+            return;
+        };
+        let Ok(size) = u16::try_from(answer.len()) else {
+            return;
+        };
+        if stream
+            .write_all(&size.to_be_bytes())
             .and_then(|_| stream.write_all(&answer))
-            .is_err() { return; }
+            .is_err()
+        {
+            return;
+        }
     }
 }
 
@@ -232,9 +247,13 @@ impl LoopbackDnsServer {
     fn start_with_upstream(upstream: Arc<dyn Upstream>, port: u16) -> Result<Self, String> {
         let tcp4 = TcpListener::bind(("127.0.0.1", port))
             .map_err(|_| "TCP IPv4 loopback port unavailable".to_owned())?;
-        let actual_port = tcp4.local_addr()
-            .map_err(|_| "Cannot determine loopback TCP port".to_owned())?.port();
-        if actual_port == 0 { return Err("Invalid local DNS listener port".into()); }
+        let actual_port = tcp4
+            .local_addr()
+            .map_err(|_| "Cannot determine loopback TCP port".to_owned())?
+            .port();
+        if actual_port == 0 {
+            return Err("Invalid local DNS listener port".into());
+        }
         let udp4 = UdpSocket::bind(("127.0.0.1", actual_port))
             .map_err(|_| "UDP IPv4 loopback port unavailable".to_owned())?;
         let tcp6 = TcpListener::bind(("::1", actual_port))
@@ -245,7 +264,8 @@ impl LoopbackDnsServer {
         let stop = Arc::new(AtomicBool::new(false));
         let mut threads = Vec::new();
         for listener in [tcp4, tcp6] {
-            listener.set_nonblocking(true)
+            listener
+                .set_nonblocking(true)
                 .map_err(|_| "Cannot configure DNS TCP listener".to_owned())?;
             let resolver = Arc::clone(&upstream);
             let stopping = Arc::clone(&stop);
@@ -275,11 +295,17 @@ impl LoopbackDnsServer {
                 while !stopping.load(Ordering::Acquire) {
                     let (count, peer) = match listener.recv_from(&mut buf) {
                         Ok(x) => x,
-                        Err(error) if error.kind() == std::io::ErrorKind::TimedOut
-                            || error.kind() == std::io::ErrorKind::WouldBlock => continue,
+                        Err(error)
+                            if error.kind() == std::io::ErrorKind::TimedOut
+                                || error.kind() == std::io::ErrorKind::WouldBlock =>
+                        {
+                            continue
+                        }
                         Err(_) => break,
                     };
-                    if !peer.ip().is_loopback() || stopping.load(Ordering::Acquire) { continue; }
+                    if !peer.ip().is_loopback() || stopping.load(Ordering::Acquire) {
+                        continue;
+                    }
                     if let Some(answer) = reply_for_query(resolver.as_ref(), &buf[..count]) {
                         if !stopping.load(Ordering::Acquire) {
                             let _ = listener.send_to(&answer, peer);
@@ -288,7 +314,11 @@ impl LoopbackDnsServer {
                 }
             }));
         }
-        Ok(Self { port: actual_port, stopping: stop, threads })
+        Ok(Self {
+            port: actual_port,
+            stopping: stop,
+            threads,
+        })
     }
 
     /// Bootstraps the trusted DoT hostname before any potential OS mutation.
@@ -299,20 +329,23 @@ impl LoopbackDnsServer {
             .to_socket_addrs()
             .map_err(|_| "Cannot bootstrap personal DoT server hostname".to_owned())?;
         let addresses = candidate_addresses(addresses);
-        if addresses.is_empty() { return Err("No bootstrap IP addresses for DoT".into()); }
-        Self::start_with_upstream(
-            Arc::new(PinnedDotUpstream { host, addresses }),
-            port,
-        )
+        if addresses.is_empty() {
+            return Err("No bootstrap IP addresses for DoT".into());
+        }
+        Self::start_with_upstream(Arc::new(PinnedDotUpstream { host, addresses }), port)
     }
 
-    pub fn local_port(&self) -> u16 { self.port }
+    pub fn local_port(&self) -> u16 {
+        self.port
+    }
 }
 
 impl Drop for LoopbackDnsServer {
     fn drop(&mut self) {
         self.stopping.store(true, Ordering::Release);
-        for worker in self.threads.drain(..) { let _ = worker.join(); }
+        for worker in self.threads.drain(..) {
+            let _ = worker.join();
+        }
     }
 }
 
@@ -592,7 +625,6 @@ mod tests {
         Ok(())
     }
 
-
     #[test]
     fn dual_stack_loopback_udp_and_tcp_share_port() -> Result<(), String> {
         let resolver = mock(false, false, false);
@@ -601,25 +633,38 @@ mod tests {
         for local in ["127.0.0.1", "::1"] {
             let address: SocketAddr = format!(
                 "{}:{}",
-                if local.contains(':') { format!("[{local}]") } else { local.to_owned() },
+                if local.contains(':') {
+                    format!("[{local}]")
+                } else {
+                    local.to_owned()
+                },
                 server.local_port()
-            ).parse().map_err(|_| "test address parse failure".to_owned())?;
+            )
+            .parse()
+            .map_err(|_| "test address parse failure".to_owned())?;
             let socket = if local.contains(':') {
                 UdpSocket::bind("[::1]:0")
             } else {
                 UdpSocket::bind("127.0.0.1:0")
-            }.map_err(|e| e.to_string())?;
-            socket.set_read_timeout(Some(Duration::from_secs(2))).map_err(|e| e.to_string())?;
+            }
+            .map_err(|e| e.to_string())?;
+            socket
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .map_err(|e| e.to_string())?;
             let packet = query_packet(0x1405, 1);
-            socket.send_to(&packet, address).map_err(|e| e.to_string())?;
+            socket
+                .send_to(&packet, address)
+                .map_err(|e| e.to_string())?;
             let mut reply = [0u8; 512];
             let (n, _) = socket.recv_from(&mut reply).map_err(|e| e.to_string())?;
             assert!(parse_reply(&reply[..n], 0x1405, 1).is_ok());
 
             let mut tcp = TcpStream::connect_timeout(&address, Duration::from_secs(2))
                 .map_err(|e| e.to_string())?;
-            tcp.set_read_timeout(Some(Duration::from_secs(2))).map_err(|e| e.to_string())?;
-            tcp.write_all(&(packet.len() as u16).to_be_bytes()).map_err(|e| e.to_string())?;
+            tcp.set_read_timeout(Some(Duration::from_secs(2)))
+                .map_err(|e| e.to_string())?;
+            tcp.write_all(&(packet.len() as u16).to_be_bytes())
+                .map_err(|e| e.to_string())?;
             tcp.write_all(&packet).map_err(|e| e.to_string())?;
             let mut header = [0u8; 2];
             tcp.read_exact(&mut header).map_err(|e| e.to_string())?;
