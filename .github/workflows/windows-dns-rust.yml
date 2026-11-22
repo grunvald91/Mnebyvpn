@@ -45,6 +45,8 @@ jobs:
         run: cargo test --manifest-path apps/windows-dns/dns-core/Cargo.toml
       - name: Network inventory unit tests (no adapter changes)
         run: cargo test --manifest-path apps/windows-dns/network/Cargo.toml
+      - name: Native Windows DNS preflight (no network changes)
+        run: cargo run --manifest-path apps/windows-dns/network/Cargo.toml --example preflight_safety
       - name: DNS transaction and recovery unit tests (mock only)
         run: cargo test --manifest-path apps/windows-dns/transaction/Cargo.toml
       - name: File recovery journal and Windows ACL tests
