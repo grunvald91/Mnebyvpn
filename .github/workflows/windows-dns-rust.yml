@@ -24,7 +24,6 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 75
     env:
-      # Portable MSVC binaries must not require VCRUNTIME140.dll on clean Win10.
       RUSTFLAGS: "-C target-feature=+crt-static"
     steps:
       - uses: actions/checkout@v4
@@ -104,80 +103,30 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/feature/windows-dns-rust-tray'
         run: cargo run --release --manifest-path apps/windows-dns/network/Cargo.toml --example dns_mutation_smoke
 
-      - name: Verify no missing VC++ runtime dependencies in portable EXEs
+      - name: Verify portable EXEs do not depend on VC++ redistributable
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-          if (-not (Test-Path -LiteralPath $vswhere)) { throw 'VS tool discovery unavailable' }
+          $vswhere = Join-Path \${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          if (-not (Test-Path -LiteralPath $vswhere)) { throw 'vswhere unavailable' }
           $vsroot = (& $vswhere -latest -products '*' -property installationPath | Select-Object -First 1)
-          if (-not $vsroot) { throw 'Visual Studio installation not found' }
+          if (-not $vsroot) { throw 'Visual Studio root unavailable' }
           $dumpbin = Get-ChildItem -LiteralPath (Join-Path $vsroot 'VC/Tools/MSVC') -Filter dumpbin.exe -Recurse -File |
-            Where-Object { $_.FullName -match 'Hostx64[\\/]x64[\\/]dumpbin.exe
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $folder = 'apps/windows-dns/portable-preview'
-          New-Item -ItemType Directory -Path $folder -Force | Out-Null
-          Copy-Item 'apps/windows-dns/src-tauri/target/release/mnebydns-windows.exe' "$folder/mnebydns-windows.exe"
-          Copy-Item 'apps/windows-dns/setup/target/release/mnebydns-setup.exe' "$folder/mnebydns-setup.exe"
-          Copy-Item 'apps/windows-dns/service/target/release/mnebydns-health-service.exe' "$folder/mnebydns-health-service.exe"
-          Copy-Item 'apps/windows-dns/TRY-WINDOWS-10.md' "$folder/START-HERE.md"
-          $names = @('mnebydns-windows.exe','mnebydns-setup.exe','mnebydns-health-service.exe')
-          $hashLines = foreach ($name in $names) {
-            $hash = (Get-FileHash -Algorithm SHA256 "$folder/$name").Hash.ToLowerInvariant()
-            "$hash  $name"
-          }
-          $hashLines | Out-File -LiteralPath "$folder/SHA256.txt" -Encoding ascii
-
-      - name: Upload complete Windows DNS client (unsigned)
-        uses: actions/upload-artifact@v4
-        with:
-          name: mnebydns-win10-system-dns-unsigned
-          path: apps/windows-dns/portable-preview/*
-          if-no-files-found: error
-          retention-days: 14
-
- } |
+            Where-Object { $_.FullName -match 'Hostx64[\\/]x64[\\/]dumpbin.exe$' } |
             Select-Object -First 1
-          if (-not $dumpbin) { throw 'Cannot locate dumpbin for dependency verification' }
+          if (-not $dumpbin) { throw 'dumpbin unavailable' }
           $executables = @(
             'apps/windows-dns/src-tauri/target/release/mnebydns-windows.exe',
             'apps/windows-dns/setup/target/release/mnebydns-setup.exe',
             'apps/windows-dns/service/target/release/mnebydns-health-service.exe'
           )
           foreach ($exe in $executables) {
-            $imports = (& $dumpbin.FullName /dependents $exe) -join "`n"
-            if ($LASTEXITCODE -ne 0) { throw "Could not inspect $exe" }
-            if ($imports -match '(?im)^\s*(VCRUNTIME140(?:_1)?|MSVCP140|CONCRT140)\.dll\s*
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $folder = 'apps/windows-dns/portable-preview'
-          New-Item -ItemType Directory -Path $folder -Force | Out-Null
-          Copy-Item 'apps/windows-dns/src-tauri/target/release/mnebydns-windows.exe' "$folder/mnebydns-windows.exe"
-          Copy-Item 'apps/windows-dns/setup/target/release/mnebydns-setup.exe' "$folder/mnebydns-setup.exe"
-          Copy-Item 'apps/windows-dns/service/target/release/mnebydns-health-service.exe' "$folder/mnebydns-health-service.exe"
-          Copy-Item 'apps/windows-dns/TRY-WINDOWS-10.md' "$folder/START-HERE.md"
-          $names = @('mnebydns-windows.exe','mnebydns-setup.exe','mnebydns-health-service.exe')
-          $hashLines = foreach ($name in $names) {
-            $hash = (Get-FileHash -Algorithm SHA256 "$folder/$name").Hash.ToLowerInvariant()
-            "$hash  $name"
-          }
-          $hashLines | Out-File -LiteralPath "$folder/SHA256.txt" -Encoding ascii
-
-      - name: Upload complete Windows DNS client (unsigned)
-        uses: actions/upload-artifact@v4
-        with:
-          name: mnebydns-win10-system-dns-unsigned
-          path: apps/windows-dns/portable-preview/*
-          if-no-files-found: error
-          retention-days: 14
-
-) {
-              throw "Nonportable Visual C++ runtime dependency found in $exe"
+            $imports = (& $dumpbin.FullName /dependents $exe) -join "\`n"
+            if ($LASTEXITCODE -ne 0) { throw "Dependency inspection failed: $exe" }
+            if ($imports -match '(?im)^\s*(VCRUNTIME140(?:_1)?|MSVCP140|CONCRT140)\.dll\s*$') {
+              throw "VC runtime DLL imported by $exe"
             }
-            Write-Output "Portable runtime imports OK: $exe"
+            Write-Output "No VC++ runtime dependency: $exe"
           }
 
       - name: Prepare complete portable Windows client and SHA-256
