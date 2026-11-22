@@ -30,6 +30,7 @@ pub struct AdapterInfo {
     pub name: String,
     pub kind: String,
     pub operational: bool,
+    pub ipv6_enabled: bool,
     pub is_tunnel: bool,
     pub is_loopback: bool,
     pub likely_physical: bool,
@@ -174,6 +175,7 @@ pub fn list_adapters() -> Result<Vec<AdapterInfo>, String> {
                     let (kind, is_tunnel, likely_physical_type) = adapter_kind(adapter.IfType);
                     let (dns_ipv4, dns_ipv6) = collect_dns_servers(adapter.FirstDnsServerAddress)?;
                     let operational = adapter.OperStatus == 1; // IfOperStatusUp.
+                    let ipv6_enabled = adapter.Ipv6IfIndex != 0;
                     let is_loopback = adapter.IfType == IF_TYPE_SOFTWARE_LOOPBACK;
                     let likely_physical =
                         operational && likely_physical_type && !is_tunnel && !is_loopback;
@@ -198,6 +200,7 @@ pub fn list_adapters() -> Result<Vec<AdapterInfo>, String> {
                         },
                         kind: kind.to_owned(),
                         operational,
+                        ipv6_enabled,
                         is_tunnel,
                         is_loopback,
                         likely_physical,
@@ -594,25 +597,21 @@ fn mode_text(mode: &DnsServerMode) -> String {
     }
 }
 
-fn set_dns_stack(
+fn set_interface_static_dns(
     interface_guid: &str,
     ipv6: bool,
-    adapter_mode: &DnsServerMode,
-    profile_mode: &DnsServerMode,
+    servers: &[String],
 ) -> Result<(), String> {
-    validate_mode(adapter_mode, ipv6)?;
-    validate_mode(profile_mode, ipv6)?;
+    validate_mode(&DnsServerMode::Static(servers.to_vec()), ipv6)?;
     let guid = parse_guid(interface_guid)?;
-    let mut name_server = mode_text(adapter_mode).encode_utf16().chain([0]).collect::<Vec<_>>();
-    let mut profile_server = mode_text(profile_mode).encode_utf16().chain([0]).collect::<Vec<_>>();
+    let mut name_server = servers.join(",").encode_utf16().chain([0]).collect::<Vec<_>>();
     let mut settings: DNS_INTERFACE_SETTINGS = unsafe { std::mem::zeroed() };
     settings.Version = DNS_INTERFACE_SETTINGS_VERSION1;
-    settings.Flags = (DNS_SETTING_NAMESERVER | DNS_SETTING_PROFILE_NAMESERVER) as u64;
+    settings.Flags = DNS_SETTING_NAMESERVER as u64;
     if ipv6 {
         settings.Flags |= DNS_SETTING_IPV6 as u64;
     }
     settings.NameServer = name_server.as_mut_ptr();
-    settings.ProfileNameServer = profile_server.as_mut_ptr();
     let code = unsafe { SetInterfaceDnsSettings(guid, &settings) };
     if code != 0 {
         return Err(format!(
@@ -625,41 +624,138 @@ fn set_dns_stack(
     Ok(())
 }
 
-/// Apply localhost as the only DNS resolver for IPv4 and IPv6. Both adapter
-/// and profile DNS are updated so a saved Wi-Fi profile cannot silently win.
-pub fn apply_adapter_loopback_dns(interface_guid: &str) -> Result<(), String> {
-    set_dns_stack(
-        interface_guid,
-        false,
-        &DnsServerMode::Static(vec!["127.0.0.1".into()]),
-        &DnsServerMode::Static(vec!["127.0.0.1".into()]),
-    )?;
-    set_dns_stack(
-        interface_guid,
-        true,
-        &DnsServerMode::Static(vec!["::1".into()]),
-        &DnsServerMode::Static(vec!["::1".into()]),
-    )
+fn set_profile_static_dns(
+    interface_guid: &str,
+    ipv6: bool,
+    servers: &[String],
+) -> Result<(), String> {
+    validate_mode(&DnsServerMode::Static(servers.to_vec()), ipv6)?;
+    let guid = parse_guid(interface_guid)?;
+    let mut profile_server = servers.join(",").encode_utf16().chain([0]).collect::<Vec<_>>();
+    let mut settings: DNS_INTERFACE_SETTINGS = unsafe { std::mem::zeroed() };
+    settings.Version = DNS_INTERFACE_SETTINGS_VERSION1;
+    settings.Flags = DNS_SETTING_PROFILE_NAMESERVER as u64;
+    if ipv6 {
+        settings.Flags |= DNS_SETTING_IPV6 as u64;
+    }
+    settings.ProfileNameServer = profile_server.as_mut_ptr();
+    let code = unsafe { SetInterfaceDnsSettings(guid, &settings) };
+    if code != 0 {
+        return Err(format!(
+            "Windows не смогла изменить {} DNS профиля адаптера {} (код {})",
+            if ipv6 { "IPv6" } else { "IPv4" },
+            interface_guid,
+            code
+        ));
+    }
+    Ok(())
 }
 
-/// Restore the exact static/automatic state captured for both IP families.
-pub fn restore_adapter_dns(snapshot: &AdapterDnsSnapshot) -> Result<(), String> {
-    let ipv4 = set_dns_stack(
+fn reset_interface_dns_to_automatic(interface_name: &str, ipv6: bool) -> Result<(), String> {
+    let root = std::env::var_os("SystemRoot")
+        .ok_or_else(|| "Не найден каталог Windows для восстановления DHCP DNS".to_owned())?;
+    let netsh = std::path::PathBuf::from(root)
+        .join("System32")
+        .join("netsh.exe");
+    let family = if ipv6 { "ipv6" } else { "ipv4" };
+    let interface = format!("name={interface_name}");
+    let output = Command::new(netsh)
+        .args([
+            "interface",
+            family,
+            "set",
+            "dnsservers",
+            interface.as_str(),
+            "source=dhcp",
+        ])
+        .output()
+        .map_err(|error| format!("Не удалось запустить netsh для восстановления DNS: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "Windows не смогла вернуть {} DNS в автоматический режим для {} ({}): {}",
+            family,
+            interface_name,
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(())
+}
+
+fn restore_profile_dns(
+    snapshot: &AdapterDnsSnapshot,
+    ipv6: bool,
+    mode: &DnsServerMode,
+) -> Result<(), String> {
+    match mode {
+        DnsServerMode::Automatic => Ok(()), // The profile was never overridden.
+        DnsServerMode::Static(servers) => {
+            set_profile_static_dns(&snapshot.interface_guid, ipv6, servers)
+        }
+    }
+}
+
+/// Apply localhost to each interface and to a saved profile only when that
+/// profile originally had its own static resolver. Automatic profiles remain
+/// automatic and inherit the interface DNS configuration.
+pub fn apply_adapter_loopback_dns(snapshot: &AdapterDnsSnapshot) -> Result<(), String> {
+    set_interface_static_dns(
         &snapshot.interface_guid,
         false,
-        &snapshot.ipv4,
-        &snapshot.ipv4_profile,
-    );
-    let ipv6 = set_dns_stack(
-        &snapshot.interface_guid,
-        true,
-        &snapshot.ipv6,
-        &snapshot.ipv6_profile,
-    );
-    match (ipv4, ipv6) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(a), Err(b)) => Err(format!("IPv4: {a}; IPv6: {b}")),
-        (Err(error), _) | (_, Err(error)) => Err(error),
+        &["127.0.0.1".to_owned()],
+    )?;
+    if matches!(snapshot.ipv4_profile, DnsServerMode::Static(_)) {
+        set_profile_static_dns(
+            &snapshot.interface_guid,
+            false,
+            &["127.0.0.1".to_owned()],
+        )?;
+    }
+    set_interface_static_dns(&snapshot.interface_guid, true, &["::1".to_owned()])?;
+    if matches!(snapshot.ipv6_profile, DnsServerMode::Static(_)) {
+        set_profile_static_dns(&snapshot.interface_guid, true, &["::1".to_owned()])?;
+    }
+    Ok(())
+}
+
+/// Restore exact static DNS with SetInterfaceDnsSettings and return automatic
+/// DNS to DHCP/RA using netsh's documented source=dhcp operation.
+pub fn restore_adapter_dns(snapshot: &AdapterDnsSnapshot) -> Result<(), String> {
+    let mut errors = Vec::new();
+    let ipv4 = match &snapshot.ipv4 {
+        DnsServerMode::Automatic => {
+            reset_interface_dns_to_automatic(&snapshot.adapter_name, false)
+        }
+        DnsServerMode::Static(servers) => {
+            set_interface_static_dns(&snapshot.interface_guid, false, servers)
+        }
+    };
+    if let Err(error) = ipv4 {
+        errors.push(format!("IPv4: {error}"));
+    }
+    if let Err(error) = restore_profile_dns(snapshot, false, &snapshot.ipv4_profile) {
+        errors.push(format!("IPv4 profile: {error}"));
+    }
+
+    let ipv6 = match &snapshot.ipv6 {
+        DnsServerMode::Automatic => {
+            reset_interface_dns_to_automatic(&snapshot.adapter_name, true)
+        }
+        DnsServerMode::Static(servers) => {
+            set_interface_static_dns(&snapshot.interface_guid, true, servers)
+        }
+    };
+    if let Err(error) = ipv6 {
+        errors.push(format!("IPv6: {error}"));
+    }
+    if let Err(error) = restore_profile_dns(snapshot, true, &snapshot.ipv6_profile) {
+        errors.push(format!("IPv6 profile: {error}"));
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
     }
 }
 
