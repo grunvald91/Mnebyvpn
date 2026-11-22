@@ -10,7 +10,8 @@ use std::os::windows::io::AsRawHandle;
 use std::ptr::{null, null_mut};
 use std::sync::{Arc, RwLock};
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, LocalFree, ERROR_IO_PENDING, ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE,
+    CloseHandle, GetLastError, LocalFree, ERROR_BROKEN_PIPE, ERROR_IO_PENDING, ERROR_NO_DATA,
+    ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE,
 };
 use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
 use windows_sys::Win32::Security::{
@@ -169,22 +170,26 @@ fn new_event() -> Result<Handle, String> {
     Ok(event)
 }
 
-fn wait_for_connection(pipe: windows_sys::Win32::Foundation::HANDLE) -> Result<(), String> {
+fn wait_for_connection(pipe: windows_sys::Win32::Foundation::HANDLE) -> Result<bool, String> {
     let event = new_event()?;
     let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
     overlapped.hEvent = event.0;
     let connected = unsafe { ConnectNamedPipe(pipe, &mut overlapped) };
     if connected != 0 {
-        return Ok(());
+        return Ok(true);
     }
     match unsafe { GetLastError() } {
-        ERROR_PIPE_CONNECTED => Ok(()),
+        ERROR_PIPE_CONNECTED => Ok(true),
+        ERROR_NO_DATA | ERROR_BROKEN_PIPE => Ok(false),
         ERROR_IO_PENDING => {
             let mut transferred = 0;
             if unsafe { GetOverlappedResult(pipe, &overlapped, &mut transferred, 1) } == 0 {
-                Err(format!("Named pipe connection failed: {}", unsafe { GetLastError() }))
+                match unsafe { GetLastError() } {
+                    ERROR_NO_DATA | ERROR_BROKEN_PIPE => Ok(false),
+                    error => Err(format!("Named pipe connection failed: {error}")),
+                }
             } else {
-                Ok(())
+                Ok(true)
             }
         }
         error => Err(format!("Named pipe connection failed: {error}")),
@@ -290,8 +295,14 @@ pub fn serve_local_status(current: Arc<RwLock<ServiceReport>>) -> Result<(), Str
     }
 
     loop {
-        if let Err(error) = wait_for_connection(pipe.0) {
-            return Err(error);
+        // A client may disconnect before ConnectNamedPipe completes. Reset
+        // this instance and keep the service available instead of exiting.
+        let connected = wait_for_connection(pipe.0)?;
+        if !connected {
+            unsafe {
+                DisconnectNamedPipe(pipe.0);
+            }
+            continue;
         }
         if let Err(error) = serve_one_client(pipe.0, &current) {
             eprintln!("Diagnostic pipe request rejected: {error}");
