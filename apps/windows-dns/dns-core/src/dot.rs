@@ -6,16 +6,104 @@
 use super::{parse_reply, query_packet, EndpointProbe, NEXT_DNS_ID};
 use native_tls::TlsConnector;
 use serde::Serialize;
-use std::io::{Read, Write};
-use std::net::{IpAddr, TcpStream, ToSocketAddrs};
+use std::io::{self, Read, Write};
+use std::net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 const DOT_PORT: u16 = 853;
 const IO_TIMEOUT: Duration = Duration::from_millis(2500);
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(1500);
-const MAX_IP_ADDRESSES: usize = 4;
+const MAX_IP_ADDRESSES: usize = 5;
 const MAX_DNS_FRAME: usize = 4096;
+const MAX_OS_ADDRESSES: usize = 32;
+
+type AuthenticatedStream = native_tls::TlsStream<TcpStream>;
+
+/// DNS-over-TLS must not allow slow trickle responses to prolong a probe
+/// indefinitely: each read is bounded by the time LEFT in one frame deadline.
+trait DnsIo: Read + Write {
+    fn set_read_budget(&self, remaining: Duration) -> io::Result<()>;
+}
+impl DnsIo for AuthenticatedStream {
+    fn set_read_budget(&self, remaining: Duration) -> io::Result<()> {
+        self.get_ref().set_read_timeout(Some(remaining))
+    }
+}
+
+fn read_exact_until<S: DnsIo>(
+    stream: &mut S,
+    bytes: &mut [u8],
+    deadline: Instant,
+) -> Result<(), &'static str> {
+    let mut offset = 0usize;
+    while offset < bytes.len() {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err("Время ожидания DNS-ответа через TLS истекло");
+        }
+        stream
+            .set_read_budget(remaining)
+            .map_err(|_| "Не удалось ограничить ожидание DNS-ответа")?;
+        match stream.read(&mut bytes[offset..]) {
+            Ok(0) => return Err("DNS-сервер разорвал TLS-соединение до полного ответа"),
+            Ok(n) => offset += n,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(_) => return Err("Не удалось прочитать DNS-ответ внутри TLS"),
+        }
+        if Instant::now() > deadline {
+            return Err("Время ожидания DNS-ответа через TLS истекло");
+        }
+    }
+    Ok(())
+}
+
+/// Prefer IPv4 where the personal service has no IPv6 record, but never
+/// discard all IPv6 candidates just because Windows listed them first.
+/// Deduplicate and bound retries to keep a failed probe responsive.
+fn candidate_addresses(addresses: impl Iterator<Item = SocketAddr>) -> Vec<SocketAddr> {
+    let mut ipv4 = Vec::new();
+    let mut ipv6 = Vec::new();
+    for address in addresses.take(MAX_OS_ADDRESSES) {
+        let bucket = if address.is_ipv4() { &mut ipv4 } else { &mut ipv6 };
+        if !bucket.contains(&address) {
+            bucket.push(address);
+        }
+    }
+    ipv4.into_iter().take(3)
+        .chain(ipv6.into_iter().take(2))
+        .take(MAX_IP_ADDRESSES)
+        .collect()
+}
+
+fn connect_authenticated(
+    host: &str,
+    addresses: impl Iterator<Item = SocketAddr>,
+    connector: &TlsConnector,
+) -> Result<AuthenticatedStream, String> {
+    let mut tls_failed = false;
+    for address in candidate_addresses(addresses) {
+        let connection = match TcpStream::connect_timeout(&address, CONNECT_TIMEOUT) {
+            Ok(connection) => connection,
+            Err(_) => continue,
+        };
+        if connection.set_read_timeout(Some(IO_TIMEOUT)).is_err()
+            || connection.set_write_timeout(Some(IO_TIMEOUT)).is_err()
+            || connection.set_nodelay(true).is_err()
+        {
+            continue;
+        }
+        match connector.connect(host, connection) {
+            Ok(tls) => return Ok(tls),
+            Err(_) => tls_failed = true,
+        }
+    }
+    if tls_failed {
+        Err("TCP:853 доступен, но TLS-сертификат или рукопожатие не прошли проверку".to_owned())
+    } else {
+        Err("Не удалось установить TCP-соединение с DoT-сервером на порту 853".to_owned())
+    }
+}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct DotProbeReport {
@@ -52,7 +140,7 @@ fn checked_hostname(input: &str) -> Result<String, String> {
     Ok(host)
 }
 
-fn exchange<S: Read + Write>(
+fn exchange<S: DnsIo>(
     stream: &mut S,
     id: u16,
     kind: u16,
@@ -66,18 +154,15 @@ fn exchange<S: Read + Write>(
         .and_then(|_| stream.flush())
         .map_err(|_| "Не удалось отправить DNS-запрос внутри TLS")?;
 
+    let deadline = Instant::now() + IO_TIMEOUT;
     let mut header = [0u8; 2];
-    stream
-        .read_exact(&mut header)
-        .map_err(|_| "Нет длины DNS-ответа внутри TLS")?;
+    read_exact_until(stream, &mut header, deadline)?;
     let length = u16::from_be_bytes(header) as usize;
     if !(12..=MAX_DNS_FRAME).contains(&length) {
         return Err("Некорректный размер DNS-ответа внутри TLS");
     }
     let mut packet = vec![0u8; length];
-    stream
-        .read_exact(&mut packet)
-        .map_err(|_| "DNS-ответ внутри TLS оборван")?;
+    read_exact_until(stream, &mut packet, deadline)?;
     let answer_count = parse_reply(&packet, id, kind)
         .map_err(|_| "DNS-ответ внутри TLS не прошёл проверку")?;
     Ok(EndpointProbe {
@@ -100,28 +185,12 @@ pub fn probe_dot_strict(input: &str) -> Result<DotProbeReport, String> {
     let addresses = (host.as_str(), DOT_PORT)
         .to_socket_addrs()
         .map_err(|_| "Windows не смогла определить IP-адрес DoT-сервера".to_owned())?;
-    let mut stream = None;
-    for address in addresses.take(MAX_IP_ADDRESSES) {
-        if let Ok(connection) = TcpStream::connect_timeout(&address, CONNECT_TIMEOUT) {
-            stream = Some(connection);
-            break;
-        }
-    }
-    let connection =
-        stream.ok_or_else(|| "Не удалось установить TCP-соединение с DoT-сервером на порту 853".to_owned())?;
-    connection
-        .set_read_timeout(Some(IO_TIMEOUT))
-        .and_then(|_| connection.set_write_timeout(Some(IO_TIMEOUT)))
-        .and_then(|_| connection.set_nodelay(true))
-        .map_err(|_| "Не удалось настроить таймауты защищённого соединения".to_owned())?;
     let mut tls_builder = TlsConnector::builder();
     // Explicitly disallow TLS 1.0/1.1 even when an older Windows policy allows them.
     tls_builder.min_protocol_version(Some(native_tls::Protocol::Tlsv12));
     let connector = tls_builder.build()
         .map_err(|_| "Не удалось создать системный TLS-контекст Windows".to_owned())?;
-    let mut tls = connector
-        .connect(&host, connection)
-        .map_err(|_| "TLS-рукопожатие или проверка сертификата/имени DoT-сервера не прошли".to_owned())?;
+    let mut tls = connect_authenticated(&host, addresses, &connector)?;
 
     let a_id = NEXT_DNS_ID.fetch_add(1, Ordering::Relaxed);
     let ipv4 = match exchange(&mut tls, a_id, 1) {
@@ -161,6 +230,9 @@ mod tests {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
             self.incoming.read(buf)
         }
+    }
+    impl DnsIo for FakeTls {
+        fn set_read_budget(&self, _: Duration) -> io::Result<()> { Ok(()) }
     }
     impl Write for FakeTls {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
@@ -215,6 +287,28 @@ mod tests {
             assert_eq!(sent_len, tls.sent.len() - 2);
             assert_eq!(&tls.sent[2..4], &[0x12, 0x48]);
         }
+    }
+
+    #[test]
+    fn candidates_prefer_ipv4_and_retry_both_families() {
+        use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+        let v6 = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::LOCALHOST, 853, 0, 0));
+        let v4 = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, 10), 853));
+        assert_eq!(candidate_addresses([v6, v6, v4].into_iter()), vec![v4, v6]);
+        assert_eq!(candidate_addresses(std::iter::empty()).len(), 0);
+        let many = std::iter::repeat(v4).take(100);
+        assert_eq!(candidate_addresses(many), vec![v4]);
+    }
+
+    #[test]
+    fn slow_dns_frame_cannot_ignore_deadline() {
+        let mut tls = FakeTls {
+            incoming: Cursor::new(valid_reply(6, 1)),
+            sent: vec![],
+        };
+        let mut bytes = [0u8; 2];
+        let expired = Instant::now() - Duration::from_millis(1);
+        assert!(read_exact_until(&mut tls, &mut bytes, expired).is_err());
     }
 
     #[test]

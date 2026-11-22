@@ -8,6 +8,7 @@ let preflightLoading = false;
 let adaptersLoading = false;
 let dnsLoading = false;
 let dotLoading = false;
+let dotInputRevision = 0;
 
 for (const button of document.querySelectorAll('[data-tab]')) {
   button.addEventListener('click', () => {
@@ -262,6 +263,7 @@ async function refreshStatus() {
 async function checkPersonalDot() {
   if (dotLoading) return;
   const host = get('dot-host').value.trim();
+  const requestRevision = dotInputRevision;
   const button = get('check-dot');
   const result = get('dot-status');
   const diagnostic = get('dot-diag-state');
@@ -279,7 +281,7 @@ async function checkPersonalDot() {
   result.textContent = 'Проверяю TCP:853, сертификат TLS и DNS-ответы…';
   try {
     const report = await invoke('probe_personal_dot', { host });
-    if (get('dot-host').value.trim() !== host) {
+    if (dotInputRevision !== requestRevision || get('dot-host').value.trim() !== host) {
       result.textContent = 'Адрес был изменён. Повторите проверку.';
       diagnostic.textContent = 'Нужна новая проверка';
       return;
@@ -296,6 +298,10 @@ async function checkPersonalDot() {
       result.classList.add('bad');
     }
   } catch (error) {
+    if (dotInputRevision !== requestRevision) {
+      result.textContent = 'Адрес изменился — выполните новую проверку.';
+      return;
+    }
     // Error strings are sanitized by Rust; never echo or log the hostname.
     result.textContent = String(error);
     result.classList.add('bad');
@@ -312,7 +318,11 @@ get('refresh-dns').addEventListener('click', refreshStatus);
 get('refresh-adapters').addEventListener('click', refreshAdapters);
 get('preflight-dns').addEventListener('click', preflightDns);
 get('check-dot').addEventListener('click', checkPersonalDot);
+get('dot-host').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') checkPersonalDot();
+});
 get('dot-host').addEventListener('input', () => {
+  dotInputRevision += 1;
   get('dot-status').textContent = 'Адрес изменён — проверка требуется заново.';
   get('dot-status').classList.remove('good', 'bad');
   get('dot-diag-state').textContent = 'Не проверено';

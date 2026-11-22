@@ -303,3 +303,24 @@ Security limitations:
 Standards:
 - https://www.rfc-editor.org/rfc/rfc7858
 - https://www.rfc-editor.org/rfc/rfc8310
+
+## Stage 12 review: address fallback, DNS identity and total response deadline
+
+- TCP reachability alone does not authorize a success or immediate failure.
+  On a TLS handshake error, the client tries other **bounded** IPv4/IPv6
+  candidates for the same hostname, with normal certificate and hostname
+  verification on **every attempt**. IPv4 candidates are preferred because
+  current personal endpoints may be IPv4-only.
+- Each DoT response is read against **one time budget**. A peer that slowly
+  trickles DNS bytes no longer resets the entire read deadline on each chunk.
+  OS hostname resolution still has no guaranteed end-to-end deadline.
+- DNS A/AAAA answer records must belong to the actual queried owner,
+  `example.com`; compression pointers are decoded with bounded backward
+  jumps and loop rejection.
+- A changed input invalidates pending results even if the original hostname
+  is re-entered. Pressing Enter runs the check.
+- Tests cover reordered/duplicated IPv4/IPv6 addresses, expired response
+  deadlines, forged answer owner, compression-loop rejection and wire framing.
+
+These measures improve the *diagnostic*. They do not install a local DNS
+proxy or authorize changing Windows adapter DNS.

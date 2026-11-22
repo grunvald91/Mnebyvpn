@@ -119,7 +119,9 @@ fn parse_reply(packet: &[u8], id: u16, requested_type: u16) -> Result<u16, &'sta
     let mut cursor = question_end;
     let mut matching_records = 0u16;
     for _ in 0..count {
-        cursor = skip_dns_name(packet, cursor).ok_or("Некорректное имя в DNS-ответе")?;
+        let (owner, next) = decode_dns_name(packet, cursor)
+            .ok_or("Некорректное имя в DNS-ответе")?;
+        cursor = next;
         if packet.len() < cursor + 10 {
             return Err("Повреждена запись DNS-ответа");
         }
@@ -133,7 +135,8 @@ fn parse_reply(packet: &[u8], id: u16, requested_type: u16) -> Result<u16, &'sta
         if data_end > packet.len() {
             return Err("Обрезанные данные DNS-ответа");
         }
-        if record_type == requested_type
+        if owner.eq_ignore_ascii_case(QUERY_NAME)
+            && record_type == requested_type
             && record_class == 1
             && ((requested_type == 1 && data_len == 4) || (requested_type == 28 && data_len == 16))
         {
@@ -148,26 +151,40 @@ fn parse_reply(packet: &[u8], id: u16, requested_type: u16) -> Result<u16, &'sta
     Ok(matching_records)
 }
 
-/// Walk the wire-format owner name without following compression pointers.
-/// Compression pointers must point backward into this DNS packet.
-fn skip_dns_name(packet: &[u8], mut cursor: usize) -> Option<usize> {
+/// Decode bounded DNS wire-format owner names, including compression.
+/// Compression pointers must point strictly backward and cannot form loops.
+/// Returns the expanded name and the position after the encoded name.
+fn decode_dns_name(packet: &[u8], mut cursor: usize) -> Option<(Vec<u8>, usize)> {
+    let mut name = Vec::new();
+    let mut encoded_end = None;
     for _ in 0..128 {
         let label = *packet.get(cursor)?;
-        if label == 0 {
-            return Some(cursor + 1);
-        }
         if label & 0xc0 == 0xc0 {
             let next = *packet.get(cursor + 1)?;
             let target = (((label & 0x3f) as usize) << 8) | next as usize;
-            return (target >= 12 && target < cursor).then_some(cursor + 2);
+            if target < 12 || target >= cursor {
+                return None;
+            }
+            if encoded_end.is_none() {
+                encoded_end = Some(cursor + 2);
+            }
+            cursor = target;
+            continue;
         }
         if label & 0xc0 != 0 || label > 63 {
             return None;
         }
-        cursor = cursor.checked_add(1 + label as usize)?;
-        if cursor > packet.len() {
+        let len = label as usize;
+        if name.len().checked_add(len + 1)? > 255 {
             return None;
         }
+        name.push(label);
+        cursor += 1;
+        if label == 0 {
+            return Some((name, encoded_end.unwrap_or(cursor)));
+        }
+        name.extend_from_slice(packet.get(cursor..cursor.checked_add(len)?)?);
+        cursor += len;
     }
     None
 }
@@ -255,6 +272,23 @@ mod tests {
 
         let aaaa = dns_reply(28, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
         assert_eq!(parse_reply(&aaaa, 0x1234, 28), Ok(1));
+    }
+
+    #[test]
+    fn reply_does_not_accept_an_address_for_a_different_owner() {
+        let original = dns_reply(1, &[93, 184, 215, 14]);
+        let answer_start = 12 + b"\\x07example\\x03com\\x00".len() + 4;
+        let mut forged = original[..answer_start].to_vec();
+        forged.extend_from_slice(b"\\x05wrong\\x03com\\x00");
+        forged.extend_from_slice(&original[answer_start + 2..]);
+        assert!(parse_reply(&forged, 0x1234, 1).is_err());
+        let (owner, next) = decode_dns_name(&original, answer_start).unwrap();
+        assert_eq!(owner, b"\\x07example\\x03com\\x00");
+        assert_eq!(next, answer_start + 2);
+        let mut looping = original;
+        looping[answer_start] = 0xc0;
+        looping[answer_start + 1] = answer_start as u8;
+        assert!(parse_reply(&looping, 0x1234, 1).is_err());
     }
 
     #[test]
