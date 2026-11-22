@@ -64,11 +64,11 @@ test('INCY metadata uses exact paid or trial entitlement expiry in Unix seconds'
     assert.equal(h['profile-title'],
       'base64:'+Buffer.from('MNEBYVPN').toString('base64'));
     assert.equal(h['profile-update-interval'],'1');
-    assert.equal(h['profile-web-page-url'],INCY_SITE_URL);
+    assert.equal(h['profile-web-page-url'],INCY_RENEW_URL);
     assert.equal(h['homepage'],INCY_SITE_URL);
     assert.equal(h['profile-description'],
       'base64:'+Buffer.from('Оплата и продление: mnebyvpn.site').toString('base64'));
-    assert.equal(h['profile-web-page-url'],INCY_SITE_URL);
+    assert.equal(h['profile-web-page-url'],INCY_RENEW_URL);
     assert.equal(h['support-url'],undefined);
     assert.equal(h['premium-url'],INCY_RENEW_URL);
     assert.equal(h['announce-url'],INCY_SUPPORT_URL);
@@ -98,7 +98,7 @@ test('canonical GET /sub uses same metadata for every entitlement and keeps FI A
 test('expired INCY subscription keeps website and bot actions with no network secrets',()=>{
   const expiry=new Date('2026-11-20T22:25:00Z');
   const headers=incyExpiredSubscriptionHeaders(expiry);
-  assert.equal(headers['profile-web-page-url'],INCY_SITE_URL);
+  assert.equal(headers['profile-web-page-url'],INCY_RENEW_URL);
   assert.equal(headers['premium-url'],INCY_RENEW_URL);
   assert.equal(headers['support-url'],undefined);
   assert.equal(headers['announce-url'],INCY_SUPPORT_URL);
@@ -108,7 +108,7 @@ test('expired INCY subscription keeps website and bot actions with no network se
     String(Math.floor(expiry.getTime()/1000)));
   const decoded=Buffer.from(incyExpiredSubscriptionBody().trim(),'base64')
     .toString('utf8');
-  assert.ok(decoded.includes('#profile-web-page-url: '+INCY_SITE_URL));
+  assert.ok(decoded.includes('#profile-web-page-url: '+INCY_RENEW_URL));
   assert.ok(!decoded.includes('#support-url:'));
   assert.ok(decoded.includes('#announce-url: '+INCY_SUPPORT_URL));
   assert.doesNotMatch(decoded,/vless:\/\/|vmess:\/\/|trojan:\/\/|awg:\/\/|amneziawg:\/\/|\[Interface\]/);
@@ -131,7 +131,7 @@ test('INCY body fallback shows website and renewal while preserving signed node 
   const encoded=incyEncodeActiveSubscription(verified,'incy');
   const lines=Buffer.from(encoded.trim(),'base64').toString('utf8').trim().split('\n');
   assert.equal(lines[0],'#profile-title: MNEBYVPN');
-  assert.ok(lines.includes('#profile-web-page-url: '+INCY_SITE_URL));
+  assert.ok(lines.includes('#profile-web-page-url: '+INCY_RENEW_URL));
   assert.ok(!lines.some(line=>line.startsWith('#support-url:')));
   assert.ok(lines.includes('#announce-url: '+INCY_SUPPORT_URL));
   const announce=lines.find(line=>line.startsWith('#announce: base64:'));
@@ -145,7 +145,7 @@ test('INCY body fallback shows website and renewal while preserving signed node 
   // Direct bearer subscription (no client parameter) is also imported by INCY.
   const canonical=incyEncodeActiveSubscription(verified,null);
   assert.ok(Buffer.from(canonical.trim(),'base64').toString('utf8')
-    .includes('#profile-web-page-url: '+INCY_SITE_URL));
+    .includes('#profile-web-page-url: '+INCY_RENEW_URL));
   assert.throws(()=>incyEncodeActiveSubscription('',null));
   assert.throws(()=>incyEncodeActiveSubscription('#support-url: bad',null));
 });
@@ -153,7 +153,7 @@ test('INCY body fallback shows website and renewal while preserving signed node 
 test('active INCY metadata provides the existing non-Premium payment action',()=>{
   const h=incySubscriptionHeaders(new Date('2026-12-20T20:00:00Z'));
   assert.equal(h['announce-url'],INCY_SUPPORT_URL);
-  assert.equal(h['profile-web-page-url'],INCY_SITE_URL);
+  assert.equal(h['profile-web-page-url'],INCY_RENEW_URL);
   assert.equal(h['support-url'],undefined);
   assert.match(Buffer.from(h.announce.slice(7),'base64').toString('utf8'),
     /Связаться с поддержкой/);
@@ -161,6 +161,6 @@ test('active INCY metadata provides the existing non-Premium payment action',()=
   assert.equal(karing.announce,undefined);
   assert.equal(karing['announce-url'],undefined);
   assert.equal(karing['support-url'],INCY_SUPPORT_URL);
-  assert.equal(karing['profile-web-page-url'],INCY_SITE_URL);
+  assert.equal(karing['profile-web-page-url'],INCY_RENEW_URL);
   assert.equal(karing['premium-url'],INCY_RENEW_URL);
 });
