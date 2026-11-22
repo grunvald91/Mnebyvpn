@@ -31,7 +31,9 @@ fn map_service(err: windows_service::Error) -> io::Error {
 fn ensure_regular_file(path: &Path) -> io::Result<u64> {
     let meta = fs::symlink_metadata(path)?;
     if !meta.file_type().is_file() || meta.len() == 0 || meta.len() > MAX_BINARY_BYTES {
-        return Err(error("Service binary must be a normal, nonempty file <= 64 MiB"));
+        return Err(error(
+            "Service binary must be a normal, nonempty file <= 64 MiB",
+        ));
     }
     Ok(meta.len())
 }
@@ -51,7 +53,9 @@ fn install_directory() -> io::Result<PathBuf> {
         }
         // Upgrades are not supported by this preview. A preexisting install
         // must be handled deliberately, not overwritten.
-        return Err(error("Install directory already exists: refusing to overwrite"));
+        return Err(error(
+            "Install directory already exists: refusing to overwrite",
+        ));
     }
     Ok(path)
 }
@@ -59,7 +63,10 @@ fn install_directory() -> io::Result<PathBuf> {
 fn copy_new_binary(source: &Path, target: &Path) -> io::Result<()> {
     let expected_size = ensure_regular_file(source)?;
     let mut input = File::open(source)?;
-    let mut output = OpenOptions::new().write(true).create_new(true).open(target)?;
+    let mut output = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(target)?;
     let copied = io::copy(&mut input.take(MAX_BINARY_BYTES + 1), &mut output)?;
     if copied != expected_size {
         return Err(error("Source service executable changed during copy"));
@@ -85,8 +92,13 @@ fn protect_recovery_directory() -> io::Result<()> {
 fn install() -> io::Result<()> {
     let manager = service_manager(true)?;
     // Reserve our SCM name before any file changes.
-    if manager.open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS).is_ok() {
-        return Err(error("A service with this name already exists; upgrade is blocked"));
+    if manager
+        .open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS)
+        .is_ok()
+    {
+        return Err(error(
+            "A service with this name already exists; upgrade is blocked",
+        ));
     }
 
     let source = env::current_exe()?.with_file_name(SERVICE_BIN);
@@ -159,16 +171,21 @@ fn uninstall() -> io::Result<()> {
     let service = manager
         .open_service(
             SERVICE_NAME,
-            ServiceAccess::QUERY_STATUS | ServiceAccess::QUERY_CONFIG
-                | ServiceAccess::STOP | ServiceAccess::DELETE,
+            ServiceAccess::QUERY_STATUS
+                | ServiceAccess::QUERY_CONFIG
+                | ServiceAccess::STOP
+                | ServiceAccess::DELETE,
         )
         .map_err(map_service)?;
     let config = service.query_config().map_err(map_service)?;
-    let expected = PathBuf::from(
-        env::var_os("ProgramFiles").ok_or_else(|| error("ProgramFiles missing"))?,
-    ).join(INSTALL_DIR).join(SERVICE_BIN);
+    let expected =
+        PathBuf::from(env::var_os("ProgramFiles").ok_or_else(|| error("ProgramFiles missing"))?)
+            .join(INSTALL_DIR)
+            .join(SERVICE_BIN);
     if config.executable_path != expected {
-        return Err(error("Service executable path mismatch: refusing to modify another service"));
+        return Err(error(
+            "Service executable path mismatch: refusing to modify another service",
+        ));
     }
     if service.query_status().map_err(map_service)?.current_state != ServiceState::Stopped {
         service.stop().map_err(map_service)?;
@@ -180,7 +197,9 @@ fn uninstall() -> io::Result<()> {
             thread::sleep(Duration::from_millis(300));
         }
         if service.query_status().map_err(map_service)?.current_state != ServiceState::Stopped {
-            return Err(error("Service did not stop; refusing to mark it for deletion"));
+            return Err(error(
+                "Service did not stop; refusing to mark it for deletion",
+            ));
         }
     }
     service.delete().map_err(map_service)?;

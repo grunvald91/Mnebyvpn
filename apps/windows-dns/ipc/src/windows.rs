@@ -14,22 +14,23 @@ use windows_sys::Win32::Foundation::{
 };
 use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
 use windows_sys::Win32::Security::{
-    GetTokenInformation, IsWellKnownSid, TokenUser, WinLocalSystemSid,
-    SECURITY_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER,
+    GetTokenInformation, IsWellKnownSid, TokenUser, WinLocalSystemSid, SECURITY_ATTRIBUTES,
+    TOKEN_QUERY, TOKEN_USER,
 };
 use windows_sys::Win32::Storage::FileSystem::{FlushFileBuffers, WriteFile};
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeServerProcessId,
-    WaitNamedPipeW, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS,
-    PIPE_TYPE_BYTE, PIPE_WAIT,
+    WaitNamedPipeW, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
 };
-use windows_sys::Win32::System::Threading::{OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION};
+use windows_sys::Win32::System::Threading::{
+    OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+};
 
 const PIPE_NAME: &str = r"\\.\pipe\mnebydns-status-v1";
 const PIPE_ACCESS_OUTBOUND: u32 = 0x0000_0002;
 const FIRST_INSTANCE: u32 = 0x0008_0000; // FILE_FLAG_FIRST_PIPE_INSTANCE
-// SDDL: local SYSTEM/Admins may manage; interactive users can read only.
-// Remote connections are separately rejected by PIPE_REJECT_REMOTE_CLIENTS.
+                                         // SDDL: local SYSTEM/Admins may manage; interactive users can read only.
+                                         // Remote connections are separately rejected by PIPE_REJECT_REMOTE_CLIENTS.
 const PIPE_SDDL: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GR;;;IU)";
 const CLIENT_WAIT_MS: u32 = 500;
 
