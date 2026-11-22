@@ -12,7 +12,7 @@
   <main class="app">
     <header class="brandbar">
       <div class="brand"><div class="mark" aria-hidden="true">◈</div>мнебы<span>DNS</span></div>
-      <div class="version">ЛОКАЛЬНАЯ СЛУЖБА · 0.7</div>
+      <div class="version">DNS · ДОТ · 0.8</div>
     </header>
     <nav class="tabs" aria-label="Разделы приложения">
       <button class="tab active" data-tab="home" aria-current="page">Главная</button>
@@ -31,8 +31,13 @@
       </div>
       <section class="detail" aria-label="Профиль DNS">
         <div class="detailhead"><h2>Мой DNS</h2><span class="chip">DoT · TLS</span></div>
-        <div class="item"><span>Профиль</span><strong>Сохраняется локально в будущем</strong></div>
-        <div class="item"><span>Проверки</span><strong>A / IPv4 и AAAA / IPv6</strong></div>
+        <div class="item"><span>Профиль</span><strong>Не сохраняется после проверки</strong></div>
+        <label class="dot-label" for="dot-host">Персональное имя DNS-over-TLS</label>
+        <input class="dot-input" id="dot-host" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false"
+          placeholder="ключ.dns.mnebyvpn.site" maxlength="253" aria-describedby="dot-help">
+        <p class="muted dot-help" id="dot-help">Укажите только имя хоста без https:// и порта. Тест делает запросы A и AAAA к example.com через TLS:853. Настройки Windows не меняются.</p>
+        <button class="secondary" id="check-dot" type="button">Проверить защищённый DoT</button>
+        <p class="dot-status" id="dot-status" role="status" aria-live="polite">Ещё не проверен</p>
       </section>
     </section>
     <section id="diagnostics" class="view hidden">
@@ -41,7 +46,8 @@
       <div class="item"><span>IPv4 / A</span><strong id="ipv4-state">Не проверено</strong></div>
       <div class="item"><span>IPv6 / AAAA</span><strong id="ipv6-state">Не проверено</strong></div>
       <div class="item"><span>Служба Windows</span><strong id="service-state">Не проверено</strong></div>
-      <div class="item"><span>DoT, TLS и Smart DNS</span><strong>Не проверено</strong></div>
+      <div class="item"><span>DoT / TLS</span><strong id="dot-diag-state">Не проверено</strong></div>
+      <div class="item"><span>Smart DNS-маршрутизация</span><strong>Не проверялась</strong></div>
       <div class="item"><span>VPN / TUN</span><strong>Не изменяются</strong></div>
       <section class="detail adapter-section" aria-label="Сетевые адаптеры">
         <div class="detailhead"><h2>Сетевой адаптер</h2><span class="chip">Только чтение</span></div>

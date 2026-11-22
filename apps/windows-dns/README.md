@@ -273,3 +273,33 @@ flags inconsistencies, and reports any read/parse errors instead of
 guessing. IPv6 static values are exposed only as unverified evidence.
 A complete original-mode capture, exact RA/DHCPv6/profile restoration and
 real Windows 10 recovery testing are required before introducing mutation.
+
+
+## Stage 12: authenticated upstream DoT probe (not a DNS switch)
+
+The Windows tray app can now test a user-entered, personal DNS hostname
+without saving it to disk. Rust uses Windows system certificate trust through
+`native-tls` and checks the requested hostname during the TLS handshake
+on TCP port **853**. If TLS fails, **no plaintext DNS fallback** occurs.
+After TLS verification, it issues framed (RFC 7858) **A and AAAA** queries
+for `example.com`, validates the replies, and shows success only after
+both positive answers are checked. The UI does not claim Smart DNS routing,
+VPN connectivity or a working local proxy. The hostname does not appear in
+the code, logs, output artifacts or persistent app settings.
+
+Security limitations:
+- The Windows **OS resolver** bootstraps the DoT hostname; this initial
+  lookup is not claimed to be protected by this particular DoT tunnel.
+- Timeouts apply to TCP connect and TLS I/O. OS hostname resolution can
+  impose additional delay; tests do not claim a hard end-to-end deadline.
+- An authenticated response to example.com proves DoT transport and normal
+  DNS resolution, **not** access to every site or video streaming.
+- This is a non-mutating diagnostic in the GUI, not production DNSProxy
+  process ownership, automatic DNS configuration or rollback.
+- Unit tests exercise hostname filtering and DNS-over-TLS wire framing
+  entirely offline, while Windows CI builds the native TLS client. A live
+  personal upstream test requires a hostname supplied by the user.
+
+Standards:
+- https://www.rfc-editor.org/rfc/rfc7858
+- https://www.rfc-editor.org/rfc/rfc8310

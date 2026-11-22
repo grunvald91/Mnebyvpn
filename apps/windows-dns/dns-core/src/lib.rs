@@ -2,6 +2,9 @@
 //! A successful local query does NOT prove upstream DoT or Smart DNS routing.
 
 use serde::{Deserialize, Serialize};
+
+mod dot;
+pub use dot::{probe_dot_strict, DotProbeReport};
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};

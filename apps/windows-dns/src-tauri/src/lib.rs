@@ -21,6 +21,13 @@ async fn list_network_adapters() -> Result<Vec<mnebydns_network::AdapterInfo>, S
 }
 
 #[tauri::command]
+async fn probe_personal_dot(host: String) -> Result<mnebydns_core::DotProbeReport, String> {
+    tauri::async_runtime::spawn_blocking(move || mnebydns_core::probe_dot_strict(&host))
+        .await
+        .map_err(|_| "Проверка DoT завершилась внутренней ошибкой".to_owned())?
+}
+
+#[tauri::command]
 fn get_ui_mode() -> &'static str {
     "Диагностика: только чтение. Настройки DNS Windows не изменяются"
 }
@@ -58,7 +65,8 @@ pub fn run() {
             hide_to_tray,
             inspect_dns,
             list_network_adapters,
-            preflight_dns_adapter
+            preflight_dns_adapter,
+            probe_personal_dot
         ])
         .setup(|app| {
             let open = MenuItem::with_id(app, "open", "Открыть мнебыDNS", true, None::<&str>)?;
