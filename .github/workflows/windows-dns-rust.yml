@@ -69,6 +69,9 @@ jobs:
       - name: Windows service installer tests
         run: cargo test --manifest-path apps/windows-dns/setup/Cargo.toml
 
+      - name: Test persistent DNS service emergency recovery and re-enable
+        run: cargo test --manifest-path apps/windows-dns/service/Cargo.toml
+
       - name: Compile persistent Windows DNS service
         run: cargo check --manifest-path apps/windows-dns/service/Cargo.toml
 
