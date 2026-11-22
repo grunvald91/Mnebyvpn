@@ -7,9 +7,7 @@ use serde::Serialize;
 use std::ffi::c_void;
 use std::net::IpAddr;
 use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_MORE_DATA};
-use windows_sys::Win32::System::Registry::{
-    RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ,
-};
+use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
 
 const MAX_REGISTRY_BYTES: u32 = 4096;
 const MAX_RESOLVERS: usize = 32;
@@ -97,7 +95,9 @@ fn read_reg_sz(subkey: &str, name: &str) -> Result<Option<String>, String> {
         )
     };
     if code != 0 || actual_bytes == 0 || actual_bytes > expected_bytes || actual_bytes % 2 != 0 {
-        return Err(format!("Registry DNS changed or could not be read ({name}): {code}"));
+        return Err(format!(
+            "Registry DNS changed or could not be read ({name}): {code}"
+        ));
     }
     words.truncate((actual_bytes / 2) as usize);
     Ok(Some(parse_reg_sz(&words)?))
@@ -107,12 +107,10 @@ pub(super) fn inspect(interface_guid: &str) -> Result<RegistryDnsEvidence, Strin
     // All GUIDs originate from the validated Windows adapter inventory.
     super::parse_guid(interface_guid)?;
     let guid = format!("{{{}}}", interface_guid);
-    let v4_path = format!(
-        "SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\{guid}"
-    );
-    let v6_path = format!(
-        "SYSTEM\\CurrentControlSet\\Services\\Tcpip6\\Parameters\\Interfaces\\{guid}"
-    );
+    let v4_path =
+        format!("SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\{guid}");
+    let v6_path =
+        format!("SYSTEM\\CurrentControlSet\\Services\\Tcpip6\\Parameters\\Interfaces\\{guid}");
     Ok(RegistryDnsEvidence {
         ipv4_static: read_reg_sz(&v4_path, "NameServer")?
             .map(|v| parse_servers(&v, false))

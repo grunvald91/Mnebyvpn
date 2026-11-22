@@ -70,9 +70,9 @@ pub fn restore<B: NetworkBackend, J: RecoveryJournal>(
     // Restore is a privileged mutation too. Validate even when the record
     // originated from a different service version or survived a reboot.
     validate(&original, &original.interface_guid)?;
-    backend.verify_restore_target(&original).map_err(|error| {
-        format!("Unsafe restore target: {error}; recovery journal kept")
-    })?;
+    backend
+        .verify_restore_target(&original)
+        .map_err(|error| format!("Unsafe restore target: {error}; recovery journal kept"))?;
     let v4 = backend.restore_ipv4(&original);
     let v6 = backend.restore_ipv6(&original);
     if let (Err(a), Err(b)) = (&v4, &v6) {
@@ -312,10 +312,7 @@ mod tests {
         let error = activate("adapter-1", &mut backend, &mut disk).unwrap_err();
         assert!(error.contains("recovery journal kept"));
         assert!(disk.saved.is_some());
-        assert_eq!(
-            backend.calls,
-            vec!["capture", "verify_before_apply"]
-        );
+        assert_eq!(backend.calls, vec!["capture", "verify_before_apply"]);
     }
 
     #[test]

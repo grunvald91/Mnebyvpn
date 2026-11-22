@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 mod dot;
 mod udp_proxy;
 pub use dot::{probe_dot_strict, DotProbeReport};
-pub use udp_proxy::{smoke_udp_dot_preview, UdpDotSmokeReport, UdpDotPreview};
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+pub use udp_proxy::{smoke_udp_dot_preview, UdpDotPreview, UdpDotSmokeReport};
 
 static NEXT_DNS_ID: AtomicU16 = AtomicU16::new(0x5379);
 const QUERY_TIMEOUT: Duration = Duration::from_millis(900);
@@ -121,8 +121,8 @@ fn parse_reply(packet: &[u8], id: u16, requested_type: u16) -> Result<u16, &'sta
     let mut cursor = question_end;
     let mut matching_records = 0u16;
     for _ in 0..count {
-        let (owner, next) = decode_dns_name(packet, cursor)
-            .ok_or("Некорректное имя в DNS-ответе")?;
+        let (owner, next) =
+            decode_dns_name(packet, cursor).ok_or("Некорректное имя в DNS-ответе")?;
         cursor = next;
         if packet.len() < cursor + 10 {
             return Err("Повреждена запись DNS-ответа");

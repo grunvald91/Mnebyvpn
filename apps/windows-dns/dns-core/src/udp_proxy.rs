@@ -8,16 +8,15 @@
 //! listener, cache, background service, IPv6 listener or production pooling.
 
 use super::dot::{
-    candidate_addresses, checked_hostname, connect_authenticated, read_exact_until,
-    DOT_PORT, IO_TIMEOUT, MAX_DNS_FRAME,
+    candidate_addresses, checked_hostname, connect_authenticated, read_exact_until, DOT_PORT,
+    IO_TIMEOUT, MAX_DNS_FRAME,
 };
-use super::{parse_reply, query_packet};
+use super::{parse_reply, query_packet, NEXT_DNS_ID};
 use native_tls::TlsConnector;
 use serde::Serialize;
 use std::io::Write;
 use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
-use super::NEXT_DNS_ID;
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -90,14 +89,18 @@ fn read_query(packet: &[u8]) -> Option<QueryInfo> {
         }
         let advertised = u16::from_be_bytes([packet[question_end + 3], packet[question_end + 4]]);
         udp_limit = usize::from(advertised).clamp(512, MAX_UDP_PACKET);
-        let opt_len = u16::from_be_bytes([packet[question_end + 9], packet[question_end + 10]]) as usize;
+        let opt_len =
+            u16::from_be_bytes([packet[question_end + 9], packet[question_end + 10]]) as usize;
         if header_end.checked_add(opt_len)? != packet.len() {
             return None;
         }
     } else if question_end != packet.len() {
         return None;
     }
-    Some(QueryInfo { end_of_question: question_end, udp_limit })
+    Some(QueryInfo {
+        end_of_question: question_end,
+        udp_limit,
+    })
 }
 
 fn valid_upstream_answer(request: &[u8], answer: &[u8], question_end: usize) -> bool {
@@ -136,7 +139,8 @@ impl Upstream for PinnedDotUpstream {
         let connector = tls_builder
             .build()
             .map_err(|_| "TLS context unavailable".to_owned())?;
-        let mut tls = connect_authenticated(&self.host, self.addresses.iter().copied(), &connector)?;
+        let mut tls =
+            connect_authenticated(&self.host, self.addresses.iter().copied(), &connector)?;
         let framed_len: u16 = query
             .len()
             .try_into()
@@ -186,13 +190,20 @@ impl UdpDotPreview {
     fn start_with_upstream(upstream: Arc<dyn Upstream>) -> Result<Self, String> {
         let listener = UdpSocket::bind("127.0.0.1:0")
             .map_err(|_| "Cannot bind ephemeral loopback UDP port".to_owned())?;
-        listener.set_read_timeout(Some(RECV_POLL))
+        listener
+            .set_read_timeout(Some(RECV_POLL))
             .map_err(|_| "Cannot configure loopback listener".to_owned())?;
-        let address = listener.local_addr().map_err(|_| "Cannot read loopback address".to_owned())?;
+        let address = listener
+            .local_addr()
+            .map_err(|_| "Cannot read loopback address".to_owned())?;
         // Clone all sockets before spawning workers, so a failure cannot
         // leave an unowned, immortal listener thread.
         let sockets = (0..WORKERS)
-            .map(|_| listener.try_clone().map_err(|_| "Cannot clone loopback socket".to_owned()))
+            .map(|_| {
+                listener
+                    .try_clone()
+                    .map_err(|_| "Cannot clone loopback socket".to_owned())
+            })
             .collect::<Result<Vec<_>, _>>()?;
         let stopping = Arc::new(AtomicBool::new(false));
         let mut workers = Vec::with_capacity(WORKERS);
@@ -204,8 +215,12 @@ impl UdpDotPreview {
                 while !stop.load(Ordering::Acquire) {
                     let (n, peer) = match socket.recv_from(&mut buf) {
                         Ok(pair) => pair,
-                        Err(error) if error.kind() == std::io::ErrorKind::TimedOut
-                            || error.kind() == std::io::ErrorKind::WouldBlock => continue,
+                        Err(error)
+                            if error.kind() == std::io::ErrorKind::TimedOut
+                                || error.kind() == std::io::ErrorKind::WouldBlock =>
+                        {
+                            continue
+                        }
                         Err(_) => break,
                     };
                     if !peer.ip().is_loopback() || stop.load(Ordering::Acquire) {
@@ -219,7 +234,11 @@ impl UdpDotPreview {
                 }
             }));
         }
-        Ok(Self { address, stopping, workers })
+        Ok(Self {
+            address,
+            stopping,
+            workers,
+        })
     }
 
     /// Bootstrap and pin upstream addresses while OS DNS has not been changed.
@@ -236,7 +255,9 @@ impl UdpDotPreview {
         Self::start_with_upstream(Arc::new(PinnedDotUpstream { host, addresses }))
     }
 
-    pub fn local_address(&self) -> SocketAddr { self.address }
+    pub fn local_address(&self) -> SocketAddr {
+        self.address
+    }
 }
 
 impl Drop for UdpDotPreview {
@@ -265,20 +286,24 @@ pub fn smoke_udp_dot_preview(host: &str) -> Result<UdpDotSmokeReport, String> {
     let proxy = UdpDotPreview::preview_for_hostname(host)?;
     let socket = UdpSocket::bind("127.0.0.1:0")
         .map_err(|_| "Cannot bind temporary UDP probe socket".to_owned())?;
-    socket.set_read_timeout(Some(SMOKE_TIMEOUT))
+    socket
+        .set_read_timeout(Some(SMOKE_TIMEOUT))
         .map_err(|_| "Cannot set UDP smoke timeout".to_owned())?;
     let query_id = NEXT_DNS_ID.fetch_add(1, Ordering::Relaxed);
     let query = query_packet(query_id, 1);
-    socket.send_to(&query, proxy.local_address())
+    socket
+        .send_to(&query, proxy.local_address())
         .map_err(|_| "Cannot send local UDP DNS query".to_owned())?;
     let mut buf = [0u8; MAX_UDP_PACKET + 1];
-    let (count, peer) = socket.recv_from(&mut buf)
+    let (count, peer) = socket
+        .recv_from(&mut buf)
         .map_err(|_| "Local UDP DNS relay did not reply before timeout".to_owned())?;
     if peer != proxy.local_address() {
         return Err("Unexpected loopback UDP response peer".into());
     }
-    let answers = parse_reply(&buf[..count], query_id, 1)
-        .map_err(|_| "Authenticated UDP/DoT relay did not return a valid positive DNS A answer".to_owned())?;
+    let answers = parse_reply(&buf[..count], query_id, 1).map_err(|_| {
+        "Authenticated UDP/DoT relay did not return a valid positive DNS A answer".to_owned()
+    })?;
     Ok(UdpDotSmokeReport {
         success: true,
         elapsed_ms: started.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
@@ -301,7 +326,9 @@ mod tests {
 
     impl Upstream for MockUpstream {
         fn forward(&self, query: &[u8]) -> Result<Vec<u8>, String> {
-            if self.unavailable { return Err("simulated TLS failure".into()); }
+            if self.unavailable {
+                return Err("simulated TLS failure".into());
+            }
             let mut response = query[..read_query(query).unwrap().end_of_question].to_vec();
             response[2] = 0x81;
             response[3] = 0x80;
@@ -309,16 +336,26 @@ mod tests {
             response.extend_from_slice(&[0xc0, 0x0c]);
             response.extend_from_slice(&[0, 1, 0, 1]);
             response.extend_from_slice(&60u32.to_be_bytes());
-            let data = if self.large { vec![7u8; 500] } else { vec![93, 184, 215, 14] };
+            let data = if self.large {
+                vec![7u8; 500]
+            } else {
+                vec![93, 184, 215, 14]
+            };
             response.extend_from_slice(&(data.len() as u16).to_be_bytes());
             response.extend_from_slice(&data);
-            if self.corrupt { response[0] ^= 0xff; }
+            if self.corrupt {
+                response[0] ^= 0xff;
+            }
             Ok(response)
         }
     }
 
     fn mock(corrupt: bool, unavailable: bool, large: bool) -> Arc<dyn Upstream> {
-        Arc::new(MockUpstream { corrupt, unavailable, large })
+        Arc::new(MockUpstream {
+            corrupt,
+            unavailable,
+            large,
+        })
     }
 
     #[test]
@@ -353,7 +390,11 @@ mod tests {
         assert!(valid_upstream_answer(&q, &good, info.end_of_question));
         let mut bad_question = good.clone();
         bad_question[13] = b'Z';
-        assert!(!valid_upstream_answer(&q, &bad_question, info.end_of_question));
+        assert!(!valid_upstream_answer(
+            &q,
+            &bad_question,
+            info.end_of_question
+        ));
         let servfail = reply_for_query(mock(false, true, false).as_ref(), &q).unwrap();
         assert_eq!(&servfail[0..2], &q[0..2]);
         assert_eq!(servfail[3] & 0x0f, 2);
@@ -376,9 +417,13 @@ mod tests {
         assert!(proxy.local_address().ip().is_loopback());
         assert_ne!(proxy.local_address().port(), 53);
         let socket = UdpSocket::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
-        socket.set_read_timeout(Some(Duration::from_secs(3))).map_err(|e| e.to_string())?;
+        socket
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .map_err(|e| e.to_string())?;
         let query = query_packet(0xa1b2, 1);
-        socket.send_to(&query, proxy.local_address()).map_err(|e| e.to_string())?;
+        socket
+            .send_to(&query, proxy.local_address())
+            .map_err(|e| e.to_string())?;
         let mut answer = [0u8; 512];
         let (len, peer) = socket.recv_from(&mut answer).map_err(|e| e.to_string())?;
         assert_eq!(peer, proxy.local_address());
@@ -391,9 +436,13 @@ mod tests {
     fn native_loopback_udp_sends_servfail_on_upstream_error() -> Result<(), String> {
         let proxy = UdpDotPreview::start_with_upstream(mock(false, true, false))?;
         let socket = UdpSocket::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
-        socket.set_read_timeout(Some(Duration::from_secs(3))).map_err(|e| e.to_string())?;
+        socket
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .map_err(|e| e.to_string())?;
         let query = query_packet(0x1941, 28);
-        socket.send_to(&query, proxy.local_address()).map_err(|e| e.to_string())?;
+        socket
+            .send_to(&query, proxy.local_address())
+            .map_err(|e| e.to_string())?;
         let mut buf = [0u8; 512];
         let (len, _) = socket.recv_from(&mut buf).map_err(|e| e.to_string())?;
         assert_eq!(buf[3] & 0x0f, 2);

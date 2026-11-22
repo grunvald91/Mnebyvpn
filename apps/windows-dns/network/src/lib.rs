@@ -289,7 +289,10 @@ fn parse_guid(input: &str) -> Result<GUID, String> {
 /// could restore a different resolver order after a crash.
 fn parse_servers(value: &str) -> Result<Vec<String>, String> {
     let mut result = Vec::new();
-    for entry in value.split([',', ' ', '\t', '\n']).filter(|s| !s.is_empty()) {
+    for entry in value
+        .split([',', ' ', '\t', '\n'])
+        .filter(|s| !s.is_empty())
+    {
         if result.len() >= MAX_DNS_SERVERS_PER_ADAPTER {
             return Err("DNS server list exceeds recovery inspection limit".into());
         }
@@ -326,7 +329,8 @@ fn interpret_family(static_servers: &[String], profile_servers: &[String]) -> St
     if !profile_servers.is_empty() {
         "Есть DNS профильного подключения; точный способ восстановления требует дополнительной проверки".to_owned()
     } else if !static_servers.is_empty() {
-        "Найдены статические IPv4 DNS; для отката нужно подтвердить источник и их точный порядок".to_owned()
+        "Найдены статические IPv4 DNS; для отката нужно подтвердить источник и их точный порядок"
+            .to_owned()
     } else {
         "Статический DNS не указан; это не доказывает режим DHCP/RA".to_owned()
     }
@@ -339,7 +343,9 @@ fn read_dns_ipv4(guid: GUID) -> Result<FamilyDnsConfig, String> {
     settings.Version = DNS_INTERFACE_SETTINGS_VERSION1;
     let code = unsafe { GetInterfaceDnsSettings(guid, &mut settings) };
     if code != 0 {
-        return Err(format!("Не удалось прочитать IPv4 DNS (Windows API код {code})"));
+        return Err(format!(
+            "Не удалось прочитать IPv4 DNS (Windows API код {code})"
+        ));
     }
     // Release Windows-owned strings even when strict parsing fails.
     let strings = unsafe {
@@ -393,10 +399,8 @@ pub fn preflight_adapter(guid: &str) -> Result<AdapterPreflight, String> {
         "Источник IPv6 DNS не подтверждён: эффективные IPv6 адреса смотрите в карточке адаптера"
             .to_owned(),
     );
-    let mut recovery_blockers = vec![
-        "Не подтверждено происхождение IPv6 DNS (статический/DHCPv6/RA/профиль)"
-            .to_owned(),
-    ];
+    let mut recovery_blockers =
+        vec!["Не подтверждено происхождение IPv6 DNS (статический/DHCPv6/RA/профиль)".to_owned()];
     if adapter.is_tunnel || adapter.is_loopback || !adapter.likely_physical {
         recovery_blockers.push("Адаптер не подтверждён как физический Wi-Fi/Ethernet".to_owned());
     }
@@ -404,7 +408,8 @@ pub fn preflight_adapter(guid: &str) -> Result<AdapterPreflight, String> {
         recovery_blockers.push("Не удалось прочитать исходный IPv4 DNS без потерь".to_owned());
     }
     if ipv4.as_ref().is_some_and(|v| v.profile_servers.len() > 0) {
-        recovery_blockers.push("Обнаружен профильный DNS, необходим отдельный план восстановления".to_owned());
+        recovery_blockers
+            .push("Обнаружен профильный DNS, необходим отдельный план восстановления".to_owned());
     }
     if ipv4.as_ref().is_some_and(|v| {
         v.static_servers.is_empty() || v.flags & DNS_SETTING_NAMESERVER as u64 == 0
@@ -422,25 +427,27 @@ pub fn preflight_adapter(guid: &str) -> Result<AdapterPreflight, String> {
         }
     };
     if let Some(evidence) = registry.as_ref() {
-        if let (Some(static4), Some(api4)) =
-            (evidence.ipv4_static.as_ref(), ipv4.as_ref())
-        {
+        if let (Some(static4), Some(api4)) = (evidence.ipv4_static.as_ref(), ipv4.as_ref()) {
             if *static4 != api4.static_servers {
-                recovery_blockers.push(
-                    "IPv4 NameServer реестра отличается от Windows DNS API".to_owned()
-                );
+                recovery_blockers
+                    .push("IPv4 NameServer реестра отличается от Windows DNS API".to_owned());
             }
         }
-        if evidence.ipv6_static.as_ref().is_some_and(|values| !values.is_empty()) {
+        if evidence
+            .ipv6_static
+            .as_ref()
+            .is_some_and(|values| !values.is_empty())
+        {
             // Even if static nameservers match the effective list, RA, DHCPv6,
             // profile DNS and policy are not proven absent.
             recovery_blockers.push(
                 "Статический IPv6 найден в реестре, но источник действующего DNS не доказан"
-                    .to_owned()
+                    .to_owned(),
             );
         }
     }
-    let warning = "Неполный снимок: нельзя сохранять его как точный backup IPv4+IPv6 и менять DNS Windows.";
+    let warning =
+        "Неполный снимок: нельзя сохранять его как точный backup IPv4+IPv6 и менять DNS Windows.";
     Ok(AdapterPreflight {
         guid: adapter.guid,
         adapter_name: adapter.name,

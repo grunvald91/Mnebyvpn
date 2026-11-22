@@ -19,13 +19,15 @@ use windows_sys::Win32::Security::{
     TOKEN_QUERY, TOKEN_USER,
 };
 use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
-use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, GetOverlappedResultEx, OVERLAPPED};
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeServerProcessId,
     WaitNamedPipeW, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
 };
 use windows_sys::Win32::System::Threading::{
     CreateEventW, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+};
+use windows_sys::Win32::System::IO::{
+    CancelIoEx, GetOverlappedResult, GetOverlappedResultEx, OVERLAPPED,
 };
 
 const PIPE_NAME: &str = r"\\.\pipe\mnebydns-status-v1";
@@ -36,7 +38,6 @@ const PIPE_SDDL: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)";
 const CLIENT_WAIT_MS: u32 = 500;
 const CLIENT_IO_MS: u32 = 1_000;
 const STATUS_ACK: u8 = 0x06; // This is only a delivery acknowledgement, never a command.
-
 
 struct Handle(windows_sys::Win32::Foundation::HANDLE);
 impl Drop for Handle {
@@ -165,7 +166,9 @@ pub fn read_service_status() -> Result<ServiceReport, String> {
 fn new_event() -> Result<Handle, String> {
     let event = Handle(unsafe { CreateEventW(null(), 1, 0, null()) });
     if event.0.is_null() {
-        return Err(format!("CreateEventW failed: {}", unsafe { GetLastError() }));
+        return Err(format!("CreateEventW failed: {}", unsafe {
+            GetLastError()
+        }));
     }
     Ok(event)
 }
@@ -215,10 +218,7 @@ fn bounded_io(
     if error != ERROR_IO_PENDING {
         return Err(format!("{name} failed: {error}"));
     }
-    if unsafe {
-        GetOverlappedResultEx(pipe, &overlapped, &mut transferred, CLIENT_IO_MS, 0)
-    } != 0
-    {
+    if unsafe { GetOverlappedResultEx(pipe, &overlapped, &mut transferred, CLIENT_IO_MS, 0) } != 0 {
         return Ok(transferred);
     }
     let error = unsafe { GetLastError() };

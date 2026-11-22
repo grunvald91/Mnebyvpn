@@ -31,7 +31,9 @@ async fn probe_personal_dot(host: String) -> Result<mnebydns_core::DotProbeRepor
 async fn smoke_local_dot_proxy(host: String) -> Result<mnebydns_core::UdpDotSmokeReport, String> {
     tauri::async_runtime::spawn_blocking(move || mnebydns_core::smoke_udp_dot_preview(&host))
         .await
-        .map_err(|_| "Проверка локального UDP/DoT-прокси завершилась внутренней ошибкой".to_owned())?
+        .map_err(|_| {
+            "Проверка локального UDP/DoT-прокси завершилась внутренней ошибкой".to_owned()
+        })?
 }
 
 #[tauri::command]

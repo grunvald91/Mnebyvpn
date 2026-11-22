@@ -65,12 +65,17 @@ pub(crate) fn candidate_addresses(addresses: impl Iterator<Item = SocketAddr>) -
     let mut ipv4 = Vec::new();
     let mut ipv6 = Vec::new();
     for address in addresses.take(MAX_OS_ADDRESSES) {
-        let bucket = if address.is_ipv4() { &mut ipv4 } else { &mut ipv6 };
+        let bucket = if address.is_ipv4() {
+            &mut ipv4
+        } else {
+            &mut ipv6
+        };
         if !bucket.contains(&address) {
             bucket.push(address);
         }
     }
-    ipv4.into_iter().take(3)
+    ipv4.into_iter()
+        .take(3)
         .chain(ipv6.into_iter().take(2))
         .take(MAX_IP_ADDRESSES)
         .collect()
@@ -132,7 +137,9 @@ pub(crate) fn checked_hostname(input: &str) -> Result<String, String> {
                 || part.len() > 63
                 || part.starts_with('-')
                 || part.ends_with('-')
-                || !part.bytes().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == b'-')
+                || !part
+                    .bytes()
+                    .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == b'-')
         })
     {
         return Err("Некорректное DNS-имя. Нужен хост без https://, пути и порта".into());
@@ -140,11 +147,7 @@ pub(crate) fn checked_hostname(input: &str) -> Result<String, String> {
     Ok(host)
 }
 
-fn exchange<S: DnsIo>(
-    stream: &mut S,
-    id: u16,
-    kind: u16,
-) -> Result<EndpointProbe, &'static str> {
+fn exchange<S: DnsIo>(stream: &mut S, id: u16, kind: u16) -> Result<EndpointProbe, &'static str> {
     let query = query_packet(id, kind);
     let size = u16::try_from(query.len()).map_err(|_| "Слишком большой DNS-запрос")?;
     let started = Instant::now();
@@ -163,8 +166,8 @@ fn exchange<S: DnsIo>(
     }
     let mut packet = vec![0u8; length];
     read_exact_until(stream, &mut packet, deadline)?;
-    let answer_count = parse_reply(&packet, id, kind)
-        .map_err(|_| "DNS-ответ внутри TLS не прошёл проверку")?;
+    let answer_count =
+        parse_reply(&packet, id, kind).map_err(|_| "DNS-ответ внутри TLS не прошёл проверку")?;
     Ok(EndpointProbe {
         ok: true,
         latency_ms: Some(started.elapsed().as_millis().try_into().unwrap_or(u64::MAX)),
@@ -188,7 +191,8 @@ pub fn probe_dot_strict(input: &str) -> Result<DotProbeReport, String> {
     let mut tls_builder = TlsConnector::builder();
     // Explicitly disallow TLS 1.0/1.1 even when an older Windows policy allows them.
     tls_builder.min_protocol_version(Some(native_tls::Protocol::Tlsv12));
-    let connector = tls_builder.build()
+    let connector = tls_builder
+        .build()
         .map_err(|_| "Не удалось создать системный TLS-контекст Windows".to_owned())?;
     let mut tls = connect_authenticated(&host, addresses, &connector)?;
 
@@ -232,7 +236,9 @@ mod tests {
         }
     }
     impl DnsIo for FakeTls {
-        fn set_read_budget(&self, _: Duration) -> io::Result<()> { Ok(()) }
+        fn set_read_budget(&self, _: Duration) -> io::Result<()> {
+            Ok(())
+        }
     }
     impl Write for FakeTls {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
@@ -253,7 +259,11 @@ mod tests {
         answer.extend_from_slice(&qtype.to_be_bytes());
         answer.extend_from_slice(&1u16.to_be_bytes());
         answer.extend_from_slice(&60u32.to_be_bytes());
-        let addr = if qtype == 1 { vec![93, 184, 215, 14] } else { vec![0u8; 16] };
+        let addr = if qtype == 1 {
+            vec![93, 184, 215, 14]
+        } else {
+            vec![0u8; 16]
+        };
         answer.extend_from_slice(&(addr.len() as u16).to_be_bytes());
         answer.extend_from_slice(&addr);
         let mut framed = (answer.len() as u16).to_be_bytes().to_vec();
@@ -264,14 +274,25 @@ mod tests {
     #[test]
     fn host_validation_rejects_urls_ports_ip_literals_and_local() {
         for host in [
-            "", "localhost", "resolver.local", "127.0.0.1", "::1",
-            "https://dns.example.com", "dns.example.com:853",
-            "dns.example.com/path", "bad..example.com", "-bad.example.com",
-            "dns.example.com\nInjected", "dns_example.com",
+            "",
+            "localhost",
+            "resolver.local",
+            "127.0.0.1",
+            "::1",
+            "https://dns.example.com",
+            "dns.example.com:853",
+            "dns.example.com/path",
+            "bad..example.com",
+            "-bad.example.com",
+            "dns.example.com\nInjected",
+            "dns_example.com",
         ] {
             assert!(checked_hostname(host).is_err(), "Accepted invalid hostname");
         }
-        assert_eq!(checked_hostname("  A1B2.dns.example.com  ").unwrap(), "a1b2.dns.example.com");
+        assert_eq!(
+            checked_hostname("  A1B2.dns.example.com  ").unwrap(),
+            "a1b2.dns.example.com"
+        );
     }
 
     #[test]
