@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {parseSaleInput,offlineSalePrompt,offlineSaleMenu,registerOfflineSale,
-  listOfflineSales,showOfflineSale} from '../apps/service/src/manual-sales.ts';
+import {parseSaleInput,offlineSalePrompt,offlinePairPrompt,offlineSaleMenu,registerOfflineSale,
+  registerOfflineSalePair,listOfflineSales,showOfflineSale} from '../apps/service/src/manual-sales.ts';
 
 test('offline sale requires explicit actual amount; @username is only a label',()=>{
   assert.deepEqual(parseSaleInput('@OlgaB0307Ang 399'),
@@ -63,4 +63,22 @@ test('a duplicate active label cannot provision two subscriptions',async()=>{
   assert.match(result.text,/уже существует/);
   assert.equal(rollbacks,1);
   assert.ok(!queries.some(s=>s.startsWith('INSERT')));
+});
+
+
+test('private owner batch prompt and invalid input never touch financial storage',async()=>{
+  assert.match(offlinePairPrompt().text,/два Telegram-имени/);
+  let calls=0;
+  const pool={
+    query:async()=>{calls++;throw Error('unexpected database access');},
+    connect:async()=>{calls++;throw Error('unexpected database connection');},
+  } as any;
+  const denied=await registerOfflineSalePair(pool,100,99,'10001','@alice_one @bob_two');
+  assert.match(denied.text,/Недостаточно прав/);
+  for(const raw of ['@alice_one','@alice_one @alice_one',
+                    '@alice_one @bob_two @third_three','@!bad @bob_two']){
+    const rejected=await registerOfflineSalePair(pool,100,100,'10001',raw);
+    assert.doesNotMatch(rejected.text,/Две личные продажи учтены/);
+  }
+  assert.equal(calls,0,'unsafe requests must not query financial storage');
 });

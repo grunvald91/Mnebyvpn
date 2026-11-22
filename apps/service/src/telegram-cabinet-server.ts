@@ -32,7 +32,7 @@ import {personalDnsTelegramMenu,personalDnsTelegramAction,personalDnsGuide,
 import {approvedPersonalDnsOffer} from '../../../packages/dns-policy/src/smart-dns-offers.ts';
 import {sendPersonalDnsMobileconfig} from '../../../packages/dns-policy/src/personal-dot-profile.ts';
 import {ownerDnsKey,ownerDnsLinksAction,ownerDnsExpiryPrompt,ownerDnsExpiryReply,OWNER_DNS_EXPIRY_PROMPT} from './owner-dns-links.ts';
-import {OFFLINE_SALE_PROMPT,offlineSalePrompt,offlineSaleMenu,registerOfflineSale,listOfflineSales,showOfflineSale} from './manual-sales.ts';
+import {OFFLINE_SALE_PROMPT,OFFLINE_PAIR_PROMPT,offlineSalePrompt,offlinePairPrompt,offlineSaleMenu,registerOfflineSale,registerOfflineSalePair,listOfflineSales,showOfflineSale} from './manual-sales.ts';
 
 const digest=process.env.TELEGRAM_WEBHOOK_SECRET_SHA256??'';
 if(!/^[a-f0-9]{64}$/.test(digest))
@@ -136,7 +136,7 @@ function respond(res:ServerResponse,status:number,payload:unknown){
   res.writeHead(status);
   res.end(payload===null?'':JSON.stringify(payload));
 }
-function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string;currentText?:string;replyToSupport?:boolean;replyToDns?:boolean;replyToDnsSearch?:boolean;replyToOfflineSale?:boolean;ownerDnsPrompt?:string}|null{
+function privateActor(update:any):{id:number;messageId?:number;callbackId?:string;data?:string;text?:string;currentText?:string;replyToSupport?:boolean;replyToDns?:boolean;replyToDnsSearch?:boolean;replyToOfflineSale?:boolean;replyToOfflinePair?:boolean;ownerDnsPrompt?:string}|null{
   const cb=update.callback_query;
   if(cb){
     if(!validId(cb.from?.id)||!cb.message||cb.message.chat?.type!=='private'||
@@ -158,9 +158,11 @@ function privateActor(update:any):{id:number;messageId?:number;callbackId?:strin
     typeof replied.text==='string'&&replied.text.startsWith(DNS_ADMIN_SEARCH_PROMPT);
   const replyToOfflineSale=replied?.from?.is_bot===true&&
      typeof replied.text==='string'&&replied.text.startsWith(OFFLINE_SALE_PROMPT);
+  const replyToOfflinePair=replied?.from?.is_bot===true&&
+     typeof replied.text==='string'&&replied.text.startsWith(OFFLINE_PAIR_PROMPT);
    const ownerDnsPrompt=replied?.from?.is_bot===true&&typeof replied.text==='string'&&
     replied.text.startsWith(OWNER_DNS_EXPIRY_PROMPT)?replied.text:undefined;
-  return {id:m.from.id,text:typeof m.text==='string'?m.text:'',replyToSupport,replyToDns,replyToDnsSearch,replyToOfflineSale,ownerDnsPrompt};
+  return {id:m.from.id,text:typeof m.text==='string'?m.text:'',replyToSupport,replyToDns,replyToDnsSearch,replyToOfflineSale,replyToOfflinePair,ownerDnsPrompt};
 }
 async function packages(id:number){
   if(!store)throw new Error('DB unavailable');
@@ -792,7 +794,7 @@ async function processUpdate(update:any){
   const text=actor.text?.trim()??'';
   const operator=support&&actor.id===support.operatorId;
    const saleAction=actor.data?.startsWith('offsale:')??false;
-   if(saleAction||actor.replyToOfflineSale){
+   if(saleAction||actor.replyToOfflineSale||actor.replyToOfflinePair){
      if(!offlineSalesEnabled||dnsAdminId===null||actor.id!==dnsAdminId){
        if(actor.callbackId)return {method:'answerCallbackQuery',
          callback_query_id:actor.callbackId,text:'Недоступно',show_alert:true};
@@ -800,10 +802,15 @@ async function processUpdate(update:any){
      }
      if(actor.data==='offsale:new')
        return {method:'sendMessage',chat_id:actor.id,...offlineSalePrompt()};
+     if(actor.data==='offsale:pair:new')
+       return {method:'sendMessage',chat_id:actor.id,...offlinePairPrompt()};
      if(!pool)return oneAction(actor,dbUnavailable());
      try{
        if(actor.replyToOfflineSale)
          return oneAction(actor,await registerOfflineSale(pool,actor.id,dnsAdminId,
+           String(update.update_id),text));
+       if(actor.replyToOfflinePair)
+         return oneAction(actor,await registerOfflineSalePair(pool,actor.id,dnsAdminId,
            String(update.update_id),text));
        if(actor.data==='offsale:menu')return oneAction(actor,offlineSaleMenu());
        const listing=/^offsale:list:(0|[1-9][0-9]{0,3})$/.exec(actor.data??'');

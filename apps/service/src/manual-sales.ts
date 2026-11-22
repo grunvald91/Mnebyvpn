@@ -52,6 +52,7 @@ export function offlineSaleMenu():Page{
     'Ссылки получает только владелец в личном чате.\n'+
     '30 дней начинаются с регистрации продажи, не с первого подключения.',[
       [{text:'➕ Продать «3 в 1» · 30 дней',callback_data:'offsale:new'}],
+      [{text:'👥 Оформить сразу двух покупателей',callback_data:'offsale:pair:new'}],
       [{text:'📋 Покупатели и ссылки',callback_data:'offsale:list:0'}],
       [home],
     ]);
@@ -319,4 +320,93 @@ export async function showOfflineSale(
     callback_data:'offsale:links:'+r.order_id}]);
   buttons.push([{text:'📋 Все продажи',callback_data:'offsale:list:0'}],[home]);
   return page(lines.join('\n'),buttons);
+}
+
+
+/** Owner-only batch of exactly two already-paid in-person buyers.
+ * Uses existing audited one-sale transactions and keeps one VPN bearer per
+ * entitlement; no network-issued client keys, no Telegram customer identity.
+ */
+export const OFFLINE_PAIR_PROMPT='💼 MNEBYVPN — две личные продажи';
+
+export function offlinePairPrompt(){
+  return {
+    text:OFFLINE_PAIR_PROMPT+'\n\nОтправьте два Telegram-имени через пробел:\n'+
+      '@покупатель1 @покупатель2\n\n'+
+      'Для каждого автоматически используется утверждённая цена '+
+      'месячного тарифа «3 в 1». Операция доступна только владельцу. '+
+      'Ссылки появятся в его закрытом чате после подтверждения услуг.',
+    reply_markup:{force_reply:true,input_field_placeholder:'@buyer_one @buyer_two'},
+  };
+}
+
+export async function registerOfflineSalePair(
+  pool:Pool,operatorId:number,ownerId:number|null,requestKey:string,raw:string,
+):Promise<Page>{
+  if(!authorized(operatorId,ownerId))return page('Недостаточно прав.',[[home]]);
+  if(!/^[1-9][0-9]{0,17}$/.test(requestKey)||
+     typeof raw!=='string'||raw.length>90)return page('Некорректная заявка.',[[back]]);
+  const parts=raw.trim().split(/\s+/);
+  if(parts.length!==2)return page('Укажите ровно два разных Telegram-имени через пробел.',[[back]]);
+  const handles=parts.map(s=>HANDLE.exec(s)?.[1]?.toLowerCase()??null);
+  if(!handles[0]||!handles[1]||handles[0]===handles[1])
+    return page('Необходимы два разных корректных Telegram-имени.',[[back]]);
+  const price=await pool.query<{rub_minor:string|number}>(
+    'SELECT rub_minor FROM billing_plans WHERE id=$1 AND enabled=true '+
+    "AND product='bundle' AND duration_seconds=2592000 AND device_limit=3",
+    [PLAN]);
+  const minor=Number(price.rows[0]?.rub_minor??NaN);
+  if(price.rowCount!==1||!Number.isSafeInteger(minor)||minor<100||
+     minor>10_000_000||minor%100!==0)
+    return page('Утверждённая цена месячного тарифа не подтверждена.',[[back]]);
+  const rub=minor/100;
+  const results:{label:string;orderId:string}[]=[];
+  for(let i=0;i<2;i++){
+    const handle=handles[i]!;
+    // Existing sale can be reused only if its attested amount, order,
+    // exact plan and entitlement are the same; never alter old financial rows.
+    const existing=await pool.query<{
+      order_id:string;declared_amount_minor:string|number;
+      order_amount_minor:string|number;state:string;plan_id:string;
+    }>(
+      'SELECT m.order_id::text,m.declared_amount_minor,'+
+      'o.amount_minor AS order_amount_minor,o.state,t.plan_id '+
+      'FROM manual_sales m JOIN orders o ON o.id=m.order_id '+
+      'JOIN order_terms t ON t.order_id=o.id '+
+      'JOIN entitlements e ON e.source_order_id=o.id AND e.product=$3 '+
+      'WHERE m.operator_telegram_id=$1 AND m.customer_label=$2 '+
+      'AND e.expires_at>clock_timestamp() '+
+      'ORDER BY m.recorded_at DESC LIMIT 2',
+      [String(operatorId),handle,'vpn']);
+    if(existing.rows.length>1)
+      return page('Найдены неоднозначные продажи: ручная проверка необходима.',[[back]]);
+    let orderId:string|undefined;
+    const old=existing.rows[0];
+    if(old){
+      if(old.state!=='PAID'||old.plan_id!==PLAN||
+         Number(old.declared_amount_minor)!==minor||
+         Number(old.order_amount_minor)!==minor)
+        return page('Существующая продажа имеет другие условия. Ничего не изменено.',[[back]]);
+      orderId=old.order_id;
+    }else{
+      const one=await registerOfflineSale(
+        pool,operatorId,ownerId,requestKey+String(i+1),'@'+handle+' '+rub);
+      orderId=/Заказ: ([0-9a-f-]{36})/.exec(one.text)?.[1];
+      if(!orderId)
+        return page('Не удалось оформить все продажи. Уже записанные заказы сохранены. '+
+          'Проверьте список перед повтором.',[
+          [{text:'📋 Посмотреть продажи',callback_data:'offsale:list:0'}],[back]]);
+    }
+    results.push({label:handle,orderId});
+  }
+  return page('✅ Две личные продажи учтены.\n\n'+
+    results.map(x=>'@'+x.label).join(' и ')+
+    '\nПо '+rub+' ₽ · «3 в 1» · 30 дней.\n'+
+    'Одна постоянная VPN-ссылка на покупателя. '+
+    'Ссылки выдаются только владельцу после подтверждения подключения. '+
+    'Отдельная активация трёх VPN-ключей ещё не включена.',[
+      ...results.map(x=>[{text:'🔑 Ссылки @'+x.label,
+        callback_data:'offsale:links:'+x.orderId}]),
+      [{text:'📋 Все продажи',callback_data:'offsale:list:0'}],[home]],
+  );
 }
