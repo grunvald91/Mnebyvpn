@@ -30,7 +30,7 @@ test('three-transport and old two-transport worker outputs advertise only German
     assert.equal(actual.port,'8443');
     assert.equal(actual.search,original.search);
     assert.equal(decodeURIComponent(actual.hash.slice(1)),
-      '🇩🇪 MNEBYVPN · Германия · WebSocket');
+      'мне VPN Германия');
   }
 });
 test('reject publishing an absent or duplicated WebSocket transport',()=>{
@@ -40,10 +40,13 @@ test('reject publishing an absent or duplicated WebSocket transport',()=>{
 });
 test('signed DE Reality registry URLs are not advertised; other countries remain',()=>{
   const de='vless://'+userId+'@de.nodes.example.net:2053?security=reality&'+
-    'type=tcp#'+encodeURIComponent('🇩🇪 MNEBYVPN · Германия · de-node-02 · REALITY');
+    'type=tcp#'+encodeURIComponent('мне VPN Германия');
   const nl='vless://'+userId+'@nl.nodes.example.net:2053?security=reality&'+
-    'type=tcp#'+encodeURIComponent('🇳🇱 MNEBYVPN · Нидерланды · nl-node-02 · REALITY');
+    'type=tcp#'+encodeURIComponent('мне VPN Нидерланды');
   assert.equal(keepSupportedAdditionalTransport(de),false);
+  const legacyDe=de.replace(encodeURIComponent('мне VPN Германия'),
+    encodeURIComponent('🇩🇪 MNEBYVPN · Германия · de-node-02 · REALITY'));
+  assert.equal(keepSupportedAdditionalTransport(legacyDe),false);
   assert.equal(keepSupportedAdditionalTransport(nl),true);
   assert.equal(keepSupportedAdditionalTransport(ws),true);
 });

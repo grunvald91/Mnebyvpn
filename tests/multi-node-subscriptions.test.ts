@@ -44,8 +44,9 @@ test('valid Ed25519 country node is appended with correct flag, without exposing
   const nl=receipt();
   const links=verifiedAdditionalVpnLinks([de,nl],owner,pub,now.getTime());
   assert.equal(links.length,2);
-  assert.ok(links[0].includes(encodeURIComponent('🇩🇪 MNEBYVPN · Германия')));
-  assert.ok(links[1].includes(encodeURIComponent('🇳🇱 MNEBYVPN · Нидерланды')));
+  assert.equal(decodeURIComponent(new URL(links[0]).hash.slice(1)),'мне VPN Германия');
+  assert.equal(decodeURIComponent(new URL(links[1]).hash.slice(1)),'мне VPN Нидерланды');
+  assert.equal(new URL(links[0]).search,new URL(de.profile_uri).search);
   assert.ok(!links[0].includes(de.signature));
   assert.equal(verifiedAdditionalVpnLinks([nl,nl],owner,pub,now.getTime()).length,1);
 });

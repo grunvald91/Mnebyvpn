@@ -8,6 +8,11 @@ export const INCY_SITE_URL='https://mnebyvpn.site';
 export const INCY_BOT_URL='https://t.me/MNEBYVPN_bot';
 export const INCY_SUPPORT_URL='https://t.me/MNEBYVPN_bot?start=support';
 
+/** Customer-facing country label; transport remains in connection fields. */
+export function vpnCountryLabel(countryNameRu:string):string{
+  return 'мне VPN '+countryNameRu;
+}
+
 /** The upstream bridge is validated separately (including its WS auth).
  * Only the canonical verified German WebSocket URI is returned. */
 export function germanWebSocketOnly(validatedNodeProfile:string):string{
@@ -22,7 +27,7 @@ export function germanWebSocketOnly(validatedNodeProfile:string):string{
   });
   if(ws.length!==1)throw Error('Expected one verified German WS transport');
   const uri=new URL(ws[0]!);
-  uri.hash=encodeURIComponent('🇩🇪 MNEBYVPN · Германия · WebSocket');
+  uri.hash=encodeURIComponent(vpnCountryLabel('Германия'));
   return uri.toString();
 }
 
@@ -36,7 +41,8 @@ export function keepSupportedAdditionalTransport(link:string):boolean{
   const label=decodeURIComponent(uri.hash.slice(1));
   return !(uri.protocol==='vless:' &&
     uri.searchParams.get('security')==='reality' &&
-    label.startsWith('🇩🇪 MNEBYVPN'));
+    (label===vpnCountryLabel('Германия') ||
+     label.startsWith('🇩🇪 MNEBYVPN')));
 }
 
 /** INCY expects a Unix expiration timestamp in SECONDS, not a count of days

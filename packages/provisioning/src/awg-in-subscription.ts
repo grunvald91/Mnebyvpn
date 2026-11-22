@@ -10,6 +10,7 @@
 import {createHmac,createPrivateKey,createPublicKey} from 'node:crypto';
 import type {VerifiedAwgMaterial} from './awg-subscriber-material.ts';
 import {renderLocalAwgConfig} from './awg-subscriber-material.ts';
+import {vpnCountryLabel} from './incy-subscription-presentation.ts';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const HEX=/^[a-f0-9]{64}$/;
@@ -67,5 +68,5 @@ export function verifiedIncyAwgLine(
      !conf.includes('Endpoint = fi.mnebyvpn.site:51821'))
     throw Error('Incomplete AmneziaWG 3.1 client profile');
   return 'amneziawg://'+Buffer.from(conf,'utf8').toString('base64url')+
-    '#'+encodeURIComponent('🇫🇮 MNEBYVPN · Финляндия · AmneziaWG 3.1');
+    '#'+encodeURIComponent(vpnCountryLabel('Финляндия'));
 }
