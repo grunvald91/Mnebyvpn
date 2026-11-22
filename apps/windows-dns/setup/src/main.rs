@@ -279,12 +279,12 @@ mod tests {
         let expected = dir.path().join("diagnostic service.exe");
         fs::write(&expected, b"test").unwrap();
         assert!(is_our_service_path(&expected, &expected));
-        let quoted = PathBuf::from(format!("\\\"{}\\\"", expected.display()));
+        let quoted = PathBuf::from(format!("\"{}\"", expected.display()));
         assert!(is_our_service_path(&quoted, &expected));
         let other = dir.path().join("other.exe");
         fs::write(&other, b"test").unwrap();
         assert!(!is_our_service_path(&other, &expected));
-        let injected = PathBuf::from(format!("\\\"{}\\\" --other", expected.display()));
+        let injected = PathBuf::from(format!("\"{}\" --other", expected.display()));
         assert!(!is_our_service_path(&injected, &expected));
     }
 
