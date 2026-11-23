@@ -27,5 +27,7 @@ assert.ok(!settings.includes('id="enable-system-dns"'), 'No duplicate enable but
 assert.ok(!settings.includes('id="disable-system-dns"'), 'No duplicate disable button in Settings');
 assert.ok(js.includes('async function runAllTests()'));
 assert.ok(js.includes('async function requestSystemDns(action)'));
-assert.ok(js.includes("systemDnsState === 'active' ? 'Disable' : 'Enable'"));
+assert.ok(js.includes("const recoveryNeeded = ['active', 'error', 'unknown'].includes(systemDnsState);"), 'Failure state must expose DNS recovery');
+assert.ok(js.includes("recoveryNeeded ? 'Disable' : 'Enable'"), 'Recovery button must send Disable');
+assert.ok(js.includes("'Восстановить DNS'"), 'One-button recovery label missing');
 console.log('UI contract OK: ' + ids.length + ' DOM IDs; single control on main page');
