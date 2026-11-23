@@ -390,7 +390,7 @@ fn upgrade() -> io::Result<()> {
         ensure_regular_file(&previous)?;
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(error)?
+            .map_err(|err| error(err.to_string()))?
             .as_millis();
         let history = expected.with_extension(format!("exe.previous.{nonce}"));
         if history.exists() {
