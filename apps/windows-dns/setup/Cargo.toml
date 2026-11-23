@@ -8,6 +8,7 @@ description = "Windows DNS controller installer and system DNS control"
 mnebydns-journal = { path = "../journal" }
 mnebydns-core = { path = "../dns-core" }
 mnebydns-network = { path = "../network" }
+mnebydns-ipc = { path = "../ipc" }
 windows-service = "0.8.1"
 
 [dev-dependencies]
