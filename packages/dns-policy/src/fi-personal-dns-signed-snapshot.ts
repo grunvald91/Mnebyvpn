@@ -14,6 +14,7 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 const SHA=/^[0-9a-f]{64}$/;
 const UTC=/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
 const MAX_ROWS=2048;
+const GRANT_KEYS=['entitlementId','credentialRevision','tokenSha256','expiresAt','state'] as const;
 
 export type FiDnsGrant={
   entitlementId:string;credentialRevision:number;
@@ -35,6 +36,18 @@ function instant(v:string):number {
 function signedRows(rows:FiDnsGrant[],issuedAtMs:number):FiDnsGrant[] {
   if(!Array.isArray(rows)||rows.length>MAX_ROWS)
     throw Error('Invalid regional DNS grant count');
+  // Returned rows are serialized as JSON. Reject extra fields BEFORE
+  // signing so an unknown plaintext token/metadata cannot be published in a
+  // cryptographically unsigned envelope field.
+  for(const row of rows){
+    if(!row||typeof row!=='object'||Array.isArray(row)||
+      Object.keys(row).length!==GRANT_KEYS.length||
+      !GRANT_KEYS.every(key=>Object.prototype.hasOwnProperty.call(row,key))||
+      typeof row.entitlementId!=='string'||
+      typeof row.tokenSha256!=='string'||
+      typeof row.expiresAt!=='string')
+      throw Error('Unsafe FI DNS grant schema');
+  }
   const seen=new Set<string>();
   const sorted=[...rows].sort((a,b)=>a.tokenSha256<b.tokenSha256?-1:a.tokenSha256>b.tokenSha256?1:0);
   let prev='';
@@ -50,7 +63,10 @@ function signedRows(rows:FiDnsGrant[],issuedAtMs:number):FiDnsGrant[] {
     prev=row.tokenSha256;
     seen.add(row.entitlementId);
   }
-  return sorted.map(g=>({...g}));
+  return sorted.map(g=>({
+    entitlementId:g.entitlementId,credentialRevision:g.credentialRevision,
+    tokenSha256:g.tokenSha256,expiresAt:g.expiresAt,state:g.state,
+  }));
 }
 export function fiDnsSnapshotTranscript(data:FiDnsUnsignedSnapshot):Buffer{
   return Buffer.from(JSON.stringify([
