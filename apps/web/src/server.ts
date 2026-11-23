@@ -702,6 +702,15 @@ function validNodeVpnProfile(value:unknown):value is string {
   return shape==='ws'||shape==='reality_chrome,ws'||
     shape==='reality_chrome,reality_firefox,ws';
 }
+function parseSubscriptionClient(url:URL):'incy'|'karing'|null|'invalid'{
+  const requestedClient=url.searchParams.get('client');
+  if(url.searchParams.size>1||
+     [...url.searchParams.keys()].some(k=>k!=='client')||
+     (requestedClient!==null&&requestedClient!=='incy'&&requestedClient!=='karing')){
+    return 'invalid';
+  }
+  return requestedClient;
+}
 async function liveVpnProfile(owner:{
   telegramUserId:number|null;entitlementId:string;
 }):Promise<string>{
@@ -876,55 +885,60 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
   const subMatch=/^\/sub\/([A-Za-z0-9_-]{43})$/.exec(url.pathname);
   if(req.method==='GET'&&subMatch){
-    if(!subscriptionPool){json(res,503,{code:'SUBSCRIPTION_BACKEND_UNAVAILABLE'});return;}
-    const owner=await subscriptionOwner(subscriptionPool,subMatch[1]);
-    if(!owner){
-      // A naturally expired, non-refunded, non-revoked link keeps only
-      // provider navigation; it NEVER retrieves an Xray/AWG node profile.
-      const expiresAt=await expiredSubscriptionMetadata(
-        subscriptionPool,subMatch[1]);
-      if(!expiresAt){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
-      const requestedClient=url.searchParams.get('client');
-      if(url.searchParams.size>1||
-         [...url.searchParams.keys()].some(k=>k!=='client')||
-         (requestedClient!==null&&requestedClient!=='incy'&&requestedClient!=='karing')){
-        json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
+    if(!subscriptionPool){
+      res.setHeader('Retry-After','30');
+      json(res,503,{code:'SUBSCRIPTION_BACKEND_UNAVAILABLE'});return;
+    }
+    const requestedClient=parseSubscriptionClient(url);
+    if(requestedClient==='invalid'){
+      json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
+    }
+    let owner:Awaited<ReturnType<typeof subscriptionOwner>>;
+    let expiresAt:Date|null=null;
+    try{
+      owner=await subscriptionOwner(subscriptionPool,subMatch[1]);
+      if(!owner){
+        // A naturally expired, non-refunded, non-revoked link keeps only
+        // provider navigation; it NEVER retrieves an Xray/AWG node profile.
+        expiresAt=await expiredSubscriptionMetadata(
+          subscriptionPool,subMatch[1]);
       }
+    }catch{
+      res.setHeader('Retry-After','30');
+      json(res,503,{code:'SUBSCRIPTION_BACKEND_UNAVAILABLE'});return;
+    }
+    if(!owner){
+      if(!expiresAt){json(res,404,{code:'SUBSCRIPTION_NOT_ACTIVE'});return;}
       for(const [name,value] of Object.entries(
         incyExpiredSubscriptionHeaders(expiresAt,requestedClient)))
         res.setHeader(name,value);
       send(res,200,incyExpiredSubscriptionBody(requestedClient),'text/plain; charset=utf-8');
       return;
     }
-    try{
-      const nodeProfile=await liveVpnProfile(owner);
-      // Preserve canonical RU188 entitlement; display verified FI AWG and
-      // German WebSocket only. Hide nonworking German Reality transport.
-      const requestedClient=url.searchParams.get('client');
-      if(url.searchParams.size>1||
-         [...url.searchParams.keys()].some(k=>k!=='client')||
-         (requestedClient!==null&&requestedClient!=='incy'&&requestedClient!=='karing')){
-        json(res,400,{code:'UNSUPPORTED_VPN_CLIENT'});return;
+    // Preserve canonical RU188 entitlement and gather DE WS, verified
+    // additional nodes and FI AWG independently so an outage on one node
+    // never hides a healthy verified profile from another country.
+    const loadGermanProfile=async():Promise<string|null>=>{
+      try{
+        const nodeProfile=await liveVpnProfile(owner);
+        return germanWebSocketOnly(nodeProfile);
+      }catch{
+        console.error('German VPN subscription entry unavailable');
+        return null;
       }
-      const germanProfile=germanWebSocketOnly(nodeProfile);
-      // An experimental registry failure cannot erase a working subscription.
-      // Only fresh cryptographically signed grants produce additional nodes.
-      let extraProfiles:string[]=[];
-      if(extraVpnNodeKey){
-        try{
-          extraProfiles=(await loadAdditionalVpnLinks(
-              subscriptionPool,owner,extraVpnNodeKey))
-              .filter(keepSupportedAdditionalTransport);
-        }catch{
-          console.error('Additional VPN node registry unavailable');
-        }
+    };
+    const loadExtraProfiles=async():Promise<string[]>=>{
+      if(!extraVpnNodeKey)return [];
+      try{
+        return (await loadAdditionalVpnLinks(
+          subscriptionPool,owner,extraVpnNodeKey))
+          .filter(keepSupportedAdditionalTransport);
+      }catch{
+        console.error('Additional VPN node registry unavailable');
+        return [];
       }
-      // Include the same signed FI AmneziaWG entry in every subscription
-      // variant (INCY, Karing and canonical URL). Import support is decided
-      // by the client, not filtered by RU188. The existing entitlement,
-      // release flag, expiry, peer binding and signed FI ACK still gate FI.
-      // An unready node is omitted, never manufactured.
-      let fiProfile:string|null=null;
+    };
+    const loadFiProfile=async():Promise<string|null>=>{
       if(awgInSubscriptionEnabled){
         try{
           const identity=deriveSubscriptionAwgIdentity(
@@ -933,24 +947,38 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
             subscriptionPool,owner,identity.publicKey,
             awgHeaderProtectionKey,awgServerPublicKey,
             sessionHash(subMatch[1]));
-          if(material)fiProfile=verifiedIncyAwgLine(material,identity);
+          return material?verifiedIncyAwgLine(material,identity):null;
         }catch{
           // Never log token, peer keys, private keys or raw response bytes.
           console.error('FI AWG subscription entry unavailable');
         }
       }
-      const profile=[...extraProfiles,
-        ...(fiProfile?[fiProfile]:[]),germanProfile].join('\n');
-      // Per-entitlement INCY metadata refreshed on every request.
-      // A durable subscription URL does not imply unlimited VPN access.
-      for(const [name,value] of Object.entries(
-        incySubscriptionHeaders(owner.expiresAt,requestedClient)))
-        res.setHeader(name,value);
-      send(res,200,incyEncodeActiveSubscription(profile,requestedClient),
-        'text/plain; charset=utf-8');
-    }catch{
-      json(res,503,{code:'VPN_SUBSCRIPTION_UNAVAILABLE'});
+      return null;
+    };
+    const [germanProfile,[extraProfiles,fiProfile]]=await Promise.all([
+      loadGermanProfile(),
+      (async():Promise<[string[],string|null]>=>{
+        // Keep one subscriptionPool checkout per request (max: 3) while
+        // overlapping DE HTTP bridge latency with local DB reads.
+        const extras=await loadExtraProfiles();
+        const fi=await loadFiProfile();
+        return [extras,fi];
+      })(),
+    ]);
+    const profileParts=[...extraProfiles,
+      ...(fiProfile?[fiProfile]:[]),...(germanProfile?[germanProfile]:[])];
+    if(!profileParts.length){
+      res.setHeader('Retry-After','30');
+      json(res,503,{code:'VPN_SUBSCRIPTION_UNAVAILABLE'});return;
     }
+    const profile=profileParts.join('\n');
+    // Per-entitlement INCY metadata refreshed on every request.
+    // A durable subscription URL does not imply unlimited VPN access.
+    for(const [name,value] of Object.entries(
+      incySubscriptionHeaders(owner.expiresAt,requestedClient)))
+      res.setHeader(name,value);
+    send(res,200,incyEncodeActiveSubscription(profile,requestedClient),
+      'text/plain; charset=utf-8');
     return;
   }
 
