@@ -37,6 +37,30 @@ try {
     }
     if (-not $ready) { throw "Protected named pipe did not respond on temporary runner" }
 
+    # Upgrade the installed, idle controller in-place without changing DNS.
+    # This checks the one-time UAC migration path on a disposable runner.
+    RunSetup upgrade
+    $upgraded = $false
+    for ($attempt = 0; $attempt -lt 12; $attempt++) {
+        & cargo run --release --manifest-path apps/windows-dns/ipc/Cargo.toml --example read_status --quiet
+        if ($LASTEXITCODE -eq 0) { $upgraded = $true; break }
+        Start-Sleep -Milliseconds 400
+    }
+    if (-not $upgraded) { throw "Upgraded DNS service did not expose authenticated status/control pipes" }
+
+    # The offline repair operation is intentionally allowed only after the
+    # service stops, and must leave DNS unchanged if no backup is pending.
+    Stop-Service -Name MnebyDnsHealth -ErrorAction Stop
+    $stopped = $false
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        if ((Get-Service -Name MnebyDnsHealth).Status -eq 'Stopped') { $stopped = $true; break }
+        Start-Sleep -Milliseconds 300
+    }
+    if (-not $stopped) { throw "Could not stop idle DNS service for offline repair smoke" }
+    RunSetup repair
+    Start-Service -Name MnebyDnsHealth -ErrorAction Stop
+    Start-Sleep -Milliseconds 500
+
     # Deliberately open the authenticated status pipe without reading or
     # acknowledging. A stuck client must not monopolize the next request.
     $stalled = [System.IO.Pipes.NamedPipeClientStream]::new(
