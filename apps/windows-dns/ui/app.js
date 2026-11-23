@@ -245,16 +245,15 @@ async function refreshStatus() {
     updateEndpoint('ipv6', response.local.ipv6);
     if (response.service) {
       const state = response.service.recovery_state;
-      const label = state === 'pending' ? 'Есть запись восстановления DNS'
-        : state === 'unreadable' ? 'Ошибка чтения защищённого журнала'
-        : 'Связь со службой установлена · журнал проверен';
+      const label = state === 'pending' ? 'Нужен откат'
+        : state === 'unreadable' ? 'Ошибка журнала'
+        : 'Работает';
       get('service-state').textContent = label;
       get('service-state').classList.toggle('bad', state !== 'clear');
       get('service-state').classList.toggle('good', state === 'clear');
     } else {
-      get('service-state').textContent = response.service_error
-        ? 'Служба недоступна: ' + response.service_error
-        : 'Служба не отвечает';
+      get('service-state').textContent = 'Нет связи';
+      get('service-state').title = String(response.service_error || 'Служба не отвечает');
       get('service-state').classList.remove('good');
       get('service-state').classList.add('bad');
     }
