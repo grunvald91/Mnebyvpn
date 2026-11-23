@@ -19,6 +19,24 @@ const reality=(fp:string)=>'vless://'+userId+'@'+host+':2053?'+
   'sni=www.cloudflare.com&fp='+fp+
   '&pbk=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&sid=1111111111111111&spx=%2F';
 
+test('MNEBYVPN is the only subscription brand across country labels',()=>{
+  assert.equal(VPN_BRAND,'MNEBYVPN');
+  for(const name of ['Германия','Финляндия','Нидерланды']){
+    assert.equal(vpnCountryLabel(name),'MNEBYVPN '+name);
+    assert.ok(!vpnCountryLabel(name).startsWith('мне VPN '));
+  }
+  const expiry=new Date('2026-12-20T19:25:00.000Z');
+  const headers=incySubscriptionHeaders(expiry);
+  assert.equal(Buffer.from(headers['profile-title']!.slice(7),'base64').toString('utf8'),
+    VPN_BRAND);
+  for(const client of [null,'incy','karing']){
+    const active=incySubscriptionHeaders(expiry,client);
+    assert.equal(Buffer.from(active['profile-title']!.slice(7),'base64').toString('utf8'),VPN_BRAND);
+    const expired=incyExpiredSubscriptionHeaders(expiry,client);
+    assert.equal(Buffer.from(expired['profile-title']!.slice(7),'base64').toString('utf8'),VPN_BRAND);
+  }
+});
+
 test('three-transport and old two-transport worker outputs advertise only Germany WS',()=>{
   for(const upstream of [ws,[reality('chrome'),ws].join('\n'),
     [reality('chrome'),reality('firefox'),ws].join('\n')]){
@@ -49,6 +67,9 @@ test('signed DE Reality registry URLs are not advertised; other countries remain
   const legacyDe=de.replace(encodeURIComponent('MNEBYVPN Германия'),
     encodeURIComponent('🇩🇪 MNEBYVPN · Германия · de-node-02 · REALITY'));
   assert.equal(keepSupportedAdditionalTransport(legacyDe),false);
+  const legacyRussian=de.replace(encodeURIComponent('MNEBYVPN Германия'),
+    encodeURIComponent('мне VPN Германия'));
+  assert.equal(keepSupportedAdditionalTransport(legacyRussian),false);
   assert.equal(keepSupportedAdditionalTransport(nl),true);
   assert.equal(keepSupportedAdditionalTransport(ws),true);
 });
