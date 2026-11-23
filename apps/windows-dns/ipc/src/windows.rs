@@ -31,6 +31,8 @@ use windows_sys::Win32::System::IO::{
 
 const PIPE_NAME: &str = r"\\.\pipe\mnebydns-status-v1";
 const CONTROL_PIPE_NAME: &str = r"\\.\pipe\mnebydns-control-v1";
+const RECOVERY_PIPE_NAME: &str = r"\\.\pipe\mnebydns-recovery-v1";
+const RECOVERY_SERVICE_NAME: &str = "MnebyDnsRecovery";
 const SERVICE_NAME: &str = "MnebyDnsHealth";
 const CONTROL_ACK: u8 = 0x06;
 const CONTROL_REJECT: u8 = 0x15;
@@ -109,6 +111,7 @@ fn private_pipe_descriptor() -> Result<LocalDescriptor, String> {
 /// with Access Denied even when the pipe belongs to the legitimate service.
 fn validate_server_is_registered_service(
     pipe: windows_sys::Win32::Foundation::HANDLE,
+    service_name: &str,
 ) -> Result<(), String> {
     let mut pipe_pid = 0u32;
     if unsafe { GetNamedPipeServerProcessId(pipe, &mut pipe_pid) } == 0 || pipe_pid == 0 {
@@ -118,7 +121,7 @@ fn validate_server_is_registered_service(
     if scm.0.is_null() {
         return Err("Cannot open Windows Service Control Manager".to_owned());
     }
-    let service_name = wide(SERVICE_NAME);
+    let service_name = wide(service_name);
     let service =
         ScHandle(unsafe { OpenServiceW(scm.0, service_name.as_ptr(), SERVICE_QUERY_STATUS) });
     if service.0.is_null() {
@@ -152,7 +155,7 @@ pub fn read_service_status() -> Result<ServiceReport, String> {
         .write(true)
         .open(PIPE_NAME)
         .map_err(|err| format!("Не удалось открыть канал службы: {err}"))?;
-    validate_server_is_registered_service(file.as_raw_handle().cast())?;
+    validate_server_is_registered_service(file.as_raw_handle().cast(), SERVICE_NAME)?;
     let mut buf = Vec::new();
     let mut reader = BufReader::new(&file).take(MAX_FRAME as u64 + 1);
     // The server sends one newline-terminated, bounded JSON object.
@@ -327,6 +330,7 @@ pub enum ControlRequest {
     Disable,
     /// A restricted DNS hostname, never an executable path or arbitrary shell.
     ConfigureAndEnable(String),
+    EmergencyRestore,
 }
 impl ControlRequest {
     fn byte(&self) -> u8 {
@@ -334,12 +338,14 @@ impl ControlRequest {
             Self::EnableSaved => 0x31,
             Self::Disable => 0x30,
             Self::ConfigureAndEnable(_) => CONTROL_CONFIGURE_AND_ENABLE,
+            Self::EmergencyRestore => 0x33,
         }
     }
     fn from_byte(value: u8) -> Option<Self> {
         match value {
             0x31 => Some(Self::EnableSaved),
             0x30 => Some(Self::Disable),
+            0x33 => Some(Self::EmergencyRestore),
             _ => None,
         }
     }
@@ -348,16 +354,33 @@ impl ControlRequest {
 /// Only fixed DNS operations are accepted. A new DoT endpoint is validated
 /// against DNS hostname rules by the privileged service before persistence.
 pub fn send_control(request: ControlRequest) -> Result<(), String> {
-    let pipe_name = wide(CONTROL_PIPE_NAME);
+    send_request(CONTROL_PIPE_NAME, SERVICE_NAME, request)
+}
+
+/// Independent recovery broker installed by the initial UAC.
+pub fn send_recovery() -> Result<(), String> {
+    send_request(
+        RECOVERY_PIPE_NAME,
+        RECOVERY_SERVICE_NAME,
+        ControlRequest::EmergencyRestore,
+    )
+}
+
+fn send_request(
+    pipe_address: &str,
+    expected_service: &str,
+    request: ControlRequest,
+) -> Result<(), String> {
+    let pipe_name = wide(pipe_address);
     if unsafe { WaitNamedPipeW(pipe_name.as_ptr(), CLIENT_WAIT_MS) } == 0 {
         return Err("CONTROL_PIPE_UNAVAILABLE".to_owned());
     }
     let mut file = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .open(CONTROL_PIPE_NAME)
+        .open(pipe_address)
         .map_err(|_| "CONTROL_PIPE_UNAVAILABLE".to_owned())?;
-    validate_server_is_registered_service(file.as_raw_handle().cast())?;
+    validate_server_is_registered_service(file.as_raw_handle().cast(), expected_service)?;
     file.write_all(&[request.byte()])
         .map_err(|_| "Не удалось отправить команду службе DNS".to_owned())?;
     if let ControlRequest::ConfigureAndEnable(host) = &request {
@@ -457,13 +480,32 @@ fn serve_control_client(
 pub fn serve_local_control(
     handler: impl Fn(ControlRequest) -> Result<(), String>,
 ) -> Result<(), String> {
+    serve_control_pipe(CONTROL_PIPE_NAME, handler)
+}
+
+/// Separate local recovery endpoint is restricted to one fixed opcode.
+pub fn serve_local_recovery(
+    handler: impl Fn() -> Result<(), String>,
+) -> Result<(), String> {
+    serve_control_pipe(RECOVERY_PIPE_NAME, move |request| {
+        if request != ControlRequest::EmergencyRestore {
+            return Err("Recovery service only accepts restore".to_owned());
+        }
+        handler()
+    })
+}
+
+fn serve_control_pipe(
+    pipe_address: &str,
+    handler: impl Fn(ControlRequest) -> Result<(), String>,
+) -> Result<(), String> {
     let desc = private_pipe_descriptor()?;
     let mut attributes = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: desc.0,
         bInheritHandle: 0,
     };
-    let name = wide(CONTROL_PIPE_NAME);
+    let name = wide(pipe_address);
     let pipe = Handle(unsafe {
         CreateNamedPipeW(
             name.as_ptr(),
@@ -510,6 +552,7 @@ mod control_tests {
         );
         assert_eq!(ControlRequest::from_byte(0x21), None);
         assert_eq!(ControlRequest::from_byte(0xff), None);
+        assert_eq!(ControlRequest::from_byte(0x33), Some(ControlRequest::EmergencyRestore));
         assert_eq!(ControlRequest::from_byte(CONTROL_CONFIGURE_AND_ENABLE), None);
         assert_eq!(
             ControlRequest::ConfigureAndEnable("dns.example.net".to_owned()).byte(),
