@@ -727,11 +727,11 @@ get('dot-host').addEventListener('input', () => {
   get('proxy-diag-state').textContent = 'Не проверено';
 });
 
+// Startup is read-only. No redundant Rust round-trip or adapter enumeration.
+renderHomeConnection();
 if (typeof invoke === 'function') {
-  invoke('get_ui_mode').catch(() => {
-    get('status').textContent = 'Нет связи с приложением Windows';
-  });
-  // The only operation on startup is a read-only status refresh.
-  renderHomeConnection();
   void refreshSystemDns();
+} else {
+  systemDnsState = 'unknown';
+  renderHomeConnection();
 }
