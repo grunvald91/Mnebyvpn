@@ -12,10 +12,10 @@
       {
         "label": "main",
         "title": "мнебыDNS — Windows",
-        "width": 520,
-        "height": 760,
+        "width": 460,
+        "height": 510,
         "minWidth": 360,
-        "minHeight": 560,
+        "minHeight": 420,
         "resizable": true,
         "backgroundColor": "#09131a"
       }
