@@ -68,9 +68,9 @@
         <button class="secondary" id="restore-system-dns" type="button">Восстановить исходные настройки</button>
         <button class="secondary" id="refresh-system-dns" type="button">Обновить состояние</button>
         <button class="secondary" id="repair-system-dns" type="button">Аварийное восстановление из резервных настроек</button>
-        <p class="muted">Аварийное восстановление допускается только при остановленной службе. Резервные записи удаляются по отдельности и только после точной проверки DNS.</p>
-        <button class="secondary" id="upgrade-system-service" type="button">Обновить установленную службу (однократно)</button>
-        <p class="muted">Обновление старой службы доступно только после отключения DNS и подтверждённого восстановления исходных настроек. Для обновления Windows один раз запросит UAC.</p>
+        <p class="muted">Независимая служба восстановления работает без повторного UAC, даже когда основной DNS-контроллер недоступен. Резервные записи сохраняются до подтверждения восстановления.</p>
+        <button class="secondary" id="upgrade-system-service" type="button">Миграция старой версии службы</button>
+        <p class="muted">Это разовая миграция со старой архитектуры. Для замены прежней службы Windows потребуется одно подтверждение администратора; после установки двух служб обычные действия и восстановление выполняются без UAC.</p>
         <p class="dot-status" id="upgrade-system-message" role="status" aria-live="polite"></p>
         <p class="dot-status" id="system-dns-message" role="status" aria-live="polite">Состояние службы ещё не проверялось.</p>
         <p class="muted">При выключении восстанавливаются исходные режимы и адреса DNS каждого адаптера. Пока восстановление не подтверждено, журнал резервных настроек сохраняется.</p>
@@ -84,7 +84,7 @@
       <input class="dot-input" id="dot-host" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="253" placeholder="ваш-ключ.dns.mnebyvpn.site" aria-describedby="dot-help">
       <p class="muted dot-help" id="dot-help">Только имя сервера, без https:// и порта. При включении адрес сохраняется в защищённой конфигурации Windows; в интерфейсе ключ не сохраняется.</p>
       <button class="secondary" id="apply-new-dot" type="button">Применить этот DNS-сервер</button>
-      <p class="muted">При смене сервера потребуется разовое подтверждение администратора. Обычное включение и выключение сохранённого профиля выполняется без UAC.</p>
+      <p class="muted">При первом запуске потребуется одно подтверждение администратора для установки служб. После этого смена DoT-сервера, включение, выключение и восстановление выполняются без UAC.</p>
       <button class="secondary main-action" id="run-all-tests" type="button">Проверить подключение <span aria-hidden="true">→</span></button>
       <div class="test-flow" aria-label="Результаты проверки">
         <div class="test-step"><span class="step-number">01</span><div class="step-body"><div class="step-title"><strong>Защищённый DNS</strong><span class="step-tag">TLS + A / AAAA</span></div><p class="dot-status" id="dot-status" role="status" aria-live="polite">Ожидает проверки</p></div></div>
