@@ -394,24 +394,20 @@ async function refreshSystemDns() {
     get('system-dns-state').textContent = labels[state] || state;
     get('system-dns-state').classList.toggle('good', state === 'active');
     get('system-dns-state').classList.toggle('bad', state === 'error');
-    const details = [];
-    if (report.adapter_count !== null && report.adapter_count !== undefined) {
-      details.push('Адаптеров: ' + report.adapter_count);
-    }
-    if (report.last_error) details.push(report.last_error);
-    if (report.probe) {
-      details.push('DNS IPv4: ' + (report.probe.ipv4.ok ? 'OK' : 'ошибка'));
-      details.push('DNS IPv6: ' + (report.probe.ipv6.ok ? 'OK' : 'ошибка'));
-    }
-    get('system-dns-message').textContent = details.join(' · ') || 'Состояние службы получено.';
+    // Only actionable errors occupy space; technical measurements live
+    // in the Diagnostics tab instead of repeating under the profile field.
+    get('system-dns-message').textContent = report.last_error ||
+      (report.recovery_state !== 'clear' ? 'Восстановление DNS не завершено' : '');
     renderHomeConnection();
     if (systemDnsLastError && (state === 'error' || (state === 'disabled' && report.recovery_state === 'pending'))) {
       get('home-action-hint').textContent = 'Причина: ' + systemDnsLastError;
     }
     if (state === 'disabled' && report.recovery_state === 'pending') {
       systemDnsState = 'error';
+      get('system-dns-state').textContent = 'Нужен откат';
+      get('system-dns-state').classList.add('bad');
       renderHomeConnection();
-      get('home-action-hint').textContent = 'Настройки DNS не восстановлены полностью. Проверьте «Диагностика».';
+      get('home-action-hint').textContent = 'Восстановление не завершено';
     }
     return systemDnsState;
   } catch (error) {
@@ -421,8 +417,8 @@ async function refreshSystemDns() {
     if (uninstalled) systemDnsConfigured = false;
     get('system-dns-state').textContent = uninstalled ? 'Не установлена' : 'Служба недоступна';
     get('system-dns-message').textContent = uninstalled
-      ? 'Служба установится автоматически при первом включении.'
-      : 'Не удалось прочитать состояние DNS: ' + String(error);
+      ? ''
+      : 'Служба: ' + String(error);
     renderHomeConnection();
     return systemDnsState;
   }
@@ -572,6 +568,11 @@ window.addEventListener('focus', () => {
 });
 
 get('refresh-dns').addEventListener('click', refreshStatus);
+document.querySelector('.adapter-section').addEventListener('toggle', (event) => {
+  if (event.currentTarget.open && !adapters.length && !adaptersLoading) {
+    void refreshAdapters();
+  }
+});
 get('refresh-adapters').addEventListener('click', refreshAdapters);
 get('toggle-all-adapters').addEventListener('click', () => {
   showAllAdapters = !showAllAdapters;
