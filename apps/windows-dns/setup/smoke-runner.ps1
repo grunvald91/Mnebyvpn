@@ -59,6 +59,27 @@ try {
     }
     if (-not $upgradedAgain) { throw "Second service upgrade broke protected IPC" }
 
+    # Simulate a corrupted replacement executable on the disposable runner:
+    # the upgrader MUST reject it and restore the previously running service.
+    $stagedSource = Join-Path (Split-Path -Parent $setup) 'mnebydns-health-service.exe'
+    $verifiedSource = [System.IO.File]::ReadAllBytes($stagedSource)
+    try {
+        Copy-Item -LiteralPath $setup -Destination $stagedSource -Force
+        $bad = Start-Process -FilePath $setup -ArgumentList @('upgrade') -Wait -PassThru
+        if ($bad.ExitCode -eq 0) {
+            throw 'CRITICAL: upgrade accepted an executable that is not a Windows service'
+        }
+        $rollbackVerified = $false
+        for ($attempt = 0; $attempt -lt 12; $attempt++) {
+            & cargo run --release --manifest-path apps/windows-dns/ipc/Cargo.toml --example read_status --quiet
+            if ($LASTEXITCODE -eq 0) { $rollbackVerified = $true; break }
+            Start-Sleep -Milliseconds 500
+        }
+        if (-not $rollbackVerified) { throw 'CRITICAL: failed upgrade did not restore prior service IPC' }
+    } finally {
+        [System.IO.File]::WriteAllBytes($stagedSource, $verifiedSource)
+    }
+
     # The offline repair operation is intentionally allowed only after the
     # service stops, and must leave DNS unchanged if no backup is pending.
     Stop-Service -Name MnebyDnsHealth -ErrorAction Stop
