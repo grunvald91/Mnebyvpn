@@ -445,7 +445,9 @@ async function watchSystemDnsAction(action, generation) {
 
 async function requestSystemDns(action) {
   if (systemDnsLoading || systemDnsOperationPending || typeof invoke !== 'function') return;
-  const host = action === 'Enable' ? get('dot-host').value.trim() : null;
+  // Once configured, the normal power button reuses the protected profile.
+  // A new hostname is installed only through the explicit Settings action.
+  const host = action === 'Enable' && !systemDnsConfigured ? get('dot-host').value.trim() : null;
   if (action === 'Enable' && !host && !systemDnsConfigured) {
     openTab('settings');
     get('dot-host').focus();
@@ -477,6 +479,62 @@ async function requestSystemDns(action) {
     get('home-action-hint').textContent = 'Ошибка запуска: ' + String(error);
   }
 }
+
+get('apply-new-dot').addEventListener('click', async () => {
+  const host = get('dot-host').value.trim();
+  if (!host) {
+    get('system-dns-message').textContent = 'Введите адрес персонального DoT-сервера.';
+    get('dot-host').focus();
+    return;
+  }
+  if (systemDnsOperationPending || systemDnsLoading || systemDnsState === 'active') {
+    get('system-dns-message').textContent =
+      'Отключите Smart DNS перед сменой сервера и дождитесь восстановления DNS.';
+    return;
+  }
+  if (!['disabled', 'not-installed'].includes(systemDnsState)) {
+    get('system-dns-message').textContent =
+      'Состояние службы не подтверждено. Сначала проверьте его, прежде чем менять DNS.';
+    return;
+  }
+  systemDnsOperationPending = true;
+  systemDnsPendingAction = 'Enable';
+  const generation = ++systemDnsPollGeneration;
+  renderHomeConnection();
+  try {
+    const message = await invoke('launch_system_dns_action', { action: 'Enable', host });
+    get('system-dns-message').textContent = message;
+    void watchSystemDnsAction('Enable', generation);
+  } catch (error) {
+    systemDnsOperationPending = false;
+    systemDnsPendingAction = null;
+    get('system-dns-message').textContent = 'Не удалось сохранить DNS-сервер: ' + String(error);
+    renderHomeConnection();
+  }
+});
+
+get('upgrade-system-service').addEventListener('click', async () => {
+  if (systemDnsOperationPending || systemDnsLoading) return;
+  const button = get('upgrade-system-service');
+  if (systemDnsState === 'active' || systemDnsState === 'starting' || systemDnsState === 'restoring') {
+    get('upgrade-system-message').textContent =
+      'Сначала отключите Smart DNS и проверьте восстановление исходных настроек.';
+    return;
+  }
+  button.disabled = true;
+  get('upgrade-system-message').textContent =
+    'Проверяю защищённый журнал и состояние службы перед обновлением…';
+  try {
+    const message = await invoke('launch_system_dns_action', { action: 'Upgrade', host: null });
+    get('upgrade-system-message').textContent = message;
+    await refreshSystemDns();
+  } catch (error) {
+    get('upgrade-system-message').textContent =
+      'Не удалось безопасно обновить службу: ' + String(error);
+  } finally {
+    button.disabled = false;
+  }
+});
 
 get('toggle-system-dns').addEventListener('click', () => {
   void requestSystemDns(systemDnsState === 'active' ? 'Disable' : 'Enable');
