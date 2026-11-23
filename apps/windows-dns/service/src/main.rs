@@ -746,7 +746,10 @@ fn main() -> windows_service::Result<()> {
     let recovery_image = std::env::current_exe()
         .ok()
         .and_then(|path| path.file_name().map(|name| name.to_os_string()))
-        .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("mnebydns-recovery-service.exe"));
+        .is_some_and(|name| {
+            name.to_string_lossy()
+                .eq_ignore_ascii_case("mnebydns-recovery-service.exe")
+        });
     if recovery_image {
         service_dispatcher::start(RECOVERY_SERVICE_NAME, ffi_recovery_main)
     } else {
