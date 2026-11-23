@@ -20,11 +20,11 @@ use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeServerProcessId,
     WaitNamedPipeW, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
 };
-use windows_sys::Win32::System::Threading::CreateEventW;
 use windows_sys::Win32::System::Services::{
-    CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatusEx,
-    SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_STATUS_PROCESS,
+    CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, SC_MANAGER_CONNECT,
+    SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_STATUS_PROCESS,
 };
+use windows_sys::Win32::System::Threading::CreateEventW;
 use windows_sys::Win32::System::IO::{
     CancelIoEx, GetOverlappedResult, GetOverlappedResultEx, OVERLAPPED,
 };
@@ -57,7 +57,9 @@ struct ScHandle(windows_sys::Win32::System::Services::SC_HANDLE);
 impl Drop for ScHandle {
     fn drop(&mut self) {
         if !self.0.is_null() {
-            unsafe { CloseServiceHandle(self.0); }
+            unsafe {
+                CloseServiceHandle(self.0);
+            }
         }
     }
 }
@@ -115,7 +117,8 @@ fn validate_server_is_registered_service(
         return Err("Cannot open Windows Service Control Manager".to_owned());
     }
     let service_name = wide(SERVICE_NAME);
-    let service = ScHandle(unsafe { OpenServiceW(scm.0, service_name.as_ptr(), SERVICE_QUERY_STATUS) });
+    let service =
+        ScHandle(unsafe { OpenServiceW(scm.0, service_name.as_ptr(), SERVICE_QUERY_STATUS) });
     if service.0.is_null() {
         return Err("Cannot query installed DNS Windows service".to_owned());
     }
@@ -357,7 +360,9 @@ pub fn send_control(request: ControlRequest) -> Result<(), String> {
         .map_err(|_| "Служба DNS не подтвердила команду".to_owned())?;
     match reply[0] {
         CONTROL_ACK => Ok(()),
-        CONTROL_REJECT => Err("Служба отклонила запрос. Проверьте настройки и состояние DNS.".to_owned()),
+        CONTROL_REJECT => {
+            Err("Служба отклонила запрос. Проверьте настройки и состояние DNS.".to_owned())
+        }
         _ => Err("Неизвестный ответ от службы DNS".to_owned()),
     }
 }
@@ -376,7 +381,11 @@ fn serve_control_client(
     let allowed = ControlRequest::from_byte(opcode[0])
         .ok_or_else(|| "Unsupported DNS control command".to_owned());
     let accepted = allowed.and_then(handler).is_ok();
-    let byte = if accepted { CONTROL_ACK } else { CONTROL_REJECT };
+    let byte = if accepted {
+        CONTROL_ACK
+    } else {
+        CONTROL_REJECT
+    };
     bounded_io(pipe, "Control response", |overlapped, count| unsafe {
         WriteFile(pipe, (&byte as *const u8).cast(), 1, count, overlapped)
     })?;
@@ -401,11 +410,18 @@ pub fn serve_local_control(
             name.as_ptr(),
             PIPE_ACCESS_DUPLEX | FIRST_INSTANCE | FILE_FLAG_OVERLAPPED,
             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-            1, 128, 128, 500, &mut attributes,
+            1,
+            128,
+            128,
+            500,
+            &mut attributes,
         )
     });
     if pipe.0 == INVALID_HANDLE_VALUE {
-        return Err(format!("Cannot create protected DNS control pipe: {}", unsafe { GetLastError() }));
+        return Err(format!(
+            "Cannot create protected DNS control pipe: {}",
+            unsafe { GetLastError() }
+        ));
     }
     loop {
         let connected = wait_for_connection(pipe.0)?;
@@ -414,7 +430,9 @@ pub fn serve_local_control(
                 eprintln!("DNS control request rejected: {err}");
             }
         }
-        unsafe { DisconnectNamedPipe(pipe.0); }
+        unsafe {
+            DisconnectNamedPipe(pipe.0);
+        }
     }
 }
 
@@ -423,8 +441,14 @@ mod control_tests {
     use super::*;
     #[test]
     fn control_opcode_is_small_and_allowlisted() {
-        assert_eq!(ControlRequest::from_byte(0x31), Some(ControlRequest::EnableSaved));
-        assert_eq!(ControlRequest::from_byte(0x30), Some(ControlRequest::Disable));
+        assert_eq!(
+            ControlRequest::from_byte(0x31),
+            Some(ControlRequest::EnableSaved)
+        );
+        assert_eq!(
+            ControlRequest::from_byte(0x30),
+            Some(ControlRequest::Disable)
+        );
         assert_eq!(ControlRequest::from_byte(0x21), None);
         assert_eq!(ControlRequest::from_byte(0xff), None);
     }
