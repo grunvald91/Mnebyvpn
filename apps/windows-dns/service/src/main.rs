@@ -307,6 +307,7 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
                 "Сначала установите персональный DNS-профиль с подтверждением UAC".to_owned()
             })?;
             if request == ControlRequest::EnableSaved {
+                journal.ensure_safe_to_enable()?;
                 if config.upstream_addresses.is_empty() {
                     return Err("Не найден сохранённый IP DoT-сервера".to_owned());
                 }
