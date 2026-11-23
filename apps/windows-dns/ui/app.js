@@ -329,6 +329,7 @@ let systemDnsOperationPending = false;
 let systemDnsPendingAction = null;
 let systemDnsState = 'checking';
 let systemDnsConfigured = false;
+let systemDnsLastError = null;
 const SYSTEM_DNS_POLL_INTERVAL_MS = 2000;
 const SYSTEM_DNS_POLL_MAX_ATTEMPTS = 24;
 
@@ -384,6 +385,7 @@ async function refreshSystemDns() {
     const state = report.dns_state || 'unknown';
     systemDnsState = state;
     systemDnsConfigured = report.configured === true;
+    systemDnsLastError = report.last_error || null;
     const labels = {
       disabled: 'Выключен',
       starting: 'Настраивается',
@@ -406,8 +408,17 @@ async function refreshSystemDns() {
     }
     get('system-dns-message').textContent = details.join(' · ') || 'Состояние службы получено.';
     renderHomeConnection();
-    return state;
+    if (systemDnsLastError && (state === 'error' || (state === 'disabled' && report.recovery_state === 'pending'))) {
+      get('home-action-hint').textContent = 'Причина: ' + systemDnsLastError;
+    }
+    if (state === 'disabled' && report.recovery_state === 'pending') {
+      systemDnsState = 'error';
+      renderHomeConnection();
+      get('home-action-hint').textContent = 'Настройки DNS не восстановлены полностью. Проверьте «Диагностика».';
+    }
+    return systemDnsState;
   } catch (error) {
+    systemDnsLastError = String(error);
     const uninstalled = String(error).includes('SERVICE_NOT_INSTALLED');
     systemDnsState = uninstalled ? 'not-installed' : 'unknown';
     if (uninstalled) systemDnsConfigured = false;
