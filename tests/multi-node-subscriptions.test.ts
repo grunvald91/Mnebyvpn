@@ -44,8 +44,8 @@ test('valid Ed25519 node shows country-only name, without exposing signature',()
   const nl=receipt();
   const links=verifiedAdditionalVpnLinks([de,nl],owner,pub,now.getTime());
   assert.equal(links.length,2);
-  assert.equal(decodeURIComponent(new URL(links[0]).hash.slice(1)),'мне VPN Германия');
-  assert.equal(decodeURIComponent(new URL(links[1]).hash.slice(1)),'мне VPN Нидерланды');
+  assert.equal(decodeURIComponent(new URL(links[0]).hash.slice(1)),'MNEBYVPN Германия');
+  assert.equal(decodeURIComponent(new URL(links[1]).hash.slice(1)),'MNEBYVPN Нидерланды');
   assert.equal(new URL(links[0]).search,new URL(de.profile_uri).search);
   assert.ok(!links[0].includes(de.signature));
   assert.equal(verifiedAdditionalVpnLinks([nl,nl],owner,pub,now.getTime()).length,1);
