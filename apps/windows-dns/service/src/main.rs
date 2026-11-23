@@ -3,7 +3,9 @@
 //! configuration, and crash-safe recovery journal. No plaintext fallback.
 
 use mnebydns_core::{now_ms, probe_loopback, LoopbackDnsServer, ServiceReport};
-use mnebydns_ipc::{send_control, serve_local_control, serve_local_recovery, serve_local_status, ControlRequest};
+use mnebydns_ipc::{
+    send_control, serve_local_control, serve_local_recovery, serve_local_status, ControlRequest,
+};
 use mnebydns_journal::{ControllerConfig, ProtectedJournal, SystemDnsJournal};
 use mnebydns_network::{
     apply_adapter_loopback_dns, capture_adapter_dns, list_adapters, restore_adapter_dns,
@@ -21,7 +23,8 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 use windows_service::service::{
-    ServiceAccess, ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus, ServiceType,
+    ServiceAccess, ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState,
+    ServiceStatus, ServiceType,
 };
 use windows_service::service_control_handler::{self, ServiceControlHandlerResult};
 use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
@@ -322,9 +325,7 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
                         .read_controller_config()?
                         .is_some_and(|config| config.enabled)
                     {
-                        return Err(
-                            "Сначала отключите Smart DNS перед сменой сервера".to_owned(),
-                        );
+                        return Err("Сначала отключите Smart DNS перед сменой сервера".to_owned());
                     }
                     let host = host.trim().to_ascii_lowercase();
                     let addresses = mnebydns_core::resolve_dot_addresses(&host)?;
@@ -339,21 +340,23 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
                 }
                 ControlRequest::EnableSaved => {
                     journal.ensure_safe_to_enable()?;
-                    let mut config = journal.read_controller_config()?.ok_or_else(|| {
-                        "Нет сохранённого персонального DoT-сервера".to_owned()
-                    })?;
+                    let mut config = journal
+                        .read_controller_config()?
+                        .ok_or_else(|| "Нет сохранённого персонального DoT-сервера".to_owned())?;
                     if config.upstream_addresses.is_empty() {
                         return Err("Не найден сохранённый IP DoT-сервера".to_owned());
                     }
                     config.enabled = true;
                     journal.write_controller_config(&config)
                 }
-                ControlRequest::EmergencyRestore => {
-                    Err("Recovery operations are handled only by the independent recovery service".to_owned())
-                }
+                ControlRequest::EmergencyRestore => Err(
+                    "Recovery operations are handled only by the independent recovery service"
+                        .to_owned(),
+                ),
                 ControlRequest::Disable => {
                     let mut config = journal.read_controller_config()?.ok_or_else(|| {
-                        "Не удалось найти профиль для выключения; откройте восстановление".to_owned()
+                        "Не удалось найти профиль для выключения; откройте восстановление"
+                            .to_owned()
                     })?;
                     config.enabled = false;
                     journal.write_controller_config(&config)
@@ -655,15 +658,16 @@ fn recover_dns_without_uac() -> Result<(), String> {
         config.enabled = false;
         journal.write_controller_config(&config)?;
     }
-    let manager = ServiceManager::local_computer(
-        None::<&str>,
-        ServiceManagerAccess::CONNECT,
-    ).map_err(|e| e.to_string())?;
+    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
+        .map_err(|e| e.to_string())?;
     if let Ok(service) = manager.open_service(
         SERVICE_NAME,
         ServiceAccess::QUERY_STATUS | ServiceAccess::STOP,
     ) {
-        if service.query_status().map_err(|e| e.to_string())?.current_state
+        if service
+            .query_status()
+            .map_err(|e| e.to_string())?
+            .current_state
             != ServiceState::Stopped
         {
             let _ = send_control(ControlRequest::Disable);
@@ -680,17 +684,25 @@ fn recover_dns_without_uac() -> Result<(), String> {
             }
             // It must not race with a live controller. Stop it via SCM, then
             // do the snapshot restoration as an independent LocalSystem app.
-            service.stop().map_err(|e| format!("Cannot safely stop main DNS service: {e}"))?;
+            service
+                .stop()
+                .map_err(|e| format!("Cannot safely stop main DNS service: {e}"))?;
             let started = std::time::Instant::now();
             while started.elapsed() < Duration::from_secs(25) {
-                if service.query_status().map_err(|e| e.to_string())?.current_state
+                if service
+                    .query_status()
+                    .map_err(|e| e.to_string())?
+                    .current_state
                     == ServiceState::Stopped
                 {
                     break;
                 }
                 thread::sleep(Duration::from_millis(400));
             }
-            if service.query_status().map_err(|e| e.to_string())?.current_state
+            if service
+                .query_status()
+                .map_err(|e| e.to_string())?
+                .current_state
                 != ServiceState::Stopped
             {
                 return Err("DNS service is still running. Refusing concurrent recovery; saved snapshots preserved".to_owned());
