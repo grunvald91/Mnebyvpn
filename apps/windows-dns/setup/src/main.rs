@@ -317,7 +317,7 @@ fn ensure_upgrade_is_safe(journal: &ProtectedJournal) -> io::Result<()> {
 fn restore_service_start_type(original: ServiceStartType) -> io::Result<()> {
     let value = match original {
         ServiceStartType::AutoStart => "auto",
-        ServiceStartType::DemandStart => "demand",
+        ServiceStartType::OnDemand => "demand",
         ServiceStartType::Disabled => "disabled",
         _ => {
             return Err(error(
