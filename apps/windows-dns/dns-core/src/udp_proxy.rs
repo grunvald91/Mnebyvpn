@@ -18,8 +18,11 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-const MAX_UDP_PACKET: usize = 1232;
-const MAX_TCP_FRAME: usize = 4096;
+// Accept larger EDNS queries instead of silently dropping them. Replies
+// are kept below the fragmentation-safe limit and marked TC when needed.
+const MAX_UDP_PACKET: usize = 4096;
+const MAX_UDP_RESPONSE: usize = 1232;
+const MAX_TCP_FRAME: usize = u16::MAX as usize;
 const TCP_READ_TIMEOUT: Duration = Duration::from_millis(3000);
 const WORKERS: usize = 2;
 const RECV_POLL: Duration = Duration::from_millis(100);
@@ -41,8 +44,7 @@ fn read_query(packet: &[u8]) -> Option<QueryInfo> {
     }
     if u16::from_be_bytes([packet[4], packet[5]]) != 1
         || packet[6..10].iter().any(|&n| n != 0)
-        || packet[10] != 0
-        || packet[11] > 1
+        || u16::from_be_bytes([packet[10], packet[11]]) > 16
     {
         return None;
     }
@@ -75,25 +77,60 @@ fn read_query(packet: &[u8]) -> Option<QueryInfo> {
     if question_end > packet.len() {
         return None;
     }
+    // Forward additional records (EDNS/COOKIE/TSIG etc.) transparently,
+    // after bounded structural validation. Only the OPT UDP size affects
+    // local fragmentation; all records remain untouched over authenticated DoT.
     let mut udp_limit = 512usize;
-    if packet[11] == 1 {
-        // One EDNS OPT pseudo-RR is supported. Other additional RR types are
-        // rejected to avoid parsing ambiguity in this bounded prototype.
-        let header_end = question_end.checked_add(11)?;
-        if header_end > packet.len()
-            || packet[question_end] != 0
-            || &packet[question_end + 1..question_end + 3] != [0, 41]
-        {
+    let mut position = question_end;
+    let mut seen_opt = false;
+    let additional = u16::from_be_bytes([packet[10], packet[11]]);
+    for _ in 0..additional {
+        let name_start = position;
+        let mut ended = false;
+        for _ in 0..128 {
+            let label = *packet.get(position)?;
+            if label & 0xc0 == 0xc0 {
+                position = position.checked_add(2)?;
+                if position > packet.len() {
+                    return None;
+                }
+                ended = true;
+                break;
+            }
+            if label == 0 {
+                position += 1;
+                ended = true;
+                break;
+            }
+            if label > 63 {
+                return None;
+            }
+            position = position.checked_add(label as usize + 1)?;
+            if position > packet.len() {
+                return None;
+            }
+        }
+        if !ended {
             return None;
         }
-        let advertised = u16::from_be_bytes([packet[question_end + 3], packet[question_end + 4]]);
-        udp_limit = usize::from(advertised).clamp(512, MAX_UDP_PACKET);
-        let opt_len =
-            u16::from_be_bytes([packet[question_end + 9], packet[question_end + 10]]) as usize;
-        if header_end.checked_add(opt_len)? != packet.len() {
+        let header_end = position.checked_add(10)?;
+        let fixed = packet.get(position..header_end)?;
+        let rr_type = u16::from_be_bytes([fixed[0], fixed[1]]);
+        let rr_class = u16::from_be_bytes([fixed[2], fixed[3]]);
+        let rdlen = usize::from(u16::from_be_bytes([fixed[8], fixed[9]]));
+        position = header_end.checked_add(rdlen)?;
+        if position > packet.len() {
             return None;
         }
-    } else if question_end != packet.len() {
+        if rr_type == 41 {
+            if seen_opt || packet.get(name_start) != Some(&0u8) {
+                return None;
+            }
+            seen_opt = true;
+            udp_limit = usize::from(rr_class).clamp(512, MAX_UDP_RESPONSE);
+        }
+    }
+    if position != packet.len() {
         return None;
     }
     Some(QueryInfo {
@@ -103,12 +140,22 @@ fn read_query(packet: &[u8]) -> Option<QueryInfo> {
 }
 
 fn valid_upstream_answer(request: &[u8], answer: &[u8], question_end: usize) -> bool {
-    answer.len() >= question_end
-        && answer.len() <= MAX_DNS_FRAME
-        && answer[0..2] == request[0..2]
-        && answer[2] & 0xf8 == 0x80
-        && answer[4..6] == [0, 1]
-        && answer[12..question_end] == request[12..question_end]
+    if answer.len() < question_end
+        || answer.len() > MAX_DNS_FRAME
+        || answer[0..2] != request[0..2]
+        || answer[2] & 0xf8 != 0x80
+        || answer[4..6] != [0, 1]
+    {
+        return false;
+    }
+    // DNS names are case-insensitive. Some resolvers normalize QNAME
+    // capitalization; rejecting these valid replies causes false SERVFAIL.
+    let qname_end = question_end.saturating_sub(4);
+    request[12..qname_end]
+        .iter()
+        .zip(&answer[12..qname_end])
+        .all(|(x, y)| x.eq_ignore_ascii_case(y))
+        && answer[qname_end..question_end] == request[qname_end..question_end]
 }
 
 fn response_header(request: &[u8], info: QueryInfo, truncated: bool) -> Vec<u8> {
