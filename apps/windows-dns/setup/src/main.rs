@@ -441,6 +441,11 @@ fn disable() -> io::Result<()> {
             upstream_addresses: Vec::new(),
         },
         None => {
+            if physical_adapter_still_uses_local_dns()? {
+                return Err(error(
+                    "DNS still uses localhost on an active adapter, but no saved profile or recovery backup was found; cannot confirm safe restoration.",
+                ));
+            }
             println!("No personal DNS controller configuration or pending adapter backup.");
             return Ok(());
         }
@@ -452,7 +457,9 @@ fn disable() -> io::Result<()> {
     ensure_service_installed()?;
     let started = Instant::now();
     while started.elapsed() < Duration::from_secs(90) {
-        if !system_journal.has_pending().map_err(error)? {
+        if !system_journal.has_pending().map_err(error)?
+            && !physical_adapter_still_uses_local_dns()?
+        {
             println!("Original IPv4 and IPv6 DNS settings restored and verified.");
             return Ok(());
         }
