@@ -99,7 +99,10 @@ fn run_elevated_setup(command: &str) -> Result<String, String> {
 
 #[tauri::command]
 async fn launch_system_dns_action(action: String, host: Option<String>) -> Result<String, String> {
-    if !matches!(action.as_str(), "Enable" | "Save" | "Disable" | "Upgrade" | "Repair") {
+    if !matches!(
+        action.as_str(),
+        "Enable" | "Save" | "Disable" | "Upgrade" | "Repair"
+    ) {
         return Err("Недопустимая операция системного DNS".to_owned());
     }
     tauri::async_runtime::spawn_blocking(move || {
