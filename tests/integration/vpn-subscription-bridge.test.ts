@@ -217,7 +217,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
      .toString('utf8').trim().split('\n').filter(line=>!line.startsWith('#')).join('\n').split('\n');
    assert.equal(delivered.length,2);
    assert.equal(decodeURIComponent(new URL(delivered[0]!).hash.slice(1)),
-      'мне VPN Нидерланды');
+      'MNEBYVPN Нидерланды');
    assert.equal(delivered[1],displayedWs);
    const forKaring=await fetch(root+'/sub/'+issued!.token+'?client=karing');
    assert.deepEqual(Buffer.from((await forKaring.text()).trim(),'base64')
