@@ -37,7 +37,7 @@ test('verified FI native config is one INCY subscription entry beside VLESS',()=
   } as const;
   const link=verifiedIncyAwgLine(material,identity);
   assert.match(link,/^amneziawg:\/\/[A-Za-z0-9_-]+#.+$/);
-  assert.equal(decodeURIComponent(link.split('#')[1]??''),'мне VPN Финляндия');
+  assert.equal(decodeURIComponent(link.split('#')[1]??''),'MNEBYVPN Финляндия');
   const raw=Buffer.from(link.split('#')[0]!.slice('amneziawg://'.length),
     'base64url').toString('utf8');
   assert.match(raw,/^\[Interface\]\nAddress = 10\.73\.91\.2\/32/m);
