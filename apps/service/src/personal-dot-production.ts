@@ -9,7 +9,7 @@
  * access becomes visible on the next recognition check, no later than 60s.
  */
 import {readFileSync} from 'node:fs';
-import {X509Certificate} from 'node:crypto';
+import {createHash,X509Certificate} from 'node:crypto';
 import {createServer} from 'node:http';
 import {isIP} from 'node:net';
 import {Pool} from 'pg';
@@ -47,6 +47,54 @@ function port(name:string,fallback:number,minPort=1024):number{
   try{return personalDotPort(value,minPort);}catch{
     throw Error('Unsafe personal DoT port '+name);
   }
+}
+export function dotPoolMaxConnections(raw=process.env.MNEBYDNS_DOT_POOL_MAX_CONNECTIONS):number{
+  if(raw===undefined||!raw.trim())return 4;
+  if(!/^[0-9]+$/.test(raw.trim()))throw Error('Unsafe DoT pool connection limit');
+  const n=Number(raw.trim());
+  if(!Number.isSafeInteger(n)||n<1||n>8)throw Error('Unsafe DoT pool connection limit');
+  return n;
+}
+export function ownerStatusCacheMs(raw=process.env.MNEBYDNS_OWNER_STATUS_CACHE_MS):number{
+  if(raw===undefined||!raw.trim())return 30000;
+  if(!/^[0-9]+$/.test(raw.trim()))throw Error('Unsafe owner DNS status cache TTL');
+  const n=Number(raw.trim());
+  if(!Number.isSafeInteger(n)||n<0||n>60000)throw Error('Unsafe owner DNS status cache TTL');
+  return n;
+}
+/** Short-TTL positive-only cache for owner_dns_link_status() to avoid repeating
+ * two PostgreSQL lookups per DNS message while preserving bounded revocation lag.
+ */
+export function createCachedOwnerLinkStatus(
+  lookup:(label:string)=>Promise<string>,
+  ttlMs=30000,
+  now:()=>number=Date.now,
+  maxEntries=1024,
+):(label:string)=>Promise<string>{
+  if(!Number.isSafeInteger(ttlMs)||ttlMs<0||ttlMs>60000)
+    throw Error('Unsafe owner DNS status cache TTL');
+  if(ttlMs===0)return lookup;
+  const cache=new Map<string,{status:'ALLOWED'|'ALLOWED_SMART_DNS';expiresAt:number}>();
+  return async(label:string):Promise<string>=>{
+    const key=createHash('sha256').update(label).digest('hex');
+    const ts=now();
+    const cached=cache.get(key);
+    if(cached&&cached.expiresAt>ts){
+      cache.delete(key);
+      cache.set(key,cached);
+      return cached.status;
+    }
+    cache.delete(key);
+    const status=await lookup(label);
+    if(status==='ALLOWED'||status==='ALLOWED_SMART_DNS'){
+      if(cache.size>=maxEntries){
+        const oldest=cache.keys().next().value;
+        if(oldest!==undefined)cache.delete(oldest);
+      }
+      cache.set(key,{status,expiresAt:ts+ttlMs});
+    }
+    return status;
+  };
 }
 function tlsUpstream(prefix:'MAPPED'|'DIRECT'):VerifiedDotUpstream{
   const address=required('MNEBYDNS_PERSONAL_'+prefix+'_DOT_IP');
@@ -88,16 +136,17 @@ export async function runPersonalDotProduction():Promise<void>{
     query_timeout:1200,idleTimeoutMillis:10000});
   await db.query('SELECT 1');
   const pooled=process.env.MNEBYDNS_DOT_POOL_ENABLED==='yes';
-  const mappedPool=pooled?createVerifiedDotPool(mapped):null;
-  const directPool=pooled?createVerifiedDotPool(direct):null;
+  const poolMaxConnections=dotPoolMaxConnections();
+  const mappedPool=pooled?createVerifiedDotPool(mapped,{maxConnections:poolMaxConnections}):null;
+  const directPool=pooled?createVerifiedDotPool(direct,{maxConnections:poolMaxConnections}):null;
+  const ownerLookup=process.env.MNEBYDNS_OWNER_LINKS_ENABLED==='yes'
+    ?createCachedOwnerLinkStatus(async(label:string)=>{
+      const r=await db.query('SELECT owner_dns_link_status($1) AS status',[label]);
+      return String(r.rows[0]?.status??'DENY_UNKNOWN');
+    },ownerStatusCacheMs()):undefined;
   const tlsServer=createPersonalDotListener({
     key,cert,db,classify,
-    ...(process.env.MNEBYDNS_OWNER_LINKS_ENABLED==='yes'?{
-      ownerLinkStatus:async(label:string)=>{
-        const r=await db.query('SELECT owner_dns_link_status($1) AS status',[label]);
-        return String(r.rows[0]?.status??'DENY_UNKNOWN');
-      },
-    }:{}),
+    ...(ownerLookup?{ownerLinkStatus:ownerLookup}:{}),
     queryTimeoutMs:8500,
     mapped:(query,signal)=>mappedPool?mappedPool.query(query,7000,signal):queryVerifiedDotTls(mapped,query,7000,signal),
     direct:(query,signal)=>directPool?directPool.query(query,7000,signal):queryVerifiedDotTls(direct,query,7000,signal),
