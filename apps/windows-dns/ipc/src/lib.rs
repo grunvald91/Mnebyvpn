@@ -1,7 +1,6 @@
-//! Read-only, strictly local named pipe between diagnostic Windows service and GUI.
-//! No DNS control, credentials, or user-provided commands travel over this pipe.
-//! Windows client requires a LocalSystem-owned server process; a spoofed pipe
-//! from an unprivileged user is rejected even if it wins the name first.
+//! Strictly local Windows named pipes for service status and limited controls.
+//! Clients verify the server process ID against the installed SCM service.
+//! The control pipe accepts only enable-saved and disable, never hostnames or paths.
 
 use mnebydns_core::ServiceReport;
 
@@ -64,7 +63,9 @@ pub fn decode_status(raw: &[u8], current_ms: u64) -> Result<ServiceReport, Strin
 mod windows;
 
 #[cfg(windows)]
-pub use windows::{read_service_status, serve_local_status};
+pub use windows::{
+    read_service_status, send_control, serve_local_control, serve_local_status, ControlRequest,
+};
 
 #[cfg(test)]
 mod tests {
