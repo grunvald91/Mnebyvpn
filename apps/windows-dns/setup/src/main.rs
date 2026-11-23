@@ -190,7 +190,7 @@ fn install_recovery_broker() -> io::Result<()> {
         start_type: ServiceStartType::AutoStart,
         error_control: ServiceErrorControl::Normal,
         executable_path: target,
-        launch_arguments: vec![OsString::from("--recovery-service")],
+        launch_arguments: Vec::new(),
         dependencies: Vec::new(),
         account_name: None,
         account_password: None,
