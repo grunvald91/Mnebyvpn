@@ -282,7 +282,9 @@ fn enable_service_autostart() -> io::Result<()> {
     Ok(())
 }
 
-fn upgrade() -> io::Result<()> {
+/// Check again AFTER the service has stopped. Before that, the old
+/// controller could still have an in-flight DNS mutation.
+fn ensure_upgrade_is_safe(journal: &ProtectedJournal) -> io::Result<()> {
     let journal = ProtectedJournal::open_service().map_err(error)?;
     if journal.check_recovery_pending().map_err(error)?
         || journal
@@ -309,6 +311,33 @@ fn upgrade() -> io::Result<()> {
             "An active physical adapter still uses localhost DNS. Upgrade blocked until restoration is verified.",
         ));
     }
+    Ok(())
+}
+
+fn restore_service_start_type(original: ServiceStartType) -> io::Result<()> {
+    let value = match original {
+        ServiceStartType::AutoStart => "auto",
+        ServiceStartType::DemandStart => "demand",
+        ServiceStartType::Disabled => "disabled",
+        _ => return Err(error("Unexpected Windows service startup mode; manual review required")),
+    };
+    let root = env::var_os("SystemRoot").ok_or_else(|| error("SystemRoot missing"))?;
+    let output = Command::new(PathBuf::from(root).join("System32").join("sc.exe"))
+        .creation_flags(0x0800_0000)
+        .args(["config", SERVICE_NAME, "start=", value])
+        .output()?;
+    if !output.status.success() {
+        return Err(error(format!(
+            "Could not restore previous service startup mode: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    Ok(())
+}
+
+fn upgrade() -> io::Result<()> {
+    let journal = ProtectedJournal::open_service().map_err(error)?;
+    ensure_upgrade_is_safe(&journal)?;
     let manager = service_manager(false)?;
     let service = manager
         .open_service(
@@ -325,22 +354,22 @@ fn upgrade() -> io::Result<()> {
             .join(SERVICE_BIN);
     let config = service.query_config().map_err(map_service)?;
     if !is_our_service_path(&config.executable_path, &expected) {
-        return Err(error(
-            "Installed service executable path mismatch; refusing upgrade",
-        ));
+        return Err(error("Installed service executable path mismatch; refusing upgrade"));
     }
+    let previous_start_type = config.start_type;
+    let was_running =
+        service.query_status().map_err(map_service)?.current_state != ServiceState::Stopped;
     let source = env::current_exe()?.with_file_name(SERVICE_BIN);
     ensure_regular_file(&source)?;
     let staged = expected.with_extension("exe.staged");
     let previous = expected.with_extension("exe.previous");
-    if staged.exists() || previous.exists() {
-        return Err(error(
-            "Previous service upgrade artifacts exist; manual review required",
-        ));
+    let failed = expected.with_extension("exe.failed");
+    if staged.exists() || previous.exists() || failed.exists() {
+        return Err(error("Old service upgrade artifacts exist; inspect them before upgrading again"));
     }
-    // Stage while old service still runs; failure cannot affect it.
     copy_new_binary(&source, &staged)?;
-    if service.query_status().map_err(map_service)?.current_state != ServiceState::Stopped {
+
+    if was_running {
         service.stop().map_err(map_service)?;
         let start = Instant::now();
         while start.elapsed() < Duration::from_secs(30) {
@@ -350,30 +379,66 @@ fn upgrade() -> io::Result<()> {
             thread::sleep(Duration::from_millis(250));
         }
         if service.query_status().map_err(map_service)?.current_state != ServiceState::Stopped {
-            return Err(error(
-                "Service did not stop safely; installed binary and DNS backup preserved",
-            ));
+            let _ = fs::remove_file(&staged);
+            return Err(error("Old service could not stop; original executable and DNS backups preserved"));
         }
     }
+    // No change to any executable until the *stopped* state and all original
+    // adapters have been re-checked. If not safe, restart the original service.
+    if let Err(reason) = ensure_upgrade_is_safe(&journal) {
+        let _ = fs::remove_file(&staged);
+        if was_running && previous_start_type != ServiceStartType::Disabled {
+            let _ = service.start::<&str>(&[]);
+        }
+        return Err(error(format!("DNS changed during upgrade preflight: {reason}")));
+    }
+
     fs::rename(&expected, &previous)?;
     if let Err(err) = fs::rename(&staged, &expected) {
         let rollback = fs::rename(&previous, &expected);
         return Err(error(format!(
-            "Could not install service upgrade: {err}; binary rollback: {rollback:?}"
+            "Failed to replace service binary: {err}; original binary restore: {rollback:?}"
         )));
     }
-    // An emergency recovery may have disabled startup intentionally. Only
-    // after exact restoration and an explicit successful upgrade is it safe
-    // to return this controller to normal automatic service startup.
-    enable_service_autostart()?;
-    if let Err(err) = service.start::<&str>(&[]) {
-        // Do not silently re-enable DNS or destroy the previous service.
+
+    let start_attempt = enable_service_autostart()
+        .and_then(|_| service.start::<&str>(&[]).map_err(map_service));
+    if let Err(start_error) = start_attempt {
+        // Never overwrite the executable of a service that might still be
+        // running. Preserve both versions if Windows cannot stop it.
+        let rollback = (|| -> io::Result<()> {
+            if service.query_status().map_err(map_service)?.current_state != ServiceState::Stopped {
+                service.stop().map_err(map_service)?;
+                let deadline = Instant::now();
+                while deadline.elapsed() < Duration::from_secs(15) {
+                    if service.query_status().map_err(map_service)?.current_state
+                        == ServiceState::Stopped
+                    {
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(250));
+                }
+                if service.query_status().map_err(map_service)?.current_state
+                    != ServiceState::Stopped
+                {
+                    return Err(error("Cannot roll back a service that is still running"));
+                }
+            }
+            fs::rename(&expected, &failed)?;
+            fs::rename(&previous, &expected)?;
+            restore_service_start_type(previous_start_type)?;
+            if was_running && previous_start_type != ServiceStartType::Disabled {
+                service.start::<&str>(&[]).map_err(map_service)?;
+            }
+            Ok(())
+        })();
         return Err(error(format!(
-            "New service did not start: {err}; previous executable retained at {}",
-            previous.display()
+            "New service did not start: {start_error}; original service rollback: {rollback:?}"
         )));
     }
-    println!("MnebyDnsHealth upgrade started; previous binary retained for manual recovery.");
+    // A nonzero exit from the initial start cannot be treated as a successful
+    // upgrade. The previous executable remains available for manual recovery.
+    println!("MnebyDnsHealth upgrade started; previous service binary preserved.");
     Ok(())
 }
 
