@@ -319,7 +319,11 @@ fn restore_service_start_type(original: ServiceStartType) -> io::Result<()> {
         ServiceStartType::AutoStart => "auto",
         ServiceStartType::DemandStart => "demand",
         ServiceStartType::Disabled => "disabled",
-        _ => return Err(error("Unexpected Windows service startup mode; manual review required")),
+        _ => {
+            return Err(error(
+                "Unexpected Windows service startup mode; manual review required",
+            ))
+        }
     };
     let root = env::var_os("SystemRoot").ok_or_else(|| error("SystemRoot missing"))?;
     let output = Command::new(PathBuf::from(root).join("System32").join("sc.exe"))
@@ -371,7 +375,9 @@ fn upgrade() -> io::Result<()> {
             .join(SERVICE_BIN);
     let config = service.query_config().map_err(map_service)?;
     if !is_our_service_path(&config.executable_path, &expected) {
-        return Err(error("Installed service executable path mismatch; refusing upgrade"));
+        return Err(error(
+            "Installed service executable path mismatch; refusing upgrade",
+        ));
     }
     let previous_start_type = config.start_type;
     let was_running =
@@ -382,7 +388,9 @@ fn upgrade() -> io::Result<()> {
     let previous = expected.with_extension("exe.previous");
     let failed = expected.with_extension("exe.failed");
     if staged.exists() || failed.exists() {
-        return Err(error("An unfinished service upgrade exists; inspect it before retrying"));
+        return Err(error(
+            "An unfinished service upgrade exists; inspect it before retrying",
+        ));
     }
     // Preserve the immediately preceding binary during each upgrade, and
     // archive older successful backups instead of blocking future updates.
@@ -394,7 +402,9 @@ fn upgrade() -> io::Result<()> {
             .as_millis();
         let history = expected.with_extension(format!("exe.previous.{nonce}"));
         if history.exists() {
-            return Err(error("Cannot archive previous service backup: filename collision"));
+            return Err(error(
+                "Cannot archive previous service backup: filename collision",
+            ));
         }
         fs::rename(&previous, &history)?;
     }
@@ -411,7 +421,9 @@ fn upgrade() -> io::Result<()> {
         }
         if service.query_status().map_err(map_service)?.current_state != ServiceState::Stopped {
             let _ = fs::remove_file(&staged);
-            return Err(error("Old service could not stop; original executable and DNS backups preserved"));
+            return Err(error(
+                "Old service could not stop; original executable and DNS backups preserved",
+            ));
         }
     }
     // No change to any executable until the *stopped* state and all original
@@ -421,7 +433,9 @@ fn upgrade() -> io::Result<()> {
         if was_running && previous_start_type != ServiceStartType::Disabled {
             let _ = service.start::<&str>(&[]);
         }
-        return Err(error(format!("DNS changed during upgrade preflight: {reason}")));
+        return Err(error(format!(
+            "DNS changed during upgrade preflight: {reason}"
+        )));
     }
 
     fs::rename(&expected, &previous)?;
@@ -470,7 +484,9 @@ fn upgrade() -> io::Result<()> {
     }
     // A successful SCM start alone is insufficient: the new service must
     // expose an authenticated, fresh, disabled status with no pending backup.
-    println!("MnebyDnsHealth upgrade verified by protected IPC; previous service binary preserved.");
+    println!(
+        "MnebyDnsHealth upgrade verified by protected IPC; previous service binary preserved."
+    );
     Ok(())
 }
 
