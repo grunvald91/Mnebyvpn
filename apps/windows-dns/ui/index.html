@@ -67,6 +67,8 @@
         <p class="section-intro">Используется персональное имя DoT-сервера из настроек ниже. Клиент меняет DNS непосредственно на сетевых адаптерах Windows: IPv4 и IPv6, включая новые физические подключения Wi-Fi/Ethernet. Туннельные и неизвестные виртуальные адаптеры намеренно не изменяются. Для управления потребуется подтверждение UAC.</p>
         <button class="secondary" id="restore-system-dns" type="button">Восстановить исходные настройки</button>
         <button class="secondary" id="refresh-system-dns" type="button">Обновить состояние</button>
+        <button class="secondary" id="repair-system-dns" type="button">Аварийное восстановление из резервных настроек</button>
+        <p class="muted">Аварийное восстановление допускается только при остановленной службе. Резервные записи удаляются по отдельности и только после точной проверки DNS.</p>
         <button class="secondary" id="upgrade-system-service" type="button">Обновить установленную службу (однократно)</button>
         <p class="muted">Обновление старой службы доступно только после отключения DNS и подтверждённого восстановления исходных настроек. Для обновления Windows один раз запросит UAC.</p>
         <p class="dot-status" id="upgrade-system-message" role="status" aria-live="polite"></p>
