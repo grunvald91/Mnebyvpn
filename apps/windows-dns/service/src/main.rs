@@ -315,29 +315,30 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
     thread::spawn(move || {
         if let Err(error) = serve_local_control(|request| {
             let journal = ProtectedJournal::open_service()?;
-            match request {
-                ControlRequest::ConfigureAndEnable(host) => {
-                    // The privileged service itself verifies the hostname,
-                    // resolves pinned IPs before system DNS is changed, and
-                    // persists a constrained config. No paths or shell args.
-                    journal.ensure_safe_to_enable()?;
-                    if journal
-                        .read_controller_config()?
-                        .is_some_and(|config| config.enabled)
-                    {
-                        return Err("Сначала отключите Smart DNS перед сменой сервера".to_owned());
-                    }
-                    let host = host.trim().to_ascii_lowercase();
-                    let addresses = mnebydns_core::resolve_dot_addresses(&host)?;
-                    let config = ControllerConfig {
-                        version: 1,
-                        enabled: true,
-                        dot_host: host,
-                        upstream_addresses: addresses,
-                    };
-                    config.validate()?;
-                    journal.write_controller_config(&config)
+            // Saving a hostname must never activate the system DNS.
+            // Enable is a separate command initiated from the Home screen.
+            let save_profile = |host: String, enabled: bool| -> Result<(), String> {
+                journal.ensure_safe_to_enable()?;
+                if journal
+                    .read_controller_config()?
+                    .is_some_and(|config| config.enabled)
+                {
+                    return Err("Сначала отключите Smart DNS перед сменой сервера".to_owned());
                 }
+                let host = host.trim().to_ascii_lowercase();
+                let addresses = mnebydns_core::resolve_dot_addresses(&host)?;
+                let config = ControllerConfig {
+                    version: 1,
+                    enabled,
+                    dot_host: host,
+                    upstream_addresses: addresses,
+                };
+                config.validate()?;
+                journal.write_controller_config(&config)
+            };
+            match request {
+                ControlRequest::ConfigureAndEnable(host) => save_profile(host, true),
+                ControlRequest::ConfigureOnly(host) => save_profile(host, false),
                 ControlRequest::EnableSaved => {
                     journal.ensure_safe_to_enable()?;
                     let mut config = journal
