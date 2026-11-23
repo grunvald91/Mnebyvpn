@@ -353,7 +353,8 @@ function renderHomeConnection() {
     ['starting', 'restoring', 'checking'].includes(systemDnsState);
   summary.textContent = labels[systemDnsState] || labels.unknown;
   button.textContent = systemDnsOperationPending
-    ? (systemDnsPendingAction === 'Disable' ? 'Отключение…' : 'Подключение…')
+    ? (systemDnsPendingAction === 'Disable' ? 'Отключение…'
+      : systemDnsPendingAction === 'Save' ? 'Сохранение…' : 'Подключение…')
     : recoveryNeeded ? 'Восстановить DNS' : active ? 'Выключить' : 'Включить';
   button.disabled = busy;
   button.setAttribute('aria-pressed', String(active));
@@ -484,32 +485,34 @@ async function requestSystemDns(action) {
 get('apply-new-dot').addEventListener('click', async () => {
   const host = get('dot-host').value.trim();
   if (!host) {
-    get('system-dns-message').textContent = 'Введите адрес персонального DoT-сервера.';
+    get('system-dns-message').textContent = 'Введите адрес DNS.';
     get('dot-host').focus();
     return;
   }
-  if (systemDnsOperationPending || systemDnsLoading || systemDnsState === 'active') {
-    get('system-dns-message').textContent =
-      'Отключите Smart DNS перед сменой сервера и дождитесь восстановления DNS.';
-    return;
-  }
+  if (systemDnsOperationPending || systemDnsLoading) return;
   if (!['disabled', 'not-installed'].includes(systemDnsState)) {
-    get('system-dns-message').textContent =
-      'Состояние службы не подтверждено. Сначала проверьте его, прежде чем менять DNS.';
+    get('system-dns-message').textContent = 'Сначала выключите DNS на главной.';
     return;
   }
+  const button = get('apply-new-dot');
+  button.disabled = true;
   systemDnsOperationPending = true;
-  systemDnsPendingAction = 'Enable';
-  const generation = ++systemDnsPollGeneration;
+  systemDnsPendingAction = 'Save';
+  ++systemDnsPollGeneration;
   renderHomeConnection();
   try {
-    const message = await invoke('launch_system_dns_action', { action: 'Enable', host });
+    const message = await invoke('launch_system_dns_action', { action: 'Save', host });
+    await refreshSystemDns();
+    // A protected IPC acknowledgement proves that the service stored the
+    // profile. Its status publication can lag behind by one polling cycle.
+    systemDnsConfigured = true;
     get('system-dns-message').textContent = message;
-    void watchSystemDnsAction('Enable', generation);
   } catch (error) {
+    get('system-dns-message').textContent = 'Не удалось сохранить: ' + String(error);
+  } finally {
     systemDnsOperationPending = false;
     systemDnsPendingAction = null;
-    get('system-dns-message').textContent = 'Не удалось сохранить DNS-сервер: ' + String(error);
+    button.disabled = false;
     renderHomeConnection();
   }
 });
