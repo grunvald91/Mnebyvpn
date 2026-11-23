@@ -12,7 +12,7 @@
 body { min-width: 320px; margin: 0; background: #071319; }
 button, input { font: inherit; }
 button { cursor: pointer; touch-action: manipulation; }
-button:disabled { opacity: .55; cursor: not-allowed; }
+button:is(:disabled, [aria-disabled="true"]) { opacity: .55; cursor: not-allowed; }
 button:focus-visible, input:focus-visible, summary:focus-visible {
   outline: 2px solid #a5fff0; outline-offset: 3px;
 }
@@ -38,7 +38,7 @@ button:focus-visible, input:focus-visible, summary:focus-visible {
 .brand > span:last-child { color: var(--accent); }
 .mark { color: var(--accent); margin-right: 7px; font-size: 24px; }
 .version { color: #86a6aa; font-size: 11px; }
-.icon-button { width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 10px; background: #13272e; color: #eaf7f7; font-size: 23px; line-height: 1; }
+.icon-button { width: 44px; height: 44px; flex: none; border: 1px solid var(--line); border-radius: 10px; background: #13272e; color: #eaf7f7; font-size: 23px; line-height: 1; }
 
 .tabs {
   display: grid;
@@ -48,7 +48,7 @@ button:focus-visible, input:focus-visible, summary:focus-visible {
   border-radius: 12px;
   background: #10232b;
 }
-.tab { min-height: 38px; border: 0; border-radius: 9px; background: transparent; color: #b2c8c9; font-size: 13px; font-weight: 650; }
+.tab { min-height: 44px; border: 0; border-radius: 9px; background: transparent; color: #b2c8c9; font-size: 13px; font-weight: 650; }
 .tab.active { background: #284c4e; color: white; }
 .view { min-width: 0; }
 h1 { margin: 4px 0 12px; font-size: 22px; line-height: 1.2; letter-spacing: -.4px; }
@@ -61,7 +61,7 @@ p { margin: 0; }
   background: var(--panel);
 }
 .primary, .secondary {
-  min-height: 42px;
+  min-height: 44px;
   padding: 9px 12px;
   border-radius: 10px;
   font-weight: 650;
@@ -69,9 +69,7 @@ p { margin: 0; }
 }
 .primary { border: 1px solid transparent; background: #65dfca; color: #092520; }
 .secondary { background: #244149; color: #effcf9; border: 1px solid #31525b; }
-.primary:hover:not(:disabled) { background: #91f0df; }
-.secondary:hover:not(:disabled) { background: #30525b; }
-.compact-button { min-height: 34px; width: auto; font-size: 12px; padding: 6px 11px; }
+.compact-button { width: auto; font-size: 12px; padding: 6px 11px; }
 .action-row { justify-content: flex-start; flex-wrap: wrap; }
 .item { min-height: 40px; padding: 9px 0; border-bottom: 1px solid #254047; font-size: 12px; }
 .item:last-child { border-bottom: 0; }
@@ -81,7 +79,15 @@ p { margin: 0; }
 .bad { color: #f0aa97 !important; }
 .muted, .hint { font-size: 12px; line-height: 1.45; color: var(--muted); }
 .dot-status { margin: 6px 0 0; color: #b4ced0; overflow-wrap: anywhere; font-size: 12px; line-height: 1.45; }
-.dot-status:empty, .home-action-hint:empty, .preflight-result:empty, footer:empty { display: none; }
+.dot-status:empty, .home-action-hint:empty, .preflight-result:empty, footer:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
 .section-heading { margin: 2px 0 10px; }
 .section-heading h1 { margin: 0; }
 
@@ -112,10 +118,10 @@ p { margin: 0; }
 .home-action-hint { max-width: 400px; color: #b1c9c7; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
 
 #settings > h1 { margin: 3px 0 10px; }
-.profile-card { display: grid; gap: 8px; }
+.profile-card, .profile-form { display: grid; gap: 8px; }
 .dot-label { font-size: 13px; font-weight: 650; }
 .dot-input {
-  min-height: 42px;
+  min-height: 44px;
   min-width: 0;
   width: 100%;
   padding: 9px 11px;
@@ -147,6 +153,7 @@ p { margin: 0; }
   color: #effaf8;
   font-size: 13px; font-weight: 650;
   cursor: pointer;
+  touch-action: manipulation;
 }
 .fold > summary::-webkit-details-marker, .advanced-tests summary::-webkit-details-marker { display: none; }
 .fold-chevron { color: var(--muted); font-size: 16px; transition: transform .14s ease; }
@@ -157,16 +164,14 @@ p { margin: 0; }
 .test-heading { margin: 4px 0 0; }
 .main-action { margin: 0; }
 .test-flow { border-top: 1px solid var(--line); }
-.test-step { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; }
+.test-step { padding: 9px 0; }
 .test-step + .test-step { border-top: 1px solid #254047; }
-.step-number { width: 26px; height: 26px; display: grid; place-items: center; flex: 0 0 auto; font-size: 11px; font-weight: 700; background: #17353d; color: var(--accent); border-radius: 7px; }
-.step-body { flex: 1; min-width: 0; }
 .step-title { font-size: 12px; }
 .advanced-tests { border-top: 1px solid var(--line); padding-top: 9px; }
-.advanced-tests summary { list-style: none; cursor: pointer; color: #b9d0d0; font-size: 12px; }
+.advanced-tests summary { display: flex; align-items: center; min-height: 44px; list-style: none; cursor: pointer; color: #b9d0d0; font-size: 12px; touch-action: manipulation; }
 .advanced-content { display: grid; gap: 9px; padding-top: 9px; }
 .adapter-list { display: grid; gap: 6px; }
-.adapter-card { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left; padding: 9px 11px; border-radius: 10px; border: 1px solid #294b53; color: #f0f9f8; background: #112830; }
+.adapter-card { width: 100%; min-height: 44px; display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left; padding: 9px 11px; border-radius: 10px; border: 1px solid #294b53; color: #f0f9f8; background: #112830; }
 .adapter-card strong { font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
 .adapter-card span { color: var(--muted); font-size: 11px; text-align: right; }
 .adapter-card.selected { border-color: var(--accent); background: #1b3a40; }
@@ -186,6 +191,11 @@ footer { margin-top: auto; color: #8ca9ad; font-size: 11px; padding: 5px 0 0; }
   .brand { font-size: 17px; }
   .adapter-card { align-items: flex-start; flex-direction: column; gap: 3px; }
 }
+@media (hover: hover) and (pointer: fine) {
+  .primary:hover:not(:disabled, [aria-disabled="true"]) { background: #91f0df; }
+  .secondary:hover:not(:disabled), .home-dashboard.is-active .power-toggle:hover:not([aria-disabled="true"]) { background: #30525b; }
+}
+button:active:not(:disabled, [aria-disabled="true"]) { box-shadow: inset 0 0 0 2px currentColor; }
 @media (prefers-reduced-motion: no-preference) {
   .primary, .secondary, .tab, .icon-button { transition: background-color .14s ease, border-color .14s ease; }
 }
@@ -194,5 +204,7 @@ footer { margin-top: auto; color: #8ca9ad; font-size: 11px; padding: 5px 0 0; }
 }
 @media (forced-colors: active) {
   .home-dashboard, .detail, .fold, .tabs { border: 1px solid CanvasText; }
-  .primary, .secondary, .tab.active { border: 1px solid ButtonText; }
+  .primary, .secondary, .tab { border: 1px solid ButtonText; }
+  .tab.active, .adapter-card.selected { border: 2px solid Highlight; }
+  button:focus-visible, input:focus-visible, summary:focus-visible { outline-color: CanvasText; }
 }
