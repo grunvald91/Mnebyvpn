@@ -571,22 +571,25 @@ get('toggle-system-dns').addEventListener('click', () => {
   const recoveryNeeded = ['active', 'error', 'unknown'].includes(systemDnsState);
   void requestSystemDns(recoveryNeeded ? 'Disable' : 'Enable');
 });
-get('restore-system-dns').addEventListener('click', () => {
+get('restore-system-dns').addEventListener('click', async () => {
   if (systemDnsOperationPending) return;
-  // Manual recovery is available even when service status is unknown.
-  // The elevated helper always restores from its protected journal.
-  const generation = ++systemDnsPollGeneration;
   systemDnsOperationPending = true;
   systemDnsPendingAction = 'Disable';
+  ++systemDnsPollGeneration;
   renderHomeConnection();
-  invoke('launch_system_dns_action', { action: 'Disable', host: null })
-    .then(() => watchSystemDnsAction('Disable', generation))
-    .catch(error => {
-      systemDnsOperationPending = false;
-      systemDnsPendingAction = null;
-      get('system-dns-message').textContent = 'Не удалось начать восстановление: ' + String(error);
-      renderHomeConnection();
-    });
+  try {
+    await invoke('launch_system_dns_action', { action: 'Repair', host: null });
+    await refreshSystemDns();
+    get('system-dns-message').textContent =
+      'Независимая служба подтвердила восстановление резервных DNS-настроек без UAC.';
+  } catch (error) {
+    get('system-dns-message').textContent =
+      'Восстановление не подтверждено: ' + String(error);
+  } finally {
+    systemDnsOperationPending = false;
+    systemDnsPendingAction = null;
+    renderHomeConnection();
+  }
 });
 get('refresh-system-dns').addEventListener('click', () => { void refreshSystemDns(); });
 // No background polling: refresh when the user returns to the window.
