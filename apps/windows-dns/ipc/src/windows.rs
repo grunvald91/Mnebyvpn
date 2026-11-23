@@ -37,6 +37,7 @@ const SERVICE_NAME: &str = "MnebyDnsHealth";
 const CONTROL_ACK: u8 = 0x06;
 const CONTROL_REJECT: u8 = 0x15;
 const CONTROL_CONFIGURE_AND_ENABLE: u8 = 0x32;
+const CONTROL_CONFIGURE_ONLY: u8 = 0x34;
 const MAX_DOT_HOST_BYTES: usize = 253;
 const PIPE_ACCESS_DUPLEX: u32 = 0x0000_0003;
 const FIRST_INSTANCE: u32 = 0x0008_0000; // FILE_FLAG_FIRST_PIPE_INSTANCE
@@ -330,6 +331,7 @@ pub enum ControlRequest {
     Disable,
     /// A restricted DNS hostname, never an executable path or arbitrary shell.
     ConfigureAndEnable(String),
+    ConfigureOnly(String),
     EmergencyRestore,
 }
 impl ControlRequest {
@@ -338,6 +340,7 @@ impl ControlRequest {
             Self::EnableSaved => 0x31,
             Self::Disable => 0x30,
             Self::ConfigureAndEnable(_) => CONTROL_CONFIGURE_AND_ENABLE,
+            Self::ConfigureOnly(_) => CONTROL_CONFIGURE_ONLY,
             Self::EmergencyRestore => 0x33,
         }
     }
@@ -383,7 +386,7 @@ fn send_request(
     validate_server_is_registered_service(file.as_raw_handle().cast(), expected_service)?;
     file.write_all(&[request.byte()])
         .map_err(|_| "Не удалось отправить команду службе DNS".to_owned())?;
-    if let ControlRequest::ConfigureAndEnable(host) = &request {
+    if let ControlRequest::ConfigureAndEnable(host) | ControlRequest::ConfigureOnly(host) = &request {
         let bytes = host.as_bytes();
         if bytes.is_empty() || bytes.len() > MAX_DOT_HOST_BYTES || !host.is_ascii() {
             return Err("Некорректная длина или кодировка имени DoT-сервера".to_owned());
@@ -441,7 +444,9 @@ fn serve_control_client(
     if read != 1 {
         return Err("Invalid DNS control request size".to_owned());
     }
-    let allowed = if opcode[0] == CONTROL_CONFIGURE_AND_ENABLE {
+    let allowed = if opcode[0] == CONTROL_CONFIGURE_AND_ENABLE
+        || opcode[0] == CONTROL_CONFIGURE_ONLY
+    {
         (|| -> Result<ControlRequest, String> {
             let mut len = [0u8; 2];
             read_control_exact(pipe, &mut len)?;
@@ -456,7 +461,11 @@ fn serve_control_client(
             if !host.is_ascii() {
                 return Err("Only ASCII DNS hostnames are accepted".to_owned());
             }
-            Ok(ControlRequest::ConfigureAndEnable(host))
+            if opcode[0] == CONTROL_CONFIGURE_ONLY {
+                Ok(ControlRequest::ConfigureOnly(host))
+            } else {
+                Ok(ControlRequest::ConfigureAndEnable(host))
+            }
         })()
     } else {
         ControlRequest::from_byte(opcode[0])
@@ -561,6 +570,10 @@ mod control_tests {
         assert_eq!(
             ControlRequest::ConfigureAndEnable("dns.example.net".to_owned()).byte(),
             CONTROL_CONFIGURE_AND_ENABLE,
+        );
+        assert_eq!(
+            ControlRequest::ConfigureOnly("dns.example.net".to_owned()).byte(),
+            CONTROL_CONFIGURE_ONLY,
         );
     }
 }
