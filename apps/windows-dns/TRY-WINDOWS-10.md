@@ -43,14 +43,21 @@ Resolve-DnsName example.com -Server ::1
 
 ## Выключение и восстановление
 
-На главной нажмите «Выключить» или в настройках выберите «Восстановить исходные настройки». Служба возвращает для каждого интерфейса его прежний режим и DNS-адреса: статические — к исходному списку, автоматические — обратно к DHCP/RA. После проверки backup удаляется.
+На главной нажмите «Выключить», а при ошибке — «Восстановить DNS». При отказе IPC приложение может запросить UAC для аварийного пути. На главной нажмите «Выключить» или в настройках выберите «Восстановить исходные настройки». Служба возвращает для каждого интерфейса его прежний режим и DNS-адреса: статические — к исходному списку, автоматические — обратно к DHCP/RA. После проверки backup удаляется.
 
 Если GUI не открывается, запустите PowerShell от имени администратора в папке с архивом:
 
 ~~~powershell
-.\mnebydns-setup.exe disable
-.\mnebydns-setup.exe status
+$setup = (Resolve-Path .\mnebydns-setup.exe).Path
+$disable = Start-Process -FilePath $setup -ArgumentList 'disable' -Wait -PassThru
+$disable.ExitCode
+$status = Start-Process -FilePath $setup -ArgumentList 'status' -Wait -PassThru
+$status.ExitCode
+Get-Service MnebyDnsHealth
+Get-DnsClientServerAddress
 ~~~
+
+У вспомогательного EXE нет видимого консольного окна; поэтому PowerShell должен явно дождаться его завершения через `Start-Process -Wait -PassThru`. Код выхода `0` подтверждает успех команды, но фактические DNS-адреса проверяются отдельно.
 
 Не удаляйте %ProgramData%\mnebydns-controller-v1 вручную. Там находятся резервные настройки, необходимые для восстановления.
 
