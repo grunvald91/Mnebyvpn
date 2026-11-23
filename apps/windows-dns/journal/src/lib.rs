@@ -545,7 +545,8 @@ impl SystemDnsJournal {
         let path = self.record_path(guid)?;
         let staging = self.staging_path(guid)?;
         if staging.exists() {
-            let name = staging.file_name()
+            let name = staging
+                .file_name()
                 .and_then(|value| value.to_str())
                 .ok_or_else(|| "Invalid system DNS staging filename".to_owned())?;
             self.reconcile_committed_staging(name)?;
@@ -891,7 +892,10 @@ mod system_dns_tests {
         fs::hard_link(&committed, &staging).unwrap();
         assert_eq!(journal.read_all().unwrap(), vec![saved.clone()]);
         assert!(committed.exists(), "committed recovery backup must stay");
-        assert!(!staging.exists(), "duplicate crash-left staging must be cleaned");
+        assert!(
+            !staging.exists(),
+            "duplicate crash-left staging must be cleaned"
+        );
         journal.clear_verified(&saved.interface_guid).unwrap();
     }
 
@@ -904,7 +908,11 @@ mod system_dns_tests {
         let staging = journal.staging_path(&saved.interface_guid).unwrap();
         let mut changed = saved.clone();
         changed.ipv6 = DnsServerMode::Static(vec!["2001:4860:4860::8844".into()]);
-        fs::write(&staging, serde_json::to_vec(&SystemRecord::new(&changed).unwrap()).unwrap()).unwrap();
+        fs::write(
+            &staging,
+            serde_json::to_vec(&SystemRecord::new(&changed).unwrap()).unwrap(),
+        )
+        .unwrap();
         assert!(journal.read_all().is_err());
         assert!(staging.exists(), "conflicting evidence must survive");
         assert!(journal.record_path(&saved.interface_guid).unwrap().exists());
@@ -916,7 +924,11 @@ mod system_dns_tests {
         let journal = SystemDnsJournal::new(directory.path().to_path_buf());
         let saved = snapshot();
         let staging = journal.staging_path(&saved.interface_guid).unwrap();
-        fs::write(&staging, serde_json::to_vec(&SystemRecord::new(&saved).unwrap()).unwrap()).unwrap();
+        fs::write(
+            &staging,
+            serde_json::to_vec(&SystemRecord::new(&saved).unwrap()).unwrap(),
+        )
+        .unwrap();
         assert!(journal.has_pending().is_err());
         assert!(staging.exists());
     }
