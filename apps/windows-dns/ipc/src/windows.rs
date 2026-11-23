@@ -386,7 +386,8 @@ fn send_request(
     validate_server_is_registered_service(file.as_raw_handle().cast(), expected_service)?;
     file.write_all(&[request.byte()])
         .map_err(|_| "Не удалось отправить команду службе DNS".to_owned())?;
-    if let ControlRequest::ConfigureAndEnable(host) | ControlRequest::ConfigureOnly(host) = &request {
+    if let ControlRequest::ConfigureAndEnable(host) | ControlRequest::ConfigureOnly(host) = &request
+    {
         let bytes = host.as_bytes();
         if bytes.is_empty() || bytes.len() > MAX_DOT_HOST_BYTES || !host.is_ascii() {
             return Err("Некорректная длина или кодировка имени DoT-сервера".to_owned());
@@ -444,33 +445,32 @@ fn serve_control_client(
     if read != 1 {
         return Err("Invalid DNS control request size".to_owned());
     }
-    let allowed = if opcode[0] == CONTROL_CONFIGURE_AND_ENABLE
-        || opcode[0] == CONTROL_CONFIGURE_ONLY
-    {
-        (|| -> Result<ControlRequest, String> {
-            let mut len = [0u8; 2];
-            read_control_exact(pipe, &mut len)?;
-            let length = usize::from(u16::from_be_bytes(len));
-            if length == 0 || length > MAX_DOT_HOST_BYTES {
-                return Err("Invalid DoT hostname length in control request".to_owned());
-            }
-            let mut bytes = vec![0u8; length];
-            read_control_exact(pipe, &mut bytes)?;
-            let host =
-                String::from_utf8(bytes).map_err(|_| "Invalid DoT hostname encoding".to_owned())?;
-            if !host.is_ascii() {
-                return Err("Only ASCII DNS hostnames are accepted".to_owned());
-            }
-            if opcode[0] == CONTROL_CONFIGURE_ONLY {
-                Ok(ControlRequest::ConfigureOnly(host))
-            } else {
-                Ok(ControlRequest::ConfigureAndEnable(host))
-            }
-        })()
-    } else {
-        ControlRequest::from_byte(opcode[0])
-            .ok_or_else(|| "Unsupported DNS control command".to_owned())
-    };
+    let allowed =
+        if opcode[0] == CONTROL_CONFIGURE_AND_ENABLE || opcode[0] == CONTROL_CONFIGURE_ONLY {
+            (|| -> Result<ControlRequest, String> {
+                let mut len = [0u8; 2];
+                read_control_exact(pipe, &mut len)?;
+                let length = usize::from(u16::from_be_bytes(len));
+                if length == 0 || length > MAX_DOT_HOST_BYTES {
+                    return Err("Invalid DoT hostname length in control request".to_owned());
+                }
+                let mut bytes = vec![0u8; length];
+                read_control_exact(pipe, &mut bytes)?;
+                let host = String::from_utf8(bytes)
+                    .map_err(|_| "Invalid DoT hostname encoding".to_owned())?;
+                if !host.is_ascii() {
+                    return Err("Only ASCII DNS hostnames are accepted".to_owned());
+                }
+                if opcode[0] == CONTROL_CONFIGURE_ONLY {
+                    Ok(ControlRequest::ConfigureOnly(host))
+                } else {
+                    Ok(ControlRequest::ConfigureAndEnable(host))
+                }
+            })()
+        } else {
+            ControlRequest::from_byte(opcode[0])
+                .ok_or_else(|| "Unsupported DNS control command".to_owned())
+        };
     let accepted = allowed.and_then(handler).is_ok();
     let byte = if accepted {
         CONTROL_ACK
