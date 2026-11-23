@@ -195,6 +195,74 @@ fn ensure_service_installed() -> io::Result<()> {
     }
 }
 
+/// Upgrade only a disabled, fully restored, known installation. Never
+/// replace a live service executable while a network adapter may still point
+/// to the loopback resolver.
+fn upgrade() -> io::Result<()> {
+    let journal = ProtectedJournal::open_service().map_err(error)?;
+    if journal.check_recovery_pending().map_err(error)?
+        || journal.system_dns_journal().map_err(error)?.has_pending().map_err(error)?
+    {
+        return Err(error(
+            "DNS recovery backup is pending. Restore adapter DNS before upgrading the service; backup preserved.",
+        ));
+    }
+    if journal.read_controller_config().map_err(error)?.is_some_and(|config| config.enabled) {
+        return Err(error(
+            "DNS is still enabled in the protected configuration. Disable it before upgrading.",
+        ));
+    }
+    let manager = service_manager(false)?;
+    let service = manager.open_service(
+        SERVICE_NAME,
+        ServiceAccess::QUERY_STATUS | ServiceAccess::QUERY_CONFIG
+            | ServiceAccess::STOP | ServiceAccess::START,
+    ).map_err(map_service)?;
+    let expected = PathBuf::from(
+        env::var_os("ProgramFiles").ok_or_else(|| error("ProgramFiles missing"))?,
+    ).join(INSTALL_DIR).join(SERVICE_BIN);
+    let config = service.query_config().map_err(map_service)?;
+    if !is_our_service_path(&config.executable_path, &expected) {
+        return Err(error("Installed service executable path mismatch; refusing upgrade"));
+    }
+    let source = env::current_exe()?.with_file_name(SERVICE_BIN);
+    ensure_regular_file(&source)?;
+    let staged = expected.with_extension("exe.staged");
+    let previous = expected.with_extension("exe.previous");
+    if staged.exists() || previous.exists() {
+        return Err(error("Previous service upgrade artifacts exist; manual review required"));
+    }
+    // Stage while old service still runs; failure cannot affect it.
+    copy_new_binary(&source, &staged)?;
+    if service.query_status().map_err(map_service)?.current_state != ServiceState::Stopped {
+        service.stop().map_err(map_service)?;
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(30) {
+            if service.query_status().map_err(map_service)?.current_state == ServiceState::Stopped {
+                break;
+            }
+            thread::sleep(Duration::from_millis(250));
+        }
+        if service.query_status().map_err(map_service)?.current_state != ServiceState::Stopped {
+            return Err(error("Service did not stop safely; installed binary and DNS backup preserved"));
+        }
+    }
+    fs::rename(&expected, &previous)?;
+    if let Err(err) = fs::rename(&staged, &expected) {
+        let rollback = fs::rename(&previous, &expected);
+        return Err(error(format!("Could not install service upgrade: {err}; binary rollback: {rollback:?}")));
+    }
+    if let Err(err) = service.start::<&str>(&[]) {
+        // Do not silently re-enable DNS or destroy the previous service.
+        return Err(error(format!(
+            "New service did not start: {err}; previous executable retained at {}",
+            previous.display()
+        )));
+    }
+    println!("MnebyDnsHealth upgrade started; previous binary retained for manual recovery.");
+    Ok(())
+}
+
 fn enable(hostname: Option<&str>) -> io::Result<()> {
     // A user can choose a new hostname in Settings, or reuse the pinned DoT
     // endpoint already stored in protected ProgramData after a prior activation.
@@ -397,7 +465,7 @@ fn uninstall() -> io::Result<()> {
 }
 
 fn usage() {
-    eprintln!("mnebydns-setup.exe [install|enable [DoT-host]|disable|restore|status|uninstall]");
+    eprintln!("mnebydns-setup.exe [install|upgrade|enable [DoT-host]|disable|restore|status|uninstall]");
     eprintln!("System DNS changes require Windows Administrator approval (UAC).");
 }
 
@@ -405,6 +473,7 @@ fn main() {
     let mut args = env::args().skip(1);
     let result = match (args.next().as_deref(), args.next()) {
         (Some("install"), None) => install(),
+        (Some("upgrade"), None) => upgrade(),
         (Some("enable"), host) if args.next().is_none() => enable(host.as_deref()),
         (Some("disable" | "restore"), None) => disable(),
         (Some("status"), None) => status(),
