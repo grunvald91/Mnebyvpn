@@ -109,28 +109,48 @@ async fn launch_system_dns_action(action: String, host: Option<String>) -> Resul
             match action.as_str() {
                 "Enable" => {
                     if let Some(hostname) = host.as_deref().map(str::trim).filter(|h| !h.is_empty()) {
-                        mnebydns_core::resolve_dot_addresses(hostname)?;
-                        run_elevated_setup(&format!("enable {}", hostname.to_ascii_lowercase()))
+                        // A single first-run UAC installs the privileged
+                        // controller. All routine DNS profile changes happen
+                        // through its restricted local protocol thereafter.
+                        let first_install = service_not_installed();
+                        if first_install {
+                            run_elevated_setup("install")?;
+                        }
+                        let request =
+                            ControlRequest::ConfigureAndEnable(hostname.to_ascii_lowercase());
+                        let mut last_error = String::new();
+                        for attempt in 0..12 {
+                            match send_control(request.clone()) {
+                                Ok(()) => return Ok(
+                                    "Персональный DoT-профиль принят установленной службой без дополнительного UAC.".to_owned()
+                                ),
+                                Err(error) if first_install && error == "CONTROL_PIPE_UNAVAILABLE" && attempt < 11 => {
+                                    last_error = error;
+                                    std::thread::sleep(std::time::Duration::from_millis(250));
+                                }
+                                Err(error) => {
+                                    return Err(format!(
+                                        "Служба DNS не приняла профиль: {error}. Если установлена старая версия, обновите службу один раз в настройках."
+                                    ));
+                                }
+                            }
+                        }
+                        Err(format!("Новая DNS-служба не ответила после установки: {last_error}"))
                     } else {
                         send_control(ControlRequest::EnableSaved).map_err(|error| {
-                            if error == "CONTROL_PIPE_UNAVAILABLE" {
-                                "Обнаружена старая служба DNS. Сначала восстановите DNS и обновите службу в настройках.".to_owned()
-                            } else { error }
+                            format!("Не удалось включить DNS через службу: {error}. В настройках проверьте её состояние.")
                         })?;
-                        Ok("Сохранённый профиль включается через службу — без UAC.".to_owned())
+                        Ok("Сохранённый профиль включается через службу без UAC.".to_owned())
                     }
                 }
-                "Disable" => match send_control(ControlRequest::Disable) {
-                    Ok(()) => Ok("Команда выключения передана службе. Проверяю восстановление DNS.".to_owned()),
-                    Err(ipc_error) => {
-                        // Explicit user-initiated recovery must remain available
-                        // even when the IPC pipe is damaged, the service is
-                        // stopped, or this is a legacy binary. UAC is required
-                        // only for this degraded fallback path.
-                        run_elevated_setup("disable").map_err(|fallback| {
-                            format!("Отключение через службу: {ipc_error}; аварийное отключение: {fallback}")
-                        })
-                    }
+                "Disable" => {
+                    // Never start an elevated helper on an ordinary click.
+                    // If IPC is broken, show an explicit recovery instruction;
+                    // the separate guarded Repair action may require UAC.
+                    send_control(ControlRequest::Disable).map_err(|error| {
+                        format!("Обычное отключение недоступно ({error}). В настройках есть отдельное аварийное восстановление.")
+                    })?;
+                    Ok("Запрос выключения принят службой. Проверяю возврат DNS.".to_owned())
                 },
                 "Upgrade" => run_elevated_setup("upgrade"),
                 "Repair" => run_elevated_setup("repair"),
