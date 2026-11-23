@@ -1,3 +1,5 @@
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 //! Native Windows SCM installer and UAC control helper for the persistent
 //! mnebyDNS system resolver. It provisions a protected recovery directory,
 //! stores pinned DoT configuration and controls the privileged DNS service.
