@@ -19,7 +19,7 @@ fn main() {
             // The control pipe must exist, be SCM-PID-authenticated, and
             // reject activation or deactivation without a profile.
             match mnebydns_ipc::send_control(mnebydns_ipc::ControlRequest::Disable) {
-                Err(message) if message.contains("Служба отклонила запрос") => {
+                Err(message) if message.contains("Служба отклонила") => {
                     println!("Authenticated control pipe verified; unconfigured request rejected");
                 }
                 Ok(()) => {
