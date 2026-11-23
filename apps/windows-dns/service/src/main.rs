@@ -7,7 +7,7 @@ use mnebydns_ipc::{serve_local_control, serve_local_status, ControlRequest};
 use mnebydns_journal::{ControllerConfig, ProtectedJournal, SystemDnsJournal};
 use mnebydns_network::{
     apply_adapter_loopback_dns, capture_adapter_dns, list_adapters, restore_adapter_dns,
-    verify_adapter_loopback_dns, verify_adapter_restored, AdapterDnsSnapshot,
+    verify_adapter_loopback_dns, verify_adapter_restored, AdapterDnsSnapshot, AdapterInfo,
 };
 use std::collections::HashSet;
 use std::error::Error;
@@ -70,6 +70,23 @@ fn publish(
     let path = journal.protected_status_path().map_err(io::Error::other)?;
     fs::write(path, payload)?;
     Ok(report)
+}
+
+/// The resolver must keep running while any active managed adapter still
+/// points at localhost. If the user manually restores those adapters, a stuck
+/// service stop may finish WITHOUT deleting any unverified backup.
+fn has_active_localhost_resolver(adapters: &[AdapterInfo]) -> bool {
+    adapters.iter().any(|adapter| {
+        adapter.operational
+            && adapter.likely_physical
+            && !adapter.is_tunnel
+            && (adapter.dns_ipv4.iter().any(|dns| dns == "127.0.0.1")
+                || adapter.dns_ipv6.iter().any(|dns| dns == "::1"))
+    })
+}
+
+fn active_localhost_resolver_present() -> Result<bool, String> {
+    Ok(has_active_localhost_resolver(&list_adapters()?))
 }
 
 fn restore_all(system_journal: &mut SystemDnsJournal) -> Result<(), String> {
@@ -515,8 +532,30 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
             // Do not exit while system DNS still points to localhost.
             loop {
                 thread::sleep(POLL_INTERVAL);
-                if restore_all(&mut system_journal).is_ok() {
-                    break;
+                match restore_all(&mut system_journal) {
+                    Ok(()) => break,
+                    Err(restore_error) => {
+                        // If a user has manually restored active adapters, it
+                        // is safe to stop the listener. The protected journal
+                        // stays on disk for an offline exact-backup repair.
+                        if matches!(active_localhost_resolver_present(), Ok(false)) {
+                            eprintln!(
+                                "DNS stop permitted after manual resolver recovery; pending backups retained: {restore_error}"
+                            );
+                            break;
+                        }
+                        if let Ok(report) = publish(
+                            &journal,
+                            &system_journal,
+                            "error",
+                            0,
+                            Some(&restore_error),
+                        ) {
+                            if let Ok(mut current) = shared.write() {
+                                *current = report;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -531,6 +570,41 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
 
 fn main() -> windows_service::Result<()> {
     service_dispatcher::start(SERVICE_NAME, ffi_service_main)
+}
+
+#[cfg(test)]
+mod stop_recovery_tests {
+    use super::{has_active_localhost_resolver, AdapterInfo};
+
+    fn adapter(physical: bool, dns: &str) -> AdapterInfo {
+        AdapterInfo {
+            guid: "12345678-1234-1234-1234-123456789abc".into(),
+            name: "Ethernet".into(),
+            kind: "Ethernet".into(),
+            operational: true,
+            ipv6_enabled: true,
+            is_tunnel: !physical,
+            is_loopback: false,
+            likely_physical: physical,
+            dns_ipv4: vec![dns.into()],
+            dns_ipv6: vec![],
+            note: String::new(),
+        }
+    }
+
+    #[test]
+    fn preserves_service_while_physical_adapter_depends_on_localhost() {
+        assert!(has_active_localhost_resolver(&[adapter(true, "127.0.0.1")]));
+        assert!(!has_active_localhost_resolver(&[adapter(true, "1.1.1.1")]));
+        assert!(!has_active_localhost_resolver(&[adapter(false, "127.0.0.1")]));
+    }
+
+    #[test]
+    fn recognizes_ipv6_loopback_as_live_dependency() {
+        let mut physical = adapter(true, "1.1.1.1");
+        physical.dns_ipv6.push("::1".into());
+        assert!(has_active_localhost_resolver(&[physical]));
+    }
 }
 
 #[cfg(test)]
