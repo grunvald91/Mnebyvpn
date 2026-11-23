@@ -202,6 +202,49 @@ fn ensure_service_installed() -> io::Result<()> {
 /// Upgrade only a disabled, fully restored, known installation. Never
 /// replace a live service executable while a network adapter may still point
 /// to the loopback resolver.
+/// Emergency exact restoration for a STOPPED controller after a broken
+/// previous version. Never races against the running service. Every saved
+/// adapter is restored and verified independently; failures keep its backup.
+fn repair_dns() -> io::Result<()> {
+    let manager = service_manager(false)?;
+    let service = manager
+        .open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS)
+        .map_err(map_service)?;
+    if service.query_status().map_err(map_service)?.current_state != ServiceState::Stopped {
+        return Err(error(
+            "Repair requires the Windows DNS service to be stopped. Disable its startup, stop it safely, or reboot first. Backups preserved.",
+        ));
+    }
+    let journal = ProtectedJournal::open_service().map_err(error)?;
+    if let Some(mut config) = journal.read_controller_config().map_err(error)? {
+        if config.enabled {
+            config.enabled = false;
+            journal.write_controller_config(&config).map_err(error)?;
+        }
+    }
+    let mut recovery = journal.system_dns_journal().map_err(error)?;
+    let snapshots = recovery.read_all().map_err(error)?;
+    let mut errors = Vec::new();
+    for saved in snapshots {
+        match mnebydns_network::restore_adapter_dns(&saved)
+            .and_then(|_| mnebydns_network::verify_adapter_restored(&saved))
+            .and_then(|_| recovery.clear_verified(&saved.interface_guid))
+        {
+            Ok(()) => {}
+            Err(reason) => errors.push(format!("{}: {}", saved.adapter_name, reason)),
+        }
+    }
+    if recovery.has_pending().map_err(error)? {
+        errors.push("One or more original DNS backups remain; do not delete them".to_owned());
+    }
+    if errors.is_empty() {
+        println!("Original adapter DNS settings restored and verified.");
+        Ok(())
+    } else {
+        Err(error(errors.join("; ")))
+    }
+}
+
 fn upgrade() -> io::Result<()> {
     let journal = ProtectedJournal::open_service().map_err(error)?;
     if journal.check_recovery_pending().map_err(error)?
@@ -491,7 +534,7 @@ fn uninstall() -> io::Result<()> {
 
 fn usage() {
     eprintln!(
-        "mnebydns-setup.exe [install|upgrade|enable [DoT-host]|disable|restore|status|uninstall]"
+        "mnebydns-setup.exe [install|upgrade|repair|enable [DoT-host]|disable|restore|status|uninstall]"
     );
     eprintln!("System DNS changes require Windows Administrator approval (UAC).");
 }
@@ -501,6 +544,7 @@ fn main() {
     let result = match (args.next().as_deref(), args.next()) {
         (Some("install"), None) => install(),
         (Some("upgrade"), None) => upgrade(),
+        (Some("repair"), None) => repair_dns(),
         (Some("enable"), host) if args.next().is_none() => enable(host.as_deref()),
         (Some("disable" | "restore"), None) => disable(),
         (Some("status"), None) => status(),
