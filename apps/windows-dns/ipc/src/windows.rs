@@ -14,23 +14,26 @@ use windows_sys::Win32::Foundation::{
     ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE,
 };
 use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
-use windows_sys::Win32::Security::{
-    GetTokenInformation, IsWellKnownSid, TokenUser, WinLocalSystemSid, SECURITY_ATTRIBUTES,
-    TOKEN_QUERY, TOKEN_USER,
-};
+use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
 use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeServerProcessId,
     WaitNamedPipeW, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
 };
-use windows_sys::Win32::System::Threading::{
-    CreateEventW, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+use windows_sys::Win32::System::Threading::CreateEventW;
+use windows_sys::Win32::System::Services::{
+    CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatusEx,
+    SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_STATUS_PROCESS,
 };
 use windows_sys::Win32::System::IO::{
     CancelIoEx, GetOverlappedResult, GetOverlappedResultEx, OVERLAPPED,
 };
 
 const PIPE_NAME: &str = r"\\.\pipe\mnebydns-status-v1";
+const CONTROL_PIPE_NAME: &str = r"\\.\pipe\mnebydns-control-v1";
+const SERVICE_NAME: &str = "MnebyDnsHealth";
+const CONTROL_ACK: u8 = 0x06;
+const CONTROL_REJECT: u8 = 0x15;
 const PIPE_ACCESS_DUPLEX: u32 = 0x0000_0003;
 const FIRST_INSTANCE: u32 = 0x0008_0000; // FILE_FLAG_FIRST_PIPE_INSTANCE
 const FILE_FLAG_OVERLAPPED: u32 = 0x4000_0000;
@@ -88,47 +91,41 @@ fn private_pipe_descriptor() -> Result<LocalDescriptor, String> {
     Ok(LocalDescriptor(pointer))
 }
 
-fn validate_server_is_local_system(
+/// Verify the exact service PID through the Service Control Manager.
+/// Opening a LocalSystem process token from a standard-user GUI can fail
+/// with Access Denied even when the pipe belongs to the legitimate service.
+fn validate_server_is_registered_service(
     pipe: windows_sys::Win32::Foundation::HANDLE,
 ) -> Result<(), String> {
-    let mut pid = 0u32;
-    let ok = unsafe { GetNamedPipeServerProcessId(pipe, &mut pid) };
-    if ok == 0 || pid == 0 {
-        return Err("Cannot verify Windows service PID".into());
+    let mut pipe_pid = 0u32;
+    if unsafe { GetNamedPipeServerProcessId(pipe, &mut pipe_pid) } == 0 || pipe_pid == 0 {
+        return Err("Cannot verify named pipe server PID".to_owned());
     }
-    let process = Handle(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) });
-    if process.0.is_null() {
-        return Err("Cannot inspect Windows service process".into());
+    let scm = Handle(unsafe { OpenSCManagerW(null(), null(), SC_MANAGER_CONNECT) });
+    if scm.0.is_null() {
+        return Err("Cannot open Windows Service Control Manager".to_owned());
     }
-    let mut raw_token = null_mut();
-    if unsafe { OpenProcessToken(process.0, TOKEN_QUERY, &mut raw_token) } == 0 {
-        return Err("Cannot inspect Windows service identity".into());
+    let service_name = wide(SERVICE_NAME);
+    let service = Handle(unsafe { OpenServiceW(scm.0, service_name.as_ptr(), SERVICE_QUERY_STATUS) });
+    if service.0.is_null() {
+        return Err("Cannot query installed DNS Windows service".to_owned());
     }
-    let token = Handle(raw_token);
+    // CloseServiceHandle, not CloseHandle, is required for SCM handles.
+    let _ = scm;
+    let _ = service;
+    let mut status: SERVICE_STATUS_PROCESS = unsafe { std::mem::zeroed() };
     let mut needed = 0u32;
-    unsafe {
-        GetTokenInformation(token.0, TokenUser, null_mut(), 0, &mut needed);
-    }
-    if needed == 0 || needed > 4096 {
-        return Err("Unexpected service token size".into());
-    }
-    let mut aligned = vec![0u64; (needed as usize).div_ceil(8)];
-    let ok = unsafe {
-        GetTokenInformation(
-            token.0,
-            TokenUser,
-            aligned.as_mut_ptr().cast(),
-            needed,
+    let success = unsafe {
+        QueryServiceStatusEx(
+            service.0,
+            SC_STATUS_PROCESS_INFO,
+            (&mut status as *mut SERVICE_STATUS_PROCESS).cast(),
+            std::mem::size_of::<SERVICE_STATUS_PROCESS>() as u32,
             &mut needed,
         )
     };
-    if ok == 0 {
-        return Err("Cannot read Windows service token".into());
-    }
-    let token_user = unsafe { &*aligned.as_ptr().cast::<TOKEN_USER>() };
-    let local_system = unsafe { IsWellKnownSid(token_user.User.Sid, WinLocalSystemSid) };
-    if local_system == 0 {
-        return Err("Named pipe is not owned by a LocalSystem service".into());
+    if success == 0 || status.dwProcessId == 0 || status.dwProcessId != pipe_pid {
+        return Err("DNS pipe process does not match the installed Windows service".to_owned());
     }
     Ok(())
 }
@@ -144,7 +141,7 @@ pub fn read_service_status() -> Result<ServiceReport, String> {
         .write(true)
         .open(PIPE_NAME)
         .map_err(|err| format!("Не удалось открыть канал службы: {err}"))?;
-    validate_server_is_local_system(file.as_raw_handle().cast())?;
+    validate_server_is_registered_service(file.as_raw_handle().cast())?;
     let mut buf = Vec::new();
     let mut reader = BufReader::new(&file).take(MAX_FRAME as u64 + 1);
     // The server sends one newline-terminated, bounded JSON object.
@@ -310,5 +307,119 @@ pub fn serve_local_status(current: Arc<RwLock<ServiceReport>>) -> Result<(), Str
         unsafe {
             DisconnectNamedPipe(pipe.0);
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ControlRequest {
+    EnableSaved,
+    Disable,
+}
+impl ControlRequest {
+    fn byte(self) -> u8 {
+        match self {
+            Self::EnableSaved => 0x31,
+            Self::Disable => 0x30,
+        }
+    }
+    fn from_byte(value: u8) -> Option<Self> {
+        match value {
+            0x31 => Some(Self::EnableSaved),
+            0x30 => Some(Self::Disable),
+            _ => None,
+        }
+    }
+}
+
+/// Allowed operation is *only* toggling the already secured DoT profile.
+/// The service never takes executable paths, IPs or hostnames via this pipe.
+pub fn send_control(request: ControlRequest) -> Result<(), String> {
+    let pipe_name = wide(CONTROL_PIPE_NAME);
+    if unsafe { WaitNamedPipeW(pipe_name.as_ptr(), CLIENT_WAIT_MS) } == 0 {
+        return Err("CONTROL_PIPE_UNAVAILABLE".to_owned());
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(CONTROL_PIPE_NAME)
+        .map_err(|_| "CONTROL_PIPE_UNAVAILABLE".to_owned())?;
+    validate_server_is_registered_service(file.as_raw_handle().cast())?;
+    file.write_all(&[request.byte()])
+        .map_err(|_| "Не удалось отправить команду службе DNS".to_owned())?;
+    let mut reply = [0u8; 1];
+    file.read_exact(&mut reply)
+        .map_err(|_| "Служба DNS не подтвердила команду".to_owned())?;
+    match reply[0] {
+        CONTROL_ACK => Ok(()),
+        CONTROL_REJECT => Err("Служба отклонила запрос. Проверьте настройки и состояние DNS.".to_owned()),
+        _ => Err("Неизвестный ответ от службы DNS".to_owned()),
+    }
+}
+
+fn serve_control_client(
+    pipe: windows_sys::Win32::Foundation::HANDLE,
+    handler: &impl Fn(ControlRequest) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut opcode = [0u8; 1];
+    let read = bounded_io(pipe, "Control request", |overlapped, count| unsafe {
+        ReadFile(pipe, opcode.as_mut_ptr().cast(), 1, count, overlapped)
+    })?;
+    if read != 1 {
+        return Err("Invalid DNS control request size".to_owned());
+    }
+    let allowed = ControlRequest::from_byte(opcode[0])
+        .ok_or_else(|| "Unsupported DNS control command".to_owned());
+    let accepted = allowed.and_then(handler).is_ok();
+    let byte = if accepted { CONTROL_ACK } else { CONTROL_REJECT };
+    bounded_io(pipe, "Control response", |overlapped, count| unsafe {
+        WriteFile(pipe, (&byte as *const u8).cast(), 1, count, overlapped)
+    })?;
+    Ok(())
+}
+
+/// Privileged service endpoint; accessible only locally to interactive logons,
+/// admins and LocalSystem. It only accepts the two fixed, least-privilege
+/// DNS-profile toggles. No arbitrary shell commands or configuration data.
+pub fn serve_local_control(
+    handler: impl Fn(ControlRequest) -> Result<(), String>,
+) -> Result<(), String> {
+    let desc = private_pipe_descriptor()?;
+    let mut attributes = SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: desc.0,
+        bInheritHandle: 0,
+    };
+    let name = wide(CONTROL_PIPE_NAME);
+    let pipe = Handle(unsafe {
+        CreateNamedPipeW(
+            name.as_ptr(),
+            PIPE_ACCESS_DUPLEX | FIRST_INSTANCE | FILE_FLAG_OVERLAPPED,
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+            1, 128, 128, 500, &mut attributes,
+        )
+    });
+    if pipe.0 == INVALID_HANDLE_VALUE {
+        return Err(format!("Cannot create protected DNS control pipe: {}", unsafe { GetLastError() }));
+    }
+    loop {
+        let connected = wait_for_connection(pipe.0)?;
+        if connected {
+            if let Err(err) = serve_control_client(pipe.0, &handler) {
+                eprintln!("DNS control request rejected: {err}");
+            }
+        }
+        unsafe { DisconnectNamedPipe(pipe.0); }
+    }
+}
+
+#[cfg(test)]
+mod control_tests {
+    use super::*;
+    #[test]
+    fn control_opcode_is_small_and_allowlisted() {
+        assert_eq!(ControlRequest::from_byte(0x31), Some(ControlRequest::EnableSaved));
+        assert_eq!(ControlRequest::from_byte(0x30), Some(ControlRequest::Disable));
+        assert_eq!(ControlRequest::from_byte(0x21), None);
+        assert_eq!(ControlRequest::from_byte(0xff), None);
     }
 }
