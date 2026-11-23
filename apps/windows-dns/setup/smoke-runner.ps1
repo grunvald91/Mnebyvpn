@@ -5,6 +5,13 @@ $setup = (Resolve-Path 'apps/windows-dns/setup/target/release/mnebydns-setup.exe
 $svc = (Resolve-Path 'apps/windows-dns/service/target/release/mnebydns-health-service.exe').Path
 Copy-Item -LiteralPath $svc -Destination (Join-Path (Split-Path -Parent $setup) 'mnebydns-health-service.exe') -ErrorAction Stop
 
+function RunSetup([string]$action) {
+    $process = Start-Process -FilePath $setup -ArgumentList @($action) -Wait -PassThru
+    if ($process.ExitCode -ne 0) {
+        throw "Native setup $action failed with exit $($process.ExitCode)"
+    }
+}
+
 function DnsSnapshot {
     @(Get-DnsClientServerAddress |
        Sort-Object InterfaceIndex,AddressFamily |
@@ -17,12 +24,10 @@ $installed = $false
 $smokeFailure = $null
 $cleanupFailure = $null
 try {
-    & $setup install
-    if ($LASTEXITCODE -ne 0) { throw "Native setup install failed with exit $LASTEXITCODE" }
+    RunSetup install
     $installed = $true
 
-    & $setup status
-    if ($LASTEXITCODE -ne 0) { throw "Native setup status failed with exit $LASTEXITCODE" }
+    RunSetup status
 
     $ready = $false
     for ($attempt = 0; $attempt -lt 12; $attempt++) {
@@ -63,8 +68,7 @@ try {
     $smokeFailure = $_
 } finally {
     if ($installed) {
-        & $setup uninstall
-        if ($LASTEXITCODE -ne 0) { $cleanupFailure = "Native setup uninstall failed: $LASTEXITCODE" }
+        try { RunSetup uninstall } catch { $cleanupFailure = $_.Exception.Message }
     }
     $after = DnsSnapshot
     if ($before -ne $after) {
