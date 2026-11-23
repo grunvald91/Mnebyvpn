@@ -881,6 +881,47 @@ mod system_dns_tests {
     }
 
     #[test]
+    fn committed_dns_backup_with_crash_left_twin_reconciles_without_deleting_backup() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut journal = SystemDnsJournal::new(directory.path().to_path_buf());
+        let saved = snapshot();
+        journal.save_before_change(&saved).unwrap();
+        let committed = journal.record_path(&saved.interface_guid).unwrap();
+        let staging = journal.staging_path(&saved.interface_guid).unwrap();
+        fs::hard_link(&committed, &staging).unwrap();
+        assert_eq!(journal.read_all().unwrap(), vec![saved.clone()]);
+        assert!(committed.exists(), "committed recovery backup must stay");
+        assert!(!staging.exists(), "duplicate crash-left staging must be cleaned");
+        journal.clear_verified(&saved.interface_guid).unwrap();
+    }
+
+    #[test]
+    fn committed_backup_with_conflicting_staging_is_never_deleted() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut journal = SystemDnsJournal::new(directory.path().to_path_buf());
+        let saved = snapshot();
+        journal.save_before_change(&saved).unwrap();
+        let staging = journal.staging_path(&saved.interface_guid).unwrap();
+        let mut changed = saved.clone();
+        changed.ipv6 = DnsServerMode::Static(vec!["2001:4860:4860::8844".into()]);
+        fs::write(&staging, serde_json::to_vec(&SystemRecord::new(&changed).unwrap()).unwrap()).unwrap();
+        assert!(journal.read_all().is_err());
+        assert!(staging.exists(), "conflicting evidence must survive");
+        assert!(journal.record_path(&saved.interface_guid).unwrap().exists());
+    }
+
+    #[test]
+    fn valid_staging_without_committed_backup_remains_blocked() {
+        let directory = tempfile::tempdir().unwrap();
+        let journal = SystemDnsJournal::new(directory.path().to_path_buf());
+        let saved = snapshot();
+        let staging = journal.staging_path(&saved.interface_guid).unwrap();
+        fs::write(&staging, serde_json::to_vec(&SystemRecord::new(&saved).unwrap()).unwrap()).unwrap();
+        assert!(journal.has_pending().is_err());
+        assert!(staging.exists());
+    }
+
+    #[test]
     fn system_journal_checksum_corruption_fails_closed() {
         let directory = tempfile::tempdir().unwrap();
         let mut journal = SystemDnsJournal::new(directory.path().to_path_buf());
