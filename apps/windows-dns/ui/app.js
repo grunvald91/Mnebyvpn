@@ -23,7 +23,7 @@ function openTab(tab) {
   for (const panel of document.querySelectorAll('.view')) {
     panel.classList.toggle('hidden', panel.id !== tab);
   }
-  if (tab === 'diagnostics') void refreshAdapters();
+  if (tab === 'diagnostics') void refreshStatus();
   if (tab === 'settings') void refreshSystemDns();
 }
 
@@ -68,7 +68,7 @@ function renderAdapterDetails(adapter) {
   if (!adapter) {
     const empty = document.createElement('p');
     empty.className = 'muted';
-    empty.textContent = 'Выбери адаптер, чтобы увидеть его текущие DNS-серверы.';
+    empty.textContent = 'Выберите адаптер';
     target.append(empty);
     return;
   }
@@ -81,7 +81,7 @@ function renderAdapterDetails(adapter) {
   appendDetailLine(target, 'IPv6 DNS', adapter.dns_ipv6.length ? adapter.dns_ipv6.join(', ') : 'Не сообщаются');
   const note = document.createElement('p');
   note.className = adapter.is_tunnel || adapter.is_loopback || !adapter.likely_physical ? 'adapter-warning' : 'muted';
-  note.textContent = adapter.note + ' Текущий список DNS не показывает, настроен ли он вручную или получен автоматически.';
+  note.textContent = adapter.note;
   target.append(note);
 }
 
@@ -91,8 +91,8 @@ function renderAdapters() {
   const visible = showAllAdapters ? adapters : adapters.filter(item => item.operational && item.likely_physical);
   const toggle = get('toggle-all-adapters');
   toggle.textContent = showAllAdapters
-    ? 'Скрыть служебные интерфейсы'
-    : 'Показать служебные интерфейсы (' + (adapters.length - visible.length) + ')';
+    ? 'Только активные'
+    : 'Все интерфейсы (' + (adapters.length - visible.length) + ')';
   if (!visible.length) {
     const empty = document.createElement('p');
     empty.className = 'muted';
@@ -113,11 +113,11 @@ function renderAdapters() {
     const name = document.createElement('strong');
     name.textContent = adapter.name;
     const meta = document.createElement('span');
-    meta.textContent = adapter.kind + ' · ' + (adapter.operational ? 'активен' : 'не активен');
+    meta.textContent = adapter.operational ? 'Активен' : 'Отключён';
     button.append(name, meta);
     button.addEventListener('click', () => {
       selectedAdapterGuid = adapter.guid;
-      get('preflight-result').textContent = 'Для нового адаптера предпроверка ещё не выполнена.';
+      get('preflight-result').textContent = '';
       renderAdapters();
       renderAdapterDetails(adapter);
     });
@@ -133,7 +133,7 @@ async function refreshAdapters() {
   adaptersLoading = true;
   const button = get('refresh-adapters');
   button.disabled = true;
-  get('adapters-list').textContent = 'Получаю список адаптеров Windows…';
+  get('adapters-list').textContent = 'Загрузка…';
   if (typeof invoke !== 'function') {
     get('adapters-list').textContent = 'Список доступен только в приложении Windows.';
     adaptersLoading = false;
@@ -143,9 +143,9 @@ async function refreshAdapters() {
   try {
     adapters = await invoke('list_network_adapters');
     if (!adapters.some(item => item.guid === selectedAdapterGuid)) selectedAdapterGuid = null;
-    get('preflight-result').textContent = 'Обновлены данные Windows. Запусти предпроверку ещё раз.';
+    get('preflight-result').textContent = '';
     renderAdapters();
-    get('status').textContent = 'Список адаптеров обновлён. Сетевые настройки не менялись.';
+    get('status').textContent = '';
   } catch (error) {
     get('adapters-list').textContent = 'Не удалось получить список адаптеров: ' + String(error);
   } finally {
@@ -258,7 +258,7 @@ async function refreshStatus() {
       get('service-state').classList.remove('good');
       get('service-state').classList.add('bad');
     }
-    get('status').textContent = 'Локальный DNS проверен. Статус DoT отображается отдельно в разделе «Мой DNS».';
+    get('status').textContent = '';
   } catch (error) {
     get('status').textContent = 'Не удалось проверить DNS: ' + String(error);
   } finally {
@@ -321,7 +321,6 @@ async function checkPersonalDot() {
 }
 
 get('tray-button').addEventListener('click', hideToTray);
-get('settings-tray').addEventListener('click', hideToTray);
 
 let systemDnsLoading = false;
 let systemDnsPollGeneration = 0;
@@ -453,7 +452,7 @@ async function watchSystemDnsAction(action, generation) {
   systemDnsPendingAction = null;
   await refreshSystemDns();
   get('home-action-hint').textContent =
-    'Изменение не подтверждено. Проверьте запрос UAC и откройте «Настройки».';
+    'Не удалось подтвердить изменение. Откройте «Проверка».';
 }
 
 async function requestSystemDns(action) {
@@ -464,8 +463,7 @@ async function requestSystemDns(action) {
   if (action === 'Enable' && !host && !systemDnsConfigured) {
     openTab('settings');
     get('dot-host').focus();
-    get('system-dns-message').textContent =
-      'Введите персональный DoT-адрес. Затем вернитесь на главную и нажмите «Включить».';
+    get('system-dns-message').textContent = 'Введите адрес DNS и нажмите «Сохранить и включить».';
     return;
   }
   if (action === 'Enable' && !['disabled', 'not-installed'].includes(systemDnsState)) return;
@@ -487,8 +485,7 @@ async function requestSystemDns(action) {
     get('system-dns-message').textContent = 'Не удалось управлять DNS: ' + String(error);
     systemDnsLoading = false;
     await refreshSystemDns();
-    get('home-action-hint').textContent = 'Ошибка управления DNS: ' + String(error)
-      + '. Проверьте раздел «Настройки» для аварийного восстановления.';
+    get('home-action-hint').textContent = 'Ошибка: ' + String(error);
   }
 }
 
@@ -522,25 +519,6 @@ get('apply-new-dot').addEventListener('click', async () => {
     systemDnsPendingAction = null;
     get('system-dns-message').textContent = 'Не удалось сохранить DNS-сервер: ' + String(error);
     renderHomeConnection();
-  }
-});
-
-get('repair-system-dns').addEventListener('click', async () => {
-  if (systemDnsOperationPending || systemDnsLoading) return;
-  const button = get('repair-system-dns');
-  button.disabled = true;
-  get('upgrade-system-message').textContent =
-    'Точное восстановление возможно только после остановки службы Windows…';
-  try {
-    const message = await invoke('launch_system_dns_action', { action: 'Repair', host: null });
-    get('upgrade-system-message').textContent = message;
-    await refreshSystemDns();
-  } catch (error) {
-    get('upgrade-system-message').textContent =
-      'Аварийное восстановление не подтверждено: ' + String(error)
-      + '. Защищённые резервные записи сохранены.';
-  } finally {
-    button.disabled = false;
   }
 });
 
@@ -732,7 +710,10 @@ get('run-all-tests').addEventListener('click', runAllTests);
 get('check-dot').addEventListener('click', checkPersonalDot);
 get('check-proxy').addEventListener('click', smokeProxy);
 get('dot-host').addEventListener('keydown', (event) => {
-  if (event.key === 'Enter') runAllTests();
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    get('apply-new-dot').click();
+  }
 });
 get('dot-host').addEventListener('input', () => {
   dotInputRevision += 1;
