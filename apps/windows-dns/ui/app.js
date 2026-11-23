@@ -349,14 +349,16 @@ function renderHomeConnection() {
     unknown: 'Не удалось проверить службу DNS'
   };
   const active = systemDnsState === 'active';
+  const recoveryNeeded = systemDnsState === 'error' || systemDnsState === 'unknown';
   const transitional = systemDnsState === 'starting' || systemDnsState === 'restoring';
   const busy = systemDnsLoading || systemDnsOperationPending || transitional;
   summary.textContent = labels[systemDnsState] || labels.unknown;
   button.textContent = systemDnsOperationPending
     ? (systemDnsPendingAction === 'Disable' ? 'Отключение…' : 'Подключение…')
-    : active ? 'Выключить' : 'Включить';
-  // Unknown or failed service state must never be mistaken for "off".
-  button.disabled = busy || ['checking', 'unknown', 'error'].includes(systemDnsState);
+    : recoveryNeeded ? 'Восстановить DNS' : active ? 'Выключить' : 'Включить';
+  // Unknown or failed state is NOT "off": expose only the safe disable
+  // operation so the user is never trapped without a recovery action.
+  button.disabled = busy || systemDnsState === 'checking';
   button.setAttribute('aria-pressed', String(active));
   home.classList.toggle('is-active', active);
   home.classList.toggle('is-error', ['error', 'unknown'].includes(systemDnsState));
@@ -367,8 +369,8 @@ function renderHomeConnection() {
       ? (systemDnsConfigured || get('dot-host').value.trim()
         ? 'Нажмите «Включить», чтобы использовать Smart DNS в Windows.'
         : 'Для первого подключения укажите персональный адрес в «Настройках».')
-      : systemDnsState === 'error' || systemDnsState === 'unknown'
-        ? 'Откройте «Настройки» для диагностики и восстановления.'
+      : recoveryNeeded
+        ? 'Не удалось подтвердить состояние DNS. Нажмите «Восстановить DNS» или откройте диагностику.'
         : 'Проверяю состояние Windows DNS.';
 }
 
@@ -467,7 +469,7 @@ async function requestSystemDns(action) {
     return;
   }
   if (action === 'Enable' && !['disabled', 'not-installed'].includes(systemDnsState)) return;
-  if (action === 'Disable' && systemDnsState !== 'active') return;
+  if (action === 'Disable' && !['active', 'error', 'unknown'].includes(systemDnsState)) return;
   systemDnsLoading = true;
   systemDnsOperationPending = true;
   systemDnsPendingAction = action;
@@ -483,11 +485,10 @@ async function requestSystemDns(action) {
     systemDnsOperationPending = false;
     systemDnsPendingAction = null;
     get('system-dns-message').textContent = 'Не удалось управлять DNS: ' + String(error);
-    get('home-action-hint').textContent = 'Ошибка запуска: ' + String(error);
     systemDnsLoading = false;
-    renderHomeConnection();
-    // Show the error on the main screen after rendering its current state.
-    get('home-action-hint').textContent = 'Ошибка запуска: ' + String(error);
+    await refreshSystemDns();
+    get('home-action-hint').textContent = 'Ошибка управления DNS: ' + String(error)
+      + '. Проверьте раздел «Настройки» для аварийного восстановления.';
   }
 }
 
@@ -567,7 +568,8 @@ get('upgrade-system-service').addEventListener('click', async () => {
 });
 
 get('toggle-system-dns').addEventListener('click', () => {
-  void requestSystemDns(systemDnsState === 'active' ? 'Disable' : 'Enable');
+  const recoveryNeeded = ['active', 'error', 'unknown'].includes(systemDnsState);
+  void requestSystemDns(recoveryNeeded ? 'Disable' : 'Enable');
 });
 get('restore-system-dns').addEventListener('click', () => {
   if (systemDnsOperationPending) return;
