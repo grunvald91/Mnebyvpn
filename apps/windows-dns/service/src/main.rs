@@ -3,7 +3,7 @@
 //! configuration, and crash-safe recovery journal. No plaintext fallback.
 
 use mnebydns_core::{now_ms, probe_loopback, LoopbackDnsServer, ServiceReport};
-use mnebydns_ipc::{serve_local_control, serve_local_status, ControlRequest};
+use mnebydns_ipc::{send_control, serve_local_control, serve_local_recovery, serve_local_status, ControlRequest};
 use mnebydns_journal::{ControllerConfig, ProtectedJournal, SystemDnsJournal};
 use mnebydns_network::{
     apply_adapter_loopback_dns, capture_adapter_dns, list_adapters, restore_adapter_dns,
@@ -21,16 +21,25 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 use windows_service::service::{
-    ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus, ServiceType,
+    ServiceAccess, ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus, ServiceType,
 };
 use windows_service::service_control_handler::{self, ServiceControlHandlerResult};
+use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
 use windows_service::{define_windows_service, service_dispatcher};
 
 const SERVICE_NAME: &str = "MnebyDnsHealth";
+const RECOVERY_SERVICE_NAME: &str = "MnebyDnsRecovery";
 const LOOPBACK_PORT: u16 = 53;
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 define_windows_service!(ffi_service_main, service_main);
+define_windows_service!(ffi_recovery_main, recovery_service_main);
+
+fn recovery_service_main(_args: Vec<OsString>) {
+    if let Err(error) = run_recovery_service() {
+        eprintln!("Independent DNS recovery broker stopped: {error}");
+    }
+}
 
 fn service_main(_args: Vec<OsString>) {
     if let Err(error) = run_service() {
@@ -339,6 +348,9 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
                     config.enabled = true;
                     journal.write_controller_config(&config)
                 }
+                ControlRequest::EmergencyRestore => {
+                    Err("Recovery operations are handled only by the independent recovery service".to_owned())
+                }
                 ControlRequest::Disable => {
                     let mut config = journal.read_controller_config()?.ok_or_else(|| {
                         "Не удалось найти профиль для выключения; откройте восстановление".to_owned()
@@ -596,8 +608,119 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
     Ok(())
 }
 
+/// The recovery broker is installed alongside the DNS resolver with the
+/// same initial UAC. It does not bind port 53, nor alter any DNS on startup.
+fn run_recovery_service() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let stop = Arc::new(AtomicBool::new(false));
+    let cancel = Arc::clone(&stop);
+    let handler = move |control_event| match control_event {
+        ServiceControl::Stop => {
+            cancel.store(true, Ordering::Release);
+            ServiceControlHandlerResult::NoError
+        }
+        ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+        _ => ServiceControlHandlerResult::NotImplemented,
+    };
+    let status_handle = service_control_handler::register(RECOVERY_SERVICE_NAME, handler)?;
+    let mut status = ServiceStatus {
+        service_type: ServiceType::OWN_PROCESS,
+        current_state: ServiceState::Running,
+        controls_accepted: ServiceControlAccept::STOP,
+        exit_code: ServiceExitCode::Win32(0),
+        checkpoint: 0,
+        wait_hint: Duration::ZERO,
+        process_id: None,
+    };
+    status_handle.set_service_status(status.clone())?;
+    thread::spawn(|| {
+        if let Err(err) = serve_local_recovery(recover_dns_without_uac) {
+            eprintln!("Independent DNS recovery IPC failed: {err}");
+        }
+    });
+    while !stop.load(Ordering::Acquire) {
+        thread::sleep(Duration::from_millis(500));
+    }
+    status.current_state = ServiceState::Stopped;
+    status.controls_accepted = ServiceControlAccept::empty();
+    status_handle.set_service_status(status)?;
+    Ok(())
+}
+
+/// Reconcile the protected snapshots exactly. The normal controller is first
+/// asked to stop changing DNS; if it cannot confirm recovery, the recovery
+/// broker stops it through SCM before touching its journal.
+fn recover_dns_without_uac() -> Result<(), String> {
+    let journal = ProtectedJournal::open_service()?;
+    if let Some(mut config) = journal.read_controller_config()? {
+        config.enabled = false;
+        journal.write_controller_config(&config)?;
+    }
+    let manager = ServiceManager::local_computer(
+        None::<&str>,
+        ServiceManagerAccess::CONNECT,
+    ).map_err(|e| e.to_string())?;
+    if let Ok(service) = manager.open_service(
+        SERVICE_NAME,
+        ServiceAccess::QUERY_STATUS | ServiceAccess::STOP,
+    ) {
+        if service.query_status().map_err(|e| e.to_string())?.current_state
+            != ServiceState::Stopped
+        {
+            let _ = send_control(ControlRequest::Disable);
+            let started = std::time::Instant::now();
+            while started.elapsed() < Duration::from_secs(25) {
+                if journal.system_dns_journal()?.has_pending()? == false {
+                    return Ok(());
+                }
+                thread::sleep(Duration::from_millis(400));
+            }
+            // It must not race with a live controller. Stop it via SCM, then
+            // do the snapshot restoration as an independent LocalSystem app.
+            service.stop().map_err(|e| format!("Cannot safely stop main DNS service: {e}"))?;
+            let started = std::time::Instant::now();
+            while started.elapsed() < Duration::from_secs(25) {
+                if service.query_status().map_err(|e| e.to_string())?.current_state
+                    == ServiceState::Stopped
+                {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(400));
+            }
+            if service.query_status().map_err(|e| e.to_string())?.current_state
+                != ServiceState::Stopped
+            {
+                return Err("DNS service is still running. Refusing concurrent recovery; saved snapshots preserved".to_owned());
+            }
+        }
+    }
+    let mut recovery = journal.system_dns_journal()?;
+    let snapshots = recovery.read_all()?;
+    let mut failures = Vec::new();
+    for saved in snapshots {
+        match restore_adapter_dns(&saved)
+            .and_then(|_| verify_adapter_restored(&saved))
+            .and_then(|_| recovery.clear_verified(&saved.interface_guid))
+        {
+            Ok(()) => {}
+            Err(reason) => failures.push(format!("{}: {reason}", saved.adapter_name)),
+        }
+    }
+    if recovery.has_pending()? {
+        failures.push("Recovery snapshots remain; they were not discarded".to_owned());
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
+    }
+}
+
 fn main() -> windows_service::Result<()> {
-    service_dispatcher::start(SERVICE_NAME, ffi_service_main)
+    if std::env::args().any(|arg| arg == "--recovery-service") {
+        service_dispatcher::start(RECOVERY_SERVICE_NAME, ffi_recovery_main)
+    } else {
+        service_dispatcher::start(SERVICE_NAME, ffi_service_main)
+    }
 }
 
 #[cfg(test)]
