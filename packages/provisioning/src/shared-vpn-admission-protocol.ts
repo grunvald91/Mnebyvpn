@@ -155,8 +155,14 @@ function validateDecision(d:unknown,r:AdmissionRequest,nowMs:number):AdmissionDe
  const at=isoMs(d.decidedAt);
  if(!Number.isSafeInteger(nowMs)||Math.abs(nowMs-at)>MAX_SKEW_MS)
    throw new AdmissionProtocolError('Stale controller decision');
+ // A signed positive decision must match the DB operation exactly.
+ // In particular a REFRESHED result must never authorize a new claim.
+ if((d.result==='ADMITTED'&&r.op!=='claim')||
+    (d.result==='REFRESHED'&&r.op!=='refresh')){
+   throw new AdmissionProtocolError('Positive admission result/operation mismatch');
+ }
  if(d.result==='ADMITTED'||d.result==='REFRESHED'){
-   if(r.op==='release'||typeof d.leaseUntil!=='string')
+   if(typeof d.leaseUntil!=='string')
      throw new AdmissionProtocolError('Invalid granted session operation');
    const until=isoMs(d.leaseUntil);
    if(until<=at||until>at+MAX_LEASE_MS||until<=nowMs)
