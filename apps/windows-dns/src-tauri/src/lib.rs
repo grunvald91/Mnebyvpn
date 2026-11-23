@@ -122,11 +122,15 @@ async fn launch_system_dns_action(action: String, host: Option<String>) -> Resul
                 }
                 "Disable" => match send_control(ControlRequest::Disable) {
                     Ok(()) => Ok("Команда выключения передана службе. Проверяю восстановление DNS.".to_owned()),
-                    Err(error) if error == "CONTROL_PIPE_UNAVAILABLE" => {
-                        // Explicit recovery path for an installed older service.
-                        run_elevated_setup("disable")
+                    Err(ipc_error) => {
+                        // Explicit user-initiated recovery must remain available
+                        // even when the IPC pipe is damaged, the service is
+                        // stopped, or this is a legacy binary. UAC is required
+                        // only for this degraded fallback path.
+                        run_elevated_setup("disable").map_err(|fallback| {
+                            format!("Отключение через службу: {ipc_error}; аварийное отключение: {fallback}")
+                        })
                     }
-                    Err(error) => Err(error),
                 },
                 "Upgrade" => run_elevated_setup("upgrade"),
                 "Repair" => run_elevated_setup("repair"),
