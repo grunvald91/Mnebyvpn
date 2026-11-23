@@ -36,7 +36,7 @@ function signedRows(rows:FiDnsGrant[],issuedAtMs:number):FiDnsGrant[] {
   if(!Array.isArray(rows)||rows.length>MAX_ROWS)
     throw Error('Invalid regional DNS grant count');
   const seen=new Set<string>();
-  const sorted=[...rows].sort((a,b)=>a.tokenSha256.localeCompare(b.tokenSha256,'en'));
+  const sorted=[...rows].sort((a,b)=>a.tokenSha256<b.tokenSha256?-1:a.tokenSha256>b.tokenSha256?1:0);
   let prev='';
   for(const row of sorted){
     if(!row||!UUID.test(row.entitlementId)||
