@@ -23,11 +23,12 @@ DECLARE
  v_spki text;
  v_der bytea;
 BEGIN
- IF TG_OP='UPDATE' AND
-   (NEW.node_id IS DISTINCT FROM OLD.node_id OR
-    NEW.country_code IS DISTINCT FROM OLD.country_code OR
-    NEW.node_public_key_sha256 IS DISTINCT FROM OLD.node_public_key_sha256)
- THEN RAISE EXCEPTION 'Shared VPN node country and identity are immutable'; END IF;
+ IF TG_OP='UPDATE' THEN
+   IF NEW.node_id IS DISTINCT FROM OLD.node_id OR
+      NEW.country_code IS DISTINCT FROM OLD.country_code OR
+      NEW.node_public_key_sha256 IS DISTINCT FROM OLD.node_public_key_sha256
+   THEN RAISE EXCEPTION 'Shared VPN node country and identity are immutable'; END IF;
+ END IF;
  IF NOT NEW.enabled THEN RETURN NEW; END IF;
  SELECT i.identity_public_spki INTO v_spki
  FROM public.vpn_node_enrollment_inventory i
