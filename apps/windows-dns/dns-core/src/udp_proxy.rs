@@ -693,6 +693,36 @@ mod tests {
     }
 
     #[test]
+    fn forwards_multiple_additional_rrs_and_large_edns_queries() {
+        let mut q = query_packet(0x1234, 1);
+        q[11] = 2; // OPT and a separate TXT additional record.
+        q.extend_from_slice(&[0, 0, 41, 0x10, 0, 0, 0, 0, 0, 0, 0]);
+        q.extend_from_slice(&[0, 0, 16, 0, 1, 0, 0, 0, 0, 0, 4, 3, b'a', b'b', b'c']);
+        assert_eq!(read_query(&q).unwrap().udp_limit, MAX_UDP_RESPONSE);
+        let response = reply_for_query(mock(false, false, false).as_ref(), &q);
+        assert!(response.is_some());
+        let mut large = query_packet(0x1235, 1);
+        large[11] = 1;
+        large.extend_from_slice(&[0, 0, 41, 0x10, 0, 0, 0, 0, 0, 0x05, 0x14]);
+        large.extend(std::iter::repeat_n(0u8, 1300));
+        assert!(large.len() > 1232);
+        assert_eq!(read_query(&large).unwrap().udp_limit, MAX_UDP_RESPONSE);
+        assert!(reply_for_query(mock(false, false, false).as_ref(), &large).is_some());
+    }
+
+    #[test]
+    fn accepts_valid_upstream_question_with_normalized_case() {
+        let q = query_packet(0x1533, 1);
+        let mut answer = mock(false, false, false).forward(&q).unwrap();
+        let info = read_query(&q).unwrap();
+        assert!(answer[13].is_ascii_lowercase());
+        answer[13].make_ascii_uppercase();
+        assert!(valid_upstream_answer(&q, &answer, info.end_of_question));
+        answer[13] = b'x';
+        assert!(!valid_upstream_answer(&q, &answer, info.end_of_question));
+    }
+
+    #[test]
     fn matches_transaction_question_and_handles_failure_without_plaintext() {
         let q = query_packet(88, 1);
         let info = read_query(&q).unwrap();
