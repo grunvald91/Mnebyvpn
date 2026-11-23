@@ -22,6 +22,8 @@ use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
 
 const SERVICE_NAME: &str = "MnebyDnsHealth";
 const SERVICE_BIN: &str = "mnebydns-health-service.exe";
+const RECOVERY_SERVICE_NAME: &str = "MnebyDnsRecovery";
+const RECOVERY_BIN: &str = "mnebydns-recovery-service.exe";
 const INSTALL_DIR: &str = "mnebyDNS";
 const MAX_BINARY_BYTES: u64 = 64 * 1024 * 1024;
 
@@ -144,8 +146,64 @@ fn install() -> io::Result<()> {
         .map_err(map_service)?;
     configure_service_recovery()?;
     service.start::<&str>(&[]).map_err(map_service)?;
+    install_recovery_broker()?;
     println!("мнебыDNS system DNS service installed and started automatically.");
     println!("It will start at Windows boot and restore saved DNS settings when disabled.");
+    Ok(())
+}
+
+/// The initial UAC provisions a separate, always-on recovery broker as
+/// LocalSystem. It uses its own executable image and therefore survives a
+/// failed primary service update or crash.
+fn install_recovery_broker() -> io::Result<()> {
+    let manager = service_manager(true)?;
+    let target = PathBuf::from(
+        env::var_os("ProgramFiles").ok_or_else(|| error("ProgramFiles missing"))?,
+    )
+    .join(INSTALL_DIR)
+    .join(RECOVERY_BIN);
+    let access = ServiceAccess::QUERY_STATUS | ServiceAccess::START | ServiceAccess::QUERY_CONFIG;
+    match manager.open_service(RECOVERY_SERVICE_NAME, access) {
+        Ok(service) => {
+            let config = service.query_config().map_err(map_service)?;
+            if !is_our_service_path(&config.executable_path, &target) {
+                return Err(error("Unexpected recovery service executable path; refusing to modify it"));
+            }
+            if service.query_status().map_err(map_service)?.current_state == ServiceState::Stopped {
+                service.start::<&str>(&[]).map_err(map_service)?;
+            }
+            return Ok(());
+        }
+        Err(_) => {}
+    }
+    let source = env::current_exe()?.with_file_name(SERVICE_BIN);
+    if !target.exists() {
+        copy_new_binary(&source, &target)?;
+    } else {
+        ensure_regular_file(&target)?;
+    }
+    let info = ServiceInfo {
+        name: OsString::from(RECOVERY_SERVICE_NAME),
+        display_name: OsString::from("мнебыDNS — аварийное восстановление"),
+        service_type: ServiceType::OWN_PROCESS,
+        start_type: ServiceStartType::AutoStart,
+        error_control: ServiceErrorControl::Normal,
+        executable_path: target,
+        launch_arguments: vec![OsString::from("--recovery-service")],
+        dependencies: Vec::new(),
+        account_name: None,
+        account_password: None,
+    };
+    let service = manager
+        .create_service(
+            &info,
+            ServiceAccess::QUERY_STATUS | ServiceAccess::START | ServiceAccess::CHANGE_CONFIG,
+        )
+        .map_err(map_service)?;
+    service.set_description(
+        "Independent privileged DNS recovery broker. Never changes DNS without a user request.",
+    ).map_err(map_service)?;
+    service.start::<&str>(&[]).map_err(map_service)?;
     Ok(())
 }
 
@@ -482,6 +540,7 @@ fn upgrade() -> io::Result<()> {
             "New service did not start: {start_error}; original service rollback: {rollback:?}"
         )));
     }
+    install_recovery_broker()?;
     // A successful SCM start alone is insufficient: the new service must
     // expose an authenticated, fresh, disabled status with no pending backup.
     println!(
