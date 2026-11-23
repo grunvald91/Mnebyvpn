@@ -12,6 +12,22 @@ fn main() {
                 status.probe.ipv4.ok,
                 status.probe.ipv6.ok,
             );
+            // A freshly installed idle service has no saved DoT profile.
+            // The control pipe must exist, be SCM-PID-authenticated, and
+            // reject activation or deactivation without a profile.
+            match mnebydns_ipc::send_control(mnebydns_ipc::ControlRequest::Disable) {
+                Err(message) if message.contains("Служба отклонила запрос") => {
+                    println!("Authenticated control pipe verified; unconfigured request rejected");
+                }
+                Ok(()) => {
+                    eprintln!("CRITICAL: control pipe unexpectedly accepted unconfigured request");
+                    std::process::exit(1);
+                }
+                Err(error) => {
+                    eprintln!("Cannot authenticate new service control pipe: {error}");
+                    std::process::exit(1);
+                }
+            }
         }
         Err(error) => {
             eprintln!("Cannot read authenticated local service status: {error}");
