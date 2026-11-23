@@ -589,6 +589,19 @@ impl ProtectedJournal {
 
     /// Only a privileged Windows service should use this path. The GUI must
     /// use authenticated IPC in a future stage, not open protected state files.
+    /// Never accept a new enable request while any old or per-adapter
+    /// recovery record is pending, corrupted or only partly written.
+    /// The caller must finish restoring original DNS first.
+    pub fn ensure_safe_to_enable(&self) -> Result<(), String> {
+        if self.check_recovery_pending()? || self.system_dns_journal()?.has_pending()? {
+            return Err(
+                "DNS recovery is unfinished; restore all original adapter DNS settings before enabling"
+                    .to_owned(),
+            );
+        }
+        Ok(())
+    }
+
     pub fn protected_status_path(&self) -> Result<PathBuf, String> {
         windows_acl::verify_existing_private_directory(&self.inner.directory)?;
         Ok(self.inner.directory.join("health-v1.json"))
