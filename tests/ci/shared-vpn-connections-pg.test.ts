@@ -74,7 +74,7 @@ test('DE and FI atomically share one paid connection capacity',async()=>{
     assert.equal(await claim(three.entitlement,sessions[1],'ci-fi',q),'DENY_REPLAY');
     // Simulated disconnect/lease timeout on CI only.
     await db.query(
-      "UPDATE vpn_shared_connection_leases SET lease_until=clock_timestamp()-interval '1 second' "+
+      "UPDATE vpn_shared_connection_leases SET admitted_at=clock_timestamp()-interval '1 minute', lease_until=clock_timestamp()-interval '1 second' "+
       "WHERE entitlement_id=$1 AND connection_id=$2",
       [three.entitlement,sessions[2]]);
     assert.equal(await claim(three.entitlement,randomUUID(),'ci-fi',r),'ADMITTED');
