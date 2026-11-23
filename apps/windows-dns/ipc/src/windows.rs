@@ -388,8 +388,8 @@ fn send_request(
         if bytes.is_empty() || bytes.len() > MAX_DOT_HOST_BYTES || !host.is_ascii() {
             return Err("Некорректная длина или кодировка имени DoT-сервера".to_owned());
         }
-        let length = u16::try_from(bytes.len())
-            .map_err(|_| "Слишком длинное имя DoT-сервера".to_owned())?;
+        let length =
+            u16::try_from(bytes.len()).map_err(|_| "Слишком длинное имя DoT-сервера".to_owned())?;
         file.write_all(&length.to_be_bytes())
             .and_then(|_| file.write_all(bytes))
             .map_err(|_| "Не удалось передать DoT-адрес службе".to_owned())?;
@@ -399,9 +399,9 @@ fn send_request(
         .map_err(|_| "Служба DNS не подтвердила команду".to_owned())?;
     match reply[0] {
         CONTROL_ACK => Ok(()),
-        CONTROL_REJECT => {
-            Err("Служба отклонила DNS-команду: проверьте статус и завершение восстановления".to_owned())
-        }
+        CONTROL_REJECT => Err(
+            "Служба отклонила DNS-команду: проверьте статус и завершение восстановления".to_owned(),
+        ),
         _ => Err("Неизвестный ответ от службы DNS".to_owned()),
     }
 }
@@ -451,8 +451,8 @@ fn serve_control_client(
             }
             let mut bytes = vec![0u8; length];
             read_control_exact(pipe, &mut bytes)?;
-            let host = String::from_utf8(bytes)
-                .map_err(|_| "Invalid DoT hostname encoding".to_owned())?;
+            let host =
+                String::from_utf8(bytes).map_err(|_| "Invalid DoT hostname encoding".to_owned())?;
             if !host.is_ascii() {
                 return Err("Only ASCII DNS hostnames are accepted".to_owned());
             }
@@ -484,9 +484,7 @@ pub fn serve_local_control(
 }
 
 /// Separate local recovery endpoint is restricted to one fixed opcode.
-pub fn serve_local_recovery(
-    handler: impl Fn() -> Result<(), String>,
-) -> Result<(), String> {
+pub fn serve_local_recovery(handler: impl Fn() -> Result<(), String>) -> Result<(), String> {
     serve_control_pipe(RECOVERY_PIPE_NAME, move |request| {
         if request != ControlRequest::EmergencyRestore {
             return Err("Recovery service only accepts restore".to_owned());
@@ -552,8 +550,14 @@ mod control_tests {
         );
         assert_eq!(ControlRequest::from_byte(0x21), None);
         assert_eq!(ControlRequest::from_byte(0xff), None);
-        assert_eq!(ControlRequest::from_byte(0x33), Some(ControlRequest::EmergencyRestore));
-        assert_eq!(ControlRequest::from_byte(CONTROL_CONFIGURE_AND_ENABLE), None);
+        assert_eq!(
+            ControlRequest::from_byte(0x33),
+            Some(ControlRequest::EmergencyRestore)
+        );
+        assert_eq!(
+            ControlRequest::from_byte(CONTROL_CONFIGURE_AND_ENABLE),
+            None
+        );
         assert_eq!(
             ControlRequest::ConfigureAndEnable("dns.example.net".to_owned()).byte(),
             CONTROL_CONFIGURE_AND_ENABLE,
