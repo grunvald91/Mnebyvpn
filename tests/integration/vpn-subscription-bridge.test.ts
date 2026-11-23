@@ -312,9 +312,31 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
 });
 
 test('public /sub keeps verified FI AWG available when DE bridge fails and returns 503 with Retry-After when both fail',async()=>{
- const db='postgresql://'+(process.env.PGUSER||'test')+':'+
-  (process.env.PGPASSWORD||'test')+'@'+(process.env.PGHOST||'localhost')+':'+
-  (process.env.PGPORT||'5432')+'/'+(process.env.PGDATABASE||'mnebyvpn_test');
+ const baseDbName=process.env.PGDATABASE||'mnebyvpn_test';
+ const pgHost=process.env.PGHOST||'localhost';
+ const pgPort=process.env.PGPORT||'5432';
+ const pgUser=process.env.PGUSER||'test';
+ const pgPass=process.env.PGPASSWORD||'test';
+ const tempDbName='mnebyvpn_sub_'+randomBytes(6).toString('hex');
+ const adminUrl=`postgresql://${pgUser}:${pgPass}@${pgHost}:${pgPort}/postgres`;
+ const db=`postgresql://${pgUser}:${pgPass}@${pgHost}:${pgPort}/${tempDbName}`;
+ const adminPool=new Pool({connectionString:adminUrl});
+ let tempCreated=false;
+ for(let attempt=0;attempt<10;attempt++){
+   try{
+     await adminPool.query(`CREATE DATABASE "${tempDbName}" TEMPLATE "${baseDbName}"`);
+     tempCreated=true;
+     break;
+   }catch(err){
+     const code=(err as {code?:string}).code;
+     if(code==='55006'&&attempt<9){
+       await new Promise(resolve=>setTimeout(resolve,150));
+       continue;
+     }
+     await adminPool.end().catch(()=>{});
+     throw err;
+   }
+ }
  const pool=new Pool({connectionString:db});
  const account=randomUUID(),order=randomUUID(),entitlement=randomUUID();
  const telegramUser=9148723128;
@@ -343,7 +365,6 @@ test('public /sub keeps verified FI AWG available when DE bridge fails and retur
  const webPort=addr.port;
  await new Promise<void>(resolve=>portSearch.close(()=>resolve()));
  let child:ChildProcess|undefined;
- let createdInventory=false,createdPool=false;
  let activeServerKey=serverKey;
  try{
    await pool.query('INSERT INTO accounts(id,telegram_user_id) VALUES($1,$2)',
@@ -368,7 +389,6 @@ test('public /sub keeps verified FI AWG available when DE bridge fails and retur
    const existingInv=await pool.query(
      "SELECT status FROM vpn_node_enrollment_inventory WHERE node_id='fi-test-01'");
    if(!existingInv.rowCount){
-     createdInventory=true;
      await pool.query(
        'INSERT INTO vpn_node_enrollment_inventory(node_id,endpoint_host,identity_public_spki) '+
        "VALUES('fi-test-01','fi.mnebyvpn.site',$1)",
@@ -389,7 +409,6 @@ test('public /sub keeps verified FI AWG available when DE bridge fails and retur
    const existingPool=await pool.query(
      "SELECT server_public_key,state FROM vpn_awg_node_pools WHERE node_id='fi-test-01'");
    if(!existingPool.rowCount){
-     createdPool=true;
      await pool.query(
        'INSERT INTO vpn_awg_node_pools(node_id,endpoint_host,server_public_key,subnet_cidr,state,external_e2e_proof_sha256,verified_at) '+
        "VALUES('fi-test-01','fi.mnebyvpn.site',$1,'10.73.91.0/24','verified',$2,clock_timestamp())",
@@ -435,7 +454,7 @@ test('public /sub keeps verified FI AWG available when DE bridge fails and retur
      cwd:fileURLToPath(new URL('../../',import.meta.url)),
      stdio:'ignore',
      env:{...process.env,
-       DATABASE_URL:db.replace(/\/mnebyvpn_test$/, '/postgres'),
+       DATABASE_URL:adminUrl,
        VPN_SUBSCRIPTION_DATABASE_URL:db,
        WEB_BASE_URL:'http://127.0.0.1:'+webPort,
        WEB_PORT:String(webPort),MNEBYVPN_ENV:'offline-test',
@@ -504,19 +523,10 @@ test('public /sub keeps verified FI AWG available when DE bridge fails and retur
  }finally{
    child?.kill('SIGTERM');
    await new Promise<void>(resolve=>worker.close(()=>resolve()));
-   await pool.query("UPDATE vpn_release_flags SET enabled=false WHERE feature='vpn_awg_clients'").catch(()=>{});
-   await pool.query('DELETE FROM vpn_awg_command_outbox WHERE entitlement_id=$1',[entitlement]).catch(()=>{});
-   await pool.query('DELETE FROM vpn_awg_peer_allocations WHERE entitlement_id=$1',[entitlement]).catch(()=>{});
-   if(createdPool)await pool.query("DELETE FROM vpn_awg_node_pools WHERE node_id='fi-test-01'").catch(()=>{});
-   if(createdInventory){
-     await pool.query("DELETE FROM vpn_node_enrollment_challenges WHERE node_id='fi-test-01'").catch(()=>{});
-     await pool.query("DELETE FROM vpn_node_enrollment_inventory WHERE node_id='fi-test-01'").catch(()=>{});
+   await pool.end().catch(()=>{});
+   if(tempCreated){
+     await adminPool.query(`DROP DATABASE IF EXISTS "${tempDbName}" WITH (FORCE)`).catch(()=>{});
    }
-   await pool.query('DELETE FROM vpn_subscription_links WHERE entitlement_id=$1',[entitlement]).catch(()=>{});
-   await pool.query('DELETE FROM provisioning_state WHERE entitlement_id=$1',[entitlement]).catch(()=>{});
-   await pool.query('DELETE FROM entitlements WHERE id=$1',[entitlement]).catch(()=>{});
-   await pool.query('DELETE FROM orders WHERE id=$1',[order]).catch(()=>{});
-   await pool.query('DELETE FROM accounts WHERE id=$1',[account]).catch(()=>{});
-   await pool.end();
+   await adminPool.end().catch(()=>{});
  }
 });
