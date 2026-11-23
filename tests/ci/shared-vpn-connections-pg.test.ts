@@ -1,7 +1,7 @@
 /** Disposable PostgreSQL concurrency test. Never connects to RU188. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash,generateKeyPairSync,randomUUID,randomBytes} from 'node:crypto';
 import {Pool} from 'pg';
 
 test('DE and FI atomically share one paid connection capacity',async()=>{
@@ -43,9 +43,36 @@ test('DE and FI atomically share one paid connection capacity',async()=>{
   };
   const p='c'.repeat(64),q='d'.repeat(64),r='e'.repeat(64),s='f'.repeat(64);
   try{
-    await db.query("INSERT INTO vpn_shared_connection_nodes(node_id,country_code,"+
-      "node_public_key_sha256,enabled) VALUES"+
-      "('ci-de','DE',repeat('a',64),true),('ci-fi','FI',repeat('b',64),true)");
+    // Enroll disposable Ed25519 identities through the same guarded state
+    // machine as production; a fake SHA pin must not bypass migration 0149.
+    for(const [nodeId,country,host] of [
+      ['ci-de','DE','ci-de.example.org'],
+      ['ci-fi','FI','ci-fi.example.org'],
+    ] as const){
+      const {publicKey}=generateKeyPairSync('ed25519');
+      const spki=publicKey.export({format:'der',type:'spki'}) as Buffer;
+      const fingerprint=createHash('sha256').update(spki).digest('hex');
+      await db.query(
+        'INSERT INTO vpn_node_enrollment_inventory(node_id,endpoint_host,'+
+        'identity_public_spki) VALUES($1,$2,$3)',
+        [nodeId,host,spki.toString('base64url')]);
+      await db.query(
+        "UPDATE vpn_node_enrollment_inventory SET status='approved',"+
+        "approved_at=clock_timestamp() WHERE node_id=$1",[nodeId]);
+      await db.query(
+        'INSERT INTO vpn_node_enrollment_challenges('+
+        'challenge_id,node_id,nonce_sha256,issued_at,expires_at,consumed_at) '+
+        "VALUES($1,$2,$3,clock_timestamp()-interval '1 second',"+
+        "clock_timestamp()+interval '1 minute',clock_timestamp())",
+        [randomUUID(),nodeId,randomBytes(32).toString('hex')]);
+      await db.query(
+        "UPDATE vpn_node_enrollment_inventory SET status='enrolled',"+
+        "enrolled_at=clock_timestamp() WHERE node_id=$1",[nodeId]);
+      await db.query(
+        'INSERT INTO vpn_shared_connection_nodes(node_id,country_code,'+
+        'node_public_key_sha256,enabled) VALUES($1,$2,$3,true)',
+        [nodeId,country,fingerprint]);
+    }
     const first=await make(1);
     const sa=randomUUID(),sb=randomUUID();
     assert.equal(await claim(first.entitlement,sa,'ci-de',p),'DENY_DISABLED');
