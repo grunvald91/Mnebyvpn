@@ -27,6 +27,32 @@ assert.ok(!settings.includes('id="enable-system-dns"'), 'No duplicate enable but
 assert.ok(!settings.includes('id="disable-system-dns"'), 'No duplicate disable button in Settings');
 assert.ok(js.includes('async function runAllTests()'));
 assert.ok(js.includes('async function requestSystemDns(action)'));
+const css = readFileSync(new URL('styles.css', base), 'utf8');
+const service = readFileSync(new URL('../service/src/main.rs', base), 'utf8');
+const ipc = readFileSync(new URL('../ipc/src/windows.rs', base), 'utf8');
+const config = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', base), 'utf8'));
+const buttons = [...html.matchAll(/<button\b[^>]*\bid="([^"]+)"/g)].map(match => match[1]);
+for (const id of buttons) {
+  assert.ok(js.includes("get('" + id + "').addEventListener"),
+    'Visible button missing listener: ' + id);
+}
+assert.ok(html.includes('<details class="fold" id="maintenance-panel">'),
+  'Maintenance should be collapsed by default');
+assert.ok(!html.includes('id="repair-system-dns"'), 'Duplicate restore button');
+assert.ok(!html.includes('id="settings-tray"'), 'Duplicate tray button');
+assert.ok(!html.includes('Маршрутизация Smart DNS'), 'Remove never-checked diagnostic row');
+assert.ok(!html.includes('Сохранить и включить'), 'Settings must never enable DNS');
+assert.ok(html.includes('>Сохранить адрес</button>'), 'Settings Save affordance missing');
+assert.ok(js.includes("action: 'Save', host"), 'Save must use a non-activating IPC command');
+assert.ok(ipc.includes('ConfigureOnly(String)'), 'Save-only opcode missing');
+assert.ok(service.includes('ControlRequest::ConfigureOnly(host) => save_profile(host, false)'),
+  'Saving an address must persist with DNS disabled');
+assert.ok(rust.includes('ControlRequest::ConfigureOnly(hostname.to_ascii_lowercase())'),
+  'Save must not send ConfigureAndEnable');
+assert.ok(css.includes('prefers-reduced-motion') && css.includes('focus-visible'),
+  'Motion accessibility or keyboard focus styling missing');
+assert.ok(!css.includes('min-height:min(560px'), 'Old oversize home panel still present');
+assert.ok(config.app.windows[0].height <= 550, 'Default window too tall for compact home');
 assert.ok(js.includes("const recoveryNeeded = ['active', 'error', 'unknown'].includes(systemDnsState);"), 'Failure state must expose DNS recovery');
 assert.ok(js.includes("recoveryNeeded ? 'Disable' : 'Enable'"), 'Recovery button must send Disable');
 assert.ok(js.includes("'Восстановить DNS'"), 'One-button recovery label missing');
