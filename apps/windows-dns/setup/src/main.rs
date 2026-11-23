@@ -245,6 +245,22 @@ fn repair_dns() -> io::Result<()> {
     }
 }
 
+fn enable_service_autostart() -> io::Result<()> {
+    let root = env::var_os("SystemRoot").ok_or_else(|| error("SystemRoot missing"))?;
+    let sc = PathBuf::from(root).join("System32").join("sc.exe");
+    let result = Command::new(sc)
+        .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+        .args(["config", SERVICE_NAME, "start=", "auto"])
+        .output()?;
+    if !result.status.success() {
+        return Err(error(format!(
+            "Could not restore DNS service auto-start: {}",
+            String::from_utf8_lossy(&result.stderr)
+        )));
+    }
+    Ok(())
+}
+
 fn upgrade() -> io::Result<()> {
     let journal = ProtectedJournal::open_service().map_err(error)?;
     if journal.check_recovery_pending().map_err(error)?
@@ -320,6 +336,10 @@ fn upgrade() -> io::Result<()> {
             "Could not install service upgrade: {err}; binary rollback: {rollback:?}"
         )));
     }
+    // An emergency recovery may have disabled startup intentionally. Only
+    // after exact restoration and an explicit successful upgrade is it safe
+    // to return this controller to normal automatic service startup.
+    enable_service_autostart()?;
     if let Err(err) = service.start::<&str>(&[]) {
         // Do not silently re-enable DNS or destroy the previous service.
         return Err(error(format!(
