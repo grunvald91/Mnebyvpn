@@ -4,6 +4,7 @@
  * already signed AWG peers. Reality remains installed server-side, but is no
  * longer advertised to customers until independently proven functional.
  */
+export const VPN_BRAND='MNEBYVPN';
 export const INCY_SITE_URL='https://mnebyvpn.site';
 export const INCY_RENEW_URL='https://mnebyvpn.site/#plans';
 export const INCY_BOT_URL='https://t.me/MNEBYVPN_bot';
@@ -11,7 +12,7 @@ export const INCY_SUPPORT_URL='https://t.me/MNEBYVPN_bot?start=support';
 
 /** Customer-facing country label; transport remains in connection fields. */
 export function vpnCountryLabel(countryNameRu:string):string{
-  return 'мне VPN '+countryNameRu;
+  return VPN_BRAND+' '+countryNameRu;
 }
 
 /** The upstream bridge is validated separately (including its WS auth).
@@ -43,6 +44,7 @@ export function keepSupportedAdditionalTransport(link:string):boolean{
   return !(uri.protocol==='vless:' &&
     uri.searchParams.get('security')==='reality' &&
     (label===vpnCountryLabel('Германия') ||
+     label==='мне VPN Германия' || // Legacy label must remain blocked.
      label.startsWith('🇩🇪 MNEBYVPN')));
 }
 
@@ -58,7 +60,7 @@ export function incySubscriptionHeaders(expiresAt:Date,client:string|null=null):
     throw Error('Unrepresentable INCY expiry');
   return {
     'subscription-userinfo':'upload=0;download=0;total=0;expire='+expire,
-    'profile-title':'base64:'+Buffer.from('MNEBYVPN','utf8').toString('base64'),
+    'profile-title':'base64:'+Buffer.from(VPN_BRAND,'utf8').toString('base64'),
     'profile-update-interval':'1',
     'profile-web-page-url':client==='karing'?INCY_SITE_URL:INCY_RENEW_URL,
     // Legacy INCY-compatible alias; use the same public provider website.
@@ -111,7 +113,7 @@ export function incyExpiredSubscriptionHeaders(
 export function incyExpiredSubscriptionBody(client:string|null=null):string{
   const karing=client==='karing';
   return Buffer.from([
-    '#profile-title: MNEBYVPN',
+    '#profile-title: '+VPN_BRAND,
     '#profile-web-page-url: '+(karing?INCY_SITE_URL:INCY_RENEW_URL),
     '#support-url: '+(karing?INCY_SUPPORT_URL:INCY_RENEW_URL),
     '#profile-update-interval: 1',
@@ -134,7 +136,7 @@ export function incyEncodeActiveSubscription(
   if(!verifiedProfile||verifiedProfile.split('\n').some(line=>!line||line.startsWith('#')))
     throw Error('Invalid verified VPN profile lines');
   const lines=client==='karing'?[]:[
-    '#profile-title: MNEBYVPN',
+    '#profile-title: '+VPN_BRAND,
     '#profile-web-page-url: '+INCY_RENEW_URL,
     // Visible website fallback for Desktop variants that ignore site metadata.
     '#support-url: '+INCY_RENEW_URL,
