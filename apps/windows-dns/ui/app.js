@@ -513,6 +513,25 @@ get('apply-new-dot').addEventListener('click', async () => {
   }
 });
 
+get('repair-system-dns').addEventListener('click', async () => {
+  if (systemDnsOperationPending || systemDnsLoading) return;
+  const button = get('repair-system-dns');
+  button.disabled = true;
+  get('upgrade-system-message').textContent =
+    'Точное восстановление возможно только после остановки службы Windows…';
+  try {
+    const message = await invoke('launch_system_dns_action', { action: 'Repair', host: null });
+    get('upgrade-system-message').textContent = message;
+    await refreshSystemDns();
+  } catch (error) {
+    get('upgrade-system-message').textContent =
+      'Аварийное восстановление не подтверждено: ' + String(error)
+      + '. Защищённые резервные записи сохранены.';
+  } finally {
+    button.disabled = false;
+  }
+});
+
 get('upgrade-system-service').addEventListener('click', async () => {
   if (systemDnsOperationPending || systemDnsLoading) return;
   const button = get('upgrade-system-service');
