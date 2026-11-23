@@ -25,11 +25,23 @@ BEGIN
  INSERT INTO provisioning_state(entitlement_id,adapter,applied_revision,last_observed_at)
  VALUES(eid,'vpn',1,clock_timestamp());
  INSERT INTO vpn_node_enrollment_inventory(node_id,endpoint_host,
-   identity_public_spki,status,approved_at,enrolled_at)
- VALUES('test-de','test-de.example.org',repeat('A',59),'enrolled',
-         clock_timestamp(),clock_timestamp()),
-       ('test-fi','test-fi.example.org',repeat('B',59),'enrolled',
-         clock_timestamp(),clock_timestamp());
+   identity_public_spki)
+ VALUES('test-de','test-de.example.org',repeat('A',59)),
+       ('test-fi','test-fi.example.org',repeat('B',59));
+ UPDATE vpn_node_enrollment_inventory
+    SET status='approved',approved_at=clock_timestamp()
+    WHERE node_id IN ('test-de','test-fi');
+ INSERT INTO vpn_node_enrollment_challenges(challenge_id,node_id,
+   nonce_sha256,issued_at,expires_at,consumed_at)
+ VALUES(gen_random_uuid(),'test-de',repeat('c',64),
+       clock_timestamp()-interval '1 second',
+       clock_timestamp()+interval '2 minutes',clock_timestamp()),
+       (gen_random_uuid(),'test-fi',repeat('d',64),
+       clock_timestamp()-interval '1 second',
+       clock_timestamp()+interval '2 minutes',clock_timestamp());
+ UPDATE vpn_node_enrollment_inventory
+    SET status='enrolled',enrolled_at=clock_timestamp()
+    WHERE node_id IN ('test-de','test-fi');
  INSERT INTO vpn_shared_connection_nodes(
   node_id,country_code,node_public_key_sha256,enabled)
  VALUES('test-de','DE',repeat('a',64),true),
