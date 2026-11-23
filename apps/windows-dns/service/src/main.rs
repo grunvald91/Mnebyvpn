@@ -711,6 +711,7 @@ fn recover_dns_without_uac() -> Result<(), String> {
     }
     let mut recovery = journal.system_dns_journal()?;
     let snapshots = recovery.read_all()?;
+    let had_snapshots = !snapshots.is_empty();
     let mut failures = Vec::new();
     for saved in snapshots {
         match restore_adapter_dns(&saved)
@@ -723,6 +724,14 @@ fn recover_dns_without_uac() -> Result<(), String> {
     }
     if recovery.has_pending()? {
         failures.push("Recovery snapshots remain; they were not discarded".to_owned());
+    }
+    // Without a saved snapshot, there is no proof that localhost DNS was
+    // originally configured by this app. Never claim successful recovery
+    // while a physical interface still depends on it.
+    if !had_snapshots && active_localhost_resolver_present()? {
+        failures.push(
+            "An active adapter still uses localhost DNS but no original backup exists".to_owned(),
+        );
     }
     if failures.is_empty() {
         Ok(())
