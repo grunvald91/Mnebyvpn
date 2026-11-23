@@ -202,6 +202,18 @@ fn ensure_service_installed() -> io::Result<()> {
 /// Upgrade only a disabled, fully restored, known installation. Never
 /// replace a live service executable while a network adapter may still point
 /// to the loopback resolver.
+/// Refuse upgrades when a physical interface still depends on the
+/// localhost DNS service, even if its recovery journal is unexpectedly empty.
+fn physical_adapter_still_uses_local_dns() -> io::Result<bool> {
+    let adapters = mnebydns_network::list_adapters().map_err(error)?;
+    Ok(adapters.iter().any(|adapter| {
+        adapter.operational
+            && adapter.likely_physical
+            && (adapter.dns_ipv4.iter().any(|address| address == "127.0.0.1")
+                || adapter.dns_ipv6.iter().any(|address| address == "::1"))
+    }))
+}
+
 /// Emergency exact restoration for a STOPPED controller after a broken
 /// previous version. Never races against the running service. Every saved
 /// adapter is restored and verified independently; failures keep its backup.
@@ -236,6 +248,9 @@ fn repair_dns() -> io::Result<()> {
     }
     if recovery.has_pending().map_err(error)? {
         errors.push("One or more original DNS backups remain; do not delete them".to_owned());
+    }
+    if physical_adapter_still_uses_local_dns()? {
+        errors.push("An active physical adapter still uses localhost DNS; recovery is incomplete".to_owned());
     }
     if errors.is_empty() {
         println!("Original adapter DNS settings restored and verified.");
@@ -281,6 +296,11 @@ fn upgrade() -> io::Result<()> {
     {
         return Err(error(
             "DNS is still enabled in the protected configuration. Disable it before upgrading.",
+        ));
+    }
+    if physical_adapter_still_uses_local_dns()? {
+        return Err(error(
+            "An active physical adapter still uses localhost DNS. Upgrade blocked until restoration is verified.",
         ));
     }
     let manager = service_manager(false)?;
