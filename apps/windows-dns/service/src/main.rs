@@ -303,19 +303,50 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
     thread::spawn(move || {
         if let Err(error) = serve_local_control(|request| {
             let journal = ProtectedJournal::open_service()?;
-            let mut config = journal.read_controller_config()?.ok_or_else(|| {
-                "Сначала установите персональный DNS-профиль с подтверждением UAC".to_owned()
-            })?;
-            if request == ControlRequest::EnableSaved {
-                journal.ensure_safe_to_enable()?;
-                if config.upstream_addresses.is_empty() {
-                    return Err("Не найден сохранённый IP DoT-сервера".to_owned());
+            match request {
+                ControlRequest::ConfigureAndEnable(host) => {
+                    // The privileged service itself verifies the hostname,
+                    // resolves pinned IPs before system DNS is changed, and
+                    // persists a constrained config. No paths or shell args.
+                    journal.ensure_safe_to_enable()?;
+                    if journal
+                        .read_controller_config()?
+                        .is_some_and(|config| config.enabled)
+                    {
+                        return Err(
+                            "Сначала отключите Smart DNS перед сменой сервера".to_owned(),
+                        );
+                    }
+                    let host = host.trim().to_ascii_lowercase();
+                    let addresses = mnebydns_core::resolve_dot_addresses(&host)?;
+                    let config = ControllerConfig {
+                        version: 1,
+                        enabled: true,
+                        dot_host: host,
+                        upstream_addresses: addresses,
+                    };
+                    config.validate()?;
+                    journal.write_controller_config(&config)
                 }
-                config.enabled = true;
-            } else {
-                config.enabled = false;
+                ControlRequest::EnableSaved => {
+                    journal.ensure_safe_to_enable()?;
+                    let mut config = journal.read_controller_config()?.ok_or_else(|| {
+                        "Нет сохранённого персонального DoT-сервера".to_owned()
+                    })?;
+                    if config.upstream_addresses.is_empty() {
+                        return Err("Не найден сохранённый IP DoT-сервера".to_owned());
+                    }
+                    config.enabled = true;
+                    journal.write_controller_config(&config)
+                }
+                ControlRequest::Disable => {
+                    let mut config = journal.read_controller_config()?.ok_or_else(|| {
+                        "Не удалось найти профиль для выключения; откройте восстановление".to_owned()
+                    })?;
+                    config.enabled = false;
+                    journal.write_controller_config(&config)
+                }
             }
-            journal.write_controller_config(&config)
         }) {
             eprintln!("Authenticated control pipe stopped: {error}");
         }
