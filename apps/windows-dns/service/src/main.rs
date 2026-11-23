@@ -669,8 +669,12 @@ fn recover_dns_without_uac() -> Result<(), String> {
             let _ = send_control(ControlRequest::Disable);
             let started = std::time::Instant::now();
             while started.elapsed() < Duration::from_secs(25) {
-                if journal.system_dns_journal()?.has_pending()? == false {
-                    return Ok(());
+                if let Ok(report) = mnebydns_ipc::read_service_status() {
+                    if report.dns_state.as_deref() == Some("disabled")
+                        && report.recovery_state.as_deref() == Some("clear")
+                    {
+                        return Ok(());
+                    }
                 }
                 thread::sleep(Duration::from_millis(400));
             }
