@@ -157,17 +157,18 @@ fn install() -> io::Result<()> {
 /// failed primary service update or crash.
 fn install_recovery_broker() -> io::Result<()> {
     let manager = service_manager(true)?;
-    let target = PathBuf::from(
-        env::var_os("ProgramFiles").ok_or_else(|| error("ProgramFiles missing"))?,
-    )
-    .join(INSTALL_DIR)
-    .join(RECOVERY_BIN);
+    let target =
+        PathBuf::from(env::var_os("ProgramFiles").ok_or_else(|| error("ProgramFiles missing"))?)
+            .join(INSTALL_DIR)
+            .join(RECOVERY_BIN);
     let access = ServiceAccess::QUERY_STATUS | ServiceAccess::START | ServiceAccess::QUERY_CONFIG;
     match manager.open_service(RECOVERY_SERVICE_NAME, access) {
         Ok(service) => {
             let config = service.query_config().map_err(map_service)?;
             if !is_our_service_path(&config.executable_path, &target) {
-                return Err(error("Unexpected recovery service executable path; refusing to modify it"));
+                return Err(error(
+                    "Unexpected recovery service executable path; refusing to modify it",
+                ));
             }
             if service.query_status().map_err(map_service)?.current_state == ServiceState::Stopped {
                 service.start::<&str>(&[]).map_err(map_service)?;
@@ -200,9 +201,11 @@ fn install_recovery_broker() -> io::Result<()> {
             ServiceAccess::QUERY_STATUS | ServiceAccess::START | ServiceAccess::CHANGE_CONFIG,
         )
         .map_err(map_service)?;
-    service.set_description(
-        "Independent privileged DNS recovery broker. Never changes DNS without a user request.",
-    ).map_err(map_service)?;
+    service
+        .set_description(
+            "Independent privileged DNS recovery broker. Never changes DNS without a user request.",
+        )
+        .map_err(map_service)?;
     service.start::<&str>(&[]).map_err(map_service)?;
     Ok(())
 }
