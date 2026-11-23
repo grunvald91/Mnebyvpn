@@ -792,7 +792,8 @@ fn uninstall() -> io::Result<()> {
                 }
                 thread::sleep(Duration::from_millis(300));
             }
-            if recovery.query_status().map_err(map_service)?.current_state != ServiceState::Stopped {
+            if recovery.query_status().map_err(map_service)?.current_state != ServiceState::Stopped
+            {
                 return Err(error("Independent recovery service did not stop"));
             }
         }
