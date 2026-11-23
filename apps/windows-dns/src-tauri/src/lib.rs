@@ -99,7 +99,7 @@ fn run_elevated_setup(command: &str) -> Result<String, String> {
 
 #[tauri::command]
 async fn launch_system_dns_action(action: String, host: Option<String>) -> Result<String, String> {
-    if !matches!(action.as_str(), "Enable" | "Disable" | "Upgrade" | "Repair") {
+    if !matches!(action.as_str(), "Enable" | "Save" | "Disable" | "Upgrade" | "Repair") {
         return Err("Недопустимая операция системного DNS".to_owned());
     }
     tauri::async_runtime::spawn_blocking(move || {
@@ -107,40 +107,45 @@ async fn launch_system_dns_action(action: String, host: Option<String>) -> Resul
         {
             use mnebydns_ipc::{send_control, ControlRequest};
             match action.as_str() {
-                "Enable" => {
+                "Enable" | "Save" => {
                     if let Some(hostname) = host.as_deref().map(str::trim).filter(|h| !h.is_empty()) {
-                        // A single first-run UAC installs the privileged
-                        // controller. All routine DNS profile changes happen
-                        // through its restricted local protocol thereafter.
                         let first_install = service_not_installed();
                         if first_install {
                             run_elevated_setup("install")?;
                         }
-                        let request =
-                            ControlRequest::ConfigureAndEnable(hostname.to_ascii_lowercase());
+                        let request = if action == "Save" {
+                            ControlRequest::ConfigureOnly(hostname.to_ascii_lowercase())
+                        } else {
+                            ControlRequest::ConfigureAndEnable(hostname.to_ascii_lowercase())
+                        };
                         let mut last_error = String::new();
                         for attempt in 0..12 {
                             match send_control(request.clone()) {
-                                Ok(()) => return Ok(
-                                    "Персональный DoT-профиль принят установленной службой без дополнительного UAC.".to_owned()
-                                ),
-                                Err(error) if first_install && error == "CONTROL_PIPE_UNAVAILABLE" && attempt < 11 => {
+                                Ok(()) => return Ok(if action == "Save" {
+                                    "Адрес DNS сохранён. Включение — на главной.".to_owned()
+                                } else {
+                                    "Запрос подключения передан службе.".to_owned()
+                                }),
+                                Err(error)
+                                    if first_install && error == "CONTROL_PIPE_UNAVAILABLE" && attempt < 11 =>
+                                {
                                     last_error = error;
                                     std::thread::sleep(std::time::Duration::from_millis(250));
                                 }
                                 Err(error) => {
                                     return Err(format!(
-                                        "Служба DNS не приняла профиль: {error}. Если установлена старая версия, обновите службу один раз в настройках."
+                                        "Служба DNS отклонила адрес: {error}. Для старой установки доступна миграция в настройках."
                                     ));
                                 }
                             }
                         }
-                        Err(format!("Новая DNS-служба не ответила после установки: {last_error}"))
+                        Err(format!("Служба DNS не ответила после установки: {last_error}"))
+                    } else if action == "Enable" {
+                        send_control(ControlRequest::EnableSaved)
+                            .map_err(|error| format!("Не удалось включить DNS: {error}"))?;
+                        Ok("Включение запрошено. Проверяю состояние.".to_owned())
                     } else {
-                        send_control(ControlRequest::EnableSaved).map_err(|error| {
-                            format!("Не удалось включить DNS через службу: {error}. В настройках проверьте её состояние.")
-                        })?;
-                        Ok("Сохранённый профиль включается через службу без UAC.".to_owned())
+                        Err("Введите персональный DNS-адрес.".to_owned())
                     }
                 }
                 "Disable" => match send_control(ControlRequest::Disable) {
