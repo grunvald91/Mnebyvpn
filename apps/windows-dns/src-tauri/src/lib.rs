@@ -224,11 +224,6 @@ async fn system_dns_status() -> Result<mnebydns_core::ServiceReport, String> {
 }
 
 #[tauri::command]
-fn get_ui_mode() -> &'static str {
-    "Полноценный системный DNS-клиент мнебыDNS"
-}
-
-#[tauri::command]
 fn hide_to_tray(window: tauri::WebviewWindow) -> Result<(), String> {
     window.hide().map_err(|err| err.to_string())
 }
@@ -248,16 +243,9 @@ fn show_main(app: &tauri::AppHandle) {
     }
 }
 
-fn hide_main(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.hide();
-    }
-}
-
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            get_ui_mode,
             hide_to_tray,
             inspect_dns,
             list_network_adapters,
@@ -269,12 +257,11 @@ pub fn run() {
         ])
         .setup(|app| {
             let open = MenuItem::with_id(app, "open", "Открыть мнебыDNS", true, None::<&str>)?;
-            let hide = MenuItem::with_id(app, "hide", "Скрыть окно", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Выйти из приложения", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &hide, &quit])?;
+            let quit = MenuItem::with_id(app, "quit", "Выйти из интерфейса", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&open, &quit])?;
 
             let mut tray = TrayIconBuilder::new()
-                .tooltip("мнебыDNS — диагностика")
+                .tooltip("мнебыDNS")
                 .menu(&menu)
                 .show_menu_on_left_click(false);
 
@@ -284,7 +271,6 @@ pub fn run() {
 
             tray.on_menu_event(|app, event| match event.id().as_ref() {
                 "open" => show_main(app),
-                "hide" => hide_main(app),
                 "quit" => app.exit(0),
                 _ => {}
             })
