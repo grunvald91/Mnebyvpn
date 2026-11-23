@@ -209,7 +209,10 @@ fn physical_adapter_still_uses_local_dns() -> io::Result<bool> {
     Ok(adapters.iter().any(|adapter| {
         adapter.operational
             && adapter.likely_physical
-            && (adapter.dns_ipv4.iter().any(|address| address == "127.0.0.1")
+            && (adapter
+                .dns_ipv4
+                .iter()
+                .any(|address| address == "127.0.0.1")
                 || adapter.dns_ipv6.iter().any(|address| address == "::1"))
     }))
 }
@@ -250,7 +253,10 @@ fn repair_dns() -> io::Result<()> {
         errors.push("One or more original DNS backups remain; do not delete them".to_owned());
     }
     if physical_adapter_still_uses_local_dns()? {
-        errors.push("An active physical adapter still uses localhost DNS; recovery is incomplete".to_owned());
+        errors.push(
+            "An active physical adapter still uses localhost DNS; recovery is incomplete"
+                .to_owned(),
+        );
     }
     if errors.is_empty() {
         println!("Original adapter DNS settings restored and verified.");
