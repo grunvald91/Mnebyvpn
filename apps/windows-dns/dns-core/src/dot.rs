@@ -15,7 +15,8 @@ pub(crate) const DOT_PORT: u16 = 853;
 pub(crate) const IO_TIMEOUT: Duration = Duration::from_millis(2500);
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(1500);
 const MAX_IP_ADDRESSES: usize = 5;
-pub(crate) const MAX_DNS_FRAME: usize = 4096;
+// DoT uses a 16-bit length prefix; preserve full legitimate DNS/TCP frames.
+pub(crate) const MAX_DNS_FRAME: usize = u16::MAX as usize;
 const MAX_OS_ADDRESSES: usize = 32;
 
 pub(crate) type AuthenticatedStream = native_tls::TlsStream<TcpStream>;
