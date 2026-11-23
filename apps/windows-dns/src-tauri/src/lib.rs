@@ -153,7 +153,12 @@ async fn launch_system_dns_action(action: String, host: Option<String>) -> Resul
                     Ok("Запрос выключения принят службой. Проверяю возврат DNS.".to_owned())
                 },
                 "Upgrade" => run_elevated_setup("upgrade"),
-                "Repair" => run_elevated_setup("repair"),
+                "Repair" => {
+                    mnebydns_ipc::send_recovery().map_err(|error| {
+                        format!("Независимая служба восстановления недоступна: {error}. Проверьте установленную службу MnebyDnsRecovery.")
+                    })?;
+                    Ok("Служба восстановления выполнила запрос без повторного UAC. Проверяю сохранённые настройки DNS.".to_owned())
+                },
                 _ => unreachable!(),
             }
         }
