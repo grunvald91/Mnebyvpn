@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHash,generateKeyPairSync,verify} from 'node:crypto';
+import {createHash,createPublicKey,generateKeyPairSync,verify} from 'node:crypto';
 import {
   signFiPersonalDnsSnapshot,fiDnsSnapshotTranscript,
   type FiDnsGrant,
@@ -66,11 +66,42 @@ test('issuer refuses future and stale snapshot, invalid signer and grants',()=>{
  assert.throws(()=>sign({grants:[grant('a'.repeat(64),ent1),
                                grant('b'.repeat(64),ent1)]}));
  assert.throws(()=>sign({grants:[grant('not-a-digest',ent1)]}));
+ assert.throws(()=>sign({grants:[{...grant('a'.repeat(64),ent1),
+                               exposedBearerLabel:'aaaaaaaaaaaa'}]}));
+ assert.throws(()=>sign({grants:[null]}));
+
  assert.throws(()=>sign({grants:[{...grant('a'.repeat(64),ent1),state:'UNKNOWN'}]}));
  const {publicKey}=generateKeyPairSync('ed25519');
  assert.throws(()=>signFiPersonalDnsSnapshot({
    revision:1,issuedAt:iso(now),validUntil:iso(now+90_000),grants:[],
  },publicKey,now));
+});
+
+test('Python and Node verify the same independent signed Ed25519 golden vector',()=>{
+ const fixture={
+   schemaVersion:1 as const,nodeId:'fi-test-01' as const,
+   countryCode:'FI' as const,revision:7,
+   issuedAt:'2026-11-23T18:00:00.000Z',
+   validUntil:'2026-11-23T18:01:30.000Z',
+   grants:[
+     {entitlementId:ent1,credentialRevision:2,tokenSha256:'a'.repeat(64),
+      expiresAt:'2026-11-24T18:00:00.000Z',state:'ACTIVE' as const},
+     {entitlementId:ent2,credentialRevision:4,tokenSha256:'b'.repeat(64),
+      expiresAt:'2026-11-24T18:00:00.000Z',state:'REVOKED' as const},
+   ],
+ };
+ const spki='MCowBQYDK2VwAyEAA6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg';
+ const signature='fzcQCaEtj8LWpONDN1m1XpQLnyXe0ZZAYc4CV_8n4Pof60hCfVFz7VzbhT0_BcSXf0519Ywh3OIS2rqQfikIAQ';
+ const pub=createPublicKey({
+   key:Buffer.from(spki,'base64url'),format:'der',type:'spki',
+ });
+ const wire=fiDnsSnapshotTranscript(fixture);
+ assert.equal(createHash('sha256').update(wire).digest('hex'),
+   '2a9a1f0bfe8e1dac673cb57cf2ff4c3f06b712f6859ad81addd8de486186133c');
+ assert.ok(verify(null,wire,pub,Buffer.from(signature,'base64url')));
+ assert.equal(verify(null,fiDnsSnapshotTranscript({
+   ...fixture,grants:[{...fixture.grants[0],state:'REVOKED'},fixture.grants[1]],
+ }),pub,Buffer.from(signature,'base64url')),false);
 });
 
 test('strict country-bound profiles are candidate only and not published',()=>{
