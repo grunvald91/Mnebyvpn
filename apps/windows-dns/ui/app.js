@@ -187,7 +187,7 @@ async function preflightDns() {
     showFamily('IPv6', snapshot.ipv6, snapshot.ipv6_error);
     const note = document.createElement('p');
     note.className = 'adapter-warning';
-    note.textContent = snapshot.warning + ' Переключение DNS пока отключено.';
+    note.textContent = snapshot.warning;
     result.append(note);
     if (snapshot.registry) {
       const evidence = document.createElement('p');
