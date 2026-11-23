@@ -761,8 +761,45 @@ fn uninstall() -> io::Result<()> {
             ));
         }
     }
+    // A recovery broker is privileged, so uninstall must not leave it
+    // orphaned after the resolver service is deleted.
+    if let Ok(recovery) = manager.open_service(
+        RECOVERY_SERVICE_NAME,
+        ServiceAccess::QUERY_STATUS
+            | ServiceAccess::QUERY_CONFIG
+            | ServiceAccess::STOP
+            | ServiceAccess::DELETE,
+    ) {
+        let expected_recovery = PathBuf::from(
+            env::var_os("ProgramFiles").ok_or_else(|| error("ProgramFiles missing"))?,
+        )
+        .join(INSTALL_DIR)
+        .join(RECOVERY_BIN);
+        let configured = recovery.query_config().map_err(map_service)?;
+        if !is_our_service_path(&configured.executable_path, &expected_recovery) {
+            return Err(error(
+                "Independent recovery service path mismatch; refusing to uninstall",
+            ));
+        }
+        if recovery.query_status().map_err(map_service)?.current_state != ServiceState::Stopped {
+            recovery.stop().map_err(map_service)?;
+            let started = Instant::now();
+            while started.elapsed() < Duration::from_secs(12) {
+                if recovery.query_status().map_err(map_service)?.current_state
+                    == ServiceState::Stopped
+                {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(300));
+            }
+            if recovery.query_status().map_err(map_service)?.current_state != ServiceState::Stopped {
+                return Err(error("Independent recovery service did not stop"));
+            }
+        }
+        recovery.delete().map_err(map_service)?;
+    }
     service.delete().map_err(map_service)?;
-    println!("Diagnostic service marked for removal by Windows SCM.");
+    println!("DNS controller and independent recovery broker marked for removal.");
     println!("Service executable and protected recovery journal are preserved.");
     println!("Existing DNSProxy and Windows DNS settings have not been changed.");
     Ok(())
