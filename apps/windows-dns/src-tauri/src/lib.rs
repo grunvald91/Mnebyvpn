@@ -36,70 +36,105 @@ async fn smoke_local_dot_proxy(host: String) -> Result<mnebydns_core::UdpDotSmok
         })?
 }
 
-#[tauri::command]
-fn launch_system_dns_action(action: String, host: Option<String>) -> Result<String, String> {
-    if action != "Enable" && action != "Disable" {
-        return Err("Недопустимая операция системного DNS".into());
+/// Run the elevated installer only when the existing protected profile needs
+/// initial setup, a deliberate server change, recovery on a legacy service, or
+/// a safe one-time service upgrade. Never open a visible console window.
+#[cfg(windows)]
+fn run_elevated_setup(command: &str) -> Result<String, String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, WAIT_OBJECT_0};
+    use windows_sys::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
+    use windows_sys::Win32::UI::Shell::{
+        ShellExecuteExW, SHELLEXECUTEINFOW, SEE_MASK_NOCLOSEPROCESS,
+    };
+    fn wide(value: &std::ffi::OsStr) -> Vec<u16> {
+        value.encode_wide().chain(std::iter::once(0)).collect()
     }
-    #[cfg(windows)]
-    {
-        use std::os::windows::ffi::OsStrExt;
-        use windows_sys::Win32::UI::Shell::ShellExecuteW;
-        fn wide(value: &std::ffi::OsStr) -> Vec<u16> {
-            value.encode_wide().chain(std::iter::once(0)).collect()
-        }
-
-        let exe = std::env::current_exe()
-            .map_err(|_| "Не удалось определить путь приложения".to_owned())?;
-        let helper = exe
-            .parent()
-            .ok_or_else(|| "Не удалось определить каталог приложения".to_owned())?
-            .join("mnebydns-setup.exe");
-        if !helper.is_file() {
-            return Err(
-                "Рядом с приложением не найден mnebydns-setup.exe. Распакуйте полный архив.".into(),
-            );
-        }
-
-        let args = if action == "Enable" {
-            if let Some(hostname) = host
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                mnebydns_core::resolve_dot_addresses(hostname)?;
-                format!("enable {}", hostname.to_ascii_lowercase())
-            } else {
-                // The elevated helper reuses the protected DoT config if present.
-                // It will reject an unconfigured first launch.
-                "enable".to_owned()
-            }
+    let exe = std::env::current_exe().map_err(|_| "Не найден путь приложения".to_owned())?;
+    let helper = exe.parent()
+        .ok_or_else(|| "Не найден каталог приложения".to_owned())?
+        .join("mnebydns-setup.exe");
+    if !helper.is_file() {
+        return Err("Файл mnebydns-setup.exe не найден. Распакуйте полный архив.".to_owned());
+    }
+    let verb = wide(std::ffi::OsStr::new("runas"));
+    let program = wide(helper.as_os_str());
+    let parameters = wide(std::ffi::OsStr::new(command));
+    let mut info: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
+    info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
+    info.fMask = SEE_MASK_NOCLOSEPROCESS;
+    info.lpVerb = verb.as_ptr();
+    info.lpFile = program.as_ptr();
+    info.lpParameters = parameters.as_ptr();
+    info.nShow = 0; // SW_HIDE: the elevated setup helper must remain invisible.
+    if unsafe { ShellExecuteExW(&mut info) } == 0 {
+        let code = unsafe { GetLastError() };
+        return Err(if code == 1223 {
+            "Подтверждение администратора отменено".to_owned()
         } else {
-            "disable".to_owned()
-        };
-        let verb = wide(std::ffi::OsStr::new("runas"));
-        let program = wide(helper.as_os_str());
-        let parameters = wide(std::ffi::OsStr::new(&args));
-        let result = unsafe {
-            ShellExecuteW(
-                std::ptr::null_mut(),
-                verb.as_ptr(),
-                program.as_ptr(),
-                parameters.as_ptr(),
-                std::ptr::null(),
-                1,
-            )
-        };
-        if result as usize <= 32 {
-            return Err("Windows не открыла запрос UAC для управления системным DNS".into());
+            format!("Windows не удалось запустить DNS-установщик (ошибка {code})")
+        });
+    }
+    if info.hProcess.is_null() {
+        return Err("Не удалось отслеживать выполнение DNS-установщика".to_owned());
+    }
+    let result = unsafe { WaitForSingleObject(info.hProcess, 120_000) };
+    let mut exit_code = 0u32;
+    let read_code = result == WAIT_OBJECT_0
+        && unsafe { GetExitCodeProcess(info.hProcess, &mut exit_code) } != 0;
+    unsafe { CloseHandle(info.hProcess) };
+    if !read_code {
+        return Err("Установщик не подтвердил завершение операции. Проверьте состояние DNS.".to_owned());
+    }
+    if exit_code != 0 {
+        return Err(format!(
+            "Установщик не завершил операцию (код {exit_code}). Исходные настройки не считаются восстановленными."
+        ));
+    }
+    Ok("Запрос выполнен. Проверяю фактическое состояние службы и адаптеров.".to_owned())
+}
+
+#[tauri::command]
+async fn launch_system_dns_action(action: String, host: Option<String>) -> Result<String, String> {
+    if !matches!(action.as_str(), "Enable" | "Disable" | "Upgrade") {
+        return Err("Недопустимая операция системного DNS".to_owned());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(windows)]
+        {
+            use mnebydns_ipc::{send_control, ControlRequest};
+            match action.as_str() {
+                "Enable" => {
+                    if let Some(hostname) = host.as_deref().map(str::trim).filter(|h| !h.is_empty()) {
+                        mnebydns_core::resolve_dot_addresses(hostname)?;
+                        run_elevated_setup(&format!("enable {}", hostname.to_ascii_lowercase()))
+                    } else {
+                        send_control(ControlRequest::EnableSaved).map_err(|error| {
+                            if error == "CONTROL_PIPE_UNAVAILABLE" {
+                                "Обнаружена старая служба DNS. Сначала восстановите DNS и обновите службу в настройках.".to_owned()
+                            } else { error }
+                        })?;
+                        Ok("Сохранённый профиль включается через службу — без UAC.".to_owned())
+                    }
+                }
+                "Disable" => match send_control(ControlRequest::Disable) {
+                    Ok(()) => Ok("Команда выключения передана службе. Проверяю восстановление DNS.".to_owned()),
+                    Err(error) if error == "CONTROL_PIPE_UNAVAILABLE" => {
+                        // Explicit recovery path for an installed older service.
+                        run_elevated_setup("disable")
+                    }
+                    Err(error) => Err(error),
+                },
+                "Upgrade" => run_elevated_setup("upgrade"),
+                _ => unreachable!(),
+            }
         }
-        Ok("Запрос UAC открыт. Приложение проверит состояние службы и системного DNS после завершения операции.".into())
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = host;
-        Err("Системный DNS доступен только в Windows".into())
-    }
+        #[cfg(not(windows))]
+        {
+            let _ = host;
+            Err("Управление системным DNS поддерживается только в Windows".to_owned())
+        }
+    }).await.map_err(|_| "Не удалось получить результат системной операции".to_owned())?
 }
 
 /// Distinguish first launch from a broken installed service. A connection
