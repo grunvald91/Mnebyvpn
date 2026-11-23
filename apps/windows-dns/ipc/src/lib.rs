@@ -1,6 +1,6 @@
 //! Strictly local Windows named pipes for service status and limited controls.
 //! Clients verify the server process ID against the installed SCM service.
-//! The control pipe accepts only enable-saved and disable, never hostnames or paths.
+//! The primary pipe accepts restricted DNS hostnames; an independent recovery pipe accepts only emergency restoration.
 
 use mnebydns_core::ServiceReport;
 
@@ -64,7 +64,8 @@ mod windows;
 
 #[cfg(windows)]
 pub use windows::{
-    read_service_status, send_control, serve_local_control, serve_local_status, ControlRequest,
+    read_service_status, send_control, send_recovery, serve_local_control,
+    serve_local_recovery, serve_local_status, ControlRequest,
 };
 
 #[cfg(test)]
