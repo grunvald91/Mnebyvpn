@@ -503,6 +503,7 @@ fn enable(hostname: Option<&str>) -> io::Result<()> {
     };
     ensure_service_installed()?;
     let journal = ProtectedJournal::open_service().map_err(error)?;
+    journal.ensure_safe_to_enable().map_err(error)?;
     let config = if let Some((host, addresses)) = fresh {
         ControllerConfig {
             version: 1,
