@@ -732,7 +732,13 @@ fn recover_dns_without_uac() -> Result<(), String> {
 }
 
 fn main() -> windows_service::Result<()> {
-    if std::env::args().any(|arg| arg == "--recovery-service") {
+    // Choose mode by the installed protected executable name rather than
+    // a command-line switch that would complicate SCM path verification.
+    let recovery_image = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.file_name().map(|name| name.to_os_string()))
+        .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("mnebydns-recovery-service.exe"));
+    if recovery_image {
         service_dispatcher::start(RECOVERY_SERVICE_NAME, ffi_recovery_main)
     } else {
         service_dispatcher::start(SERVICE_NAME, ffi_service_main)
