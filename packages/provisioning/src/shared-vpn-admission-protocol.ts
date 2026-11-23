@@ -15,7 +15,7 @@ export type AdmissionOperation='claim'|'refresh'|'release';
 export type AdmissionResult=
  'ADMITTED'|'REFRESHED'|'RELEASED'|'ALREADY_RELEASED'|
  'DENY_INVALID'|'DENY_DISABLED'|'DENY_NODE'|'DENY_UNKNOWN'|
- 'DENY_ENTITLEMENT'|'DENY_LIMIT'|'DENY_REPLAY'|'DENY_BINDING';
+ 'DENY_ENTITLEMENT'|'DENY_LIMIT'|'DENY_PEER'|'DENY_REPLAY'|'DENY_BINDING';
 
 export type AdmissionRequest={
  version:1; nodeId:string;countryCode:AdmissionCountry;
@@ -142,7 +142,7 @@ export function verifyNodeAdmissionRequest(
 const RESULTS=new Set<AdmissionResult>([
  'ADMITTED','REFRESHED','RELEASED','ALREADY_RELEASED',
  'DENY_INVALID','DENY_DISABLED','DENY_NODE','DENY_UNKNOWN',
- 'DENY_ENTITLEMENT','DENY_LIMIT','DENY_REPLAY','DENY_BINDING',
+ 'DENY_ENTITLEMENT','DENY_LIMIT','DENY_PEER','DENY_REPLAY','DENY_BINDING',
 ]);
 function validateDecision(d:unknown,r:AdmissionRequest,nowMs:number):AdmissionDecision{
  if(!exactKeys(d,DEC_KEYS)||d.version!==1||
