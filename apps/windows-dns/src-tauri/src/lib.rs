@@ -45,13 +45,14 @@ fn run_elevated_setup(command: &str) -> Result<String, String> {
     use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, WAIT_OBJECT_0};
     use windows_sys::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
     use windows_sys::Win32::UI::Shell::{
-        ShellExecuteExW, SHELLEXECUTEINFOW, SEE_MASK_NOCLOSEPROCESS,
+        ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
     };
     fn wide(value: &std::ffi::OsStr) -> Vec<u16> {
         value.encode_wide().chain(std::iter::once(0)).collect()
     }
     let exe = std::env::current_exe().map_err(|_| "Не найден путь приложения".to_owned())?;
-    let helper = exe.parent()
+    let helper = exe
+        .parent()
         .ok_or_else(|| "Не найден каталог приложения".to_owned())?
         .join("mnebydns-setup.exe");
     if !helper.is_file() {
@@ -84,7 +85,9 @@ fn run_elevated_setup(command: &str) -> Result<String, String> {
         && unsafe { GetExitCodeProcess(info.hProcess, &mut exit_code) } != 0;
     unsafe { CloseHandle(info.hProcess) };
     if !read_code {
-        return Err("Установщик не подтвердил завершение операции. Проверьте состояние DNS.".to_owned());
+        return Err(
+            "Установщик не подтвердил завершение операции. Проверьте состояние DNS.".to_owned(),
+        );
     }
     if exit_code != 0 {
         return Err(format!(
