@@ -12,6 +12,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::os::windows::process::CommandExt;
 use std::thread;
 use std::time::{Duration, Instant};
 use windows_service::service::{
@@ -152,6 +153,7 @@ fn configure_service_recovery() -> io::Result<()> {
     let root = env::var_os("SystemRoot").ok_or_else(|| error("SystemRoot missing"))?;
     let sc = PathBuf::from(root).join("System32").join("sc.exe");
     let output = Command::new(sc)
+        .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
         .args([
             "failure",
             SERVICE_NAME,
