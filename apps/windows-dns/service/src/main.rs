@@ -544,13 +544,9 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
                             );
                             break;
                         }
-                        if let Ok(report) = publish(
-                            &journal,
-                            &system_journal,
-                            "error",
-                            0,
-                            Some(&restore_error),
-                        ) {
+                        if let Ok(report) =
+                            publish(&journal, &system_journal, "error", 0, Some(&restore_error))
+                        {
                             if let Ok(mut current) = shared.write() {
                                 *current = report;
                             }
@@ -596,7 +592,10 @@ mod stop_recovery_tests {
     fn preserves_service_while_physical_adapter_depends_on_localhost() {
         assert!(has_active_localhost_resolver(&[adapter(true, "127.0.0.1")]));
         assert!(!has_active_localhost_resolver(&[adapter(true, "1.1.1.1")]));
-        assert!(!has_active_localhost_resolver(&[adapter(false, "127.0.0.1")]));
+        assert!(!has_active_localhost_resolver(&[adapter(
+            false,
+            "127.0.0.1"
+        )]));
     }
 
     #[test]
