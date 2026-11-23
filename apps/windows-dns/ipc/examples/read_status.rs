@@ -12,6 +12,9 @@ fn main() {
                 status.probe.ipv4.ok,
                 status.probe.ipv6.ok,
             );
+            mnebydns_ipc::send_recovery()
+                .expect("Independent LocalSystem recovery service must respond without UAC");
+            println!("Independent recovery broker verified without elevation");
             // A freshly installed idle service has no saved DoT profile.
             // The control pipe must exist, be SCM-PID-authenticated, and
             // reject activation or deactivation without a profile.
