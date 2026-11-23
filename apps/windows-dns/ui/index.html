@@ -28,8 +28,8 @@
       <div class="home-orbit" aria-hidden="true"><span class="home-orbit-inner">◈</span></div>
       <h1 id="home-title">Smart DNS</h1>
       <p id="home-summary" class="home-summary" role="status" aria-live="polite">Проверяю…</p>
-      <button id="toggle-system-dns" class="primary power-toggle" type="button" aria-pressed="false" disabled>Проверка…</button>
-      <p id="home-action-hint" class="home-action-hint" aria-live="polite"></p>
+      <button id="toggle-system-dns" class="primary power-toggle" type="button" aria-disabled="true">Проверка…</button>
+      <p id="home-action-hint" class="home-action-hint" role="status"></p>
     </section>
   </section>
 
@@ -50,7 +50,7 @@
       <div class="fold-content">
         <div class="action-row">
           <button class="secondary compact-button" id="refresh-adapters" type="button">Обновить</button>
-          <button class="secondary compact-button" id="toggle-all-adapters" type="button">Все интерфейсы</button>
+          <button class="secondary compact-button" id="toggle-all-adapters" type="button" aria-pressed="false">Показать все интерфейсы</button>
         </div>
         <div id="adapters-list" class="adapter-list" aria-live="polite"></div>
         <div id="adapter-details" class="adapter-details" aria-live="polite"></div>
@@ -63,12 +63,15 @@
   <section id="settings" class="view hidden">
     <h1>Настройки</h1>
     <section class="detail profile-card">
-      <label class="dot-label" for="dot-host">Персональный DNS</label>
-      <input class="dot-input" id="dot-host" type="text" inputmode="url" autocomplete="off"
-        autocapitalize="none" spellcheck="false" maxlength="253" placeholder="ключ.dns.mnebyvpn.site"
-        aria-describedby="dot-help">
-      <p id="dot-help" class="muted dot-help">Имя DoT-сервера без https://</p>
-      <button class="primary" id="apply-new-dot" type="button">Сохранить адрес</button>
+      <form class="profile-form" id="dot-profile-form">
+        <label class="dot-label" for="dot-host">Персональный DNS</label>
+        <p id="dot-help" class="muted dot-help">Имя DoT-сервера без https://</p>
+        <input class="dot-input" id="dot-host" type="text" inputmode="url" autocomplete="off"
+          autocapitalize="none" spellcheck="false" maxlength="253" placeholder="ключ.dns.mnebyvpn.site"
+          aria-describedby="dot-help dot-profile-message" required>
+        <button class="primary" id="apply-new-dot" type="submit">Сохранить адрес</button>
+        <p class="dot-status" id="dot-profile-message" role="status"></p>
+      </form>
       <div class="settings-state">
         <span>Системный DNS</span><strong id="system-dns-state">Проверяю…</strong>
       </div>
@@ -82,8 +85,8 @@
         <p id="connection-hint" class="hint">Проверка без изменения DNS Windows.</p>
         <button class="secondary main-action" id="run-all-tests" type="button">Проверить</button>
         <div class="test-flow" aria-label="Результаты">
-          <div class="test-step"><span class="step-number">01</span><div class="step-body"><div class="step-title"><strong>DoT · TLS</strong></div><p class="dot-status" id="dot-status" role="status" aria-live="polite">Не проверено</p></div></div>
-          <div class="test-step"><span class="step-number">02</span><div class="step-body"><div class="step-title"><strong>Локальный прокси</strong></div><p class="dot-status" id="proxy-status" role="status" aria-live="polite">Не проверено</p></div></div>
+          <div class="test-step"><div class="step-title"><strong>DoT · TLS</strong></div><p class="dot-status" id="dot-status" role="status" aria-live="polite">Не проверено</p></div>
+          <div class="test-step"><div class="step-title"><strong>Локальный прокси</strong></div><p class="dot-status" id="proxy-status" role="status" aria-live="polite">Не проверено</p></div>
         </div>
         <details class="advanced-tests">
           <summary>Отдельные тесты</summary>
@@ -100,6 +103,7 @@
       <div class="fold-content">
         <p class="muted">Восстановление работает без UAC через установленную службу.</p>
         <button class="secondary" id="restore-system-dns" type="button">Восстановить DNS</button>
+        <p class="dot-status" id="repair-system-message" role="status"></p>
         <button class="secondary" id="refresh-system-dns" type="button">Обновить состояние</button>
         <details class="advanced-tests">
           <summary>Для старых версий</summary>
