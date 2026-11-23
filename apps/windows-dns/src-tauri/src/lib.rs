@@ -143,14 +143,21 @@ async fn launch_system_dns_action(action: String, host: Option<String>) -> Resul
                         Ok("Сохранённый профиль включается через службу без UAC.".to_owned())
                     }
                 }
-                "Disable" => {
-                    // Never start an elevated helper on an ordinary click.
-                    // If IPC is broken, show an explicit recovery instruction;
-                    // the separate guarded Repair action may require UAC.
-                    send_control(ControlRequest::Disable).map_err(|error| {
-                        format!("Обычное отключение недоступно ({error}). В настройках есть отдельное аварийное восстановление.")
-                    })?;
-                    Ok("Запрос выключения принят службой. Проверяю возврат DNS.".to_owned())
+                "Disable" => match send_control(ControlRequest::Disable) {
+                    Ok(()) => Ok(
+                        "Запрос отключения принят основной службой. Проверяю возврат DNS.".to_owned()
+                    ),
+                    Err(primary_error) => {
+                        // Independent recovery service is installed using the
+                        // FIRST UAC. Even a failed primary IPC must not trigger
+                        // another Windows privilege prompt.
+                        mnebydns_ipc::send_recovery().map_err(|recovery_error| {
+                            format!(
+                                "Основная служба недоступна ({primary_error}); независимое восстановление не выполнено ({recovery_error}). Резервные DNS-настройки сохранены."
+                            )
+                        })?;
+                        Ok("Независимая служба восстановления вернула DNS без повторного UAC.".to_owned())
+                    }
                 },
                 "Upgrade" => run_elevated_setup("upgrade"),
                 "Repair" => {
