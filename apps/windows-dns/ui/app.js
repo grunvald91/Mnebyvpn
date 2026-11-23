@@ -338,39 +338,35 @@ function renderHomeConnection() {
   const hint = get('home-action-hint');
   const home = document.querySelector('.home-dashboard');
   const labels = {
-    checking: 'Проверяю состояние подключения…',
-    'not-installed': 'Smart DNS выключен',
-    disabled: 'Smart DNS выключен',
+    checking: 'Проверка…',
+    'not-installed': 'Выключен',
+    disabled: 'Выключен',
     starting: 'Подключение…',
-    active: 'Smart DNS включён',
+    active: 'Включён',
     restoring: 'Отключение…',
-    error: 'Ошибка системного DNS',
-    unknown: 'Не удалось проверить службу DNS'
+    error: 'Ошибка подключения',
+    unknown: 'Служба недоступна'
   };
   const active = systemDnsState === 'active';
-  const recoveryNeeded = systemDnsState === 'error' || systemDnsState === 'unknown';
-  const transitional = systemDnsState === 'starting' || systemDnsState === 'restoring';
-  const busy = systemDnsLoading || systemDnsOperationPending || transitional;
+  const recoveryNeeded = ['error', 'unknown'].includes(systemDnsState);
+  const busy = systemDnsLoading || systemDnsOperationPending ||
+    ['starting', 'restoring', 'checking'].includes(systemDnsState);
   summary.textContent = labels[systemDnsState] || labels.unknown;
   button.textContent = systemDnsOperationPending
     ? (systemDnsPendingAction === 'Disable' ? 'Отключение…' : 'Подключение…')
     : recoveryNeeded ? 'Восстановить DNS' : active ? 'Выключить' : 'Включить';
-  // Unknown or failed state is NOT "off": expose only the safe disable
-  // operation so the user is never trapped without a recovery action.
-  button.disabled = busy || systemDnsState === 'checking';
+  button.disabled = busy;
   button.setAttribute('aria-pressed', String(active));
   home.classList.toggle('is-active', active);
-  home.classList.toggle('is-error', ['error', 'unknown'].includes(systemDnsState));
+  home.classList.toggle('is-error', recoveryNeeded);
   hint.textContent = systemDnsOperationPending
-    ? 'Подтвердите запрос Windows. Состояние обновится автоматически.'
-    : active ? 'Системные DNS-запросы направляются через защищённый DoT.'
-    : systemDnsState === 'not-installed' || systemDnsState === 'disabled'
-      ? (systemDnsConfigured || get('dot-host').value.trim()
-        ? 'Нажмите «Включить», чтобы использовать Smart DNS в Windows.'
-        : 'Для первого подключения укажите персональный адрес в «Настройках».')
-      : recoveryNeeded
-        ? 'Не удалось подтвердить состояние DNS. Нажмите «Восстановить DNS» или откройте диагностику.'
-        : 'Проверяю состояние Windows DNS.';
+    ? (systemDnsState === 'not-installed' ? 'Подтвердите установку Windows' : '')
+    : recoveryNeeded
+      ? (systemDnsLastError ? String(systemDnsLastError).slice(0, 160) : 'Откройте «Проверка»')
+      : (systemDnsState === 'not-installed' || systemDnsState === 'disabled') &&
+          !systemDnsConfigured && !get('dot-host').value.trim()
+        ? 'Адрес DNS — в настройках'
+        : '';
 }
 
 async function refreshSystemDns() {
@@ -729,10 +725,8 @@ get('dot-host').addEventListener('input', () => {
 });
 
 if (typeof invoke === 'function') {
-  invoke('get_ui_mode').then((mode) => {
-    get('status').textContent = mode;
-  }).catch(() => {
-    get('status').textContent = 'Нет связи с Rust-интерфейсом';
+  invoke('get_ui_mode').catch(() => {
+    get('status').textContent = 'Нет связи с приложением Windows';
   });
   // The only operation on startup is a read-only status refresh.
   renderHomeConnection();
