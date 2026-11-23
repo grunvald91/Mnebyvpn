@@ -6,7 +6,7 @@ import {
   incySubscriptionHeaders,incyExpiredSubscriptionHeaders,
   incyExpiredSubscriptionBody,incyEncodeActiveSubscription,
   INCY_SITE_URL,INCY_RENEW_URL,
-  INCY_SUPPORT_URL,
+  INCY_SUPPORT_URL,VPN_BRAND,vpnCountryLabel,
 } from '../packages/provisioning/src/incy-subscription-presentation.ts';
 
 const userId='11111111-2222-4333-8444-555555555555';
@@ -32,7 +32,7 @@ test('three-transport and old two-transport worker outputs advertise only German
     assert.equal(actual.port,'8443');
     assert.equal(actual.search,original.search);
     assert.equal(decodeURIComponent(actual.hash.slice(1)),
-      'мне VPN Германия');
+      'MNEBYVPN Германия');
   }
 });
 test('reject publishing an absent or duplicated WebSocket transport',()=>{
@@ -42,11 +42,11 @@ test('reject publishing an absent or duplicated WebSocket transport',()=>{
 });
 test('signed DE Reality registry URLs are not advertised; other countries remain',()=>{
   const de='vless://'+userId+'@de.nodes.example.net:2053?security=reality&'+
-    'type=tcp#'+encodeURIComponent('мне VPN Германия');
+    'type=tcp#'+encodeURIComponent('MNEBYVPN Германия');
   const nl='vless://'+userId+'@nl.nodes.example.net:2053?security=reality&'+
-    'type=tcp#'+encodeURIComponent('мне VPN Нидерланды');
+    'type=tcp#'+encodeURIComponent('MNEBYVPN Нидерланды');
   assert.equal(keepSupportedAdditionalTransport(de),false);
-  const legacyDe=de.replace(encodeURIComponent('мне VPN Германия'),
+  const legacyDe=de.replace(encodeURIComponent('MNEBYVPN Германия'),
     encodeURIComponent('🇩🇪 MNEBYVPN · Германия · de-node-02 · REALITY'));
   assert.equal(keepSupportedAdditionalTransport(legacyDe),false);
   assert.equal(keepSupportedAdditionalTransport(nl),true);
@@ -134,7 +134,7 @@ test('expired Karing navigation remains unchanged while INCY uses Site and Chann
 });
 
 test('INCY body fallback shows website and renewal while preserving signed node lines',()=>{
-  const verified=[ws,'amneziawg://YWJjZA#'+encodeURIComponent('мне VPN Финляндия')].join('\n');
+  const verified=[ws,'amneziawg://YWJjZA#'+encodeURIComponent('MNEBYVPN Финляндия')].join('\n');
   const encoded=incyEncodeActiveSubscription(verified,'incy');
   const lines=Buffer.from(encoded.trim(),'base64').toString('utf8').trim().split('\n');
   assert.equal(lines[0],'#profile-title: MNEBYVPN');
