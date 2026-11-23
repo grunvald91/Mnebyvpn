@@ -64,8 +64,8 @@ mod windows;
 
 #[cfg(windows)]
 pub use windows::{
-    read_service_status, send_control, send_recovery, serve_local_control,
-    serve_local_recovery, serve_local_status, ControlRequest,
+    read_service_status, send_control, send_recovery, serve_local_control, serve_local_recovery,
+    serve_local_status, ControlRequest,
 };
 
 #[cfg(test)]
