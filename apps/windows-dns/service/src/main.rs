@@ -3,7 +3,7 @@
 //! configuration, and crash-safe recovery journal. No plaintext fallback.
 
 use mnebydns_core::{now_ms, probe_loopback, LoopbackDnsServer, ServiceReport};
-use mnebydns_ipc::serve_local_status;
+use mnebydns_ipc::{serve_local_control, serve_local_status, ControlRequest};
 use mnebydns_journal::{ControllerConfig, ProtectedJournal, SystemDnsJournal};
 use mnebydns_network::{
     apply_adapter_loopback_dns, capture_adapter_dns, list_adapters, restore_adapter_dns,
@@ -278,6 +278,28 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
     thread::spawn(move || {
         if let Err(error) = serve_local_status(pipe_data) {
             eprintln!("Authenticated status pipe stopped: {error}");
+        }
+    });
+    // A locally authenticated user may only toggle an already validated
+    // and protected DoT profile. Initial installation/profile changes still
+    // require elevated setup. No user-supplied paths or network parameters.
+    thread::spawn(move || {
+        if let Err(error) = serve_local_control(|request| {
+            let journal = ProtectedJournal::open_service()?;
+            let mut config = journal.read_controller_config()?.ok_or_else(|| {
+                "Сначала установите персональный DNS-профиль с подтверждением UAC".to_owned()
+            })?;
+            if request == ControlRequest::EnableSaved {
+                if config.upstream_addresses.is_empty() {
+                    return Err("Не найден сохранённый IP DoT-сервера".to_owned());
+                }
+                config.enabled = true;
+            } else {
+                config.enabled = false;
+            }
+            journal.write_controller_config(&config)
+        }) {
+            eprintln!("Authenticated control pipe stopped: {error}");
         }
     });
 
