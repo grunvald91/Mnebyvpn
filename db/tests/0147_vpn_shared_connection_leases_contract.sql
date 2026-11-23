@@ -63,8 +63,8 @@ BEGIN
    AND has_function_privilege('mnebyvpn_site_auth',
      'public.vpn_shared_connection_claim(uuid,uuid,text,text)','EXECUTE') THEN
      RAISE EXCEPTION 'Website can grant connection access'; END IF;
- IF NOT has_function_privilege('mnebyvpn_connection_admission',
+ IF has_function_privilege('mnebyvpn_connection_admission',
      'public.vpn_shared_connection_claim(uuid,uuid,text,text)','EXECUTE') THEN
-     RAISE EXCEPTION 'Dedicated offline controller role lacks privilege'; END IF;
+     RAISE EXCEPTION 'Direct V1 claim bypasses signed admission gate'; END IF;
 END $acl$;
 ROLLBACK;
