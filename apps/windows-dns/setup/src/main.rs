@@ -554,11 +554,18 @@ fn disable() -> io::Result<()> {
     ensure_service_installed()?;
     let started = Instant::now();
     while started.elapsed() < Duration::from_secs(90) {
-        if !system_journal.has_pending().map_err(error)?
-            && !physical_adapter_still_uses_local_dns()?
-        {
-            println!("Original IPv4 and IPv6 DNS settings restored and verified.");
-            return Ok(());
+        if !system_journal.has_pending().map_err(error)? {
+            // If recovery records existed when disable began, their removal
+            // proves per-adapter read-back restoration. An original setting
+            // may legitimately have been 127.0.0.1, so do not mistake it for
+            // a failed rollback after verified snapshot cleanup.
+            if pending || !physical_adapter_still_uses_local_dns()? {
+                println!("Original IPv4 and IPv6 DNS settings restored and verified.");
+                return Ok(());
+            }
+            return Err(error(
+                "System DNS still uses localhost but no original backup was available. Manual review required.",
+            ));
         }
         thread::sleep(Duration::from_millis(500));
     }
