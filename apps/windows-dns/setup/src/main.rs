@@ -14,7 +14,7 @@ use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use windows_service::service::{
     ServiceAccess, ServiceErrorControl, ServiceInfo, ServiceStartType, ServiceState, ServiceType,
 };
@@ -335,6 +335,23 @@ fn restore_service_start_type(original: ServiceStartType) -> io::Result<()> {
     Ok(())
 }
 
+fn wait_new_service_healthy() -> io::Result<()> {
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_secs(20) {
+        if let Ok(report) = mnebydns_ipc::read_service_status() {
+            if report.dns_state.as_deref() == Some("disabled")
+                && report.recovery_state.as_deref() == Some("clear")
+            {
+                return Ok(());
+            }
+        }
+        thread::sleep(Duration::from_millis(300));
+    }
+    Err(error(
+        "New Windows DNS service did not confirm its protected IPC and safe disabled state",
+    ))
+}
+
 fn upgrade() -> io::Result<()> {
     let journal = ProtectedJournal::open_service().map_err(error)?;
     ensure_upgrade_is_safe(&journal)?;
@@ -364,8 +381,22 @@ fn upgrade() -> io::Result<()> {
     let staged = expected.with_extension("exe.staged");
     let previous = expected.with_extension("exe.previous");
     let failed = expected.with_extension("exe.failed");
-    if staged.exists() || previous.exists() || failed.exists() {
-        return Err(error("Old service upgrade artifacts exist; inspect them before upgrading again"));
+    if staged.exists() || failed.exists() {
+        return Err(error("An unfinished service upgrade exists; inspect it before retrying"));
+    }
+    // Preserve the immediately preceding binary during each upgrade, and
+    // archive older successful backups instead of blocking future updates.
+    if previous.exists() {
+        ensure_regular_file(&previous)?;
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(error)?
+            .as_millis();
+        let history = expected.with_extension(format!("exe.previous.{nonce}"));
+        if history.exists() {
+            return Err(error("Cannot archive previous service backup: filename collision"));
+        }
+        fs::rename(&previous, &history)?;
     }
     copy_new_binary(&source, &staged)?;
 
@@ -402,7 +433,8 @@ fn upgrade() -> io::Result<()> {
     }
 
     let start_attempt = enable_service_autostart()
-        .and_then(|_| service.start::<&str>(&[]).map_err(map_service));
+        .and_then(|_| service.start::<&str>(&[]).map_err(map_service))
+        .and_then(|_| wait_new_service_healthy());
     if let Err(start_error) = start_attempt {
         // Never overwrite the executable of a service that might still be
         // running. Preserve both versions if Windows cannot stop it.
@@ -436,9 +468,9 @@ fn upgrade() -> io::Result<()> {
             "New service did not start: {start_error}; original service rollback: {rollback:?}"
         )));
     }
-    // A nonzero exit from the initial start cannot be treated as a successful
-    // upgrade. The previous executable remains available for manual recovery.
-    println!("MnebyDnsHealth upgrade started; previous service binary preserved.");
+    // A successful SCM start alone is insufficient: the new service must
+    // expose an authenticated, fresh, disabled status with no pending backup.
+    println!("MnebyDnsHealth upgrade verified by protected IPC; previous service binary preserved.");
     Ok(())
 }
 
