@@ -48,6 +48,17 @@ try {
     }
     if (-not $upgraded) { throw "Upgraded DNS service did not expose authenticated status/control pipes" }
 
+    # A second upgrade must archive the prior rollback executable, instead of
+    # trapping the customer after the first successful version update.
+    RunSetup upgrade
+    $upgradedAgain = $false
+    for ($attempt = 0; $attempt -lt 12; $attempt++) {
+        & cargo run --release --manifest-path apps/windows-dns/ipc/Cargo.toml --example read_status --quiet
+        if ($LASTEXITCODE -eq 0) { $upgradedAgain = $true; break }
+        Start-Sleep -Milliseconds 400
+    }
+    if (-not $upgradedAgain) { throw "Second service upgrade broke protected IPC" }
+
     # The offline repair operation is intentionally allowed only after the
     # service stops, and must leave DNS unchanged if no backup is pending.
     Stop-Service -Name MnebyDnsHealth -ErrorAction Stop
