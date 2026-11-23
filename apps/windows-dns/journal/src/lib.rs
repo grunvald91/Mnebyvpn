@@ -436,6 +436,35 @@ impl SystemDnsJournal {
         Ok(Some(record.snapshot))
     }
 
+    /// A power loss after hard_link(staging, committed) but before removing
+    /// staging leaves TWO valid identical copies. Only that fully committed
+    /// case can be repaired automatically: the committed backup is retained.
+    /// A staging file without a committed twin must still block all changes.
+    fn reconcile_committed_staging(&self, filename: &str) -> Result<(), String> {
+        let guid = filename
+            .strip_prefix(SYSTEM_RECORD_PREFIX)
+            .and_then(|tail| tail.strip_suffix(SYSTEM_STAGING_SUFFIX))
+            .ok_or_else(|| "Malformed system DNS staging filename".to_owned())?;
+        validate_system_guid(guid)?;
+        let staged = self.staging_path(guid)?;
+        let committed = self.record_path(guid)?;
+        let staged_record = self.read_one(&staged)?.ok_or_else(|| {
+            "System DNS staging record disappeared during reconciliation".to_owned()
+        })?;
+        let committed_record = self.read_one(&committed)?.ok_or_else(|| {
+            "Uncommitted system DNS staging backup requires manual review; original evidence retained".to_owned()
+        })?;
+        if staged_record != committed_record
+            || !committed_record.interface_guid.eq_ignore_ascii_case(guid)
+        {
+            return Err("Staged and committed DNS snapshots disagree; no automatic cleanup".into());
+        }
+        fs::remove_file(staged).map_err(|error| {
+            format!("Could not clean verified duplicate DNS staging record: {error}")
+        })?;
+        Ok(())
+    }
+
     pub fn read_all(&self) -> Result<Vec<mnebydns_network::AdapterDnsSnapshot>, String> {
         let mut records: Vec<mnebydns_network::AdapterDnsSnapshot> = Vec::new();
         for entry in fs::read_dir(&self.directory).map_err(|error| error.to_string())? {
@@ -445,9 +474,8 @@ impl SystemDnsJournal {
                 continue;
             }
             if name.ends_with(SYSTEM_STAGING_SUFFIX) {
-                return Err(
-                    "An interrupted system DNS journal write requires recovery review".into(),
-                );
+                self.reconcile_committed_staging(&name)?;
+                continue;
             }
             if !name.ends_with(".json") {
                 continue;
@@ -517,7 +545,10 @@ impl SystemDnsJournal {
         let path = self.record_path(guid)?;
         let staging = self.staging_path(guid)?;
         if staging.exists() {
-            return Err("System DNS staging record still exists; refusing to clear".into());
+            let name = staging.file_name()
+                .and_then(|value| value.to_str())
+                .ok_or_else(|| "Invalid system DNS staging filename".to_owned())?;
+            self.reconcile_committed_staging(name)?;
         }
         if self.read_one(&path)?.is_none() {
             return Err("System DNS recovery record is missing".into());
