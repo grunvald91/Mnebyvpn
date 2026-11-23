@@ -9,6 +9,7 @@ pub use registry_source::RegistryDnsEvidence;
 use std::ffi::c_void;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::process::Command;
+use std::os::windows::process::CommandExt;
 use std::ptr::null;
 use std::slice;
 use windows_sys::core::GUID;
@@ -694,6 +695,7 @@ fn reset_interface_dns_to_automatic(interface_name: &str, ipv6: bool) -> Result<
     let family = if ipv6 { "ipv6" } else { "ipv4" };
     let interface = format!("name={interface_name}");
     let output = Command::new(netsh)
+        .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
         .args([
             "interface",
             family,
