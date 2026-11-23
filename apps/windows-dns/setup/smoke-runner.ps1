@@ -89,6 +89,13 @@ try {
         Start-Sleep -Milliseconds 300
     }
     if (-not $stopped) { throw "Could not stop idle DNS service for offline repair smoke" }
+    if ((Get-Service -Name MnebyDnsRecovery -ErrorAction Stop).Status -ne 'Running') {
+        throw "Independent recovery broker must stay running when primary DNS controller stops"
+    }
+    & cargo run --release --manifest-path apps/windows-dns/ipc/Cargo.toml --example trigger_recovery --quiet
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Independent recovery without UAC failed while primary service was stopped'
+    }
     RunSetup repair
     Start-Service -Name MnebyDnsHealth -ErrorAction Stop
     Start-Sleep -Milliseconds 500
