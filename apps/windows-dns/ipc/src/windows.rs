@@ -53,6 +53,15 @@ impl Drop for Handle {
     }
 }
 
+struct ScHandle(windows_sys::Win32::System::Services::SC_HANDLE);
+impl Drop for ScHandle {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe { CloseServiceHandle(self.0); }
+        }
+    }
+}
+
 struct LocalDescriptor(*mut c_void);
 impl Drop for LocalDescriptor {
     fn drop(&mut self) {
@@ -101,18 +110,15 @@ fn validate_server_is_registered_service(
     if unsafe { GetNamedPipeServerProcessId(pipe, &mut pipe_pid) } == 0 || pipe_pid == 0 {
         return Err("Cannot verify named pipe server PID".to_owned());
     }
-    let scm = Handle(unsafe { OpenSCManagerW(null(), null(), SC_MANAGER_CONNECT) });
+    let scm = ScHandle(unsafe { OpenSCManagerW(null(), null(), SC_MANAGER_CONNECT) });
     if scm.0.is_null() {
         return Err("Cannot open Windows Service Control Manager".to_owned());
     }
     let service_name = wide(SERVICE_NAME);
-    let service = Handle(unsafe { OpenServiceW(scm.0, service_name.as_ptr(), SERVICE_QUERY_STATUS) });
+    let service = ScHandle(unsafe { OpenServiceW(scm.0, service_name.as_ptr(), SERVICE_QUERY_STATUS) });
     if service.0.is_null() {
         return Err("Cannot query installed DNS Windows service".to_owned());
     }
-    // CloseServiceHandle, not CloseHandle, is required for SCM handles.
-    let _ = scm;
-    let _ = service;
     let mut status: SERVICE_STATUS_PROCESS = unsafe { std::mem::zeroed() };
     let mut needed = 0u32;
     let success = unsafe {
