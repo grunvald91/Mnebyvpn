@@ -34,6 +34,8 @@ const CONTROL_PIPE_NAME: &str = r"\\.\pipe\mnebydns-control-v1";
 const SERVICE_NAME: &str = "MnebyDnsHealth";
 const CONTROL_ACK: u8 = 0x06;
 const CONTROL_REJECT: u8 = 0x15;
+const CONTROL_CONFIGURE_AND_ENABLE: u8 = 0x32;
+const MAX_DOT_HOST_BYTES: usize = 253;
 const PIPE_ACCESS_DUPLEX: u32 = 0x0000_0003;
 const FIRST_INSTANCE: u32 = 0x0008_0000; // FILE_FLAG_FIRST_PIPE_INSTANCE
 const FILE_FLAG_OVERLAPPED: u32 = 0x4000_0000;
@@ -319,16 +321,19 @@ pub fn serve_local_status(current: Arc<RwLock<ServiceReport>>) -> Result<(), Str
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ControlRequest {
     EnableSaved,
     Disable,
+    /// A restricted DNS hostname, never an executable path or arbitrary shell.
+    ConfigureAndEnable(String),
 }
 impl ControlRequest {
-    fn byte(self) -> u8 {
+    fn byte(&self) -> u8 {
         match self {
             Self::EnableSaved => 0x31,
             Self::Disable => 0x30,
+            Self::ConfigureAndEnable(_) => CONTROL_CONFIGURE_AND_ENABLE,
         }
     }
     fn from_byte(value: u8) -> Option<Self> {
@@ -340,8 +345,8 @@ impl ControlRequest {
     }
 }
 
-/// Allowed operation is *only* toggling the already secured DoT profile.
-/// The service never takes executable paths, IPs or hostnames via this pipe.
+/// Only fixed DNS operations are accepted. A new DoT endpoint is validated
+/// against DNS hostname rules by the privileged service before persistence.
 pub fn send_control(request: ControlRequest) -> Result<(), String> {
     let pipe_name = wide(CONTROL_PIPE_NAME);
     if unsafe { WaitNamedPipeW(pipe_name.as_ptr(), CLIENT_WAIT_MS) } == 0 {
@@ -355,16 +360,51 @@ pub fn send_control(request: ControlRequest) -> Result<(), String> {
     validate_server_is_registered_service(file.as_raw_handle().cast())?;
     file.write_all(&[request.byte()])
         .map_err(|_| "Не удалось отправить команду службе DNS".to_owned())?;
+    if let ControlRequest::ConfigureAndEnable(host) = &request {
+        let bytes = host.as_bytes();
+        if bytes.is_empty() || bytes.len() > MAX_DOT_HOST_BYTES || !host.is_ascii() {
+            return Err("Некорректная длина или кодировка имени DoT-сервера".to_owned());
+        }
+        let length = u16::try_from(bytes.len())
+            .map_err(|_| "Слишком длинное имя DoT-сервера".to_owned())?;
+        file.write_all(&length.to_be_bytes())
+            .and_then(|_| file.write_all(bytes))
+            .map_err(|_| "Не удалось передать DoT-адрес службе".to_owned())?;
+    }
     let mut reply = [0u8; 1];
     file.read_exact(&mut reply)
         .map_err(|_| "Служба DNS не подтвердила команду".to_owned())?;
     match reply[0] {
         CONTROL_ACK => Ok(()),
         CONTROL_REJECT => {
-            Err("Служба отклонила запрос. Проверьте настройки и состояние DNS.".to_owned())
+            Err("Служба отклонила DNS-команду: проверьте статус и завершение восстановления".to_owned())
         }
         _ => Err("Неизвестный ответ от службы DNS".to_owned()),
     }
+}
+
+fn read_control_exact(
+    pipe: windows_sys::Win32::Foundation::HANDLE,
+    target: &mut [u8],
+) -> Result<(), String> {
+    let mut offset = 0usize;
+    while offset < target.len() {
+        let remaining = &mut target[offset..];
+        let count = bounded_io(pipe, "Control parameter read", |overlapped, read| unsafe {
+            ReadFile(
+                pipe,
+                remaining.as_mut_ptr().cast(),
+                remaining.len() as u32,
+                read,
+                overlapped,
+            )
+        })? as usize;
+        if count == 0 || count > remaining.len() {
+            return Err("Incomplete or invalid control frame".to_owned());
+        }
+        offset += count;
+    }
+    Ok(())
 }
 
 fn serve_control_client(
@@ -378,8 +418,27 @@ fn serve_control_client(
     if read != 1 {
         return Err("Invalid DNS control request size".to_owned());
     }
-    let allowed = ControlRequest::from_byte(opcode[0])
-        .ok_or_else(|| "Unsupported DNS control command".to_owned());
+    let allowed = if opcode[0] == CONTROL_CONFIGURE_AND_ENABLE {
+        (|| -> Result<ControlRequest, String> {
+            let mut len = [0u8; 2];
+            read_control_exact(pipe, &mut len)?;
+            let length = usize::from(u16::from_be_bytes(len));
+            if length == 0 || length > MAX_DOT_HOST_BYTES {
+                return Err("Invalid DoT hostname length in control request".to_owned());
+            }
+            let mut bytes = vec![0u8; length];
+            read_control_exact(pipe, &mut bytes)?;
+            let host = String::from_utf8(bytes)
+                .map_err(|_| "Invalid DoT hostname encoding".to_owned())?;
+            if !host.is_ascii() {
+                return Err("Only ASCII DNS hostnames are accepted".to_owned());
+            }
+            Ok(ControlRequest::ConfigureAndEnable(host))
+        })()
+    } else {
+        ControlRequest::from_byte(opcode[0])
+            .ok_or_else(|| "Unsupported DNS control command".to_owned())
+    };
     let accepted = allowed.and_then(handler).is_ok();
     let byte = if accepted {
         CONTROL_ACK
@@ -392,9 +451,9 @@ fn serve_control_client(
     Ok(())
 }
 
-/// Privileged service endpoint; accessible only locally to interactive logons,
-/// admins and LocalSystem. It only accepts the two fixed, least-privilege
-/// DNS-profile toggles. No arbitrary shell commands or configuration data.
+/// Local privileged endpoint accepts only DNS profile toggles or a validated
+/// DoT hostname. It never accepts arbitrary process arguments, paths, or code.
+
 pub fn serve_local_control(
     handler: impl Fn(ControlRequest) -> Result<(), String>,
 ) -> Result<(), String> {
@@ -451,5 +510,10 @@ mod control_tests {
         );
         assert_eq!(ControlRequest::from_byte(0x21), None);
         assert_eq!(ControlRequest::from_byte(0xff), None);
+        assert_eq!(ControlRequest::from_byte(CONTROL_CONFIGURE_AND_ENABLE), None);
+        assert_eq!(
+            ControlRequest::ConfigureAndEnable("dns.example.net".to_owned()).byte(),
+            CONTROL_CONFIGURE_AND_ENABLE,
+        );
     }
 }
