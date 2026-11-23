@@ -82,6 +82,20 @@ test('signed controller result is bound to exact request, region and <=45s local
   {...d,leaseUntil:new Date(ms+45_001).toISOString()},requestDe,controller.privateKey,ms));
  assert.throws(()=>signControllerAdmissionDecision(
   {...d,leaseUntil:new Date(ms).toISOString()},requestDe,controller.privateKey,ms));
+
+ // Claim must never receive a heartbeat-only positive result; similarly a
+ // refresh cannot masquerade as a new admission.
+ assert.throws(()=>signControllerAdmissionDecision(
+  {...d,result:'REFRESHED'},requestDe,controller.privateKey,ms));
+ const refreshReq={...requestDe,op:'refresh' as const};
+ const refreshDecision={...d,op:'refresh' as const,
+  requestSha256:admissionRequestSha256(refreshReq)};
+ assert.throws(()=>signControllerAdmissionDecision(
+  refreshDecision,refreshReq,controller.privateKey,ms));
+ const refreshSigned=signControllerAdmissionDecision(
+  {...refreshDecision,result:'REFRESHED'},refreshReq,controller.privateKey,ms);
+ assert.equal(verifyControllerAdmissionDecision(
+  refreshSigned,refreshReq,id,ms).result,'REFRESHED');
  assert.throws(()=>verifyControllerAdmissionDecision(signed,requestDe,id,ms+15_001));
  const denied=decision(requestDe,'DENY_LIMIT');
  const deniedSigned=signControllerAdmissionDecision(denied,requestDe,controller.privateKey,ms);
