@@ -55,3 +55,12 @@ test('SQL failures and mismatched operation results cannot be signed as success'
   {query:async()=>({rows:[{result:'DENY_REPLAY'}]})},clock);
  assert.equal(verifyFiMeterDecision(denied,req,pin(controller.publicKey),now).result,'DENY_REPLAY');
 });
+
+test('fresh controller signature cannot revive a stale original request',async()=>{
+ const req=request(),signed=signFiMeterRequest(req,node.privateKey,now);
+ const decision=await handleFiMeterRequest(signed,pin(node.publicKey),controller.privateKey,
+  {query:async()=>({rows:[{result:'RESERVED'}]})},()=>now+14_000);
+ assert.throws(()=>verifyFiMeterDecision(decision,req,pin(controller.publicKey),now+16_000));
+ assert.throws(()=>signFiMeterRequest({...req,tokenSha256:req.tokenSha256+'\n'},node.privateKey,now));
+ assert.throws(()=>signFiMeterRequest({...req,requestId:req.requestId+'\n'},node.privateKey,now));
+});
