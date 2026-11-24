@@ -265,6 +265,21 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
+    #[test]
+    fn saved_probe_rejects_missing_or_unsafe_pinned_servers_before_network_io() {
+        assert!(probe_dot_pinned("dns.example.net", &[]).is_err());
+        assert!(probe_dot_pinned(
+            "dns.example.net",
+            &[SocketAddr::from(([127, 0, 0, 1], DOT_PORT))]
+        )
+        .is_err());
+        assert!(probe_dot_pinned(
+            "dns.example.net",
+            &[SocketAddr::from(([198, 51, 100, 1], 443))]
+        )
+        .is_err());
+    }
+
     struct FakeTls {
         incoming: Cursor<Vec<u8>>,
         sent: Vec<u8>,
