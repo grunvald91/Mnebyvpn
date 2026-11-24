@@ -121,7 +121,14 @@ mod tests {
     fn accepts_only_dns_names() {
         assert_eq!(normalize_check_host(" YouTube.COM. ").unwrap(), "youtube.com");
         assert_eq!(normalize_check_host("").unwrap(), "");
-        for bad in ["https://youtube.com", "a.com;whoami", "a.com:443", "127.0.0.1", "-a.com", "a..com"] {
+        for bad in [
+            "https://youtube.com",
+            "a.com;whoami",
+            "a.com:443",
+            "127.0.0.1",
+            "-a.com",
+            "a..com",
+        ] {
             assert!(normalize_check_host(bad).is_err(), "{bad}");
         }
     }
