@@ -40,10 +40,18 @@ assert.ok(html.includes('<details class="fold" id="maintenance-panel">'),
   'Maintenance should be collapsed by default');
 assert.ok(!html.includes('id="repair-system-dns"'), 'Duplicate restore button');
 assert.ok(!html.includes('id="settings-tray"'), 'Duplicate tray button');
+assert.ok(!html.includes('id="refresh-system-dns"'), 'Redundant settings refresh button');
 assert.ok(!html.includes('Маршрутизация Smart DNS'), 'Remove never-checked diagnostic row');
 assert.ok(!html.includes('Сохранить и включить'), 'Settings must never enable DNS');
-assert.ok(html.includes('>Сохранить адрес</button>'), 'Settings Save affordance missing');
+assert.ok(html.includes('>Сохранить</button>'), 'Settings Save affordance missing');
+assert.ok(html.includes('id="profile-saved"') && html.includes('id="edit-profile"'),
+  'Configured profile must have a concise edit affordance');
 assert.ok(js.includes("action: 'Save', host"), 'Save must use a non-activating IPC command');
+assert.ok(js.includes("if (action === 'Enable' && !systemDnsConfigured)"),
+  'Home must require a saved profile before enabling');
+assert.ok(!js.includes('Сохранить и включить'), 'Obsolete first-run instruction');
+assert.ok(js.includes("const state = await refreshSystemDns();"),
+  'Recovery result must be checked rather than showing unconditional success');
 assert.ok(ipc.includes('ConfigureOnly(String)'), 'Save-only opcode missing');
 assert.ok(service.includes('ControlRequest::ConfigureOnly(host) => save_profile(host, false)'),
   'Saving an address must persist with DNS disabled');
