@@ -332,6 +332,7 @@ pub enum ControlRequest {
     /// A restricted DNS hostname, never an executable path or arbitrary shell.
     ConfigureAndEnable(String),
     ConfigureOnly(String),
+    ProbeSaved,
     EmergencyRestore,
 }
 impl ControlRequest {
@@ -341,6 +342,7 @@ impl ControlRequest {
             Self::Disable => 0x30,
             Self::ConfigureAndEnable(_) => CONTROL_CONFIGURE_AND_ENABLE,
             Self::ConfigureOnly(_) => CONTROL_CONFIGURE_ONLY,
+            Self::ProbeSaved => 0x35,
             Self::EmergencyRestore => 0x33,
         }
     }
@@ -349,6 +351,7 @@ impl ControlRequest {
             0x31 => Some(Self::EnableSaved),
             0x30 => Some(Self::Disable),
             0x33 => Some(Self::EmergencyRestore),
+            0x35 => Some(Self::ProbeSaved),
             _ => None,
         }
     }
@@ -562,6 +565,10 @@ mod control_tests {
         assert_eq!(
             ControlRequest::from_byte(0x33),
             Some(ControlRequest::EmergencyRestore)
+        );
+        assert_eq!(
+            ControlRequest::from_byte(0x35),
+            Some(ControlRequest::ProbeSaved)
         );
         assert_eq!(
             ControlRequest::from_byte(CONTROL_CONFIGURE_AND_ENABLE),
