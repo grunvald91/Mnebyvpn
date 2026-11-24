@@ -262,9 +262,8 @@ test('germanTransportsWithXhttp advertises 443 HTTP/2 XHTTP alongside 8443 WS',(
     assert.equal(second.searchParams.get('alpn'),'h2');
     assert.equal(second.searchParams.get('fp'),'chrome');
     assert.equal(second.searchParams.get('path'),'/mnebyvpn-vpn/xhttp');
-    assert.equal(second.searchParams.get('mode'),'packet-up');
+    assert.equal(second.searchParams.get('mode'),'stream-one');
     assert.deepEqual(JSON.parse(second.searchParams.get('extra')!),{
-      scMinPostsIntervalMs:10,
       xmux:{
         maxConcurrency:'2-4',
         maxConnections:0,
