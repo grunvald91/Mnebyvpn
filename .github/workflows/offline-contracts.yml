@@ -219,6 +219,18 @@ jobs:
           test "$PGDATABASE" = mnebyvpn_test
           node --experimental-strip-types --test tests/ci/shared-vpn-connections-pg.test.ts
           node --experimental-strip-types --test tests/ci/fi-dns-meter-pg.test.ts
+      - name: Verify paid FI signed snapshot publication (disposable PostgreSQL)
+        env:
+          PGPASSWORD: test
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: test
+          PGDATABASE: mnebyvpn_test
+        run: |
+          set -Eeuo pipefail
+          test "$PGDATABASE" = mnebyvpn_test
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0152_fi_dns_snapshot_source.sql >/dev/null
+          node --experimental-strip-types --test tests/ci/fi-dns-snapshot-publisher-pg.test.ts
       - name: Payment integration with disposable PostgreSQL
         env:
           PGPASSWORD: test
