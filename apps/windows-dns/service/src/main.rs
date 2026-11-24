@@ -339,6 +339,22 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
             match request {
                 ControlRequest::ConfigureAndEnable(host) => save_profile(host, true),
                 ControlRequest::ConfigureOnly(host) => save_profile(host, false),
+                ControlRequest::ProbeSaved => {
+                    // Read-only, with pinned IPs so Windows DNS is never used
+                    // to resolve its own DoT hostname after activation.
+                    let config = journal.read_controller_config()?.ok_or_else(|| {
+                        "Сначала сохраните персональный DNS-адрес".to_owned()
+                    })?;
+                    let report = mnebydns_core::probe_dot_pinned(
+                        &config.dot_host,
+                        &config.upstream_addresses,
+                    )?;
+                    if report.complete {
+                        Ok(())
+                    } else {
+                        Err("DoT отвечает, но проверка DNS A/AAAA не завершилась".to_owned())
+                    }
+                }
                 ControlRequest::EnableSaved => {
                     journal.ensure_safe_to_enable()?;
                     let mut config = journal
