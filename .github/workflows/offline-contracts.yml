@@ -203,6 +203,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/tests/0148_vpn_shared_verified_node_admission_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/migrations/0149_vpn_shared_node_identity_pin_guard.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0149_vpn_shared_node_identity_pin_guard_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0150_fi_regional_dns_query_meter.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/tests/0150_fi_regional_dns_query_meter_contract.sql
           # E2E test fixture explicitly simulates a separately deployed, verified node worker.
           psql -v ON_ERROR_STOP=1 -c "UPDATE vpn_release_flags SET enabled=true WHERE feature='paid_vpn_clock_on_node'" >/dev/null
       - name: Concurrent cross-country VPN admission (disposable PostgreSQL only)
@@ -216,6 +218,7 @@ jobs:
           set -Eeuo pipefail
           test "$PGDATABASE" = mnebyvpn_test
           node --experimental-strip-types --test tests/ci/shared-vpn-connections-pg.test.ts
+          node --experimental-strip-types --test tests/ci/fi-dns-meter-pg.test.ts
       - name: Payment integration with disposable PostgreSQL
         env:
           PGPASSWORD: test
