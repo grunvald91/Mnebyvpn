@@ -197,20 +197,44 @@ fn exchange<S: DnsIo>(stream: &mut S, id: u16, kind: u16) -> Result<EndpointProb
 /// TCP 853 is fixed, and no fallback to cleartext DNS is allowed.
 pub fn probe_dot_strict(input: &str) -> Result<DotProbeReport, String> {
     let host = checked_hostname(input)?;
-    let started = Instant::now();
-
-    // Bootstrap hostname resolution is performed by the OS resolver. This
-    // diagnostic does not claim that bootstrap resolution itself uses DoT.
+    // Diagnostic for a NEW hostname. Bootstrap resolution uses the OS.
     let addresses = (host.as_str(), DOT_PORT)
         .to_socket_addrs()
         .map_err(|_| "Windows не смогла определить IP-адрес DoT-сервера".to_owned())?;
+    probe_dot_using_addresses(&host, addresses)
+}
+
+/// Checks an already saved DoT profile without asking Windows to resolve its
+/// hostname again. This avoids DNS bootstrap loops while system DNS is active
+/// and never exposes the customer's personalized domain to the GUI.
+pub fn probe_dot_pinned(host: &str, addresses: &[SocketAddr]) -> Result<DotProbeReport, String> {
+    let host = checked_hostname(host)?;
+    if addresses.is_empty()
+        || addresses.len() > MAX_IP_ADDRESSES
+        || addresses.iter().any(|addr| {
+            addr.port() != DOT_PORT
+                || addr.ip().is_loopback()
+                || addr.ip().is_unspecified()
+                || addr.ip().is_multicast()
+        })
+    {
+        return Err("Некорректные сохранённые адреса DoT".to_owned());
+    }
+    probe_dot_using_addresses(&host, addresses.iter().copied())
+}
+
+fn probe_dot_using_addresses(
+    host: &str,
+    addresses: impl Iterator<Item = SocketAddr>,
+) -> Result<DotProbeReport, String> {
+    let started = Instant::now();
     let mut tls_builder = TlsConnector::builder();
     // Explicitly disallow TLS 1.0/1.1 even when an older Windows policy allows them.
     tls_builder.min_protocol_version(Some(native_tls::Protocol::Tlsv12));
     let connector = tls_builder
         .build()
         .map_err(|_| "Не удалось создать системный TLS-контекст Windows".to_owned())?;
-    let mut tls = connect_authenticated(&host, addresses, &connector)?;
+    let mut tls = connect_authenticated(host, addresses, &connector)?;
 
     let a_id = NEXT_DNS_ID.fetch_add(1, Ordering::Relaxed);
     let ipv4 = match exchange(&mut tls, a_id, 1) {
