@@ -19,10 +19,11 @@ CREATE TABLE public.fi_dns_meter_requests (
   entitlement_id uuid REFERENCES public.personal_dns_credentials(entitlement_id) ON DELETE RESTRICT,
   token_sha256 text CHECK(token_sha256 ~ '^[a-f0-9]{64}$'),
   credential_revision bigint,
+  reservation_expires_at timestamptz,
   state text NOT NULL CHECK(state IN ('RESERVED','SETTLED','RELEASED')),
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-  CHECK((entitlement_id IS NOT NULL AND token_sha256 IS NOT NULL AND credential_revision IS NOT NULL)
-    OR (entitlement_id IS NULL AND token_sha256 IS NULL AND credential_revision IS NULL AND state='RELEASED'))
+  CHECK((entitlement_id IS NOT NULL AND token_sha256 IS NOT NULL AND credential_revision IS NOT NULL AND reservation_expires_at IS NOT NULL)
+    OR (entitlement_id IS NULL AND token_sha256 IS NULL AND credential_revision IS NULL AND reservation_expires_at IS NULL AND state='RELEASED'))
 );
 REVOKE ALL ON public.fi_dns_meter_gate,public.fi_dns_regional_credentials,public.fi_dns_meter_requests FROM PUBLIC;
 
@@ -30,7 +31,7 @@ REVOKE ALL ON public.fi_dns_meter_gate,public.fi_dns_regional_credentials,public
 -- The caller must authenticate node identity before invoking this ABI.
 -- Request lock first, then canonical entitlement lock (also used by legacy meter).
 CREATE FUNCTION public.fi_dns_meter_apply(p_op text,p_request uuid,p_digest text DEFAULT NULL)
-RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE
   m public.fi_dns_meter_requests%ROWTYPE;
   f public.fi_dns_regional_credentials%ROWTYPE;
@@ -109,12 +110,18 @@ BEGIN
         WHERE entitlement_id=v_e AND period_index=v_period;
       RETURN 'DENY_DUPLICATE';
     END IF;
-    INSERT INTO public.fi_dns_meter_requests(request_id,entitlement_id,token_sha256,credential_revision,state)
-      VALUES(p_request,v_e,p_digest,f.credential_revision,'RESERVED');
+    INSERT INTO public.fi_dns_meter_requests(request_id,entitlement_id,token_sha256,credential_revision,reservation_expires_at,state)
+      VALUES(p_request,v_e,p_digest,f.credential_revision,v_now+interval '15 seconds','RESERVED');
     RETURN 'RESERVED';
   END IF;
   -- Region revoke/rotation, expiry, gate OFF or refund blocks settlement.
   -- Existing legacy function also verifies its original credential digest.
+  IF NOT EXISTS(SELECT 1 FROM public.personal_dns_query_reservations
+      WHERE request_id=p_request AND entitlement_id=v_e
+        AND expires_at=m.reservation_expires_at) THEN
+    UPDATE public.fi_dns_meter_requests SET state='RELEASED' WHERE request_id=p_request;
+    RETURN 'RELEASED';
+  END IF;
   v_result:=public.finish_personal_dns_query(p_request,
     p_op='settle' AND v_active AND f.token_sha256 IS NOT DISTINCT FROM m.token_sha256
     AND f.credential_revision IS NOT DISTINCT FROM m.credential_revision);
