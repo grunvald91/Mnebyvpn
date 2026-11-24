@@ -61,10 +61,21 @@ export function germanTransportsWithReality(validatedNodeProfile:string):string{
 export function germanTransportsWithXhttp(validatedNodeProfile:string):string{
   const wsLine=germanWebSocketOnly(validatedNodeProfile);
   const wsUri=new URL(wsLine);
+  const extra=JSON.stringify({
+    scMinPostsIntervalMs:10,
+    xmux:{
+      maxConcurrency:'2-4',
+      maxConnections:0,
+      cMaxReuseTimes:0,
+      hMaxRequestTimes:'5000-10000',
+      hMaxReusableSecs:'1800-3000',
+      hKeepAlivePeriod:30,
+    },
+  });
   const query=new URLSearchParams({
     encryption:'none',security:'tls',type:'xhttp',
     host:'cdn.servgo.ru',sni:'cdn.servgo.ru',alpn:'h2',
-    fp:'chrome',path:'/mnebyvpn-vpn/xhttp',mode:'packet-up',
+    fp:'chrome',path:'/mnebyvpn-vpn/xhttp',mode:'packet-up',extra,
   });
   const xhttpLine='vless://'+wsUri.username+'@cdn.servgo.ru:443?'+query+
     '#'+encodeURIComponent(vpnCountryLabel('Германия')+' XHTTP');

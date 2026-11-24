@@ -263,6 +263,17 @@ test('germanTransportsWithXhttp advertises 443 HTTP/2 XHTTP alongside 8443 WS',(
     assert.equal(second.searchParams.get('fp'),'chrome');
     assert.equal(second.searchParams.get('path'),'/mnebyvpn-vpn/xhttp');
     assert.equal(second.searchParams.get('mode'),'packet-up');
+    assert.deepEqual(JSON.parse(second.searchParams.get('extra')!),{
+      scMinPostsIntervalMs:10,
+      xmux:{
+        maxConcurrency:'2-4',
+        maxConnections:0,
+        cMaxReuseTimes:0,
+        hMaxRequestTimes:'5000-10000',
+        hMaxReusableSecs:'1800-3000',
+        hKeepAlivePeriod:30,
+      },
+    });
     assert.equal(decodeURIComponent(second.hash.slice(1)),'MNEBYVPN Германия XHTTP');
   }
   assert.throws(()=>germanTransportsWithXhttp(reality('chrome')));
