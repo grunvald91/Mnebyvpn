@@ -40,10 +40,8 @@
     </div>
     <section class="detail" aria-label="Состояние соединения">
       <div class="item"><span>Служба DNS</span><strong id="service-state">Не проверено</strong></div>
-      <div class="item"><span>IPv4</span><strong id="ipv4-state">Не проверено</strong></div>
-      <div class="item"><span>IPv6</span><strong id="ipv6-state">Не проверено</strong></div>
-      <div class="item"><span>DoT · TLS</span><strong id="dot-diag-state">Не проверено</strong></div>
-      <div class="item"><span>UDP → DoT</span><strong id="proxy-diag-state">Не проверено</strong></div>
+      <div class="item"><span>Локальный IPv4</span><strong id="ipv4-state">Не проверено</strong></div>
+      <div class="item"><span>Локальный IPv6</span><strong id="ipv6-state">Не проверено</strong></div>
     </section>
     <details class="fold adapter-section">
       <summary>Сетевые адаптеры <span class="fold-chevron" aria-hidden="true">⌄</span></summary>
@@ -63,12 +61,18 @@
   <section id="settings" class="view hidden">
     <h1>Настройки</h1>
     <section class="detail profile-card">
-      <label class="dot-label" for="dot-host">Персональный DNS</label>
-      <input class="dot-input" id="dot-host" type="text" inputmode="url" autocomplete="off"
-        autocapitalize="none" spellcheck="false" maxlength="253" placeholder="ключ.dns.mnebyvpn.site"
-        aria-describedby="dot-help">
-      <p id="dot-help" class="muted dot-help">Имя DoT-сервера без https://</p>
-      <button class="primary" id="apply-new-dot" type="button">Сохранить адрес</button>
+      <div id="profile-saved" class="profile-saved" hidden>
+        <span>Адрес сохранён</span>
+        <button class="secondary compact-button" id="edit-profile" type="button">Изменить</button>
+      </div>
+      <div id="profile-editor" class="profile-editor">
+        <label class="dot-label" for="dot-host">Персональный DNS</label>
+        <input class="dot-input" id="dot-host" type="text" inputmode="url" autocomplete="off"
+          autocapitalize="none" spellcheck="false" maxlength="253" placeholder="ключ.dns.mnebyvpn.site"
+          aria-describedby="dot-help">
+        <p id="dot-help" class="muted dot-help">Адрес DoT без https:// и порта</p>
+        <button class="primary" id="apply-new-dot" type="button">Сохранить</button>
+      </div>
       <div class="settings-state">
         <span>Системный DNS</span><strong id="system-dns-state">Проверяю…</strong>
       </div>
@@ -82,6 +86,7 @@
         <p id="connection-hint" class="hint">Проверка без изменения DNS Windows.</p>
         <button class="secondary main-action" id="run-all-tests" type="button">Проверить</button>
         <div class="test-flow" aria-label="Результаты">
+          <p class="muted" id="test-host-hint"></p>
           <div class="test-step"><span class="step-number">01</span><div class="step-body"><div class="step-title"><strong>DoT · TLS</strong></div><p class="dot-status" id="dot-status" role="status" aria-live="polite">Не проверено</p></div></div>
           <div class="test-step"><span class="step-number">02</span><div class="step-body"><div class="step-title"><strong>Локальный прокси</strong></div><p class="dot-status" id="proxy-status" role="status" aria-live="polite">Не проверено</p></div></div>
         </div>
@@ -98,9 +103,7 @@
     <details class="fold" id="maintenance-panel">
       <summary>Службы и восстановление <span class="fold-chevron" aria-hidden="true">⌄</span></summary>
       <div class="fold-content">
-        <p class="muted">Восстановление работает без UAC через установленную службу.</p>
         <button class="secondary" id="restore-system-dns" type="button">Восстановить DNS</button>
-        <button class="secondary" id="refresh-system-dns" type="button">Обновить состояние</button>
         <details class="advanced-tests">
           <summary>Для старых версий</summary>
           <div class="advanced-content">
