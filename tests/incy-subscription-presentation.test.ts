@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
-  germanTransportsWithReality,germanWebSocketOnly,keepSupportedAdditionalTransport,
+  germanTransportsWithReality,germanTransportsWithXhttp,germanWebSocketOnly,
+  keepSupportedAdditionalTransport,
   incySubscriptionHeaders,incyExpiredSubscriptionHeaders,
   incyExpiredSubscriptionBody,incyEncodeActiveSubscription,
   INCY_SITE_URL,INCY_RENEW_URL,
@@ -239,4 +240,35 @@ test('germanTransportsWithReality includes single Chrome 2053 REALITY entry alon
     new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
   assert.ok(site.includes('WEB_DE_REALITY_IN_SUBSCRIPTION_ENABLED'));
   assert.ok(site.includes('germanTransportsWithReality(nodeProfile)'));
+});
+
+test('germanTransportsWithXhttp advertises 443 HTTP/2 XHTTP alongside 8443 WS',()=>{
+  for(const input of [ws,[reality('chrome'),reality('firefox'),ws].join('\n')]){
+    const out=germanTransportsWithXhttp(input).split('\n');
+    assert.equal(out.length,2);
+    const first=new URL(out[0]!);
+    assert.equal(first.port,'8443');
+    assert.equal(decodeURIComponent(first.hash.slice(1)),'MNEBYVPN Германия');
+    const second=new URL(out[1]!);
+    assert.equal(second.protocol,'vless:');
+    assert.equal(second.username,userId);
+    assert.equal(second.hostname,'cdn.servgo.ru');
+    assert.equal(second.port,'443');
+    assert.equal(second.searchParams.get('encryption'),'none');
+    assert.equal(second.searchParams.get('security'),'tls');
+    assert.equal(second.searchParams.get('type'),'xhttp');
+    assert.equal(second.searchParams.get('host'),'cdn.servgo.ru');
+    assert.equal(second.searchParams.get('sni'),'cdn.servgo.ru');
+    assert.equal(second.searchParams.get('alpn'),'h2');
+    assert.equal(second.searchParams.get('fp'),'chrome');
+    assert.equal(second.searchParams.get('path'),'/mnebyvpn-vpn/xhttp');
+    assert.equal(second.searchParams.get('mode'),'auto');
+    assert.equal(decodeURIComponent(second.hash.slice(1)),'MNEBYVPN Германия XHTTP');
+  }
+  assert.throws(()=>germanTransportsWithXhttp(reality('chrome')));
+
+  const site=readFileSync(
+    new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
+  assert.ok(site.includes('WEB_DE_XHTTP_IN_SUBSCRIPTION_ENABLED'));
+  assert.ok(site.includes('germanTransportsWithXhttp(nodeProfile)'));
 });

@@ -23,7 +23,8 @@ import {isCanonicalAwgPublicKey,loadVerifiedAwgMaterial}
   from '../../../packages/provisioning/src/awg-subscriber-material.ts';
 import {deriveSubscriptionAwgIdentity,verifiedIncyAwgLine}
   from '../../../packages/provisioning/src/awg-in-subscription.ts';
-import {germanTransportsWithReality,germanWebSocketOnly,keepSupportedAdditionalTransport,incySubscriptionHeaders,
+import {germanTransportsWithReality,germanTransportsWithXhttp,germanWebSocketOnly,
+  keepSupportedAdditionalTransport,incySubscriptionHeaders,
   incyExpiredSubscriptionHeaders,incyExpiredSubscriptionBody,
   incyEncodeActiveSubscription}
   from '../../../packages/provisioning/src/incy-subscription-presentation.ts';
@@ -159,6 +160,8 @@ const awgInSubscriptionEnabled=
   process.env.WEB_FI_AWG_IN_SUBSCRIPTION_ENABLED==='yes';
 const deRealityInSubscriptionEnabled=
   process.env.WEB_DE_REALITY_IN_SUBSCRIPTION_ENABLED==='yes';
+const deXhttpInSubscriptionEnabled=
+  process.env.WEB_DE_XHTTP_IN_SUBSCRIPTION_ENABLED==='yes';
 const awgSubscriptionIdentityRoot=awgInSubscriptionEnabled
   ?required('AWG_INCY_SUBSCRIPTION_SEED'):'';
 if(awgInSubscriptionEnabled&&!awgMaterialEnabled)
@@ -923,6 +926,12 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const loadGermanProfile=async():Promise<string|null>=>{
       try{
         const nodeProfile=await liveVpnProfile(owner);
+        if(deXhttpInSubscriptionEnabled&&deRealityInSubscriptionEnabled){
+          const withReality=germanTransportsWithReality(nodeProfile).split('\n');
+          const xhttpOnly=germanTransportsWithXhttp(nodeProfile).split('\n')[1];
+          return [...withReality,...(xhttpOnly?[xhttpOnly]:[])].join('\n');
+        }
+        if(deXhttpInSubscriptionEnabled)return germanTransportsWithXhttp(nodeProfile);
         return deRealityInSubscriptionEnabled
           ?germanTransportsWithReality(nodeProfile)
           :germanWebSocketOnly(nodeProfile);

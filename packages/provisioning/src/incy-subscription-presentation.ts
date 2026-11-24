@@ -57,6 +57,20 @@ export function germanTransportsWithReality(validatedNodeProfile:string):string{
   return wsLine;
 }
 
+/** Verified German profile with opt-in XHTTP (:443 HTTP/2) alongside WS (:8443). */
+export function germanTransportsWithXhttp(validatedNodeProfile:string):string{
+  const wsLine=germanWebSocketOnly(validatedNodeProfile);
+  const wsUri=new URL(wsLine);
+  const query=new URLSearchParams({
+    encryption:'none',security:'tls',type:'xhttp',
+    host:'cdn.servgo.ru',sni:'cdn.servgo.ru',alpn:'h2',
+    fp:'chrome',path:'/mnebyvpn-vpn/xhttp',mode:'auto',
+  });
+  const xhttpLine='vless://'+wsUri.username+'@cdn.servgo.ru:443?'+query+
+    '#'+encodeURIComponent(vpnCountryLabel('Германия')+' XHTTP');
+  return [wsLine,xhttpLine].join('\n');
+}
+
 /** Signed additional country entries are rendered by the verified registry.
  * Germany REALITY routes are currently nonfunctional and must not be offered
  * to INCY, even if an old signed registry receipt exists for a DE node.
