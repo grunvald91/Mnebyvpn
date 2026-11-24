@@ -240,6 +240,21 @@ async fn inspect_dns() -> Result<diagnostics::DnsDiagnosticState, String> {
         .map_err(|error| format!("Диагностика не выполнена: {error}"))
 }
 
+#[tauri::command]
+async fn inspect_compatibility(host: String) -> Result<serde_json::Value, String> {
+    #[cfg(windows)]
+    {
+        tauri::async_runtime::spawn_blocking(move || diagnostics::compatibility(&host))
+            .await
+            .map_err(|_| "Диагностика не выполнена".to_owned())?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = host;
+        Err("Доступно только в Windows".to_owned())
+    }
+}
+
 fn show_main(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -253,6 +268,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             hide_to_tray,
             inspect_dns,
+            inspect_compatibility,
             list_network_adapters,
             preflight_dns_adapter,
             probe_personal_dot,
