@@ -372,15 +372,16 @@ function renderHomeConnection() {
     unknown: 'Служба недоступна'
   };
   const active = systemDnsState === 'active';
+  const connecting = systemDnsState === 'starting';
   const recoveryNeeded = ['error', 'unknown'].includes(systemDnsState);
   const busy = systemDnsLoading || systemDnsOperationPending ||
-    ['starting', 'restoring', 'checking'].includes(systemDnsState);
+    ['restoring', 'checking'].includes(systemDnsState);
   summary.textContent = labels[systemDnsState] || labels.unknown;
   button.textContent = systemDnsOperationPending
     ? (systemDnsPendingAction === 'Disable' ? 'Отключение…'
       : systemDnsPendingAction === 'Save' ? 'Сохранение…'
       : systemDnsPendingAction === 'Upgrade' ? 'Обновление…' : 'Подключение…')
-    : recoveryNeeded ? 'Восстановить DNS' : active ? 'Выключить' : 'Включить';
+    : recoveryNeeded ? 'Восстановить DNS' : active || connecting ? 'Выключить' : 'Включить';
   button.disabled = busy;
   button.setAttribute('aria-pressed', String(active));
   home.classList.toggle('is-active', active);
@@ -388,7 +389,7 @@ function renderHomeConnection() {
   renderProfileState();
   hint.textContent = systemDnsOperationPending
     ? (systemDnsState === 'not-installed' ? 'Подтвердите установку Windows' : '')
-    : recoveryNeeded
+    : recoveryNeeded || (systemDnsState === 'disabled' && systemDnsLastError)
       ? (systemDnsLastError ? String(systemDnsLastError).slice(0, 160) : 'Откройте «Проверка»')
       : (systemDnsState === 'not-installed' || systemDnsState === 'disabled') &&
           !systemDnsConfigured && !get('dot-host').value.trim()
@@ -428,7 +429,8 @@ async function refreshSystemDns() {
     // Only actionable errors occupy space; technical measurements live
     // in the Diagnostics tab instead of repeating under the profile field.
     get('system-dns-message').textContent = report.last_error ||
-      (report.recovery_state !== 'clear' ? 'Восстановление DNS не завершено' : '');
+      ((state === 'disabled' || state === 'restoring' || state === 'error') &&
+        report.recovery_state !== 'clear' ? 'Восстановление DNS не завершено' : '');
     renderHomeConnection();
     if (systemDnsLastError && (state === 'error' || (state === 'disabled' && report.recovery_state === 'pending'))) {
       get('home-action-hint').textContent = 'Причина: ' + systemDnsLastError;
@@ -490,7 +492,7 @@ async function requestSystemDns(action) {
     return;
   }
   if (action === 'Enable' && !['disabled', 'not-installed'].includes(systemDnsState)) return;
-  if (action === 'Disable' && !['active', 'error', 'unknown'].includes(systemDnsState)) return;
+  if (action === 'Disable' && !['active', 'starting', 'error', 'unknown'].includes(systemDnsState)) return;
   systemDnsLoading = true;
   systemDnsOperationPending = true;
   systemDnsPendingAction = action;
@@ -585,7 +587,7 @@ get('upgrade-system-service').addEventListener('click', async () => {
 });
 
 get('toggle-system-dns').addEventListener('click', () => {
-  const recoveryNeeded = ['active', 'error', 'unknown'].includes(systemDnsState);
+  const recoveryNeeded = ['active', 'starting', 'error', 'unknown'].includes(systemDnsState);
   void requestSystemDns(recoveryNeeded ? 'Disable' : 'Enable');
 });
 get('restore-system-dns').addEventListener('click', async () => {
