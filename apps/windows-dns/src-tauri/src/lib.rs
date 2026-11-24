@@ -101,7 +101,7 @@ fn run_elevated_setup(command: &str) -> Result<String, String> {
 async fn launch_system_dns_action(action: String, host: Option<String>) -> Result<String, String> {
     if !matches!(
         action.as_str(),
-        "Enable" | "Save" | "Disable" | "Upgrade" | "Repair"
+        "Enable" | "Save" | "TestSaved" | "Disable" | "Upgrade" | "Repair"
     ) {
         return Err("Недопустимая операция системного DNS".to_owned());
     }
@@ -150,6 +150,11 @@ async fn launch_system_dns_action(action: String, host: Option<String>) -> Resul
                     } else {
                         Err("Введите персональный DNS-адрес.".to_owned())
                     }
+                }
+                "TestSaved" => {
+                    send_control(ControlRequest::ProbeSaved)
+                        .map_err(|error| format!("Сохранённый DNS не прошёл проверку: {error}"))?;
+                    Ok("DoT TLS и DNS A/AAAA проверены через сохранённые IP".to_owned())
                 }
                 "Disable" => match send_control(ControlRequest::Disable) {
                     Ok(()) => Ok(
