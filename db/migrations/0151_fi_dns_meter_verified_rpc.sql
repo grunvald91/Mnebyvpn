@@ -46,7 +46,7 @@ GRANT EXECUTE ON FUNCTION public.fi_dns_meter_verified_apply(text,uuid,text,text
 -- Retain a generous safety margin; do not prune durable request tombstones.
 CREATE FUNCTION public.fi_dns_meter_prune_nonces()
 RETURNS integer LANGUAGE plpgsql SECURITY DEFINER
-SET search_path=pg_catalog,public,pg_temp AS $
+SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE v_deleted integer;
 BEGIN
  WITH expired AS (
@@ -57,12 +57,12 @@ BEGIN
  DELETE FROM public.fi_dns_meter_rpc_nonces n USING expired e WHERE n.nonce=e.nonce;
  GET DIAGNOSTICS v_deleted=ROW_COUNT;
  RETURN v_deleted;
-END $;
+END $$;
 REVOKE ALL ON FUNCTION public.fi_dns_meter_prune_nonces() FROM PUBLIC;
-DO $ BEGIN
+DO $$ BEGIN
  IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='mnebyvpn_fi_dns_maintenance') THEN
   CREATE ROLE mnebyvpn_fi_dns_maintenance NOLOGIN NOINHERIT;
  END IF;
-END $;
+END $$;
 GRANT EXECUTE ON FUNCTION public.fi_dns_meter_prune_nonces() TO mnebyvpn_fi_dns_maintenance;
 COMMIT;
