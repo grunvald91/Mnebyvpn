@@ -1,6 +1,6 @@
 [package]
 name = "mnebydns-windows"
-version = "0.16.0"
+version = "0.17.0"
 description = "Lightweight Windows Smart DNS client with one-button controller and tray"
 authors = ["mnebyDNS"]
 edition = "2021"
