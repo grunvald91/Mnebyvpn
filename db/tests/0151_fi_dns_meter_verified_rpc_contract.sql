@@ -26,6 +26,14 @@ BEGIN
  UPDATE vpn_node_enrollment_inventory SET status='revoked' WHERE node_id='fi-test-01';
  IF fi_dns_meter_verified_apply('release',v_id,NULL,v_pin,repeat('f',64),clock_timestamp())<>'DENY_NODE'
  THEN RAISE EXCEPTION 'revoked node accepted'; END IF;
+ INSERT INTO fi_dns_meter_rpc_nonces(nonce,first_seen_at)
+ VALUES(repeat('9',64),clock_timestamp()-interval '11 minutes');
+ IF fi_dns_meter_prune_nonces()<>1 OR EXISTS(SELECT 1 FROM fi_dns_meter_rpc_nonces WHERE nonce=repeat('9',64))
+ OR NOT EXISTS(SELECT 1 FROM fi_dns_meter_rpc_nonces WHERE nonce=v_nonce)
+ THEN RAISE EXCEPTION 'unsafe replay retention'; END IF;
+ IF has_function_privilege('mnebyvpn_fi_dns_meter','public.fi_dns_meter_prune_nonces()','EXECUTE')
+ OR NOT has_function_privilege('mnebyvpn_fi_dns_maintenance','public.fi_dns_meter_prune_nonces()','EXECUTE')
+ THEN RAISE EXCEPTION 'maintenance role not isolated'; END IF;
  IF has_function_privilege('mnebyvpn_fi_dns_meter','public.fi_dns_meter_apply(text,uuid,text)','EXECUTE')
  OR NOT has_function_privilege('mnebyvpn_fi_dns_meter','public.fi_dns_meter_verified_apply(text,uuid,text,text,text,timestamptz)','EXECUTE')
  OR has_table_privilege('mnebyvpn_fi_dns_meter','public.fi_dns_meter_rpc_nonces','INSERT')
