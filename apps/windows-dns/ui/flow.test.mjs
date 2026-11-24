@@ -53,6 +53,7 @@ const document = {
 const actions = [];
 const status = { dns_state: 'disabled', configured: false, recovery_state: 'clear', last_error: null };
 let statusUnavailable = false;
+let finishUpgrade = null;
 const invoke = async (command, args = {}) => {
   if (command === 'system_dns_status') {
     if (statusUnavailable) throw new Error('SERVICE_DOWN');
@@ -63,6 +64,9 @@ const invoke = async (command, args = {}) => {
     if (args.action === 'Save') status.configured = true;
     if (args.action === 'Enable') status.dns_state = 'active';
     if (args.action === 'Disable' || args.action === 'Repair') status.dns_state = 'disabled';
+    if (args.action === 'Upgrade') {
+      return new Promise(resolve => { finishUpgrade = resolve; });
+    }
     return 'Подтверждено';
   }
   if (command === 'inspect_dns') {
@@ -124,6 +128,20 @@ assert.ok(actions.some(action => action.action === 'Disable'));
 assert.equal(status.dns_state, 'disabled');
 assert.equal(status.configured, true);
 
+// A long-running service upgrade must lock the main power action.
+const beforeUpgrade = actions.length;
+const upgrading = elements['upgrade-system-service'].click();
+await flush();
+assert.equal(elements['toggle-system-dns'].disabled, true);
+await elements['toggle-system-dns'].click();
+await flush();
+assert.equal(actions.length, beforeUpgrade + 1, 'Power action must not interleave with upgrade');
+assert.equal(actions.at(-1).action, 'Upgrade');
+finishUpgrade('Обновлено');
+await upgrading;
+await flush();
+assert.equal(elements['toggle-system-dns'].disabled, false);
+
 // Recovery can never claim fully verified state if status is unreachable.
 statusUnavailable = true;
 await elements['restore-system-dns'].click();
@@ -131,4 +149,4 @@ await flush();
 assert.ok(elements['system-dns-message'].textContent.includes('не подтверждено'),
   'Do not falsely claim verified recovery after status failure');
 
-console.log('Flow test OK: onboarding, save-only, Home power, saved DoT test, recovery uncertainty');
+console.log('Flow test OK: onboarding, save-only, Home power, saved DoT, serialized upgrade and recovery uncertainty');
