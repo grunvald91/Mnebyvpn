@@ -2,7 +2,7 @@
 //! Owns the authenticated DoT loopback listener, per-interface IPv4/IPv6 DNS
 //! configuration, and crash-safe recovery journal. No plaintext fallback.
 
-use mnebydns_core::{now_ms, probe_loopback, LoopbackDnsServer, ServiceReport};
+use mnebydns_core::{now_ms, probe_loopback, DnsProbeReport, LoopbackDnsServer, ServiceReport};
 use mnebydns_ipc::{
     send_control, serve_local_control, serve_local_recovery, serve_local_status, ControlRequest,
 };
@@ -57,6 +57,7 @@ fn publish(
     state: &str,
     adapter_count: u32,
     last_error: Option<&str>,
+    probe: DnsProbeReport,
 ) -> io::Result<ServiceReport> {
     let recovery_state = match (
         journal.check_recovery_pending(),
@@ -69,7 +70,7 @@ fn publish(
     let report = ServiceReport {
         schema_version: 1,
         updated_at_ms: now_ms(),
-        probe: probe_loopback(),
+        probe,
         recovery_state: Some(recovery_state.to_owned()),
         dns_state: Some(state.to_owned()),
         adapter_count: Some(adapter_count),
@@ -80,8 +81,15 @@ fn publish(
         last_error: last_error.map(|value| value.chars().take(1024).collect()),
     };
     let payload = serde_json::to_vec(&report)?;
-    let path = journal.protected_status_path().map_err(io::Error::other)?;
-    fs::write(path, payload)?;
+    // The authenticated IPC snapshot and health watchdog must not depend on
+    // the optional diagnostic file being writable.
+    if let Err(error) = journal
+        .protected_status_path()
+        .map_err(io::Error::other)
+        .and_then(|path| fs::write(path, payload))
+    {
+        eprintln!("Could not write DNS diagnostic status: {error}");
+    }
     Ok(report)
 }
 
@@ -343,7 +351,14 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
         journal.read_controller_config(),
         system_journal.has_pending(),
     );
-    let initial = publish(&journal, &system_journal, initial_state, 0, None)?;
+    let initial = publish(
+        &journal,
+        &system_journal,
+        initial_state,
+        0,
+        None,
+        probe_loopback(),
+    )?;
     let shared = Arc::new(RwLock::new(initial));
     let pipe_data = Arc::clone(&shared);
     thread::spawn(move || {
@@ -454,7 +469,8 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
             emergency_reason.is_some(),
             safe_disabled_seen,
             config.as_ref().is_some_and(|value| value.enabled),
-            matches!(system_journal.has_pending(), Ok(false)),
+            matches!(system_journal.has_pending(), Ok(false))
+                && matches!(journal.check_recovery_pending(), Ok(false)),
             server.is_none(),
         ) {
             emergency_reason = None;
@@ -577,7 +593,10 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
                 server_config = None;
                 applied.clear();
                 adapter_count = 0;
-                state = if emergency_reason.is_some() {
+                state = if emergency_reason.is_some()
+                    || !matches!(journal.check_recovery_pending(), Ok(false))
+                    || !matches!(active_localhost_resolver_present(), Ok(false))
+                {
                     "error".to_owned()
                 } else {
                     "disabled".to_owned()
@@ -591,41 +610,52 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
                 && matches!(system_journal.has_pending(), Ok(false))
                 && server.is_none()
             {
-                safe_disabled_seen = true;
+                if matches!(journal.check_recovery_pending(), Ok(false))
+                    && matches!(active_localhost_resolver_present(), Ok(false))
+                {
+                    safe_disabled_seen = true;
+                    state = "disabled".to_owned();
+                }
             }
         }
 
+        let probe = probe_loopback();
+        // Evaluate health before publishing state, independently of status storage.
+        if should_enable && emergency_reason.is_none() && server.is_some() {
+            let healthy = probe.ipv4.ok && probe.ipv6.ok;
+            unhealthy_dns_probes =
+                next_probe_failure_count(unhealthy_dns_probes, network_available, healthy);
+            server_verified = network_available && healthy;
+            if network_available && !healthy {
+                state = "error".to_owned();
+                last_error = Some("DoT временно не отвечает".to_owned());
+            }
+            if unhealthy_dns_probes >= MAX_UNHEALTHY_PROBES {
+                emergency_reason = Some(
+                    "Три последовательные проверки DoT не прошли: восстановление исходного DNS"
+                        .into(),
+                );
+                if let Some(active) = server_config.as_ref() {
+                    if let Err(error) = persist_emergency_disable(&journal, active) {
+                        emergency_reason = Some(format!(
+                            "Ошибка записи аварийного выключения: {error}; требуется восстановление"
+                        ));
+                    }
+                }
+                last_error = emergency_reason.clone();
+            }
+        } else {
+            unhealthy_dns_probes = 0;
+            server_verified = false;
+        }
         if let Ok(report) = publish(
             &journal,
             &system_journal,
             &state,
             adapter_count,
             last_error.as_deref(),
+            probe,
         ) {
-            // Monitor the resolver even while adapter application is failing.
-            // Otherwise a live adapter can remain on a broken localhost DNS.
-            if should_enable && emergency_reason.is_none() && server.is_some() {
-                let healthy = report.probe.ipv4.ok && report.probe.ipv6.ok;
-                unhealthy_dns_probes =
-                    next_probe_failure_count(unhealthy_dns_probes, network_available, healthy);
-                server_verified = network_available && healthy;
-                if unhealthy_dns_probes >= MAX_UNHEALTHY_PROBES {
-                    emergency_reason = Some(
-                        "Три последовательные проверки DoT не прошли: восстановление исходного DNS"
-                            .into(),
-                    );
-                    if let Some(active) = server_config.as_ref() {
-                        if let Err(error) = persist_emergency_disable(&journal, active) {
-                            emergency_reason = Some(format!(
-                                "Ошибка записи аварийного выключения: {error}; требуется восстановление"
-                            ));
-                        }
-                    }
-                }
-            } else {
-                unhealthy_dns_probes = 0;
-                server_verified = false;
-            }
             if let Ok(mut current) = shared.write() {
                 *current = report;
             }
@@ -656,7 +686,14 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
                             break;
                         }
                         if let Ok(report) =
-                            publish(&journal, &system_journal, "error", 0, Some(&restore_error))
+                            publish(
+                                &journal,
+                                &system_journal,
+                                "error",
+                                0,
+                                Some(&restore_error),
+                                probe_loopback(),
+                            )
                         {
                             if let Ok(mut current) = shared.write() {
                                 *current = report;
