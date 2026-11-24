@@ -53,6 +53,11 @@ assert.ok(!js.includes('Сохранить и включить'), 'Obsolete firs
 assert.ok(js.includes("const state = await refreshSystemDns();"),
   'Recovery result must be checked rather than showing unconditional success');
 assert.ok(ipc.includes('ConfigureOnly(String)'), 'Save-only opcode missing');
+assert.ok(ipc.includes('ProbeSaved'), 'Saved-profile test opcode missing');
+assert.ok(rust.includes('"TestSaved" =>'), 'GUI bridge must test saved profile without repeated entry');
+assert.ok(service.includes('probe_dot_pinned('), 'Service must validate saved DoT without OS DNS bootstrap');
+assert.ok(js.includes('testSavedProfile()'), 'Saved profile must be testable without re-entering hostname');
+assert.ok(js.includes("systemDnsPendingAction = 'Upgrade'"), 'Upgrade must serialize with DNS changes');
 assert.ok(service.includes('ControlRequest::ConfigureOnly(host) => save_profile(host, false)'),
   'Saving an address must persist with DNS disabled');
 assert.ok(rust.includes('ControlRequest::ConfigureOnly(hostname.to_ascii_lowercase())'),
