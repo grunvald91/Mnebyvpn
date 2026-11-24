@@ -66,7 +66,7 @@ assert.ok(css.includes('prefers-reduced-motion') && css.includes('focus-visible'
   'Motion accessibility or keyboard focus styling missing');
 assert.ok(!css.includes('min-height:min(560px'), 'Old oversize home panel still present');
 assert.ok(config.app.windows[0].height <= 550, 'Default window too tall for compact home');
-assert.ok(js.includes("const recoveryNeeded = ['active', 'error', 'unknown'].includes(systemDnsState);"), 'Failure state must expose DNS recovery');
+assert.ok(js.includes("const recoveryNeeded = ['active', 'starting', 'error', 'unknown'].includes(systemDnsState);"), 'Failure state must expose DNS recovery');
 assert.ok(js.includes("recoveryNeeded ? 'Disable' : 'Enable'"), 'Recovery button must send Disable');
 assert.ok(js.includes("'Восстановить DNS'"), 'One-button recovery label missing');
 console.log('UI contract OK: ' + ids.length + ' DOM IDs; single control on main page');
