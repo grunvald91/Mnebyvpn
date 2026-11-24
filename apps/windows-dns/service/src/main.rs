@@ -34,6 +34,7 @@ const SERVICE_NAME: &str = "MnebyDnsHealth";
 const RECOVERY_SERVICE_NAME: &str = "MnebyDnsRecovery";
 const LOOPBACK_PORT: u16 = 53;
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
+const MAX_UNHEALTHY_PROBES: u8 = 3;
 
 define_windows_service!(ffi_service_main, service_main);
 define_windows_service!(ffi_recovery_main, recovery_service_main);
@@ -275,6 +276,43 @@ fn may_rearm_after_recovery(
         && listener_stopped
 }
 
+fn next_probe_failure_count(previous: u8, network_available: bool, healthy: bool) -> u8 {
+    if !network_available || healthy {
+        0
+    } else {
+        previous.saturating_add(1)
+    }
+}
+
+fn initial_dns_state(
+    config: Result<Option<ControllerConfig>, String>,
+    pending: Result<bool, String>,
+) -> &'static str {
+    match (config, pending) {
+        (Ok(Some(config)), Ok(_)) if config.enabled => "starting",
+        (Ok(_), Ok(true)) => "restoring",
+        (Ok(_), Ok(false)) => "disabled",
+        _ => "error",
+    }
+}
+
+/// Preserve the saved profile and persist the disabled intent before rollback.
+/// If another control request changed it, do not overwrite the newer profile.
+fn persist_emergency_disable(
+    journal: &ProtectedJournal,
+    active: &ControllerConfig,
+) -> Result<(), String> {
+    if let Some(current) = journal.read_controller_config()? {
+        if current == *active && current.enabled {
+            journal.write_controller_config(&ControllerConfig {
+                enabled: false,
+                ..current
+            })?;
+        }
+    }
+    Ok(())
+}
+
 fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
     let journal = ProtectedJournal::open_service().map_err(io::Error::other)?;
     let mut system_journal = journal.system_dns_journal().map_err(io::Error::other)?;
@@ -301,7 +339,11 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
     };
     status_handle.set_service_status(status.clone())?;
 
-    let initial = publish(&journal, &system_journal, "disabled", 0, None)?;
+    let initial_state = initial_dns_state(
+        journal.read_controller_config(),
+        system_journal.has_pending(),
+    );
+    let initial = publish(&journal, &system_journal, initial_state, 0, None)?;
     let shared = Arc::new(RwLock::new(initial));
     let pipe_data = Arc::clone(&shared);
     thread::spawn(move || {
@@ -386,6 +428,7 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let mut server: Option<LoopbackDnsServer> = None;
     let mut server_config: Option<ControllerConfig> = None;
+    let mut server_verified = false;
     let mut applied = HashSet::<String>::new();
     let mut state = "disabled".to_owned();
     let mut last_error: Option<String> = None;
@@ -430,6 +473,18 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
             }
         }
 
+        // No physical network during sleep, boot or a Wi-Fi handover is not
+        // evidence that the saved DoT profile is broken. Keep the intent.
+        // Inventory errors must not silently suppress real health failures.
+        let network_available = should_enable
+            && list_adapters()
+                .map(|adapters| {
+                    adapters.iter().any(|adapter| {
+                        adapter.operational && adapter.likely_physical && !adapter.is_tunnel
+                    })
+                })
+                .unwrap_or(true);
+
         if should_enable {
             safe_disabled_seen = false;
             let config = config.expect("enabled config checked above");
@@ -441,61 +496,56 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
             if needs_server_restart {
                 state = "starting".to_owned();
                 server.take();
+                server_verified = false;
+                unhealthy_dns_probes = 0;
                 match LoopbackDnsServer::start_pinned(
                     &config.dot_host,
                     config.upstream_addresses.clone(),
                     LOOPBACK_PORT,
                 ) {
                     Ok(started) => {
-                        // Prove both local address families can answer through
-                        // authenticated DoT before writing any adapter DNS.
-                        let probe = probe_loopback();
-                        if !probe.ipv4.ok || !probe.ipv6.ok {
-                            drop(started);
-                            server = None;
-                            let error = format!(
-                                "Проверка локального DNS не прошла: IPv4={:?}; IPv6={:?}",
-                                probe.ipv4.error, probe.ipv6.error
-                            );
-                            let _ = journal.write_controller_config(&ControllerConfig {
-                                enabled: false,
-                                ..config.clone()
-                            });
-                            last_error = Some(error);
-                            state = "error".to_owned();
-                            applied.clear();
-                            thread::sleep(POLL_INTERVAL);
-                            continue;
-                        }
                         server = Some(started);
                         server_config = Some(config.clone());
                     }
                     Err(error) => {
-                        let _ = journal.write_controller_config(&ControllerConfig {
-                            enabled: false,
-                            ..config.clone()
-                        });
-                        last_error = Some(error);
+                        emergency_reason = Some(error.clone());
+                        if let Err(write_error) = persist_emergency_disable(&journal, &config) {
+                            emergency_reason = Some(format!(
+                                "{error}; ошибка записи аварийного выключения: {write_error}"
+                            ));
+                        }
                         state = "error".to_owned();
-                        applied.clear();
-                        thread::sleep(POLL_INTERVAL);
-                        continue;
+                        last_error = emergency_reason.clone();
                     }
                 }
             }
 
-            state = "starting".to_owned();
-            match apply_all(&mut system_journal, &mut applied) {
-                Ok(count) => {
-                    adapter_count = count;
-                    state = "active".to_owned();
-                    last_error = None;
-                }
-                Err(error) => {
+            if emergency_reason.is_none() {
+                if !network_available {
                     state = "error".to_owned();
-                    last_error = Some(error);
-                    // Keep the listener and the durable backup alive. The
-                    // service retries newly appearing or reconfigured adapters.
+                    last_error = Some("Ожидание активной сети".to_owned());
+                    adapter_count = 0;
+                    server_verified = false;
+                } else if !server_verified {
+                    // The health probe below must confirm authenticated DoT
+                    // before any new adapter is changed. A single timeout
+                    // during network startup is not an emergency.
+                    state = "starting".to_owned();
+                    last_error = None;
+                } else {
+                    match apply_all(&mut system_journal, &mut applied) {
+                        Ok(count) => {
+                            adapter_count = count;
+                            state = "active".to_owned();
+                            last_error = None;
+                        }
+                        Err(error) => {
+                            state = "error".to_owned();
+                            last_error = Some(error);
+                            // Keep the listener and backup alive while retrying
+                            // newly appearing or reconfigured adapters.
+                        }
+                    }
                 }
             }
         } else {
@@ -552,32 +602,29 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
             adapter_count,
             last_error.as_deref(),
         ) {
-            if state == "active" {
-                if report.probe.ipv4.ok && report.probe.ipv6.ok {
-                    unhealthy_dns_probes = 0;
-                } else {
-                    unhealthy_dns_probes = unhealthy_dns_probes.saturating_add(1);
-                    if unhealthy_dns_probes >= 3 {
-                        emergency_reason = Some(
-                            "Три последовательные проверки DoT не прошли: восстановление исходного DNS".into(),
-                        );
-                        // Persist the disabled intent before restoring. Even
-                        // if storage fails, the in-memory emergency latch
-                        // prevents another adapter mutation in this process.
-                        if let Some(active) = server_config.as_ref() {
-                            if let Err(error) = journal.write_controller_config(&ControllerConfig {
-                                enabled: false,
-                                ..active.clone()
-                            }) {
-                                emergency_reason = Some(format!(
-                                    "Ошибка записи аварийного выключения: {error}; требуется восстановление"
-                                ));
-                            }
+            // Monitor the resolver even while adapter application is failing.
+            // Otherwise a live adapter can remain on a broken localhost DNS.
+            if should_enable && emergency_reason.is_none() && server.is_some() {
+                let healthy = report.probe.ipv4.ok && report.probe.ipv6.ok;
+                unhealthy_dns_probes =
+                    next_probe_failure_count(unhealthy_dns_probes, network_available, healthy);
+                server_verified = network_available && healthy;
+                if unhealthy_dns_probes >= MAX_UNHEALTHY_PROBES {
+                    emergency_reason = Some(
+                        "Три последовательные проверки DoT не прошли: восстановление исходного DNS"
+                            .into(),
+                    );
+                    if let Some(active) = server_config.as_ref() {
+                        if let Err(error) = persist_emergency_disable(&journal, active) {
+                            emergency_reason = Some(format!(
+                                "Ошибка записи аварийного выключения: {error}; требуется восстановление"
+                            ));
                         }
                     }
                 }
             } else {
                 unhealthy_dns_probes = 0;
+                server_verified = false;
             }
             if let Ok(mut current) = shared.write() {
                 *current = report;
@@ -814,7 +861,38 @@ mod stop_recovery_tests {
 
 #[cfg(test)]
 mod recovery_rearm_tests {
-    use super::may_rearm_after_recovery;
+    use super::{initial_dns_state, may_rearm_after_recovery, next_probe_failure_count};
+    use mnebydns_journal::ControllerConfig;
+
+    #[test]
+    fn temporary_network_loss_does_not_accumulate_failures() {
+        assert_eq!(next_probe_failure_count(2, false, false), 0);
+        assert_eq!(next_probe_failure_count(0, true, false), 1);
+        assert_eq!(next_probe_failure_count(1, true, false), 2);
+        assert_eq!(next_probe_failure_count(2, true, false), 3);
+        assert_eq!(next_probe_failure_count(2, true, true), 0);
+    }
+
+    #[test]
+    fn startup_status_never_claims_disabled_with_pending_dns() {
+        let config = ControllerConfig {
+            version: 1,
+            enabled: true,
+            dot_host: "dns.example.net".into(),
+            upstream_addresses: vec!["192.0.2.1:853".parse().unwrap()],
+        };
+        assert_eq!(
+            initial_dns_state(Ok(Some(config.clone())), Ok(true)),
+            "starting"
+        );
+        assert_eq!(initial_dns_state(Ok(Some(config)), Ok(false)), "starting");
+        assert_eq!(initial_dns_state(Ok(None), Ok(true)), "restoring");
+        assert_eq!(initial_dns_state(Ok(None), Ok(false)), "disabled");
+        assert_eq!(
+            initial_dns_state(Err("unreadable".into()), Ok(false)),
+            "error"
+        );
+    }
 
     #[test]
     fn emergency_requires_explicit_enable_after_verified_rollback() {
