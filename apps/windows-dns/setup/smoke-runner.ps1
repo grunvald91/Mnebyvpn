@@ -80,6 +80,21 @@ try {
         [System.IO.File]::WriteAllBytes($stagedSource, $verifiedSource)
     }
 
+    # A verified rollback must not trap the customer in a permanent
+    # "unfinished upgrade" state. The failed binary is archived, not deleted.
+    RunSetup upgrade
+    $serviceDirectory = Join-Path $env:ProgramFiles 'mnebyDNS'
+    $failedHistory = @(Get-ChildItem -LiteralPath $serviceDirectory -Filter 'mnebydns-health-service.exe.failed.*')
+    if ($failedHistory.Count -lt 1) {
+        throw 'Failed service diagnostic binary was not preserved after retry'
+    }
+    if (Test-Path -LiteralPath (Join-Path $serviceDirectory 'mnebydns-health-service.exe.failed')) {
+        throw 'Completed rollback still blocks subsequent updates'
+    }
+    if ((Get-Service -Name MnebyDnsHealth).Status -ne 'Running') {
+        throw 'Retry after rollback did not restore the main service'
+    }
+
     # The offline repair operation is intentionally allowed only after the
     # service stops, and must leave DNS unchanged if no backup is pending.
     Stop-Service -Name MnebyDnsHealth -ErrorAction Stop
