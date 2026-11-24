@@ -328,6 +328,29 @@ let systemDnsPendingAction = null;
 let systemDnsState = 'checking';
 let systemDnsConfigured = false;
 let systemDnsLastError = null;
+let profileEditing = false;
+
+function renderProfileState() {
+  const saved = systemDnsConfigured && !profileEditing;
+  get('profile-saved').hidden = !saved;
+  get('profile-editor').hidden = saved;
+  // Changing a live DoT profile is blocked by the service to protect DNS
+  // recovery records. Make the restriction visible before any click.
+  get('edit-profile').disabled = systemDnsOperationPending ||
+    !['disabled', 'not-installed'].includes(systemDnsState);
+  get('test-host-hint').textContent = !get('dot-host').value.trim() && systemDnsConfigured
+    ? 'Для отдельного теста введите адрес в настройках.'
+    : '';
+}
+
+get('edit-profile').addEventListener('click', () => {
+  if (systemDnsOperationPending ||
+      !['disabled', 'not-installed'].includes(systemDnsState)) return;
+  profileEditing = true;
+  renderProfileState();
+  get('dot-host').focus();
+});
+
 const SYSTEM_DNS_POLL_INTERVAL_MS = 2000;
 const SYSTEM_DNS_POLL_MAX_ATTEMPTS = 24;
 
@@ -338,7 +361,7 @@ function renderHomeConnection() {
   const home = document.querySelector('.home-dashboard');
   const labels = {
     checking: 'Проверка…',
-    'not-installed': 'Выключен',
+    'not-installed': 'Не установлен',
     disabled: 'Выключен',
     starting: 'Подключение…',
     active: 'Включён',
@@ -359,6 +382,7 @@ function renderHomeConnection() {
   button.setAttribute('aria-pressed', String(active));
   home.classList.toggle('is-active', active);
   home.classList.toggle('is-error', recoveryNeeded);
+  renderProfileState();
   hint.textContent = systemDnsOperationPending
     ? (systemDnsState === 'not-installed' ? 'Подтвердите установку Windows' : '')
     : recoveryNeeded
@@ -402,7 +426,7 @@ async function refreshSystemDns() {
     if (systemDnsLastError && (state === 'error' || (state === 'disabled' && report.recovery_state === 'pending'))) {
       get('home-action-hint').textContent = 'Причина: ' + systemDnsLastError;
     }
-    if (state === 'disabled' && report.recovery_state === 'pending') {
+    if (state === 'disabled' && report.recovery_state !== 'clear') {
       systemDnsState = 'error';
       get('system-dns-state').textContent = 'Нужен откат';
       get('system-dns-state').classList.add('bad');
@@ -451,11 +475,11 @@ async function requestSystemDns(action) {
   if (systemDnsLoading || systemDnsOperationPending || typeof invoke !== 'function') return;
   // Once configured, the normal power button reuses the protected profile.
   // A new hostname is installed only through the explicit Settings action.
-  const host = action === 'Enable' && !systemDnsConfigured ? get('dot-host').value.trim() : null;
-  if (action === 'Enable' && !host && !systemDnsConfigured) {
+  const host = null;
+  if (action === 'Enable' && !systemDnsConfigured) {
     openTab('settings');
     get('dot-host').focus();
-    get('system-dns-message').textContent = 'Введите адрес DNS и нажмите «Сохранить и включить».';
+    get('system-dns-message').textContent = 'Введите адрес DNS и нажмите «Сохранить». ';
     return;
   }
   if (action === 'Enable' && !['disabled', 'not-installed'].includes(systemDnsState)) return;
@@ -505,6 +529,7 @@ get('apply-new-dot').addEventListener('click', async () => {
     // A protected IPC acknowledgement proves that the service stored the
     // profile. Its status publication can lag behind by one polling cycle.
     systemDnsConfigured = true;
+    profileEditing = false;
     get('system-dns-message').textContent = message;
   } catch (error) {
     get('system-dns-message').textContent = 'Не удалось сохранить: ' + String(error);
@@ -551,9 +576,10 @@ get('restore-system-dns').addEventListener('click', async () => {
   renderHomeConnection();
   try {
     await invoke('launch_system_dns_action', { action: 'Repair', host: null });
-    await refreshSystemDns();
-    get('system-dns-message').textContent =
-      'Независимая служба подтвердила восстановление резервных DNS-настроек без UAC.';
+    const state = await refreshSystemDns();
+    get('system-dns-message').textContent = state === 'disabled'
+      ? 'DNS восстановлен'
+      : 'Восстановление выполнено, но состояние основной службы не подтверждено.';
   } catch (error) {
     get('system-dns-message').textContent =
       'Восстановление не подтверждено: ' + String(error);
@@ -563,7 +589,6 @@ get('restore-system-dns').addEventListener('click', async () => {
     renderHomeConnection();
   }
 });
-get('refresh-system-dns').addEventListener('click', () => { void refreshSystemDns(); });
 // No background polling: refresh when the user returns to the window.
 window.addEventListener('focus', () => {
   if (document.visibilityState !== 'hidden' && !systemDnsOperationPending) void refreshSystemDns();
@@ -717,6 +742,7 @@ get('dot-host').addEventListener('keydown', (event) => {
 get('dot-host').addEventListener('input', () => {
   dotInputRevision += 1;
   get('dot-host').removeAttribute('aria-invalid');
+  get('test-host-hint').textContent = '';
   showTestHeading('Проверка нового DNS-адреса', 'Проверьте новый адрес перед включением на главной.');
   get('dot-status').textContent = 'Адрес изменён — проверка требуется заново.';
   renderHomeConnection();
