@@ -87,8 +87,8 @@
         <button class="secondary main-action" id="run-all-tests" type="button">Проверить</button>
         <div class="test-flow" aria-label="Результаты">
           <p class="muted" id="test-host-hint"></p>
-          <div class="test-step"><span class="step-number">01</span><div class="step-body"><div class="step-title"><strong>DoT · TLS</strong></div><p class="dot-status" id="dot-status" role="status" aria-live="polite">Не проверено</p></div></div>
-          <div class="test-step"><span class="step-number">02</span><div class="step-body"><div class="step-title"><strong>Локальный прокси</strong></div><p class="dot-status" id="proxy-status" role="status" aria-live="polite">Не проверено</p></div></div>
+          <div class="test-step"><span class="step-number">01</span><div class="step-body"><div class="step-title"><strong>DoT · TLS</strong></div><span id="dot-diag-state" hidden></span><p class="dot-status" id="dot-status" role="status" aria-live="polite">Не проверено</p></div></div>
+          <div class="test-step"><span class="step-number">02</span><div class="step-body"><div class="step-title"><strong>Локальный прокси</strong></div><span id="proxy-diag-state" hidden></span><p class="dot-status" id="proxy-status" role="status" aria-live="polite">Не проверено</p></div></div>
         </div>
         <details class="advanced-tests">
           <summary>Отдельные тесты</summary>
