@@ -19,6 +19,7 @@ class Element {
     this.dataset = {};
     this.listeners = {};
     this.attributes = {};
+    this.style = {};
     this.classList = { add() {}, remove() {}, toggle() {} };
   }
   addEventListener(name, fn) { (this.listeners[name] ??= []).push(fn); }
@@ -71,6 +72,20 @@ const invoke = async (command, args = {}) => {
       return new Promise(resolve => { finishUpgrade = resolve; });
     }
     return 'Подтверждено';
+  }
+  if (command === 'inspect_compatibility') {
+    assert.equal(args.host, 'youtube.com');
+    const answer = ip => ({ ok: true, data: [ip] });
+    const missing = { ok: false, data: [] };
+    return {
+      adapters: [{ name: 'Ethernet', likely_physical: true, is_tunnel: false, dns_ipv4: ['127.0.0.1'], dns_ipv6: ['::1'] },
+        { name: 'VPN', likely_physical: false, is_tunnel: true, dns_ipv4: ['192.0.2.53'], dns_ipv6: [] }],
+      nrpt: { ok: true, count: 1 },
+      routes: { ok: true, data: [{ family: 'IPv4', alias: 'VPN', metric: 5 }] },
+      browser: { chrome_machine: 'secure', chrome_user: 'unset', edge_machine: 'unset', edge_user: 'unknown' },
+      queries: { cached_a: missing, cached_aaaa: missing, system_a: answer('192.0.2.2'), system_aaaa: missing,
+        local_a: answer('192.0.2.3'), local_aaaa: missing }
+    };
   }
   if (command === 'inspect_dns') {
     return {
@@ -190,5 +205,16 @@ await elements['restore-system-dns'].click();
 await flush();
 assert.ok(elements['system-dns-message'].textContent.includes('не подтверждено'),
   'Do not falsely claim verified recovery after status failure');
+
+elements['check-domain'].value = 'youtube.com';
+await elements['check-compatibility'].click();
+const compatibility = elements['compatibility-result'].textContent;
+assert.ok(compatibility.includes('туннели: 1'));
+assert.ok(compatibility.includes('NRPT: 1'));
+assert.ok(compatibility.includes('VPN (5)'));
+assert.ok(compatibility.includes('Windows DNS A: 192.0.2.2'));
+assert.ok(compatibility.includes('Локальный DNS A: 192.0.2.3'));
+assert.ok(compatibility.includes('не подтверждает HTTPS'));
+assert.equal(elements['check-compatibility'].disabled, false);
 
 console.log('Flow test OK: onboarding, save-only, Home power, saved DoT, serialized upgrade and recovery uncertainty');
