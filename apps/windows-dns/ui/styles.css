@@ -113,6 +113,11 @@ p { margin: 0; }
 
 #settings > h1 { margin: 3px 0 10px; }
 .profile-card { display: grid; gap: 8px; }
+.profile-editor { display: grid; gap: 8px; min-width: 0; }
+.profile-saved { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; font-weight: 650; }
+.profile-saved > span::before { content: "✓"; color: #79e6c7; margin-right: 9px; }
+.profile-saved .compact-button { flex-shrink: 0; }
+#test-host-hint:empty { display: none; }
 .dot-label { font-size: 13px; font-weight: 650; }
 .dot-input {
   min-height: 42px;
