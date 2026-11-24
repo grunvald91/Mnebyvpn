@@ -10,7 +10,7 @@
 import {createServer,type IncomingMessage,type ServerResponse} from 'node:http';
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {Pool} from 'pg';
-import {operatorReplyTarget,operatorWebsiteReply,supportConfig,supportLimiter,telegramSupportSend,validSupportText}
+import {operatorReplyTarget,operatorWebsiteReply,sendTelegramBotApi,supportConfig,supportLimiter,telegramSupportSendWithRetry,validSupportText}
   from '../../../packages/support/src/telegram-relay.ts';
 import {
   PgBillingStore,starsOrderFromDB,pricedPlanForOrder,starsPaymentHash,
@@ -197,15 +197,7 @@ async function packages(id:number){
 // The widget's chat_data carries only the personal link returned by Telegram.
 async function botApi(method:string,args:Record<string,unknown>):Promise<unknown>{
   if(!outboundBotToken)throw Error('Outbound Telegram Bot API unavailable');
-  const response=await fetch('https://api.telegram.org/bot'+outboundBotToken+'/'+method,{
-    method:'POST',redirect:'error',signal:AbortSignal.timeout(4800),
-    headers:{'Content-Type':'application/json'},body:JSON.stringify(args),
-  });
-  if(!response.ok)throw Error('Telegram Bot API HTTP failure');
-  const data:unknown=await response.json();
-  if(!data||typeof data!=='object'||(data as {ok?:boolean}).ok!==true)
-    throw Error('Telegram Bot API response failure');
-  return (data as {result?:unknown}).result;
+  return sendTelegramBotApi(outboundBotToken,method,args,{maxAttempts:2,baseDelayMs:300,timeoutMs:4800});
 }
 async function widgetMenuAction(id:number,key:string):Promise<string>{
   const map:Record<string,string>={
@@ -658,10 +650,10 @@ async function handleOperatorReply(update:any){
         [homeButton]]}};
   }
   try{
-    await telegramSupportSend(support,
+    await telegramSupportSendWithRetry(support,
       '✉️ Поддержка MNEBYVPN\n\n'+parsed.answer,parsed.userId,
       {inline_keyboard:[[{text:'✉️ Написать ещё',callback_data:'nav:support'}],
-        [{text:'🏠 Главное',callback_data:'nav:home'}]]});
+        [{text:'🏠 Главное',callback_data:'nav:home'}]]},{maxAttempts:2,baseDelayMs:300,timeoutMs:6000});
     return {method:'sendMessage',chat_id:support.operatorId,
       text:'✅ Ответ отправлен клиенту через MNEBYVPN.'};
   }catch{
@@ -703,12 +695,12 @@ async function sendSupportFromBot(id:number,updateId:number,message:string){
       ]}};
   }
   try{
-    await telegramSupportSend(support,'✉️ MNEBYVPN — обращение из бота\nID Telegram: '+id+
+    await telegramSupportSendWithRetry(support,'✉️ MNEBYVPN — обращение из бота\nID Telegram: '+id+
       '\n\nВопрос:\n'+message.trim(),support.operatorId,
       {inline_keyboard:[
         [{text:'✍️ Ответить клиенту',callback_data:'support:reply:bot:'+id}],
         [{text:'📥 Входящие с сайта',callback_data:'support:page:0'}],
-      ]});
+      ]},{maxAttempts:2,baseDelayMs:300,timeoutMs:6000});
     deliveredUpdates.add(updateId);
     if(deliveredUpdates.size>1000)deliveredUpdates.clear();
     return oneAction(user,msg('✅ Обращение отправлено оператору в этот же бот. Ответ придёт сюда, в Telegram.',

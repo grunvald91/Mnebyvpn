@@ -10,7 +10,7 @@ import {renderSeoPage} from './seo-pages.ts';
 import { createHash,createHmac,randomBytes,randomUUID,timingSafeEqual } from 'node:crypto';
 import {representationEtag,selectStaticRepresentation} from './static-encoding.ts';
 import { Pool } from 'pg';
-import {supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText}
+import {flushPendingSupportTickets,formatWebsiteTicketNotice,supportConfig,supportLimiter,telegramSupportSend,telegramSupportSendWithRetry,validSupportContact,validSupportText}
   from '../../../packages/support/src/telegram-relay.ts';
 import {verifyGscOwnerRelaySignature} from '../../../packages/support/src/gsc-owner-relay.ts';
 import { PgBillingStore } from '../../../packages/billing/src/store.ts';
@@ -1129,7 +1129,7 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       json(res,409,{code:'GSC_REPORT_ALREADY_ACCEPTED'});return;
     }
     try{
-      await telegramSupportSend(support,body.text as string,support.operatorId);
+      await telegramSupportSendWithRetry(support,body.text as string,support.operatorId);
     }catch{
       json(res,502,{code:'GSC_TELEGRAM_DELIVERY_FAILED'});return;
     }
@@ -1166,18 +1166,13 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     // A temporary Telegram failure must never erase the customer's only
     // support route. Keep the durable PENDING ticket in the operator inbox.
     let delivered=false;
+    const notice=formatWebsiteTicketNotice(ticketId,contact,message);
     try{
-      await telegramSupportSend(support,
-        '✉️ MNEBYVPN — обращение с сайта\nЗаявка: '+ticketId+
-        '\nКонтакт: '+contact+'\n\nСообщение:\n'+message,support.operatorId,
-        {inline_keyboard:[
-          [{text:'✍️ Ответить',callback_data:'support:reply:site:'+ticketId}],
-          [{text:'📥 Входящие заявки',callback_data:'support:page:0'}],
-        ]});
+      await telegramSupportSend(support,notice.text,support.operatorId,notice.replyMarkup);
       delivered=true;
     }catch{
-      // The Bot API did not confirm delivery. The operator can still find
-      // the ticket with the "Входящие заявки" button in the same bot.
+      // The Bot API did not confirm delivery. The ticket remains PENDING for
+      // automatic recovery flush and manual operator /inbox access.
     }
     if(delivered){
       // A database hiccup after confirmed delivery must not turn a delivered
@@ -1618,6 +1613,16 @@ async function purgeExpiredSupportTickets(){
 }
 void purgeExpiredSupportTickets().catch(()=>{});
 setInterval(()=>{void purgeExpiredSupportTickets().catch(()=>{});},6*60*60_000).unref();
+if(support?.botToken){
+  let supportFlushBusy=false;
+  setInterval(()=>{
+    if(supportFlushBusy)return;
+    supportFlushBusy=true;
+    void flushPendingSupportTickets(pool,support).catch(()=>{}).finally(()=>{
+      supportFlushBusy=false;
+    });
+  },30_000).unref();
+}
 const server = createServer((req,res) => {
   handle(req,res).catch(() => json(res,503,{code:'SERVICE_UNAVAILABLE'}));
 });

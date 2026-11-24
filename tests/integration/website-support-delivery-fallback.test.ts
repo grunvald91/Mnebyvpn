@@ -5,6 +5,7 @@ import {createServer} from 'node:net';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
+import {flushPendingSupportTickets} from '../../packages/support/src/telegram-relay.ts';
 
 test('Telegram notification outage leaves website ticket queued, readable and answerable by operator',async()=>{
   const dbUrl='postgresql://'+(process.env.PGUSER||'test')+':'+
@@ -90,6 +91,25 @@ test('Telegram notification outage leaves website ticket queued, readable and an
     const state=await ticket.json() as any;
     assert.equal(state.status,'PENDING');
     assert.equal(state.answer,message);
+
+    // Recovery sweep delivers only unanswered PENDING tickets once Telegram recovers.
+    const unansId='00000000-0000-4000-8000-'+Date.now().toString().padStart(12,'0').slice(-12);
+    await pool.query(
+      "INSERT INTO website_support_tickets(id,token_sha256,contact,question,delivery_state,created_at) VALUES($1,$2,$3,$4,'PENDING',clock_timestamp()-interval '30 seconds')",
+      [unansId,'e'.repeat(64),'@flush_test','Проверка восстановления очереди Telegram']);
+    try{
+      const cfg={botToken:'123456:'+'a'.repeat(35),operatorId:111111};
+      const flushed=await flushPendingSupportTickets(pool,cfg,{
+        graceSeconds:15,batchSize:10,
+        send:async(_c,text)=>{assert.match(text,new RegExp(unansId));},
+      });
+      assert.equal(flushed.delivered>=1,true);
+      const after=await pool.query('SELECT delivery_state,delivered_at FROM website_support_tickets WHERE id=$1',[unansId]);
+      assert.equal(after.rows[0].delivery_state,'DELIVERED');
+      assert.ok(after.rows[0].delivered_at instanceof Date);
+    }finally{
+      await pool.query('DELETE FROM website_support_tickets WHERE id=$1',[unansId]).catch(()=>{});
+    }
   }finally{
     child.kill('SIGTERM');
     if(ticketId)await pool.query('DELETE FROM website_support_tickets WHERE id=$1',[ticketId]).catch(()=>{});

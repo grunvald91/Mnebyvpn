@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  operatorReplyTarget,operatorWebsiteReply,supportConfig,supportLimiter,telegramSupportSend,validSupportContact,validSupportText,
+  flushPendingSupportTickets,formatWebsiteTicketNotice,operatorReplyTarget,operatorWebsiteReply,sendTelegramBotApi,supportConfig,supportLimiter,telegramSupportSend,telegramSupportSendWithRetry,validSupportContact,validSupportText,
 } from '../packages/support/src/telegram-relay.ts';
 
 test('support has no separate chat ID and only enables one configured bot operator',()=>{
@@ -101,4 +101,52 @@ test('confirm Telegram Bot API ok before reporting delivery',async()=>{
     globalThis.fetch=async()=>new Response('Unavailable',{status:503});
     await assert.rejects(telegramSupportSend(config,'Проверочное обращение'));
   }finally{globalThis.fetch=oldFetch;}
+});
+
+test('bot API retries 429 retry_after and 5xx/network errors, but stops on 400/ok=false',async()=>{
+  const config={botToken:'123456:'+('b'.repeat(35)),operatorId:123};
+  const delays:number[]=[];
+  let calls=0;
+  await telegramSupportSendWithRetry(config,'Восстановление после 429/502',undefined,undefined,{
+    sleep:async(ms)=>{delays.push(ms);},
+    fetcher:async()=>{
+      calls++;
+      if(calls===1)return new Response(JSON.stringify({ok:false,parameters:{retry_after:2}}),{status:429});
+      if(calls===2)return new Response('Bad gateway',{status:502});
+      return new Response(JSON.stringify({ok:true,result:{message_id:7}}),{status:200});
+    },
+  });
+  assert.equal(calls,3);
+  assert.deepEqual(delays,[2000,700]);
+
+  let clientErrors=0;
+  await assert.rejects(sendTelegramBotApi(config.botToken,'sendMessage',{chat_id:123,text:'x'},{
+    maxAttempts:3,sleep:async()=>{},
+    fetcher:async()=>{clientErrors++;return new Response('Bad request',{status:400});},
+  }));
+  assert.equal(clientErrors,1);
+});
+
+test('flushPendingSupportTickets keeps tickets queued during outage and delivers after recovery',async()=>{
+  const config={botToken:'123456:'+('b'.repeat(35)),operatorId:123};
+  const rows=[{id:'t-1',contact:'@client',question:'Нужна помощь по подписке'}];
+  const deliveredIds:string[]=[];
+  const pool={
+    query:async(sql:string,params?:unknown[])=>{
+      if(sql.startsWith('SELECT'))return {rowCount:rows.length,rows};
+      if(sql.startsWith('UPDATE')){deliveredIds.push(String(params?.[0]));return {rowCount:1,rows:[]};}
+      return {rowCount:0,rows:[]};
+    },
+  };
+  let online=false;
+  const sendMock:typeof telegramSupportSend=async(_cfg,text)=>{
+    assert.match(text,/Заявка: t-1/);
+    if(!online)throw Error('Simulated outage');
+  };
+  assert.deepEqual(await flushPendingSupportTickets(pool,config,{send:sendMock}),{attempted:1,delivered:0,retried:1});
+  assert.deepEqual(deliveredIds,[]);
+  online=true;
+  assert.deepEqual(await flushPendingSupportTickets(pool,config,{send:sendMock}),{attempted:1,delivered:1,retried:0});
+  assert.deepEqual(deliveredIds,['t-1']);
+  assert.deepEqual(formatWebsiteTicketNotice('t-1','@client','Вопрос').replyMarkup.inline_keyboard[0]?.[0]?.callback_data,'support:reply:site:t-1');
 });
