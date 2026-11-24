@@ -39,6 +39,16 @@ jobs:
           node apps/windows-dns/ui/contract.test.mjs
           node apps/windows-dns/ui/flow.test.mjs
 
+      - name: Read-only Windows network compatibility smoke
+        shell: powershell
+        run: |
+          Remove-Item Env:MNEBYDNS_CHECK_HOST -ErrorAction SilentlyContinue
+          $report = & 'apps/windows-dns/src-tauri/src/compatibility.ps1' | ConvertFrom-Json
+          if ($null -eq $report.nrpt -or $null -eq $report.routes -or $null -eq $report.browser) {
+            throw 'Missing compatibility report fields'
+          }
+          if ($null -ne $report.queries) { throw 'Unexpected domain lookup without explicit input' }
+
       - name: Check Rust formatting (report all crates)
         shell: bash
         run: |
