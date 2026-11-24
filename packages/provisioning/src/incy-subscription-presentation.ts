@@ -64,7 +64,7 @@ export function germanTransportsWithXhttp(validatedNodeProfile:string):string{
   const query=new URLSearchParams({
     encryption:'none',security:'tls',type:'xhttp',
     host:'cdn.servgo.ru',sni:'cdn.servgo.ru',alpn:'h2',
-    fp:'chrome',path:'/mnebyvpn-vpn/xhttp',mode:'stream-one',
+    fp:'chrome',path:'/mnebyvpn-vpn/xhttp',mode:'packet-up',
   });
   const xhttpLine='vless://'+wsUri.username+'@cdn.servgo.ru:443?'+query+
     '#'+encodeURIComponent(vpnCountryLabel('Германия')+' XHTTP');
