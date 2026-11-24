@@ -25,14 +25,14 @@ function exact(v:unknown,keys:readonly string[]):v is Record<string,unknown>{
  return v!==null&&typeof v==='object'&&!Array.isArray(v)&&
  Object.keys(v).length===keys.length&&keys.every(k=>Object.prototype.hasOwnProperty.call(v,k));
 }
-function hash(v:unknown):v is string{return typeof v==='string'&&HEX.test(v);}
+function hash(v:unknown):v is string{return typeof v==='string'&&v.length===64&&HEX.test(v);}
 function fresh(v:unknown,now:number):boolean{
  if(typeof v!=='string'||!TIME.test(v)||!Number.isSafeInteger(now))return false;
  const t=Date.parse(v);
  return Number.isFinite(t)&&new Date(t).toISOString()===v&&Math.abs(now-t)<=15_000;
 }
 function pub(pin:PinnedMeterKey):KeyObject{
- if(typeof pin.spki!=='string'||!/^[A-Za-z0-9_-]{59}$/.test(pin.spki)||!hash(pin.sha256))throw Error('Invalid meter key pin');
+ if(typeof pin.spki!=='string'||pin.spki.length!==59||!/^[A-Za-z0-9_-]{59}$/.test(pin.spki)||!hash(pin.sha256))throw Error('Invalid meter key pin');
  const der=Buffer.from(pin.spki,'base64url');
  if(der.length!==44||der.toString('base64url')!==pin.spki||
  !der.subarray(0,12).equals(Buffer.from('302a300506032b6570032100','hex'))||
@@ -40,7 +40,7 @@ function pub(pin:PinnedMeterKey):KeyObject{
  return createPublicKey({key:der,format:'der',type:'spki'});
 }
 function sig(s:unknown):Buffer{
- if(typeof s!=='string'||!/^[A-Za-z0-9_-]{86}$/.test(s))throw Error('Invalid meter signature');
+ if(typeof s!=='string'||s.length!==86||!/^[A-Za-z0-9_-]{86}$/.test(s))throw Error('Invalid meter signature');
  const raw=Buffer.from(s,'base64url');
  if(raw.length!==64||raw.toString('base64url')!==s)throw Error('Noncanonical meter signature');
  return raw;
@@ -51,7 +51,7 @@ function signer(key:KeyObject):void{
 function request(v:unknown,now:number):MeterRequest{
  if(!exact(v,REQ)||v.version!==1||v.nodeId!=='fi-test-01'||v.countryCode!=='FI'||
  (v.op!=='reserve'&&v.op!=='settle'&&v.op!=='release')||
- typeof v.requestId!=='string'||!UUID.test(v.requestId)||
+ typeof v.requestId!=='string'||v.requestId.length!==36||!UUID.test(v.requestId)||
  (v.op==='reserve'?!hash(v.tokenSha256):v.tokenSha256!==null)||
  !hash(v.nonce)||v.nonce==='0'.repeat(64)||!fresh(v.issuedAt,now))throw Error('Invalid FI meter request');
  return v as MeterRequest;
@@ -81,6 +81,7 @@ export function verifyFiMeterRequest(v:unknown,pin:PinnedMeterKey,now=Date.now()
  return r;
 }
 export function verifyFiMeterDecision(v:unknown,r:MeterRequest,pin:PinnedMeterKey,now=Date.now()):MeterDecision{
+ request(r,now);
  if(!exact(v,[...DEC,'signature']))throw Error('Unexpected meter decision envelope');
  const {signature,...d}=v;
  if(d.version!==1||d.requestSha256!==reqHash(r)||!fresh(d.decidedAt,now)||
