@@ -37,6 +37,7 @@ jobs:
           set -euo pipefail
           node --check apps/windows-dns/ui/app.js
           node apps/windows-dns/ui/contract.test.mjs
+          node apps/windows-dns/ui/flow.test.mjs
 
       - name: Check Rust formatting (report all crates)
         shell: bash
