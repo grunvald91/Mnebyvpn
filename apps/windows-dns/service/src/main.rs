@@ -342,9 +342,9 @@ fn run_service() -> Result<(), Box<dyn Error + Send + Sync>> {
                 ControlRequest::ProbeSaved => {
                     // Read-only, with pinned IPs so Windows DNS is never used
                     // to resolve its own DoT hostname after activation.
-                    let config = journal.read_controller_config()?.ok_or_else(|| {
-                        "Сначала сохраните персональный DNS-адрес".to_owned()
-                    })?;
+                    let config = journal
+                        .read_controller_config()?
+                        .ok_or_else(|| "Сначала сохраните персональный DNS-адрес".to_owned())?;
                     let report = mnebydns_core::probe_dot_pinned(
                         &config.dot_host,
                         &config.upstream_addresses,
