@@ -43,6 +43,15 @@
       <div class="item"><span>Локальный IPv4</span><strong id="ipv4-state">Не проверено</strong></div>
       <div class="item"><span>Локальный IPv6</span><strong id="ipv6-state">Не проверено</strong></div>
     </section>
+    <details class="fold">
+      <summary>Совместимость и доступ <span class="fold-chevron" aria-hidden="true">⌄</span></summary>
+      <div class="fold-content">
+        <label class="dot-label" for="check-domain">Домен (необязательно)</label>
+        <input id="check-domain" class="dot-input" type="text" inputmode="url" autocomplete="off" maxlength="253" placeholder="youtube.com">
+        <button id="check-compatibility" class="secondary" type="button">Проверить</button>
+        <div id="compatibility-result" class="preflight-result" role="status" aria-live="polite"></div>
+      </div>
+    </details>
     <details class="fold adapter-section">
       <summary>Сетевые адаптеры <span class="fold-chevron" aria-hidden="true">⌄</span></summary>
       <div class="fold-content">
