@@ -221,6 +221,7 @@ jobs:
           test "$PGDATABASE" = mnebyvpn_test
           node --experimental-strip-types --test tests/ci/shared-vpn-connections-pg.test.ts
           node --experimental-strip-types --test tests/ci/fi-dns-meter-pg.test.ts
+          node --experimental-strip-types --test tests/ci/fi-dns-meter-rpc-pg.test.ts
       - name: Payment integration with disposable PostgreSQL
         env:
           PGPASSWORD: test
