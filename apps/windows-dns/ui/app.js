@@ -376,7 +376,8 @@ function renderHomeConnection() {
   summary.textContent = labels[systemDnsState] || labels.unknown;
   button.textContent = systemDnsOperationPending
     ? (systemDnsPendingAction === 'Disable' ? 'Отключение…'
-      : systemDnsPendingAction === 'Save' ? 'Сохранение…' : 'Подключение…')
+      : systemDnsPendingAction === 'Save' ? 'Сохранение…'
+      : systemDnsPendingAction === 'Upgrade' ? 'Обновление…' : 'Подключение…')
     : recoveryNeeded ? 'Восстановить DNS' : active ? 'Выключить' : 'Включить';
   button.disabled = busy;
   button.setAttribute('aria-pressed', String(active));
@@ -519,6 +520,7 @@ get('apply-new-dot').addEventListener('click', async () => {
   }
   const button = get('apply-new-dot');
   button.disabled = true;
+  get('dot-host').disabled = true;
   systemDnsOperationPending = true;
   systemDnsPendingAction = 'Save';
   ++systemDnsPollGeneration;
@@ -541,6 +543,7 @@ get('apply-new-dot').addEventListener('click', async () => {
     systemDnsOperationPending = false;
     systemDnsPendingAction = null;
     button.disabled = false;
+    get('dot-host').disabled = false;
     renderHomeConnection();
   }
 });
@@ -548,23 +551,30 @@ get('apply-new-dot').addEventListener('click', async () => {
 get('upgrade-system-service').addEventListener('click', async () => {
   if (systemDnsOperationPending || systemDnsLoading) return;
   const button = get('upgrade-system-service');
-  if (systemDnsState === 'active' || systemDnsState === 'starting' || systemDnsState === 'restoring') {
+  if (systemDnsState !== 'disabled') {
     get('upgrade-system-message').textContent =
-      'Сначала отключите Smart DNS и проверьте восстановление исходных настроек.';
+      'Сначала выключите DNS и подтвердите восстановление настроек.';
     return;
   }
+  // Upgrade changes the privileged service executable. Serialize it with
+  // DNS power, Save and Repair to avoid competing writes to the recovery journal.
   button.disabled = true;
-  get('upgrade-system-message').textContent =
-    'Проверяю защищённый журнал и состояние службы перед обновлением…';
+  systemDnsOperationPending = true;
+  systemDnsPendingAction = 'Upgrade';
+  ++systemDnsPollGeneration;
+  renderHomeConnection();
+  get('upgrade-system-message').textContent = 'Проверяю службу перед обновлением…';
   try {
     const message = await invoke('launch_system_dns_action', { action: 'Upgrade', host: null });
     get('upgrade-system-message').textContent = message;
     await refreshSystemDns();
   } catch (error) {
-    get('upgrade-system-message').textContent =
-      'Не удалось безопасно обновить службу: ' + String(error);
+    get('upgrade-system-message').textContent = 'Обновление не выполнено: ' + String(error);
   } finally {
+    systemDnsOperationPending = false;
+    systemDnsPendingAction = null;
     button.disabled = false;
+    renderHomeConnection();
   }
 });
 
