@@ -54,8 +54,11 @@ const actions = [];
 const status = { dns_state: 'disabled', configured: false, recovery_state: 'clear', last_error: null };
 let statusUnavailable = false;
 let finishUpgrade = null;
+let statusReads = 0;
+let idleTick = null;
 const invoke = async (command, args = {}) => {
   if (command === 'system_dns_status') {
+    statusReads += 1;
     if (statusUnavailable) throw new Error('SERVICE_DOWN');
     return { ...status };
   }
@@ -83,6 +86,7 @@ const invoke = async (command, args = {}) => {
 const window = {
   __TAURI__: { core: { invoke } },
   setTimeout: fn => Promise.resolve().then(fn),
+  setInterval: (fn, ms) => { assert.equal(ms, 5000); idleTick = fn; return 1; },
   addEventListener() {}
 };
 runInNewContext(source, { document, window, console, Promise }, { timeout: 3000 });
@@ -115,6 +119,21 @@ assert.equal(actions[1].action, 'Enable');
 assert.equal(actions[1].host, null);
 assert.equal(status.dns_state, 'active');
 
+// A service-side automatic rollback is reflected without reopening the app.
+const beforeIdle = actions.length;
+status.dns_state = 'disabled';
+await idleTick();
+assert.equal(elements['home-summary'].textContent, 'Выключен');
+assert.equal(actions.length, beforeIdle, 'Idle status must never mutate DNS');
+document.visibilityState = 'hidden';
+const beforeHidden = statusReads;
+await idleTick();
+assert.equal(statusReads, beforeHidden, 'Hidden UI must not poll');
+document.visibilityState = 'visible';
+await elements['toggle-system-dns'].click();
+await flush();
+assert.equal(status.dns_state, 'active');
+
 // A saved-profile test uses LocalSystem IPC, not re-entered hostname.
 await elements['run-all-tests'].click();
 assert.ok(actions.some(action => action.action === 'TestSaved'));
@@ -133,6 +152,9 @@ const beforeUpgrade = actions.length;
 const upgrading = elements['upgrade-system-service'].click();
 await flush();
 assert.equal(elements['toggle-system-dns'].disabled, true);
+const beforeBusy = statusReads;
+await idleTick();
+assert.equal(statusReads, beforeBusy, 'Idle status must not race with upgrade');
 await elements['toggle-system-dns'].click();
 await flush();
 assert.equal(actions.length, beforeUpgrade + 1, 'Power action must not interleave with upgrade');
