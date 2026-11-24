@@ -118,18 +118,38 @@ await flush();
 assert.equal(actions[1].action, 'Enable');
 assert.equal(actions[1].host, null);
 assert.equal(status.dns_state, 'active');
+status.recovery_state = 'pending';
+await idleTick();
+assert.equal(elements['system-dns-message'].textContent, '', 'Active backups are normal');
+status.recovery_state = 'clear';
 
 // A service-side automatic rollback is reflected without reopening the app.
 const beforeIdle = actions.length;
 status.dns_state = 'disabled';
+status.last_error = 'DoT unavailable; restored';
 await idleTick();
 assert.equal(elements['home-summary'].textContent, 'Выключен');
+assert.equal(elements['toggle-system-dns'].textContent, 'Включить');
+assert.ok(elements['home-action-hint'].textContent.includes('DoT unavailable'));
+status.last_error = null;
 assert.equal(actions.length, beforeIdle, 'Idle status must never mutate DNS');
 document.visibilityState = 'hidden';
 const beforeHidden = statusReads;
 await idleTick();
 assert.equal(statusReads, beforeHidden, 'Hidden UI must not poll');
 document.visibilityState = 'visible';
+await elements['toggle-system-dns'].click();
+await flush();
+assert.equal(status.dns_state, 'active');
+
+// A pending startup (for example after Windows reboot) can be cancelled.
+status.dns_state = 'starting';
+await idleTick();
+assert.equal(elements['toggle-system-dns'].disabled, false);
+assert.equal(elements['toggle-system-dns'].textContent, 'Выключить');
+await elements['toggle-system-dns'].click();
+await flush();
+assert.equal(status.dns_state, 'disabled');
 await elements['toggle-system-dns'].click();
 await flush();
 assert.equal(status.dns_state, 'active');
