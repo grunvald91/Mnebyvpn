@@ -6,7 +6,8 @@ import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {createVerifiedDotPool} from '../packages/dns-policy/src/pooled-dot-upstream.ts';
+import {createCachedDnsResolver,createVerifiedDotPool} from '../packages/dns-policy/src/pooled-dot-upstream.ts';
+import {dnsResponseMatchesQuestion} from '../packages/dns-policy/src/personal-dot-gateway-core.ts';
 const dir=mkdtempSync(join(tmpdir(),'dot-pool-'));
 execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(dir,'key.pem'),'-out',join(dir,'cert.pem'),'-days','1','-subj','/CN=dns.test','-addext','subjectAltName=DNS:dns.test'],{stdio:'ignore'});
 const key=readFileSync(join(dir,'key.pem')),cert=readFileSync(join(dir,'cert.pem'));process.once('exit',()=>rmSync(dir,{recursive:true,force:true}));
@@ -127,4 +128,134 @@ test('stale idle socket disconnect retries once on fresh TLS without looping fre
     pool.close();for(const s of sockets)s.destroy();
     await new Promise<void>(r=>server.close(()=>r()));
   }
+});
+
+function buildDnsQuery(id:number,host:string,qtype=1):Buffer{
+  const hdr=Buffer.alloc(12);
+  hdr.writeUInt16BE(id,0);
+  hdr.writeUInt16BE(0x0100,2);
+  hdr.writeUInt16BE(1,4);
+  const parts:Buffer[]=[hdr];
+  for(const label of host.split('.')){
+    const raw=Buffer.from(label,'ascii');
+    parts.push(Buffer.from([raw.length]),raw);
+  }
+  parts.push(Buffer.from([0]),Buffer.from([(qtype>>8)&0xff,qtype&0xff,0,1]));
+  return Buffer.concat(parts);
+}
+
+function buildDnsReply(
+  query:Buffer,
+  {ttlSec=30,rcode=0,tc=false,ancount=1}:{ttlSec?:number;rcode?:number;tc?:boolean;ancount?:number}={},
+):Buffer{
+  const head=Buffer.from(query);
+  let flags=0x8180|(rcode&0x0f);
+  if(tc)flags|=0x0200;
+  head.writeUInt16BE(flags,2);
+  head.writeUInt16BE(ancount,6);
+  const parts:Buffer[]=[head];
+  for(let i=0;i<ancount;i++){
+    const rr=Buffer.alloc(16);
+    rr.writeUInt16BE(0xc00c,0);
+    rr.writeUInt16BE(1,2);
+    rr.writeUInt16BE(1,4);
+    rr.writeUInt32BE(ttlSec,6);
+    rr.writeUInt16BE(4,10);
+    rr.set([89,125,90,101],12);
+    parts.push(rr);
+  }
+  return Buffer.concat(parts);
+}
+
+test('cached DNS resolver hits rewrite TX ID and preserve QNAME casing',async()=>{
+  let calls=0;
+  const cached=createCachedDnsResolver(async wire=>{
+    calls++;
+    return buildDnsReply(Buffer.from(wire),{ttlSec:45});
+  });
+  const q1=buildDnsQuery(0x1111,'www.youtube.com');
+  const r1=await cached(q1);
+  assert.equal(dnsResponseMatchesQuestion(q1,r1),true);
+  const q2=buildDnsQuery(0xabcd,'WwW.YoUtUbE.CoM');
+  const r2=await cached(q2);
+  assert.equal(calls,1);
+  assert.equal(Buffer.from(r2).readUInt16BE(0),0xabcd);
+  assert.equal(dnsResponseMatchesQuestion(q2,r2),true);
+  assert.equal(Buffer.from(r2).subarray(12,12+'www.youtube.com'.length+2).equals(q2.subarray(12,12+'www.youtube.com'.length+2)),true);
+});
+
+test('cached DNS resolver clamps positive/NODATA TTLs and expires cleanly',async()=>{
+  let clock=1000,calls=0,nextTtl=1,nextAncount=1;
+  const cached=createCachedDnsResolver(
+    async wire=>{
+      calls++;
+      return buildDnsReply(Buffer.from(wire),{ttlSec:nextTtl,ancount:nextAncount});
+    },
+    {minTtlMs:5000,maxTtlMs:60000,nodataTtlMs:15000,now:()=>clock},
+  );
+  // Clamps 1s up to minTtlMs (5000ms)
+  await cached(buildDnsQuery(1,'short.youtube.com'));
+  clock+=4999;
+  await cached(buildDnsQuery(2,'short.youtube.com'));
+  assert.equal(calls,1);
+  clock+=1;
+  nextTtl=300;
+  // Clamps 300s down to maxTtlMs (60000ms)
+  await cached(buildDnsQuery(3,'short.youtube.com'));
+  assert.equal(calls,2);
+  clock+=59999;
+  await cached(buildDnsQuery(4,'short.youtube.com'));
+  assert.equal(calls,2);
+  clock+=1;
+  nextAncount=0;
+  // NODATA uses nodataTtlMs (15000ms)
+  await cached(buildDnsQuery(5,'nodata.youtube.com',28));
+  assert.equal(calls,3);
+  clock+=14999;
+  await cached(buildDnsQuery(6,'nodata.youtube.com',28));
+  assert.equal(calls,3);
+  clock+=1;
+  await cached(buildDnsQuery(7,'nodata.youtube.com',28));
+  assert.equal(calls,4);
+});
+
+test('cached DNS resolver never caches SERVFAIL, NXDOMAIN, TC=1, or errors',async()=>{
+  let calls=0;
+  let behavior:'servfail'|'nxdomain'|'tc'|'error'|'ok'='servfail';
+  const cached=createCachedDnsResolver(async wire=>{
+    calls++;
+    if(behavior==='error')throw Error('upstream boom');
+    if(behavior==='servfail')return buildDnsReply(Buffer.from(wire),{rcode:2,ancount:0});
+    if(behavior==='nxdomain')return buildDnsReply(Buffer.from(wire),{rcode:3,ancount:0});
+    if(behavior==='tc')return buildDnsReply(Buffer.from(wire),{tc:true,ancount:1});
+    return buildDnsReply(Buffer.from(wire),{ttlSec:30});
+  });
+  await cached(buildDnsQuery(10,'bad.example'));
+  behavior='nxdomain';
+  await cached(buildDnsQuery(11,'bad.example'));
+  behavior='tc';
+  await cached(buildDnsQuery(12,'bad.example'));
+  behavior='error';
+  await assert.rejects(()=>cached(buildDnsQuery(13,'bad.example')),/upstream boom/);
+  behavior='ok';
+  await cached(buildDnsQuery(14,'bad.example'));
+  await cached(buildDnsQuery(15,'bad.example'));
+  assert.equal(calls,5);
+});
+
+test('cached DNS resolver evicts least recently used entry above maxEntries',async()=>{
+  let calls=0;
+  const cached=createCachedDnsResolver(
+    async wire=>{calls++;return buildDnsReply(Buffer.from(wire),{ttlSec:30});},
+    {maxEntries:2},
+  );
+  await cached(buildDnsQuery(1,'a.youtube.com'));
+  await cached(buildDnsQuery(2,'b.youtube.com'));
+  await cached(buildDnsQuery(3,'a.youtube.com')); // refresh 'a' -> 'b' is LRU
+  await cached(buildDnsQuery(4,'c.youtube.com')); // evicts 'b'
+  assert.equal(calls,3);
+  await cached(buildDnsQuery(5,'a.youtube.com')); // still cached
+  assert.equal(calls,3);
+  await cached(buildDnsQuery(6,'b.youtube.com')); // re-fetches 'b'
+  assert.equal(calls,4);
 });

@@ -120,3 +120,131 @@ export function createVerifiedDotPool(upstream:VerifiedDotUpstream,options:DotPo
   }
   return {query,close,stats:()=>({connections:channels.size,busy:[...channels].filter(c=>c.task).length,queued:queue.length,handshakes})};
 }
+
+export interface CachedDnsResolverOptions{
+  maxEntries?:number;
+  minTtlMs?:number;
+  maxTtlMs?:number;
+  nodataTtlMs?:number;
+  now?:()=>number;
+}
+
+function skipDnsName(packet:Buffer,start:number):number{
+  let pos=start;
+  for(let i=0;i<128;i++){
+    if(pos>=packet.length)return -1;
+    const len=packet[pos];
+    if(len===0)return pos+1;
+    if((len&0xc0)===0xc0)return pos+2<=packet.length?pos+2:-1;
+    if((len&0xc0)!==0)return -1;
+    pos+=1+len;
+  }
+  return -1;
+}
+
+function findUncompressedQnameEnd(wire:Uint8Array):number{
+  let pos=12;
+  for(let i=0;i<127;i++){
+    if(pos>=wire.length)return -1;
+    const len=wire[pos++];
+    if(len===0)return pos;
+    if(len>63||pos+len>wire.length)return -1;
+    pos+=len;
+  }
+  return -1;
+}
+
+function computeCacheTtlMs(
+  reply:Uint8Array,minTtlMs:number,maxTtlMs:number,nodataTtlMs:number,
+):number|null{
+  if(reply.length<12)return null;
+  const packet=Buffer.from(reply.buffer,reply.byteOffset,reply.byteLength);
+  const flags=packet.readUInt16BE(2);
+  const rcode=flags&0x0f;
+  const tc=(flags&0x0200)!==0;
+  // Cache only complete NOERROR replies (never SERVFAIL, NXDOMAIN, REFUSED, or TC=1).
+  if((flags&0x8000)===0||tc||rcode!==0)return null;
+  const qdcount=packet.readUInt16BE(4);
+  const ancount=packet.readUInt16BE(6);
+  const nscount=packet.readUInt16BE(8);
+  const arcount=packet.readUInt16BE(10);
+  if(qdcount!==1)return null;
+  let pos=skipDnsName(packet,12);
+  if(pos<0||pos+4>packet.length)return null;
+  pos+=4;
+  const totalRrs=ancount+nscount+arcount;
+  let minAnswerTtlSec=Number.POSITIVE_INFINITY;
+  for(let i=0;i<totalRrs;i++){
+    pos=skipDnsName(packet,pos);
+    if(pos<0||pos+10>packet.length)return null;
+    const rrType=packet.readUInt16BE(pos);
+    const rrTtl=packet.readUInt32BE(pos+4);
+    const rdLength=packet.readUInt16BE(pos+8);
+    pos+=10+rdLength;
+    if(pos>packet.length)return null;
+    if(rrType===41){
+      if(((rrTtl>>>24)&0xff)!==0)return null;
+      continue;
+    }
+    if(i<ancount&&rrTtl<minAnswerTtlSec)minAnswerTtlSec=rrTtl;
+  }
+  if(pos!==packet.length)return null;
+  if(ancount===0)return nodataTtlMs>0?nodataTtlMs:null;
+  if(!Number.isFinite(minAnswerTtlSec))return null;
+  return Math.min(maxTtlMs,Math.max(minTtlMs,minAnswerTtlSec*1000));
+}
+
+/** Bounded LRU + TTL cache wrapping an upstream DNS resolver so repeated queries do not pay TLS/WG RTT. */
+export function createCachedDnsResolver(
+  resolver:(wire:Uint8Array,signal?:AbortSignal)=>Promise<Uint8Array>,
+  options:CachedDnsResolverOptions={},
+){
+  const maxEntries=options.maxEntries??1024;
+  const minTtlMs=options.minTtlMs??5000;
+  const maxTtlMs=Math.max(minTtlMs,options.maxTtlMs??60000);
+  const nodataTtlMs=options.nodataTtlMs??15000;
+  const now=options.now??Date.now;
+  const cache=new Map<string,{wire:Buffer;expiresAt:number}>();
+  return async(query:Uint8Array,signal?:AbortSignal):Promise<Uint8Array>=>{
+    if(signal?.aborted||maxEntries<=0)return resolver(query,signal);
+    let key:string;
+    try{
+      const q=parseDnsQuestion(query);
+      const qView=Buffer.from(query.buffer,query.byteOffset,query.byteLength);
+      const hasEdns=qView.readUInt16BE(10)>0?1:0;
+      key=`${q.name}\0${q.type}\0${q.dnsClass}\0${hasEdns}`;
+    }catch{
+      return resolver(query,signal);
+    }
+    const currentTime=now();
+    const hit=cache.get(key);
+    if(hit!==undefined){
+      if(hit.expiresAt>currentTime){
+        cache.delete(key);
+        cache.set(key,hit);
+        const out=Buffer.from(hit.wire);
+        const qView=Buffer.from(query.buffer,query.byteOffset,query.byteLength);
+        qView.copy(out,0,0,2);
+        out[2]=(out[2]&0xfe)|(qView[2]&0x01);
+        const qEnd=findUncompressedQnameEnd(qView);
+        const rEnd=findUncompressedQnameEnd(out);
+        if(qEnd>12&&qEnd===rEnd)qView.copy(out,12,12,qEnd);
+        if(dnsResponseMatchesQuestion(query,out))return out;
+      }
+      cache.delete(key);
+    }
+    const reply=await resolver(query,signal);
+    if(!dnsResponseMatchesQuestion(query,reply))return reply;
+    const ttlMs=computeCacheTtlMs(reply,minTtlMs,maxTtlMs,nodataTtlMs);
+    if(ttlMs!==null&&ttlMs>0){
+      cache.delete(key);
+      while(cache.size>=maxEntries){
+        const oldestKey=cache.keys().next().value;
+        if(oldestKey===undefined)break;
+        cache.delete(oldestKey);
+      }
+      cache.set(key,{wire:Buffer.from(reply),expiresAt:now()+ttlMs});
+    }
+    return reply;
+  };
+}

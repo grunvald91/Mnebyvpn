@@ -16,7 +16,7 @@ import {Pool} from 'pg';
 import {pinnedCanaryPolicy} from './personal-dot-canary.ts';
 import {queryVerifiedDotTls,type VerifiedDotUpstream}
   from '../../../packages/dns-policy/src/verified-dot-upstream.ts';
-import {createVerifiedDotPool} from '../../../packages/dns-policy/src/pooled-dot-upstream.ts';
+import {createCachedDnsResolver,createVerifiedDotPool} from '../../../packages/dns-policy/src/pooled-dot-upstream.ts';
 import {createPersonalDotListener}
   from '../../../packages/dns-policy/src/personal-dot-listener.ts';
 
@@ -144,12 +144,20 @@ export async function runPersonalDotProduction():Promise<void>{
       const r=await db.query('SELECT owner_dns_link_status($1) AS status',[label]);
       return String(r.rows[0]?.status??'DENY_UNKNOWN');
     },ownerStatusCacheMs()):undefined;
+  const cachedMapped=createCachedDnsResolver(
+    (query,signal)=>mappedPool?mappedPool.query(query,7000,signal):queryVerifiedDotTls(mapped,query,7000,signal),
+    {maxEntries:1024,minTtlMs:5000,maxTtlMs:60000,nodataTtlMs:15000},
+  );
+  const cachedDirect=createCachedDnsResolver(
+    (query,signal)=>directPool?directPool.query(query,7000,signal):queryVerifiedDotTls(direct,query,7000,signal),
+    {maxEntries:1024,minTtlMs:5000,maxTtlMs:60000,nodataTtlMs:15000},
+  );
   const tlsServer=createPersonalDotListener({
     key,cert,db,classify,
     ...(ownerLookup?{ownerLinkStatus:ownerLookup}:{}),
     queryTimeoutMs:8500,
-    mapped:(query,signal)=>mappedPool?mappedPool.query(query,7000,signal):queryVerifiedDotTls(mapped,query,7000,signal),
-    direct:(query,signal)=>directPool?directPool.query(query,7000,signal):queryVerifiedDotTls(direct,query,7000,signal),
+    mapped:cachedMapped,
+    direct:cachedDirect,
   });
   let listening=false;
   const health=createServer(async(req,res)=>{

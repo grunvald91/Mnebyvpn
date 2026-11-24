@@ -195,7 +195,7 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
       else credentialConnections.set(digest,count-1);
       socket.destroy();
     };
-    socket.setTimeout(30000,stop);
+    socket.setTimeout(300000,stop);
     socket.on('error',stop);
     socket.on('close',stop);
     async function verifyAuth(current:number):Promise<AuthResult>{
