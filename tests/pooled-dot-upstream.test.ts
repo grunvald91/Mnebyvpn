@@ -87,3 +87,44 @@ test('shutdown rejects pending requests, drains the queue and refuses new work',
   try{const one=assert.rejects(pool.query(question()),/closed/),two=assert.rejects(pool.query(question()),/closed/);pool.close();await Promise.all([one,two]);assert.deepEqual(pool.stats(),{connections:0,busy:0,queued:0,handshakes:0});await assert.rejects(pool.query(question()),/Invalid/);}
   finally{pool.close();await f.close();}
 });
+
+test('stale idle socket disconnect retries once on fresh TLS without looping fresh failures',async()=>{
+  let connections=0,requests=0,dropReused=true,dropAll=false;
+  const sockets=new Set<TLSSocket>();
+  const server=createServer({key,cert},socket=>{
+    const connIndex=++connections;sockets.add(socket);
+    socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});
+    let seenOnConn=0,b=Buffer.alloc(0);
+    socket.on('data',chunk=>{
+      if(dropAll||(connIndex===1&&seenOnConn>=1&&dropReused)){socket.destroy();return;}
+      b=Buffer.concat([b,chunk]);
+      while(b.length>=2&&b.length>=b.readUInt16BE(0)+2){
+        const size=b.readUInt16BE(0),q=Buffer.from(b.subarray(2,size+2));b=b.subarray(size+2);
+        seenOnConn++;requests++;
+        const answer=Buffer.from(q);answer.writeUInt16BE(0x8180,2);
+        const frame=Buffer.alloc(answer.length+2);frame.writeUInt16BE(answer.length);answer.copy(frame,2);
+        socket.write(frame);
+      }
+    });
+  });
+  server.on('tlsClientError',()=>{});
+  await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));
+  const target={address:'127.0.0.1',servername:'dns.test',port:(server.address() as AddressInfo).port,ca:cert};
+  const pool=createVerifiedDotPool(target,{maxConnections:1});
+  try{
+    const first=Buffer.from(await pool.query(question(101)));
+    assert.equal(first.readUInt16BE(),101);
+    const second=Buffer.from(await pool.query(question(102)));
+    assert.equal(second.readUInt16BE(),102);
+    assert.equal(connections,2);assert.equal(requests,2);
+    dropAll=true;
+    const prevConns=connections;
+    for(const s of sockets)s.destroy();
+    await pause(20);
+    await assert.rejects(pool.query(question(103),1500),/disconnected|failed/);
+    assert.equal(connections,prevConns+1,'fresh connection drop must not retry forever');
+  }finally{
+    pool.close();for(const s of sockets)s.destroy();
+    await new Promise<void>(r=>server.close(()=>r()));
+  }
+});

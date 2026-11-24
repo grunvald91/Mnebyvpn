@@ -137,8 +137,8 @@ export async function runPersonalDotProduction():Promise<void>{
   await db.query('SELECT 1');
   const pooled=process.env.MNEBYDNS_DOT_POOL_ENABLED==='yes';
   const poolMaxConnections=dotPoolMaxConnections();
-  const mappedPool=pooled?createVerifiedDotPool(mapped,{maxConnections:poolMaxConnections}):null;
-  const directPool=pooled?createVerifiedDotPool(direct,{maxConnections:poolMaxConnections}):null;
+  const mappedPool=pooled?createVerifiedDotPool(mapped,{maxConnections:poolMaxConnections,idleMs:7500}):null;
+  const directPool=pooled?createVerifiedDotPool(direct,{maxConnections:poolMaxConnections,idleMs:7500}):null;
   const ownerLookup=process.env.MNEBYDNS_OWNER_LINKS_ENABLED==='yes'
     ?createCachedOwnerLinkStatus(async(label:string)=>{
       const r=await db.query('SELECT owner_dns_link_status($1) AS status',[label]);

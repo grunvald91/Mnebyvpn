@@ -18,8 +18,10 @@ import {parsePersonalDoTHostname} from './personal-dot-identity.ts';
 import {resolveOwnerDnsMessage,type OwnerDnsStatus} from './owner-dns-access.ts';
 
 const MAX_DNS=16384;
-const MAX_QUEUE=16;
+const MAX_QUEUE=32;
 const MAX_BUFFER=(MAX_DNS+2)*MAX_QUEUE;
+const MAX_IN_FLIGHT=8;
+const MAX_CREDENTIAL_CONNECTIONS=16;
 const TEST_HOST_A='aaaaaaaaaaaa.dns.mnebyvpn.site';
 const TEST_HOST_B='bbbbbbbbbbbb.dns.mnebyvpn.site';
 const MAX_AUTH_CACHE=4096;
@@ -27,7 +29,7 @@ const AUTH_RECHECK_MS=60000;
 const AUTH_OUTAGE_GRACE_MS=90000;
 const LABEL_RATE_PER_SEC=30;
 const LABEL_BURST=60;
-const MAX_TLS_BUFFERED=MAX_BUFFER;
+const MAX_TLS_BUFFERED=(MAX_DNS+2)*16;
 const TLS_DRAIN_TIMEOUT_MS=3000;
 
 /** A false write() return means backpressure, not a failed write.
@@ -174,11 +176,14 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
     if(!label){socket.destroy();return;}
     const digest=createHash('sha256').update(label).digest('hex');
     const connected=credentialConnections.get(digest)??0;
-    if(connected>=8){socket.destroy();return;}
+    if(connected>=MAX_CREDENTIAL_CONNECTIONS){socket.destroy();return;}
     credentialConnections.set(digest,connected+1);
     const activeSignals=new Set<AbortController>();
-    let buffer=Buffer.alloc(0),busy=false,closed=false;
+    type AuthResult={ok:boolean;offlineDirectOnly:boolean};
+    let buffer=Buffer.alloc(0),inFlight=0,closed=false;
     let ownerLink:boolean|undefined;
+    let authCheck:Promise<AuthResult>|null=null;
+    let writeChain:Promise<void>=Promise.resolve();
     const pending:Buffer[]=[];
     const stop=()=>{
       if(closed)return;
@@ -193,122 +198,146 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
     socket.setTimeout(30000,stop);
     socket.on('error',stop);
     socket.on('close',stop);
-    async function flush():Promise<void>{
-      if(busy||closed)return;
-      busy=true;
-      try{
-        while(!closed&&pending.length){
-          const request=pending.shift()!;
-          // Per-secret token bucket limits abuse even behind a shared
-          // loopback reverse proxy (where source IP is not the handset IP).
-          const current=now();
-          const prev=labelRates.get(digest);
-          const available=Math.min(LABEL_BURST,
-            (prev?.tokens??LABEL_BURST)+
-              Math.max(0,current-(prev?.last??current))*LABEL_RATE_PER_SEC/1000);
-          if(available<1){stop();return;}
-          labelRates.delete(digest);
-          labelRates.set(digest,{tokens:available-1,last:current});
-          trim(labelRates);
-          let offlineDirectOnly=false;
-          if(ownerLink===undefined&&o.ownerLinkStatus){
-            // Probe once per TLS connection for regular customer identities.
-            // A failed lookup cannot fall through to an unmetered route.
-            const status=await o.ownerLinkStatus(label!);
-            if(status!=='UNKNOWN'&&status!=='ALLOWED'&&status!=='ALLOWED_SMART_DNS'){stop();return;}
-            ownerLink=status==='ALLOWED'||status==='ALLOWED_SMART_DNS';
-          }
-          const verifiedAt=authCache.get(digest);
-          // Auth-cache hits skip only the credential existence check. Premium
-          // DNS messages still reserve and settle quota individually below.
-          if(ownerLink){
-            // Owner links have their own per-message expiry checks below.
-          }else if(verifiedAt!==undefined&&current>=verifiedAt&&
-             current-verifiedAt<AUTH_RECHECK_MS){
-            authCache.delete(digest);
-            authCache.set(digest,verifiedAt); // LRU touch, not sliding TTL
-          }else{
-            try{
-              // All connections, including direct routes, must initially be
-              // recognized. Failed/revoked identities are NEVER cached.
-              const {rows}=await o.db.query(
-                'SELECT recognize_personal_dns_credential($1) AS known',[label]);
-              if(rows.length!==1||rows[0].known!==true){
-                authCache.delete(digest);stop();return;
-              }
-              authCache.delete(digest);
-              authCache.set(digest,current);
-              trim(authCache);
-            }catch{
-              // Old positive status permits DIRECT-only DNS temporarily,
-              // never paid/mapped answers during an authorization DB outage.
-              if(verifiedAt===undefined||current<verifiedAt||
-                 current-verifiedAt>=AUTH_OUTAGE_GRACE_MS){
-                authCache.delete(digest);stop();return;
-              }
-              offlineDirectOnly=true;
-            }
-          }
-          let deadline:NodeJS.Timeout|undefined;
-          const controller=new AbortController();
-          activeSignals.add(controller);
-          let answer:Uint8Array;
-          try{
-            // A recently recognized subscriber may resolve ordinary domains
-            // during a temporary recognition outage, but must never receive
-            // an unmetered origin IP for a premium domain.
-            const work=ownerLink&&o.ownerLinkStatus
-              ?resolveOwnerDnsMessage(label!,request,o.ownerLinkStatus,o.classify,o.mapped,o.direct,controller.signal)
-              :offlineDirectOnly
-              ?(async()=>{
-                try{
-                  const route=await o.classify(parseDnsQuestion(request));
-                  if(route==='direct')return o.direct(request,controller.signal);
-                }catch{/* unknown policy is never a safe direct route */}
-                return servfailDnsResponse(request);
-              })()
-              :resolvePersonalDnsWithSettlement(name,request,o.classify,
-                async(token,id)=>{
-                  const r=await o.db.query(
-                    'SELECT reserve_personal_dns_query($1,$2::uuid) AS verdict',
-                    [token,id]);
-                  return String(r.rows[0]?.verdict??'DENY_UNKNOWN');
-                },
-                async(id,success)=>{
-                  const r=await o.db.query(
-                    'SELECT finish_personal_dns_query($1::uuid,$2) AS verdict',
-                    [id,success]);
-                  return String(r.rows[0]?.verdict??'DENY_UNKNOWN');
-                },o.mapped,o.direct,controller.signal);
-            answer=await Promise.race([
-              work,
-              new Promise<never>((_,reject)=>{
-                deadline=setTimeout(()=>{
-                  controller.abort();
-                  reject(Error('DNS query deadline exceeded'));
-                },timeout);
-              }),
-            ]);
-          }finally{
-            if(deadline)clearTimeout(deadline);
-            activeSignals.delete(controller);
-          }
-          if(closed)return;
-          if(answer.byteLength<12||answer.byteLength>MAX_DNS){stop();return;}
-          const output=Buffer.from(answer);
-          if(!dnsResponseMatchesQuestion(request,output)){
-            stop();return;
-          }
-          const framed=Buffer.alloc(output.length+2);
-          framed.writeUInt16BE(output.length,0);
-          output.copy(framed,2);
-          // A false write() result is backpressure, not delivery failure.
-          // Bound buffer size and wait for drain; a genuinely stalled client
-          // is still disconnected after a short deadline.
-          if(!await writeDnsFrameWithBackpressure(socket,framed)){stop();return;}
+    async function verifyAuth(current:number):Promise<AuthResult>{
+      if(ownerLink===undefined&&o.ownerLinkStatus){
+        // Probe once per TLS connection for regular customer identities.
+        // A failed lookup cannot fall through to an unmetered route.
+        const status=await o.ownerLinkStatus(label!);
+        if(status!=='UNKNOWN'&&status!=='ALLOWED'&&status!=='ALLOWED_SMART_DNS'){
+          stop();return{ok:false,offlineDirectOnly:false};
         }
+        ownerLink=status==='ALLOWED'||status==='ALLOWED_SMART_DNS';
+      }
+      const verifiedAt=authCache.get(digest);
+      // Auth-cache hits skip only the credential existence check. Premium
+      // DNS messages still reserve and settle quota individually below.
+      if(ownerLink){
+        // Owner links have their own per-message expiry checks below.
+        return{ok:true,offlineDirectOnly:false};
+      }
+      if(verifiedAt!==undefined&&current>=verifiedAt&&
+         current-verifiedAt<AUTH_RECHECK_MS){
+        authCache.delete(digest);
+        authCache.set(digest,verifiedAt); // LRU touch, not sliding TTL
+        return{ok:true,offlineDirectOnly:false};
+      }
+      try{
+        // All connections, including direct routes, must initially be
+        // recognized. Failed/revoked identities are NEVER cached.
+        const {rows}=await o.db.query(
+          'SELECT recognize_personal_dns_credential($1) AS known',[label]);
+        if(rows.length!==1||rows[0].known!==true){
+          authCache.delete(digest);stop();return{ok:false,offlineDirectOnly:false};
+        }
+        authCache.delete(digest);
+        authCache.set(digest,current);
+        trim(authCache);
+        return{ok:true,offlineDirectOnly:false};
+      }catch{
+        // Old positive status permits DIRECT-only DNS temporarily,
+        // never paid/mapped answers during an authorization DB outage.
+        if(verifiedAt===undefined||current<verifiedAt||
+           current-verifiedAt>=AUTH_OUTAGE_GRACE_MS){
+          authCache.delete(digest);stop();return{ok:false,offlineDirectOnly:false};
+        }
+        return{ok:true,offlineDirectOnly:true};
+      }
+    }
+    function ensureAuthorized(current:number):Promise<AuthResult>{
+      if(closed)return Promise.resolve({ok:false,offlineDirectOnly:false});
+      if(!authCheck){
+        authCheck=verifyAuth(current).finally(()=>{authCheck=null;});
+      }
+      return authCheck;
+    }
+    async function processRequest(request:Buffer,current:number):Promise<void>{
+      try{
+        const auth=await ensureAuthorized(current);
+        if(closed||!auth.ok)return;
+        const offlineDirectOnly=auth.offlineDirectOnly;
+        let deadline:NodeJS.Timeout|undefined;
+        const controller=new AbortController();
+        activeSignals.add(controller);
+        let answer:Uint8Array;
+        try{
+          // A recently recognized subscriber may resolve ordinary domains
+          // during a temporary recognition outage, but must never receive
+          // an unmetered origin IP for a premium domain.
+          const work=ownerLink&&o.ownerLinkStatus
+            ?resolveOwnerDnsMessage(label!,request,o.ownerLinkStatus,o.classify,o.mapped,o.direct,controller.signal)
+            :offlineDirectOnly
+            ?(async()=>{
+              try{
+                const route=await o.classify(parseDnsQuestion(request));
+                if(route==='direct')return o.direct(request,controller.signal);
+              }catch{/* unknown policy is never a safe direct route */}
+              return servfailDnsResponse(request);
+            })()
+            :resolvePersonalDnsWithSettlement(name,request,o.classify,
+              async(token,id)=>{
+                const r=await o.db.query(
+                  'SELECT reserve_personal_dns_query($1,$2::uuid) AS verdict',
+                  [token,id]);
+                return String(r.rows[0]?.verdict??'DENY_UNKNOWN');
+              },
+              async(id,success)=>{
+                const r=await o.db.query(
+                  'SELECT finish_personal_dns_query($1::uuid,$2) AS verdict',
+                  [id,success]);
+                return String(r.rows[0]?.verdict??'DENY_UNKNOWN');
+              },o.mapped,o.direct,controller.signal);
+          answer=await Promise.race([
+            work,
+            new Promise<never>((_,reject)=>{
+              deadline=setTimeout(()=>{
+                controller.abort();
+                reject(Error('DNS query deadline exceeded'));
+              },timeout);
+            }),
+          ]);
+        }finally{
+          if(deadline)clearTimeout(deadline);
+          activeSignals.delete(controller);
+        }
+        if(closed)return;
+        if(answer.byteLength<12||answer.byteLength>MAX_DNS){stop();return;}
+        const output=Buffer.from(answer);
+        if(!dnsResponseMatchesQuestion(request,output)){
+          stop();return;
+        }
+        const framed=Buffer.alloc(output.length+2);
+        framed.writeUInt16BE(output.length,0);
+        output.copy(framed,2);
+        // Serialize frame writes while keeping upstream lookups concurrent;
+        // a genuinely stalled client is disconnected after a short deadline.
+        writeChain=writeChain.then(async()=>{
+          if(closed)return;
+          if(!await writeDnsFrameWithBackpressure(socket,framed))stop();
+        }).catch(()=>stop());
+        await writeChain;
       }catch{stop();}
-      finally{busy=false;}
+      finally{
+        inFlight--;
+        drainPending();
+      }
+    }
+    function drainPending():void{
+      while(!closed&&inFlight<MAX_IN_FLIGHT&&pending.length){
+        const request=pending.shift()!;
+        // Per-secret token bucket limits abuse even behind a shared
+        // loopback reverse proxy (where source IP is not the handset IP).
+        const current=now();
+        const prev=labelRates.get(digest);
+        const available=Math.min(LABEL_BURST,
+          (prev?.tokens??LABEL_BURST)+
+            Math.max(0,current-(prev?.last??current))*LABEL_RATE_PER_SEC/1000);
+        if(available<1){stop();return;}
+        labelRates.delete(digest);
+        labelRates.set(digest,{tokens:available-1,last:current});
+        trim(labelRates);
+        inFlight++;
+        void processRequest(request,current);
+      }
     }
     socket.on('data',(chunk:Buffer)=>{
       if(closed)return;
@@ -318,13 +347,13 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
         const n=buffer.readUInt16BE(0);
         if(n<17||n>MAX_DNS){stop();return;}
         if(buffer.length<n+2)break;
-        if(pending.length>=MAX_QUEUE){stop();return;}
+        if(pending.length+inFlight>=MAX_QUEUE){stop();return;}
         pending.push(Buffer.from(buffer.subarray(2,n+2)));
         buffer=buffer.subarray(n+2);
       }
-      void flush();
+      drainPending();
     });
   });
-  server.maxConnections=128;
+  server.maxConnections=256;
   return server;
 }

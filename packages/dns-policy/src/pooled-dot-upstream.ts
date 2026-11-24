@@ -1,6 +1,7 @@
 /** Bounded reusable DoT transport. One in-flight DNS question per TLS socket.
- * A timeout/cancel/malformed reply discards that socket; queries are never
- * retried silently. Authorization and quota settlement stay outside this pool.
+ * A stale reused idle socket closing before any reply bytes may retry once on
+ * a fresh socket; timeouts, cancellations, and malformed replies never retry.
+ * Authorization and quota settlement stay outside this pool.
  */
 import {randomBytes} from 'node:crypto';
 import {isIP} from 'node:net';
@@ -8,14 +9,14 @@ import {connect,type TLSSocket} from 'node:tls';
 import {dnsResponseMatchesQuestion,parseDnsQuestion} from './personal-dot-gateway-core.ts';
 import type {VerifiedDotUpstream} from './verified-dot-upstream.ts';
 const MAX_DNS=16384;
-type Task={question:Buffer;sent?:Buffer;done:boolean;resolve:(v:Uint8Array)=>void;reject:(e:Error)=>void;timer:NodeJS.Timeout;signal?:AbortSignal;abort:()=>void;channel?:Channel};
+type Task={question:Buffer;sent?:Buffer;done:boolean;retried?:boolean;resolve:(v:Uint8Array)=>void;reject:(e:Error)=>void;timer:NodeJS.Timeout;signal?:AbortSignal;abort:()=>void;channel?:Channel};
 type Channel={socket:TLSSocket;connected:boolean;closed:boolean;buffer:Buffer;task?:Task;idleTimer?:NodeJS.Timeout;born:number;messages:number;nextId:number;certUntil:number};
 export type DotPoolOptions={maxConnections?:number;maxQueued?:number;idleMs?:number};
 export function createVerifiedDotPool(upstream:VerifiedDotUpstream,options:DotPoolOptions={}){
-  const maxConnections=options.maxConnections??4,maxQueued=options.maxQueued??32,idleMs=options.idleMs??30000;
+  const maxConnections=options.maxConnections??8,maxQueued=options.maxQueued??64,idleMs=options.idleMs??7500;
   if(isIP(upstream.address)===0||!/^[a-z0-9](?:[a-z0-9.-]{1,251})[a-z0-9]$/i.test(upstream.servername)||upstream.servername.includes('..')||
     !Number.isSafeInteger(upstream.port)||upstream.port<1||upstream.port>65535||
-    !Number.isSafeInteger(maxConnections)||maxConnections<1||maxConnections>8||
+    !Number.isSafeInteger(maxConnections)||maxConnections<1||maxConnections>16||
     !Number.isSafeInteger(maxQueued)||maxQueued<1||maxQueued>128||
     !Number.isSafeInteger(idleMs)||idleMs<10||idleMs>300000)throw Error('Invalid verified DoT pool configuration');
   const target={...upstream};
@@ -26,11 +27,20 @@ export function createVerifiedDotPool(upstream:VerifiedDotUpstream,options:DotPo
     task.done=true;clearTimeout(task.timer);task.signal?.removeEventListener('abort',task.abort);task.channel=undefined;
     if(error)task.reject(error);else if(answer)task.resolve(answer);else task.reject(Error('Missing pooled DNS response'));
   }
-  function discard(c:Channel,error=Error('Verified DoT upstream disconnected')){
+  function discard(c:Channel,error=Error('Verified DoT upstream disconnected'),retryable=false){
     if(c.closed)return;
     c.closed=true;channels.delete(c);if(c.idleTimer)clearTimeout(c.idleTimer);c.socket.destroy();
-    const task=c.task;c.task=undefined;c.buffer=Buffer.alloc(0);
-    if(task)settle(task,error);
+    const task=c.task;c.task=undefined;
+    const emptyReply=c.buffer.length===0;
+    c.buffer=Buffer.alloc(0);
+    if(task){
+      if(retryable&&!closed&&!task.done&&!task.retried&&!task.signal?.aborted&&c.messages>1&&emptyReply){
+        task.retried=true;task.channel=undefined;task.sent=undefined;
+        queue.unshift(task);
+      }else{
+        settle(task,error);
+      }
+    }
     pump();
   }
   function send(c:Channel){
@@ -56,8 +66,8 @@ export function createVerifiedDotPool(upstream:VerifiedDotUpstream,options:DotPo
       if(!socket.authorized||!Number.isFinite(c.certUntil)||c.certUntil<=Date.now()){discard(c,Error('Pooled DoT certificate rejected'));return;}
       c.connected=true;handshakes++;send(c);
     });
-    socket.on('error',()=>discard(c,Error('Verified DoT TLS connection failed')));
-    socket.on('close',()=>discard(c));
+    socket.on('error',()=>discard(c,Error('Verified DoT TLS connection failed'),true));
+    socket.on('close',()=>discard(c,undefined,true));
     socket.on('data',(part:Buffer)=>{
       if(c.closed)return;
       if(!c.task||!c.task.sent){discard(c,Error('Unsolicited pooled DNS response'));return;}

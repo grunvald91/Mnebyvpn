@@ -330,3 +330,47 @@ test('Smart DNS owner remains authenticated as owner and video A reaches mapped 
     await new Promise<void>(resolve=>listener.close(()=>resolve()));
   }
 });
+
+test('pipelined queries resolve concurrently without head-of-line blocking',async()=>{
+  const db={query:async()=>({rows:[{known:true}]})} as unknown as Pick<Pool,'query'>;
+  const listener=createPersonalDotListener({
+    key,cert,db,queryTimeoutMs:2000,
+    classify:()=> 'direct',
+    mapped:async()=>{throw Error('unexpected');},
+    direct:async q=>{
+      const id=Buffer.from(q).readUInt16BE(0);
+      if(id===101)await new Promise(resolve=>setTimeout(resolve,160));
+      return answer(q);
+    },
+  });
+  await new Promise<void>(resolve=>listener.listen(0,'127.0.0.1',resolve));
+  const socket=connectTls({host:'127.0.0.1',
+    port:(listener.address() as AddressInfo).port,
+    servername:hostname,rejectUnauthorized:false});
+  socket.on('error',()=>{});
+  try{
+    await once(socket,'secureConnect');
+    const q1=request('slow.example.org');q1.writeUInt16BE(101,0);
+    const q2=request('fast.example.org');q2.writeUInt16BE(102,0);
+    const receivedIds:number[]=[];
+    let buf=Buffer.alloc(0);
+    const done=new Promise<void>((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(Error('Timed out waiting for pipelined replies')),1500);
+      socket.on('data',(chunk:Buffer)=>{
+        buf=Buffer.concat([buf,chunk]);
+        while(buf.length>=2&&buf.length>=buf.readUInt16BE(0)+2){
+          const n=buf.readUInt16BE(0);
+          receivedIds.push(buf.subarray(2,n+2).readUInt16BE(0));
+          buf=buf.subarray(n+2);
+          if(receivedIds.length===2){clearTimeout(timer);resolve();}
+        }
+      });
+    });
+    socket.write(Buffer.concat([frame(q1),frame(q2)]));
+    await done;
+    assert.deepEqual(receivedIds,[102,101]);
+  }finally{
+    socket.destroy();
+    await new Promise<void>(resolve=>listener.close(()=>resolve()));
+  }
+});
