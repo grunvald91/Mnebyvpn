@@ -346,7 +346,6 @@ fn enable_service_autostart() -> io::Result<()> {
 /// Check again AFTER the service has stopped. Before that, the old
 /// controller could still have an in-flight DNS mutation.
 fn ensure_upgrade_is_safe(journal: &ProtectedJournal) -> io::Result<()> {
-    let journal = ProtectedJournal::open_service().map_err(error)?;
     if journal.check_recovery_pending().map_err(error)?
         || journal
             .system_dns_journal()
@@ -417,6 +416,33 @@ fn wait_new_service_healthy() -> io::Result<()> {
     ))
 }
 
+// Archive, never discard, a completed upgrade's diagnostic binary.
+fn archive_upgrade_binary(path: &Path) -> io::Result<()> {
+    ensure_regular_file(path)?;
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| error(err.to_string()))?
+        .as_millis();
+    let mut history = path.as_os_str().to_os_string();
+    history.push(format!(".{nonce}"));
+    let history = PathBuf::from(history);
+    if history.exists() {
+        return Err(error("Cannot archive service binary: filename collision"));
+    }
+    fs::rename(path, history)
+}
+
+// A failed binary is safe to archive only after the original has returned
+// to its canonical path and is running with verified, restored DNS.
+fn failed_upgrade_can_be_retried(
+    original_present: bool,
+    previous_present: bool,
+    staged_present: bool,
+    healthy_disabled: bool,
+) -> bool {
+    original_present && !previous_present && !staged_present && healthy_disabled
+}
+
 fn upgrade() -> io::Result<()> {
     let journal = ProtectedJournal::open_service().map_err(error)?;
     ensure_upgrade_is_safe(&journal)?;
@@ -448,26 +474,32 @@ fn upgrade() -> io::Result<()> {
     let staged = expected.with_extension("exe.staged");
     let previous = expected.with_extension("exe.previous");
     let failed = expected.with_extension("exe.failed");
-    if staged.exists() || failed.exists() {
+    if staged.exists() {
         return Err(error(
             "An unfinished service upgrade exists; inspect it before retrying",
         ));
     }
+    if failed.exists() {
+        let healthy_disabled = service.query_status().map_err(map_service)?.current_state
+            == ServiceState::Running
+            && wait_new_service_healthy().is_ok();
+        if !failed_upgrade_can_be_retried(
+            ensure_regular_file(&expected).is_ok(),
+            previous.exists(),
+            staged.exists(),
+            healthy_disabled,
+        ) {
+            return Err(error(
+                "Previous upgrade rollback is not verified; binaries and DNS backups preserved",
+            ));
+        }
+        ensure_upgrade_is_safe(&journal)?;
+        archive_upgrade_binary(&failed)?;
+    }
     // Preserve the immediately preceding binary during each upgrade, and
     // archive older successful backups instead of blocking future updates.
     if previous.exists() {
-        ensure_regular_file(&previous)?;
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|err| error(err.to_string()))?
-            .as_millis();
-        let history = expected.with_extension(format!("exe.previous.{nonce}"));
-        if history.exists() {
-            return Err(error(
-                "Cannot archive previous service backup: filename collision",
-            ));
-        }
-        fs::rename(&previous, &history)?;
+        archive_upgrade_binary(&previous)?;
     }
     copy_new_binary(&source, &staged)?;
 
@@ -499,9 +531,24 @@ fn upgrade() -> io::Result<()> {
         )));
     }
 
-    fs::rename(&expected, &previous)?;
+    if let Err(err) = fs::rename(&expected, &previous) {
+        let cleanup = fs::remove_file(&staged);
+        let restart = if was_running && previous_start_type != ServiceStartType::Disabled {
+            service.start::<&str>(&[]).map_err(map_service)
+        } else {
+            Ok(())
+        };
+        return Err(error(format!(
+            "Could not move original executable: {err}; staging cleanup: {cleanup:?}; restart: {restart:?}"
+        )));
+    }
     if let Err(err) = fs::rename(&staged, &expected) {
-        let rollback = fs::rename(&previous, &expected);
+        let rollback = fs::rename(&previous, &expected).and_then(|_| {
+            if was_running && previous_start_type != ServiceStartType::Disabled {
+                service.start::<&str>(&[]).map_err(map_service)?;
+            }
+            fs::remove_file(&staged)
+        });
         return Err(error(format!(
             "Failed to replace service binary: {err}; original binary restore: {rollback:?}"
         )));
@@ -863,6 +910,30 @@ mod tests {
         assert!(!is_our_service_path(&other, &expected));
         let injected = PathBuf::from(format!("\"{}\" --other", expected.display()));
         assert!(!is_our_service_path(&injected, &expected));
+    }
+
+    #[test]
+    fn retry_requires_a_verified_complete_rollback() {
+        assert!(failed_upgrade_can_be_retried(true, false, false, true));
+        assert!(!failed_upgrade_can_be_retried(false, false, false, true));
+        assert!(!failed_upgrade_can_be_retried(true, true, false, true));
+        assert!(!failed_upgrade_can_be_retried(true, false, true, true));
+        assert!(!failed_upgrade_can_be_retried(true, false, false, false));
+    }
+
+    #[test]
+    fn archive_preserves_failed_binary() {
+        let dir = tempdir().unwrap();
+        let failed = dir.path().join("service.exe.failed");
+        fs::write(&failed, b"failed binary").unwrap();
+        archive_upgrade_binary(&failed).unwrap();
+        assert!(!failed.exists());
+        let files: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        assert_eq!(files.len(), 1);
+        assert_eq!(fs::read(&files[0]).unwrap(), b"failed binary");
     }
 
     #[test]
