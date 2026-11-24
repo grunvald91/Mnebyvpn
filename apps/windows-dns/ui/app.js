@@ -245,12 +245,15 @@ async function refreshStatus() {
     updateEndpoint('ipv6', response.local.ipv6);
     if (response.service) {
       const state = response.service.recovery_state;
-      const label = state === 'pending' ? 'Нужен откат'
-        : state === 'unreadable' ? 'Ошибка журнала'
-        : 'Работает';
+      const dns = response.service.dns_state;
+      const bad = state === 'unreadable' || dns === 'error' ||
+        (state === 'pending' && dns === 'disabled');
+      const label = state === 'unreadable' ? 'Ошибка журнала'
+        : state === 'pending' && dns === 'disabled' ? 'Нужен откат'
+        : dns === 'error' ? 'Ошибка DNS' : 'Работает';
       get('service-state').textContent = label;
-      get('service-state').classList.toggle('bad', state !== 'clear');
-      get('service-state').classList.toggle('good', state === 'clear');
+      get('service-state').classList.toggle('bad', bad);
+      get('service-state').classList.toggle('good', !bad);
     } else {
       get('service-state').textContent = 'Нет связи';
       get('service-state').title = String(response.service_error || 'Служба не отвечает');
@@ -266,6 +269,60 @@ async function refreshStatus() {
   }
 }
 
+
+let compatibilityLoading = false;
+
+async function checkCompatibility() {
+  if (compatibilityLoading || typeof invoke !== 'function') return;
+  const button = get('check-compatibility');
+  const result = get('compatibility-result');
+  compatibilityLoading = true;
+  button.disabled = true;
+  get('check-domain').disabled = true;
+  result.textContent = 'Проверяю настройки Windows…';
+  try {
+    const report = await invoke('inspect_compatibility', { host: get('check-domain').value.trim() });
+    const lines = [];
+    const active = report.adapters || [];
+    const managed = active.filter(a => a.likely_physical && !a.is_tunnel);
+    const tunnel = active.filter(a => a.is_tunnel);
+    lines.push('Wi-Fi/Ethernet: ' + managed.length + '; туннели: ' + tunnel.length);
+    for (const a of active) {
+      if (a.is_loopback) continue;
+      lines.push(a.name + ': ' + [...a.dns_ipv4, ...a.dns_ipv6].join(', '));
+    }
+    lines.push('NRPT: ' + (report.nrpt.ok ? report.nrpt.count + ' правил' : 'не удалось прочитать'));
+    if (report.routes.ok) {
+      for (const family of ['IPv4', 'IPv6']) {
+        const routes = report.routes.data.filter(r => r.family === family);
+        if (routes.length) lines.push('Маршрут ' + family + ': ' + routes.map(r => r.alias + ' (' + r.metric + ')').join(', '));
+      }
+    } else lines.push('Маршруты: не удалось прочитать');
+    const mode = value => ({unset: 'не задано', unknown: 'неизвестно', off: 'выкл.', automatic: 'авто', secure: 'защищённый'})[value] || 'другое';
+    lines.push('DoH-политики Chrome: ПК — ' + mode(report.browser.chrome_machine) + ', пользователь — ' + mode(report.browser.chrome_user));
+    lines.push('DoH-политики Edge: ПК — ' + mode(report.browser.edge_machine) + ', пользователь — ' + mode(report.browser.edge_user));
+    lines.push('Проверьте также личную настройку Secure DNS в браузере; отсутствие политики не исключает DoH.');
+    if (report.queries) {
+      const q = report.queries;
+      const format = entry => entry.ok ? (entry.data.join(', ') || 'нет адресов') : 'нет подтверждённого ответа';
+      for (const [key, label] of [['cached', 'Кэш'], ['system', 'Windows DNS'], ['local', 'Локальный DNS']]) {
+        lines.push(label + ' A: ' + format(q[key + '_a']));
+        lines.push(label + ' AAAA: ' + format(q[key + '_aaaa']));
+      }
+      lines.push('Различие IP может быть связано с кэшем, CDN или другим резолвером; совпадение не доказывает маршрут.');
+      lines.push('DNS-ответ не подтверждает HTTPS-доступ или страну исходящего IP.');
+    }
+    result.textContent = lines.join('\n');
+    result.style.whiteSpace = 'pre-wrap';
+  } catch (error) {
+    result.textContent = 'Проверка не выполнена: ' + String(error);
+  } finally {
+    compatibilityLoading = false;
+    button.disabled = false;
+    get('check-domain').disabled = false;
+  }
+}
+get('check-compatibility').addEventListener('click', checkCompatibility);
 
 async function checkPersonalDot() {
   if (dotLoading) return;
