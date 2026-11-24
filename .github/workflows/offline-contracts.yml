@@ -222,6 +222,37 @@ jobs:
           node --experimental-strip-types --test tests/ci/shared-vpn-connections-pg.test.ts
           node --experimental-strip-types --test tests/ci/fi-dns-meter-pg.test.ts
           node --experimental-strip-types --test tests/ci/fi-dns-meter-rpc-pg.test.ts
+      - name: Verify paid FI signed snapshot publication (disposable PostgreSQL)
+        env:
+          PGPASSWORD: test
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: test
+          PGDATABASE: mnebyvpn_test
+        run: |
+          set -Eeuo pipefail
+          test "$PGDATABASE" = mnebyvpn_test
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0152_fi_dns_snapshot_source.sql >/dev/null
+          node --experimental-strip-types --test tests/ci/fi-dns-snapshot-publisher-pg.test.ts
+      - name: Checkout exact reviewed FI node code for cross-repository E2E
+        uses: actions/checkout@v4
+        with:
+          repository: grunvald91/telegram-proxy-infra
+          ref: 56ea805f5e5019cf3e0be9d9bcd8e35b02d4d7fe
+          path: fi-node-fixture
+          persist-credentials: false
+      - name: Exercise FI DoT TLS through signed controller and real PostgreSQL
+        env:
+          PGPASSWORD: test
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: test
+          PGDATABASE: mnebyvpn_test
+          PYTHONPATH: fi-node-fixture/nodekit
+        run: |
+          set -Eeuo pipefail
+          test "$PGDATABASE" = mnebyvpn_test
+          node --experimental-strip-types --test tests/ci/fi-dns-cross-repo-pg.test.ts
       - name: Payment integration with disposable PostgreSQL
         env:
           PGPASSWORD: test
