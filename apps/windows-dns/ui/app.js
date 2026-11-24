@@ -326,6 +326,8 @@ get('tray-button').addEventListener('click', hideToTray);
 
 let systemDnsLoading = false;
 let systemDnsPollGeneration = 0;
+let systemDnsRefreshSequence = 0;
+let idleStatusRefreshPending = false;
 let systemDnsOperationPending = false;
 let systemDnsPendingAction = null;
 let systemDnsState = 'checking';
@@ -395,6 +397,9 @@ function renderHomeConnection() {
 }
 
 async function refreshSystemDns() {
+  const generation = systemDnsPollGeneration;
+  const sequence = ++systemDnsRefreshSequence;
+  const current = () => generation === systemDnsPollGeneration && sequence === systemDnsRefreshSequence;
   if (typeof invoke !== 'function') {
     systemDnsState = 'unknown';
     get('system-dns-state').textContent = 'Недоступно в браузере';
@@ -404,6 +409,7 @@ async function refreshSystemDns() {
   }
   try {
     const report = await invoke('system_dns_status');
+    if (!current()) return systemDnsState;
     const state = report.dns_state || 'unknown';
     systemDnsState = state;
     systemDnsConfigured = report.configured === true;
@@ -436,6 +442,7 @@ async function refreshSystemDns() {
     }
     return systemDnsState;
   } catch (error) {
+    if (!current()) return systemDnsState;
     systemDnsLastError = String(error);
     const uninstalled = String(error).includes('SERVICE_NOT_INSTALLED');
     systemDnsState = uninstalled ? 'not-installed' : 'unknown';
@@ -454,7 +461,6 @@ async function watchSystemDnsAction(action, generation) {
   for (let attempt = 0; attempt < SYSTEM_DNS_POLL_MAX_ATTEMPTS; attempt += 1) {
     await new Promise(resolve => window.setTimeout(resolve, SYSTEM_DNS_POLL_INTERVAL_MS));
     if (generation !== systemDnsPollGeneration) return;
-    if (document.visibilityState === 'hidden') break;
     const state = await refreshSystemDns();
     if (generation !== systemDnsPollGeneration) return;
     if (state === expected || state === 'error') {
@@ -603,10 +609,20 @@ get('restore-system-dns').addEventListener('click', async () => {
     renderHomeConnection();
   }
 });
-// No background polling: refresh when the user returns to the window.
-window.addEventListener('focus', () => {
-  if (document.visibilityState !== 'hidden' && !systemDnsOperationPending) void refreshSystemDns();
-});
+// Read only the local service status while the window is visible. This
+// catches automatic recovery without DNS probes, adapter enumeration or UAC.
+async function refreshIdleSystemDns() {
+  if (document.visibilityState === 'hidden' || systemDnsOperationPending ||
+      systemDnsLoading || idleStatusRefreshPending || typeof invoke !== 'function') return;
+  idleStatusRefreshPending = true;
+  try {
+    await refreshSystemDns();
+  } finally {
+    idleStatusRefreshPending = false;
+  }
+}
+window.addEventListener('focus', refreshIdleSystemDns);
+window.setInterval(refreshIdleSystemDns, 5000);
 
 get('refresh-dns').addEventListener('click', refreshStatus);
 document.querySelector('.adapter-section').addEventListener('toggle', (event) => {
@@ -815,7 +831,7 @@ get('dot-host').addEventListener('input', () => {
 // Startup is read-only. No redundant Rust round-trip or adapter enumeration.
 renderHomeConnection();
 if (typeof invoke === 'function') {
-  void refreshSystemDns();
+  void refreshIdleSystemDns();
 } else {
   systemDnsState = 'unknown';
   renderHomeConnection();
