@@ -23,7 +23,7 @@ import {isCanonicalAwgPublicKey,loadVerifiedAwgMaterial}
   from '../../../packages/provisioning/src/awg-subscriber-material.ts';
 import {deriveSubscriptionAwgIdentity,verifiedIncyAwgLine}
   from '../../../packages/provisioning/src/awg-in-subscription.ts';
-import {germanWebSocketOnly,keepSupportedAdditionalTransport,incySubscriptionHeaders,
+import {germanTransportsWithReality,germanWebSocketOnly,keepSupportedAdditionalTransport,incySubscriptionHeaders,
   incyExpiredSubscriptionHeaders,incyExpiredSubscriptionBody,
   incyEncodeActiveSubscription}
   from '../../../packages/provisioning/src/incy-subscription-presentation.ts';
@@ -157,6 +157,8 @@ const awgServerPublicKey=awgMaterialEnabled
 // No second customer subscription, payment check or manual profile link.
 const awgInSubscriptionEnabled=
   process.env.WEB_FI_AWG_IN_SUBSCRIPTION_ENABLED==='yes';
+const deRealityInSubscriptionEnabled=
+  process.env.WEB_DE_REALITY_IN_SUBSCRIPTION_ENABLED==='yes';
 const awgSubscriptionIdentityRoot=awgInSubscriptionEnabled
   ?required('AWG_INCY_SUBSCRIPTION_SEED'):'';
 if(awgInSubscriptionEnabled&&!awgMaterialEnabled)
@@ -921,7 +923,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const loadGermanProfile=async():Promise<string|null>=>{
       try{
         const nodeProfile=await liveVpnProfile(owner);
-        return germanWebSocketOnly(nodeProfile);
+        return deRealityInSubscriptionEnabled
+          ?germanTransportsWithReality(nodeProfile)
+          :germanWebSocketOnly(nodeProfile);
       }catch{
         console.error('German VPN subscription entry unavailable');
         return null;

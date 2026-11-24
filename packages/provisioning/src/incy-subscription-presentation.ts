@@ -33,6 +33,30 @@ export function germanWebSocketOnly(validatedNodeProfile:string):string{
   return uri.toString();
 }
 
+/** Verified German profile with optional Chrome REALITY (:2053) alongside
+ * canonical WebSocket (:8443), gated by explicit runtime opt-in. */
+export function germanTransportsWithReality(validatedNodeProfile:string):string{
+  const wsLine=germanWebSocketOnly(validatedNodeProfile);
+  const reality=validatedNodeProfile.split('\n').filter(link=>{
+    try{
+      const uri=new URL(link);
+      return uri.protocol==='vless:' && uri.hostname==='cdn.servgo.ru' &&
+        uri.port==='2053' && uri.searchParams.get('security')==='reality' &&
+        uri.searchParams.get('type')==='tcp' &&
+        uri.searchParams.get('flow')==='xtls-rprx-vision' &&
+        uri.searchParams.get('fp')==='chrome';
+    }catch{return false;}
+  });
+  if(reality.length>1)
+    throw Error('Expected at most one verified German REALITY chrome transport');
+  if(reality.length===1){
+    const uri=new URL(reality[0]!);
+    uri.hash=encodeURIComponent(vpnCountryLabel('Германия')+' REALITY');
+    return [wsLine,uri.toString()].join('\n');
+  }
+  return wsLine;
+}
+
 /** Signed additional country entries are rendered by the verified registry.
  * Germany REALITY routes are currently nonfunctional and must not be offered
  * to INCY, even if an old signed registry receipt exists for a DE node.

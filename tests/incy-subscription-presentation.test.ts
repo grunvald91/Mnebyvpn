@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
-  germanWebSocketOnly,keepSupportedAdditionalTransport,
+  germanTransportsWithReality,germanWebSocketOnly,keepSupportedAdditionalTransport,
   incySubscriptionHeaders,incyExpiredSubscriptionHeaders,
   incyExpiredSubscriptionBody,incyEncodeActiveSubscription,
   INCY_SITE_URL,INCY_RENEW_URL,
@@ -215,4 +215,28 @@ test('INCY Desktop fallback exposes both bot and checkout without Premium',()=>{
     // Metadata cannot override the client's fixed Support button label.
     assert.equal(Object.keys(headers).some(k=>k==='support-button-text'),false);
   }
+});
+
+test('germanTransportsWithReality includes single Chrome 2053 REALITY entry alongside WS when present',()=>{
+  const three=[reality('chrome'),reality('firefox'),ws].join('\n');
+  const out=germanTransportsWithReality(three).split('\n');
+  assert.equal(out.length,2);
+  const first=new URL(out[0]!);
+  assert.equal(first.port,'8443');
+  assert.equal(decodeURIComponent(first.hash.slice(1)),'MNEBYVPN Германия');
+  const second=new URL(out[1]!);
+  assert.equal(second.port,'2053');
+  assert.equal(second.hostname,'cdn.servgo.ru');
+  assert.equal(second.searchParams.get('security'),'reality');
+  assert.equal(second.searchParams.get('flow'),'xtls-rprx-vision');
+  assert.equal(second.searchParams.get('fp'),'chrome');
+  assert.equal(decodeURIComponent(second.hash.slice(1)),'MNEBYVPN Германия REALITY');
+  assert.equal(germanTransportsWithReality(ws).split('\n').length,1);
+  assert.throws(()=>germanTransportsWithReality(reality('chrome')));
+  assert.throws(()=>germanTransportsWithReality([reality('chrome'),reality('chrome'),ws].join('\n')));
+
+  const site=readFileSync(
+    new URL('../apps/web/src/server.ts',import.meta.url),'utf8');
+  assert.ok(site.includes('WEB_DE_REALITY_IN_SUBSCRIPTION_ENABLED'));
+  assert.ok(site.includes('germanTransportsWithReality(nodeProfile)'));
 });
