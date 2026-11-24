@@ -274,7 +274,7 @@ async function checkPersonalDot() {
   const button = get('check-dot');
   const result = get('dot-status');
   const diagnostic = get('dot-diag-state');
-  if (!host && systemDnsConfigured) {
+  if (systemDnsConfigured && !profileEditing) {
     return testSavedProfile('dot');
   }
   if (!host) {
@@ -341,9 +341,6 @@ function renderProfileState() {
   // recovery records. Make the restriction visible before any click.
   get('edit-profile').disabled = systemDnsOperationPending ||
     !['disabled', 'not-installed'].includes(systemDnsState);
-  get('test-host-hint').textContent = !get('dot-host').value.trim() && systemDnsConfigured
-    ? 'Для отдельного теста введите адрес в настройках.'
-    : '';
 }
 
 get('edit-profile').addEventListener('click', () => {
@@ -533,6 +530,10 @@ get('apply-new-dot').addEventListener('click', async () => {
     // profile. Its status publication can lag behind by one polling cycle.
     systemDnsConfigured = true;
     profileEditing = false;
+    get('dot-host').value = '';
+    dotInputRevision += 1;
+    setTestStep('dot-status', 'dot-diag-state', 'Не проверено', 'pending');
+    setTestStep('proxy-status', 'proxy-diag-state', 'Не проверено', 'pending');
     get('system-dns-message').textContent = message;
   } catch (error) {
     get('system-dns-message').textContent = 'Не удалось сохранить: ' + String(error);
@@ -617,7 +618,7 @@ async function smokeProxy() {
   const button = get('check-proxy');
   const result = get('proxy-status');
   const diagnostic = get('proxy-diag-state');
-  if (!host && systemDnsConfigured) {
+  if (systemDnsConfigured && !profileEditing) {
     return testSavedProfile('proxy');
   }
   if (!host) {
@@ -718,7 +719,7 @@ async function runAllTests() {
   if (fullTestLoading || dotLoading || proxySmokeLoading) return;
   const input = get('dot-host');
   const host = input.value.trim();
-  if (!host && systemDnsConfigured) {
+  if (systemDnsConfigured && !profileEditing) {
     return testSavedProfile();
   }
   if (!host) {
@@ -791,7 +792,6 @@ get('dot-host').addEventListener('keydown', (event) => {
 get('dot-host').addEventListener('input', () => {
   dotInputRevision += 1;
   get('dot-host').removeAttribute('aria-invalid');
-  get('test-host-hint').textContent = '';
   showTestHeading('Проверка нового DNS-адреса', 'Проверьте новый адрес перед включением на главной.');
   get('dot-status').textContent = 'Адрес изменён — проверка требуется заново.';
   renderHomeConnection();
