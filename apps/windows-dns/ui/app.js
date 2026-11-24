@@ -274,6 +274,9 @@ async function checkPersonalDot() {
   const button = get('check-dot');
   const result = get('dot-status');
   const diagnostic = get('dot-diag-state');
+  if (!host && systemDnsConfigured) {
+    return testSavedProfile('dot');
+  }
   if (!host) {
     result.textContent = 'Введите персональное имя DoT-сервера.';
     return;
@@ -614,6 +617,9 @@ async function smokeProxy() {
   const button = get('check-proxy');
   const result = get('proxy-status');
   const diagnostic = get('proxy-diag-state');
+  if (!host && systemDnsConfigured) {
+    return testSavedProfile('proxy');
+  }
   if (!host) {
     result.textContent = 'Укажите имя персонального DoT-сервера.';
     return;
@@ -668,10 +674,53 @@ function setTestStep(id, diagnosticId, message, status) {
     status === 'bad' ? 'Ошибка' : 'Не проверено';
 }
 
+// Use the saved profile in the LocalSystem service. No credential is
+// copied into the UI and no Windows DNS setting is changed by these tests.
+async function testSavedProfile(which = 'both') {
+  if (fullTestLoading || dotLoading || proxySmokeLoading || typeof invoke !== 'function') return;
+  const buttons = [get('run-all-tests'), get('check-dot'), get('check-proxy')];
+  fullTestLoading = true;
+  buttons.forEach(button => { button.disabled = true; });
+  try {
+    if (which !== 'proxy') {
+      showTestHeading('Проверяю сохранённый DNS…', '');
+      setTestStep('dot-status', 'dot-diag-state', 'Проверяю TLS и DNS A/AAAA…', 'pending');
+      await invoke('launch_system_dns_action', { action: 'TestSaved', host: null });
+      setTestStep('dot-status', 'dot-diag-state', 'TLS и DNS A/AAAA подтверждены', 'good');
+    }
+    if (which !== 'dot') {
+      if (systemDnsState !== 'active') {
+        setTestStep('proxy-status', 'proxy-diag-state', 'Локальный DNS не проверен: выключен', 'pending');
+      } else {
+        const report = await invoke('inspect_dns');
+        const v4 = report.local.ipv4.ok;
+        const v6 = report.local.ipv6.ok;
+        setTestStep('proxy-status', 'proxy-diag-state',
+          v4 && v6 ? 'Локальный DNS IPv4/IPv6 отвечает' : 'Локальный DNS: есть ошибки',
+          v4 && v6 ? 'good' : 'bad');
+      }
+    }
+    showTestHeading('Проверка завершена', 'DoT проверен через сохранённые IP; локальный DNS проверяется отдельно.');
+  } catch (error) {
+    if (which === 'proxy') {
+      setTestStep('proxy-status', 'proxy-diag-state', String(error), 'bad');
+    } else {
+      setTestStep('dot-status', 'dot-diag-state', String(error), 'bad');
+    }
+    showTestHeading('Не удалось проверить соединение', 'Подробности указаны ниже.');
+  } finally {
+    fullTestLoading = false;
+    buttons.forEach(button => { button.disabled = false; });
+  }
+}
+
 async function runAllTests() {
   if (fullTestLoading || dotLoading || proxySmokeLoading) return;
   const input = get('dot-host');
   const host = input.value.trim();
+  if (!host && systemDnsConfigured) {
+    return testSavedProfile();
+  }
   if (!host) {
     input.setAttribute('aria-invalid', 'true');
     showTestHeading('Нужен адрес DNS', 'Введите персональный DoT-адрес из подписки и повторите проверку.');
