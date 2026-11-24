@@ -6,6 +6,7 @@ DECLARE
  v_pin text:=encode(sha256(decode('302a300506032b6570032100'||repeat('42',32),'hex')),'hex');
  v_nonce text:=repeat('d',64);
  v_id uuid:=gen_random_uuid();
+ v_pruned integer;
 BEGIN
  INSERT INTO vpn_node_enrollment_inventory(node_id,endpoint_host,identity_public_spki)
  VALUES('fi-test-01','ci-fi.example.org',v_key);
@@ -28,7 +29,8 @@ BEGIN
  THEN RAISE EXCEPTION 'revoked node accepted'; END IF;
  INSERT INTO fi_dns_meter_rpc_nonces(nonce,first_seen_at)
  VALUES(repeat('9',64),clock_timestamp()-interval '11 minutes');
- IF fi_dns_meter_prune_nonces()<>1 OR EXISTS(SELECT 1 FROM fi_dns_meter_rpc_nonces WHERE nonce=repeat('9',64))
+ v_pruned:=fi_dns_meter_prune_nonces();
+ IF v_pruned<>1 OR EXISTS(SELECT 1 FROM fi_dns_meter_rpc_nonces WHERE nonce=repeat('9',64))
  OR NOT EXISTS(SELECT 1 FROM fi_dns_meter_rpc_nonces WHERE nonce=v_nonce)
  THEN RAISE EXCEPTION 'unsafe replay retention'; END IF;
  IF has_function_privilege('mnebyvpn_fi_dns_meter','public.fi_dns_meter_prune_nonces()','EXECUTE')
