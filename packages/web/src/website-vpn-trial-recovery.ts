@@ -6,14 +6,14 @@ import {deliverVpnTrialReadyEmail,normalizeLoginEmail} from './email-otp.ts';
 export async function rememberWebsiteVpnTrial(pool:Pool,accountId:string,deviceHash:string,inviteToken?:string):Promise<boolean>{
   await pool.query(`INSERT INTO website_vpn_trial_requests(account_id,device_hash,invite_token)
     VALUES($1,$2,$3) ON CONFLICT(account_id) DO UPDATE
-    SET status='PENDING',device_hash=EXCLUDED.device_hash,invite_token=EXCLUDED.invite_token,
+    SET status='PENDING',device_hash=EXCLUDED.device_hash,invite_token=EXCLUDED.invite_token,request_source='WEBSITE',
       next_attempt_at=clock_timestamp(),locked_until=NULL,last_error_code=NULL
     WHERE website_vpn_trial_requests.status='REJECTED'
       AND website_vpn_trial_requests.order_id IS NULL`,[accountId,deviceHash,inviteToken??null]);
   const status=await pool.query('SELECT status FROM website_vpn_trial_requests WHERE account_id=$1',[accountId]);
   return ['PENDING','WAITING'].includes(status.rows[0]?.status);
 }
-type Job={account_id:string;device_hash:string;invite_token:string|null;order_id:string|null;status:'PENDING'|'WAITING';attempts:number};
+type Job={account_id:string;device_hash:string|null;request_source:'WEBSITE'|'LEGACY_EMAIL';invite_token:string|null;order_id:string|null;status:'PENDING'|'WAITING';attempts:number};
 
 /** Durable bounded leases survive restart; trial uniqueness serializes grants. */
 export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStore,'grantTrial'>,secret:string,
@@ -40,7 +40,17 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
     const retry=Math.min(300,10*2**Math.min(5,job.attempts-1));
     try{
       if(job.status==='PENDING'){
-        const grant=await store.grantTrial(job.account_id,'vpn',job.invite_token??undefined,job.device_hash);
+        // Historical verified accounts are an explicit one-time remediation cohort.
+        // Ordinary website requests still require their real browser device hash.
+        if(job.request_source==='LEGACY_EMAIL'){
+          const account=await pool.query(`SELECT 1 FROM accounts a
+            WHERE a.id=$1 AND a.email_address IS NOT NULL
+            AND NOT EXISTS(SELECT 1 FROM entitlements e WHERE e.account_id=a.id
+              AND NOT EXISTS(SELECT 1 FROM trial_grants t WHERE t.account_id=a.id AND t.order_id=e.source_order_id AND t.product='vpn'))`,[job.account_id]);
+          if(account.rowCount!==1){await finish('REJECTED',null,0,'LEGACY_NO_LONGER_ELIGIBLE');continue;}
+        }
+        const grant=await store.grantTrial(job.account_id,'vpn',job.invite_token??undefined,
+          job.device_hash??undefined);
         if(grant.status==='DEVICE_ALREADY_USED'){
           await finish('REJECTED',null,0,'DEVICE_ALREADY_USED');continue;
         }
