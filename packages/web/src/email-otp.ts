@@ -56,3 +56,17 @@ export async function deliverVpnTrialReadyEmail(email:string,expiresAt:Date,secr
     return response.status===200;
   }catch{return false;}
 }
+
+/** One fixed transactional invitation; does not assert that access is activated. */
+export async function deliverVpnTrialRecoveryInvite(email:string,secret:string,fetcher:typeof fetch=fetch):Promise<boolean>{
+  if(secret.length<32||normalizeLoginEmail(email)!==email)return false;
+  const stamp=String(Math.floor(Date.now()/1000)),nonce=randomBytes(24).toString('base64url');
+  const payload=JSON.stringify({email,kind:'vpn_trial_recovery_invite'});
+  const signature=createHmac('sha256',secret).update(stamp+'.'+nonce+'.'+payload).digest('hex');
+  try{
+    const r=await fetcher(ENDPOINT,{method:'POST',redirect:'error',signal:AbortSignal.timeout(9000),
+      headers:{'Content-Type':'application/json','X-Mnebyvpn-Timestamp':stamp,
+        'X-Mnebyvpn-Nonce':nonce,'X-Mnebyvpn-Signature':signature},body:payload});
+    return r.status===200;
+  }catch{return false;}
+}
