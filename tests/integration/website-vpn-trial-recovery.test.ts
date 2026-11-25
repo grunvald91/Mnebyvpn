@@ -99,3 +99,43 @@ test('website billing role can create and recover an authenticated trial without
   client.release();
  }
 });
+
+test('historical verified email cohort gets one real trial and mail only after final ACK',async()=>{
+ const account=randomUUID(),email='legacy-auto-'+account.slice(0,8)+'@example.org';
+ const recent=randomUUID(),already=randomUUID(),unverified=randomUUID();
+ const migration=await readFile(new URL('../../db/migrations/0155_legacy_email_trial_backfill.sql',import.meta.url),'utf8');
+ const seed=migration.slice(migration.indexOf('INSERT INTO website_vpn_trial_requests'),migration.lastIndexOf('COMMIT;'));
+ assert.ok(seed.startsWith('INSERT INTO'));
+ const c=await pool.connect();
+ try{
+  await c.query("UPDATE trial_offers SET enabled=true WHERE product='vpn'");
+  await c.query("INSERT INTO accounts(id,email_address,created_at) VALUES($1,$2,'2026-11-24T00:00:00Z'),($3,$4,'2026-11-26T00:00:00Z'),($5,$6,'2026-11-24T00:00:00Z'),($7,NULL,'2026-11-24T00:00:00Z')",
+    [account,email,recent,'recent-'+recent.slice(0,8)+'@example.org',already,'used-'+already.slice(0,8)+'@example.org',unverified]);
+  const store=new PgBillingStore(pool);
+  assert.equal((await store.grantTrial(already,'vpn')).status,'GRANTED');
+  // Exercise the actual migration statement against only these synthetic fixtures.
+  const scopedSeed=seed.replace('WHERE a.email_address IS NOT NULL','WHERE a.id=ANY($1::uuid[]) AND a.email_address IS NOT NULL');
+  await c.query(scopedSeed,[[account,recent,already,unverified]]);
+  await c.query(scopedSeed,[[account,recent,already,unverified]]);
+  const selected=await c.query('SELECT account_id,request_source,device_hash FROM website_vpn_trial_requests WHERE account_id=ANY($1::uuid[])',[[account,recent,already,unverified]]);
+  assert.deepEqual(selected.rows,[{account_id:account,request_source:'LEGACY_EMAIL',device_hash:null}]);
+  const sent:string[]=[];
+  const send=async(to:string)=>{sent.push(to);return true;};
+  const run=()=>recoverWebsiteVpnTrials(pool,store,'test-only-secret',send);
+  const due=()=>pool.query('UPDATE website_vpn_trial_requests SET next_attempt_at=clock_timestamp() WHERE account_id=$1',[account]);
+  await run();
+  assert.equal(sent.includes(email),false);
+  const order=(await c.query('SELECT order_id FROM website_vpn_trial_requests WHERE account_id=$1',[account])).rows[0].order_id;
+  assert.ok(order);
+  const eid=(await c.query("SELECT id FROM entitlements WHERE source_order_id=$1 AND product='vpn'",[order])).rows[0].id;
+  const fence=(await c.query("SELECT claim_provisioning_fence($1,'vpn') AS fence",[eid])).rows[0].fence;
+  await c.query("SELECT acknowledge_provisioning($1,'vpn',1,$2,true)",[eid,fence]);
+  await due();await run();assert.equal(sent.includes(email),false);
+  await c.query("SELECT acknowledge_provisioning($1,'vpn',2,$2,true)",[eid,fence]);
+  await due();await run();assert.equal(sent.filter(x=>x===email).length,1);
+  await due();await run();assert.equal(sent.filter(x=>x===email).length,1);
+  assert.equal(await websiteVpnTrialStatus(pool,account),'SENT');
+  assert.equal((await c.query('SELECT count(*)::int AS n FROM trial_grants WHERE account_id=$1',[account])).rows[0].n,1);
+  assert.equal((await c.query('SELECT count(*)::int AS n FROM trial_device_claims WHERE account_id=$1',[account])).rows[0].n,0);
+ }finally{c.release();}
+});
