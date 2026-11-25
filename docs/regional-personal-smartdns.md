@@ -8,12 +8,12 @@ Existing \`<12-symbol>.dns.mnebyvpn.site\` links, including permanent owner prof
 
 ## Candidate zones (not live DNS yet)
 
-- Finland: \`<12-symbol>.fi.dns.mnebyvpn.site\`, independent entry for verified node FI217.
-- Germany: \`<12-symbol>.de.dns.mnebyvpn.site\`, independent entry for verified DE egress.
+- Finland: \`<12-symbol>.fi.mnebyvpn.site\`, independent entry for verified node FI217.
+- Germany: \`<12-symbol>.dns.mnebyvpn.site\`, existing German personal DNS entry; do not rotate or reinterpret legacy bearers.
 
-These are candidate shapes, **not usable client credentials**. Each zone requires an independent wildcard A/AAAA record and CA-verified \`*.fi.dns.mnebyvpn.site\` / \`*.de.dns.mnebyvpn.site\` certificate. The existing \`*.dns.mnebyvpn.site\` certificate does not cover these nested country-specific names. Provision and renew certificates automatically through an approved DNS-01 workflow; do not repurpose or overwrite the live certificate.
+These are candidate shapes, **not usable client credentials**. Each zone requires an independent wildcard A/AAAA record and CA-verified \`*.fi.mnebyvpn.site\` / \`*.dns.mnebyvpn.site\` certificate. Germany retains the existing DNS zone and certificate; Finland requires its own wildcard certificate. Future approved countries use the country code directly under mnebyvpn.site, without an additional dns label. Provision and renew certificates automatically through an approved DNS-01 workflow; do not repurpose or overwrite the live certificate.
 
-\`packages/dns-policy/src/regional-personal-dot-identity.ts\` builds *unpublished* candidate identities and refuses unlisted countries. Its separate domain-separated credential digest binds the country to the bearer label. No current production path imports that file.
+\`packages/dns-policy/src/regional-personal-dot-identity.ts\` builds *unpublished* candidate identities and refuses unlisted countries. FI uses the existing country-separated digest; DE retains the existing legacy digest. No current production path imports that file.
 
 ## Controller / database changes needed before product launch
 
