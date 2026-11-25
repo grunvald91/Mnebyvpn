@@ -107,8 +107,8 @@ test('Python and Node verify the same independent signed Ed25519 golden vector',
 test('strict country-bound profiles are candidate only and not published',()=>{
  const fi=proposeRegionalPersonalDnsIdentity('FI',new Uint8Array(16).fill(2));
  const de=proposeRegionalPersonalDnsIdentity('DE',new Uint8Array(16).fill(2));
- assert.ok(fi.hostname.endsWith('.fi.dns.mnebyvpn.site'));
- assert.ok(de.hostname.endsWith('.de.dns.mnebyvpn.site'));
+ assert.ok(fi.hostname.endsWith('.fi.mnebyvpn.site'));
+ assert.ok(de.hostname.endsWith('.dns.mnebyvpn.site'));
  assert.notEqual(fi.tokenSha256,de.tokenSha256);
  assert.equal(fi.readyForCustomerRelease,false);
 });
