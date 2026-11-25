@@ -6,7 +6,7 @@ const state = {
   loggedIn: false, csrf: '', busy: false, requestId: null, trialOffers: [],
   inviteToken: null, refreshing: false, renewalTargetId: null,
   telegramLoginEnabled:false,emailLoginEnabled:false,emailLinkMode:false,
-  trialStatus:'NONE',trialProduct:'vpn',hasPendingProvisioning:false,lastOrders:[],guestSubscriptionUrl:null,setupLoading:false,
+  trialStatus:'NONE',trialRequestStatus:'NONE',trialProduct:'vpn',hasPendingProvisioning:false,lastOrders:[],guestSubscriptionUrl:null,setupLoading:false,
   purchaseIntent:null,telegramProxyBonusEnabled:false,wsProxyEnabled:false,
   appleDnsProfileEnabled:false,personalDnsEnabled:false,paymentProvider:'yookassa',
 };
@@ -480,7 +480,21 @@ function renderAccess(accesses) {
   list.replaceChildren();
   if(!accesses.length) {
     const empty=node('div','empty');
-    empty.append(node('p','','Пока нет активных подписок. Выберите тариф на главной странице — доступ, профиль Apple / DoT и Telegram-прокси выдадутся автоматически.'));
+    if(['PENDING','WAITING'].includes(state.trialRequestStatus)){
+      empty.append(node('p','','Заявка на бесплатный VPN сохранена. Продолжаем подключение автоматически; когда VPN будет готов, отправим письмо на вашу почту.'));
+      list.append(empty);return;
+    }
+    if(state.trialRequestStatus==='UNKNOWN'){
+      empty.append(node('p','','Не удалось проверить статус бесплатного доступа. Повторим проверку.'));
+    }else{
+      empty.append(node('p','','Пока нет активных подписок.'));
+    }
+    if(state.loggedIn&&state.trialOffers.includes('vpn')&&state.trialRequestStatus!=='SENT'){
+      const retry=node('button','button button-primary','Получить бесплатный VPN на 24 часа');
+      retry.type='button';retry.disabled=state.busy;
+      retry.addEventListener('click',()=>{state.trialProduct='vpn';void claimTrial();});
+      empty.append(retry);
+    }
     const goPlans=node('a','button button-primary','Выбрать тариф');
     goPlans.href='/#plans';
     empty.append(goPlans);
@@ -690,9 +704,10 @@ function renderAccount(payload) {
   byId('auth-link').href='#account';
   text('account-name','Мой аккаунт');
   text('account-subtitle','Защищённый вход · '+(payload.identity?.email||'Telegram'));
+  state.trialRequestStatus=payload.trialRequestStatus||'NONE';
   const accesses=payload.access||[];
   state.lastOrders=payload.orders||[];
-  state.hasPendingProvisioning=accesses.some(a=>a.state==='PAID_PENDING_PROVISIONING');
+  state.hasPendingProvisioning=['PENDING','WAITING'].includes(state.trialRequestStatus)||accesses.some(a=>a.state==='PAID_PENDING_PROVISIONING');
   const active=accesses.filter(a=>a.state==='ACTIVE' && a.secondsRemaining>0);
   text('active-count',active.length);
   const timed=active.filter(a=>a.secondsRemaining!==null).sort((a,b)=>a.secondsRemaining-b.secondsRemaining);
@@ -745,7 +760,7 @@ function renderLoggedOut() {
   // A session that expires or is revoked must not leave stale private data on
   // a shared browser screen. Keep the public catalog and selected product.
   state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;
-  state.hasPendingProvisioning=false;state.lastOrders=[];state.trialProduct='vpn';
+  state.trialRequestStatus='NONE';state.hasPendingProvisioning=false;state.lastOrders=[];state.trialProduct='vpn';
   state.telegramProxyBonusEnabled=false;
   state.wsProxyEnabled=false;
   state.appleDnsProfileEnabled=false;
@@ -1003,6 +1018,12 @@ async function claimTrial(){
     }
     return response.status;
   }catch(error){
+    if(['INVALID_TRIAL_REFERRAL','BROWSER_VERIFICATION_REQUIRED'].includes(error.message)){
+      try{
+        sessionStorage.removeItem('mnebyvpn-pending-trial');
+        sessionStorage.removeItem('mnebyvpn-pending-trial-product');
+      }catch{}
+    }
     toast(error.status===401?'Сессия истекла. Войдите повторно.':
       error.message==='BROWSER_VERIFICATION_REQUIRED'?'Обновите страницу и повторите получение доступа.':
       error.message==='INVALID_TRIAL_REFERRAL'?'Ссылка приглашения недействительна.':
@@ -1281,14 +1302,15 @@ setInterval(()=>{
   const view=document.body?.dataset?.journeyView;
   const fastWait=view==='payment'||(view==='setup'&&state.hasPendingProvisioning);
   pollTick=(pollTick+1)%4;
-  if(fastWait||pollTick===0)refresh();
+  if(fastWait||pollTick===0)void refresh().then(()=>{
+    if(!state.hasPendingProvisioning&&!state.busy)void consumePendingTrial();
+  });
 },3800);
 window.addEventListener('online',()=>{
-  if(!state.plans.length)void loadCatalog();
+  void Promise.all([loadCatalog(),refresh()]).then(consumePendingTrial);
 });
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'){
-    refresh();
-    if(!state.plans.length)void loadCatalog();
+    void Promise.all([refresh(),state.plans.length?Promise.resolve():loadCatalog()]).then(consumePendingTrial);
   }
 });

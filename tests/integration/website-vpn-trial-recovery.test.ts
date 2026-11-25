@@ -4,7 +4,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {Pool} from 'pg';
 import {PgBillingStore} from '../../packages/billing/src/store.ts';
-import {rememberWebsiteVpnTrial,recoverWebsiteVpnTrials} from '../../packages/web/src/website-vpn-trial-recovery.ts';
+import {rememberWebsiteVpnTrial,recoverWebsiteVpnTrials,websiteVpnTrialStatus} from '../../packages/web/src/website-vpn-trial-recovery.ts';
 const pool=new Pool({host:process.env.PGHOST??'localhost',port:Number(process.env.PGPORT??5432),
  user:process.env.PGUSER??'test',password:process.env.PGPASSWORD??'test',
  database:process.env.PGDATABASE??'mnebyvpn_test',max:3});
@@ -14,8 +14,11 @@ test('website trial recovers without browser; mail only after final node ACK, re
  const device=createHash('sha256').update(account).digest('hex');
  await pool.query("UPDATE trial_offers SET enabled=true WHERE product='vpn'");
  await pool.query('INSERT INTO accounts(id,email_address) VALUES($1,$2)',[account,email]);
+ assert.equal(await websiteVpnTrialStatus(pool,account),'NONE');
  await rememberWebsiteVpnTrial(pool,account,device);
  await rememberWebsiteVpnTrial(pool,account,device);
+ assert.equal(await websiteVpnTrialStatus(pool,account),'PENDING');
+ assert.equal(await websiteVpnTrialStatus(pool,randomUUID()),'NONE');
  const store=new PgBillingStore(pool);
  const sent:string[]=[];
  let mailWorks=false;
@@ -26,6 +29,7 @@ test('website trial recovers without browser; mail only after final node ACK, re
  assert.equal(sent.filter(x=>x===email).length,0);
  const r=await pool.query('SELECT order_id,status FROM website_vpn_trial_requests WHERE account_id=$1',[account]);
  assert.equal(r.rows[0].status,'WAITING');
+ assert.equal(await websiteVpnTrialStatus(pool,account),'WAITING');
  const order=r.rows[0].order_id;
  assert.equal((await pool.query('SELECT count(*)::int AS n FROM trial_grants WHERE account_id=$1',[account])).rows[0].n,1);
  const entitlement=(await pool.query("SELECT id FROM entitlements WHERE source_order_id=$1 AND product='vpn'",[order])).rows[0].id;
@@ -41,6 +45,7 @@ test('website trial recovers without browser; mail only after final node ACK, re
  await due();await run();
  assert.equal(sent.filter(x=>x===email).length,2);
  assert.equal((await pool.query('SELECT status FROM website_vpn_trial_requests WHERE account_id=$1',[account])).rows[0].status,'SENT');
+ assert.equal(await websiteVpnTrialStatus(pool,account),'SENT');
  await due();await run();
  assert.equal(sent.filter(x=>x===email).length,2);
 });

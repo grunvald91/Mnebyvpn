@@ -50,7 +50,7 @@ import {
 import {websitePersonalDnsStatus,issueWebsitePersonalDnsProfile}
   from '../../../packages/web/src/personal-dns-apple.ts';
 import {normalizeLoginEmail} from '../../../packages/web/src/email-otp.ts';
-import {rememberWebsiteVpnTrial,recoverWebsiteVpnTrials} from '../../../packages/web/src/website-vpn-trial-recovery.ts';
+import {rememberWebsiteVpnTrial,recoverWebsiteVpnTrials,websiteVpnTrialStatus} from '../../../packages/web/src/website-vpn-trial-recovery.ts';
 import {beginEmailCode,verifyEmailCode} from '../../../packages/web/src/email-auth-service.ts';
 import {isReviewEmail,isReviewAccount,beginReviewCode,verifyReviewCode}
   from '../../../packages/web/src/review-login.ts';
@@ -1324,7 +1324,12 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
   if (!auth) { json(res, 401, { code: 'LOGIN_REQUIRED' }); return; }
   if (req.method === 'GET' && url.pathname === '/api/me') {
     const dashboard = await loadDashboard(authPool, auth.accountId, meteringVerified);
-    json(res,200,{ ...dashboard, telegramProxyBonusEnabled:proxyBonusEnabled||wsProxyEnabled, wsProxyEnabled, appleDnsProfileEnabled, personalDnsEnabled:appleDnsProfileEnabled,
+    let trialRequestStatus:string='NONE';
+    if(trialEnabled&&auth.email){
+      try{trialRequestStatus=await websiteVpnTrialStatus(billingPool,auth.accountId);}
+      catch{trialRequestStatus='UNKNOWN';}
+    }
+    json(res,200,{ ...dashboard, trialRequestStatus, telegramProxyBonusEnabled:proxyBonusEnabled||wsProxyEnabled, wsProxyEnabled, appleDnsProfileEnabled, personalDnsEnabled:appleDnsProfileEnabled,
       fiAwgRegistrationAvailable, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
   }
 
