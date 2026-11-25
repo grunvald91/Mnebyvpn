@@ -987,6 +987,12 @@ async function claimTrial(){
       document.body?.classList?.contains('journey-active')))
       toast(messages[response.status]||'Статус обновлён.');
     if(['GRANTED','PENDING','ALREADY_USED'].includes(response.status))consumeReferral();
+    if(['GRANTED','PENDING','ALREADY_USED','DEVICE_ALREADY_USED'].includes(response.status)){
+      try{
+        sessionStorage.removeItem('mnebyvpn-pending-trial');
+        sessionStorage.removeItem('mnebyvpn-pending-trial-product');
+      }catch{}
+    }
     await refresh();
     if(response.status==='ALREADY_USED')
       byId('account').scrollIntoView({behavior:'smooth'});
@@ -998,7 +1004,9 @@ async function claimTrial(){
     return response.status;
   }catch(error){
     toast(error.status===401?'Сессия истекла. Войдите повторно.':
-      'Не удалось проверить бесплатный доступ. Попробуйте позднее.');
+      error.message==='BROWSER_VERIFICATION_REQUIRED'?'Обновите страницу и повторите получение доступа.':
+      error.message==='INVALID_TRIAL_REFERRAL'?'Ссылка приглашения недействительна.':
+      'Не удалось оформить бесплатный доступ. Попробуйте ещё раз.');
   }finally{state.busy=false;renderPlan();}
 }
 function renderVpnSetup(data){
@@ -1103,8 +1111,17 @@ async function finishEmail(event){
   const button=byId('email-verify-button');
   button.disabled=true;
   try{
+    const verifyPayload={email:pendingEmail,code};
+    try{
+      const raw=sessionStorage.getItem('mnebyvpn-pending-trial');
+      const product=sessionStorage.getItem('mnebyvpn-pending-trial-product');
+      if((raw==='1'||raw==='vpn')&&product!=='smart_dns'){
+        verifyPayload.trial='vpn';
+        if(state.inviteToken)verifyPayload.trialInviteToken=state.inviteToken;
+      }
+    }catch{}
     await api('/api/auth/email/verify',{method:'POST',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({email:pendingEmail,code})});
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(verifyPayload)});
     pendingEmail=null;pendingReviewCode=false;state.emailLinkMode=false;
     byId('email-verify-form').classList.add('hidden');
     await refresh();
@@ -1132,6 +1149,10 @@ async function logout() {
     await api('/api/logout',{method:'POST',
       headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
       body:'{}'});
+    try{
+      sessionStorage.removeItem('mnebyvpn-pending-trial');
+      sessionStorage.removeItem('mnebyvpn-pending-trial-product');
+    }catch{}
     location.assign('/');
   } catch {toast('Не удалось выйти. Попробуйте ещё раз.');}
 }
@@ -1245,8 +1266,6 @@ async function consumePendingTrial(){
       const prod=sessionStorage.getItem('mnebyvpn-pending-trial-product');
       if(raw==='1'||raw==='vpn'||raw==='smart_dns')
         pending=(prod==='smart_dns'||raw==='smart_dns')?'smart_dns':'vpn';
-      sessionStorage.removeItem('mnebyvpn-pending-trial');
-      sessionStorage.removeItem('mnebyvpn-pending-trial-product');
     }catch{}
     if(pending&&state.trialOffers.includes(pending)){
       state.trialProduct=pending;
