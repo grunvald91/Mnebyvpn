@@ -136,6 +136,7 @@ function renderPlan() {
   const trial=byId('trial-button');
   const trialAvailable=(state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'))&&state.loginEnabled;
   trial.disabled=!trialAvailable||state.busy;
+  syncCabinetTrialButton();
   trial.textContent=state.busy?'Проверяем заявку…':
     !state.loginEnabled?'Бесплатный доступ временно недоступен':
     trialAvailable?(state.loggedIn?'🎁 Получить 24 часа VPN бесплатно':'Войти и получить 24 часа VPN бесплатно'):
@@ -475,6 +476,13 @@ async function loadTelegramProxyBonus(entitlementId, button, item) {
   }finally{if(button)button.disabled=false;}
 }
 
+function syncCabinetTrialButton(){
+  const retry=byId('cabinet-trial-retry');
+  if(!retry)return;
+  retry.hidden=!state.loggedIn||!state.trialOffers.includes('vpn')||
+    ['PENDING','WAITING','SENT'].includes(state.trialRequestStatus);
+  retry.disabled=state.busy||retry.hidden;
+}
 function renderAccess(accesses) {
   const list=byId('access-list');
   list.replaceChildren();
@@ -489,16 +497,15 @@ function renderAccess(accesses) {
     }else{
       empty.append(node('p','','Пока нет активных подписок.'));
     }
-    if(state.loggedIn&&state.trialOffers.includes('vpn')&&state.trialRequestStatus!=='SENT'){
-      const retry=node('button','button button-primary','Получить бесплатный VPN на 24 часа');
-      retry.type='button';retry.disabled=state.busy;
-      retry.addEventListener('click',()=>{state.trialProduct='vpn';void claimTrial();});
-      empty.append(retry);
-    }
+    const retry=node('button','button button-primary','Получить бесплатный VPN на 24 часа');
+    retry.type='button';retry.id='cabinet-trial-retry';
+    retry.addEventListener('click',()=>{state.trialProduct='vpn';void claimTrial();});
+    empty.append(retry);
     const goPlans=node('a','button button-primary','Выбрать тариф');
     goPlans.href='/#plans';
     empty.append(goPlans);
     list.append(empty);
+    syncCabinetTrialButton();
     return;
   }
   for(const a of accesses) {
