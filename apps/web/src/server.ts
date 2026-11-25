@@ -1462,7 +1462,14 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     try{
       if(body.product==='vpn'&&auth.email&&emailLoginEnabled&&
          !await isReviewAccount(authPool,auth.accountId)){
-        queued=await rememberWebsiteVpnTrial(billingPool,auth.accountId,deviceHash,body.inviteToken as string|undefined);
+        try{
+          queued=await rememberWebsiteVpnTrial(billingPool,auth.accountId,deviceHash,body.inviteToken as string|undefined);
+        }catch(error){
+          const code=(error as {code?:unknown})?.code;
+          console.error(typeof code==='string'&&/^[0-9A-Z]{5}$/.test(code)
+            ?'MNEBYVPN_WEB_TRIAL_QUEUE_SQLSTATE_'+code:'MNEBYVPN_WEB_TRIAL_QUEUE_ERROR');
+          // Queue failures must not prevent the existing direct grant.
+        }
       }
       const result=await store.grantTrial(auth.accountId,
         body.product as 'vpn'|'smart_dns'|'bundle',body.inviteToken as string|undefined,deviceHash);
