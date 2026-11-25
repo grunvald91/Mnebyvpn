@@ -82,3 +82,10 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
     }
   }
 }
+
+/** Account-scoped public state only; no internal error codes or device hash. */
+export async function websiteVpnTrialStatus(pool:Pool,accountId:string):Promise<'NONE'|'PENDING'|'WAITING'|'SENT'|'REJECTED'>{
+  const r=await pool.query('SELECT status FROM website_vpn_trial_requests WHERE account_id=$1',[accountId]);
+  const status=r.rows[0]?.status;
+  return status==='PENDING'||status==='WAITING'||status==='SENT'||status==='REJECTED'?status:'NONE';
+}

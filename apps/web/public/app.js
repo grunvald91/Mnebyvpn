@@ -6,7 +6,7 @@ const state = {
   loggedIn: false, csrf: '', busy: false, requestId: null, trialOffers: [],
   inviteToken: null, refreshing: false, renewalTargetId: null,
   telegramLoginEnabled:false,emailLoginEnabled:false,emailLinkMode:false,
-  trialStatus:'NONE',trialProduct:'vpn',hasPendingProvisioning:false,lastOrders:[],guestSubscriptionUrl:null,setupLoading:false,
+  trialStatus:'NONE',trialRequestStatus:'NONE',activeTrialProducts:[],trialProduct:'vpn',hasPendingProvisioning:false,lastOrders:[],guestSubscriptionUrl:null,setupLoading:false,
   purchaseIntent:null,telegramProxyBonusEnabled:false,wsProxyEnabled:false,
   appleDnsProfileEnabled:false,personalDnsEnabled:false,paymentProvider:'yookassa',
 };
@@ -480,7 +480,21 @@ function renderAccess(accesses) {
   list.replaceChildren();
   if(!accesses.length) {
     const empty=node('div','empty');
-    empty.append(node('p','','Пока нет активных подписок. Выберите тариф на главной странице — доступ, профиль Apple / DoT и Telegram-прокси выдадутся автоматически.'));
+    if(['PENDING','WAITING'].includes(state.trialRequestStatus)){
+      empty.append(node('p','','Заявка на бесплатный VPN сохранена. Продолжаем подключение автоматически; когда VPN будет готов, отправим письмо на вашу почту.'));
+      list.append(empty);return;
+    }
+    if(state.trialRequestStatus==='UNKNOWN'){
+      empty.append(node('p','','Не удалось проверить статус бесплатного доступа. Повторим проверку.'));
+    }else{
+      empty.append(node('p','','Пока нет активных подписок.'));
+    }
+    if(state.loggedIn&&state.trialOffers.includes('vpn')&&state.trialRequestStatus!=='SENT'){
+      const retry=node('button','button button-primary','Получить бесплатный VPN на 24 часа');
+      retry.type='button';retry.disabled=state.busy;
+      retry.addEventListener('click',()=>{state.trialProduct='vpn';void claimTrial();});
+      empty.append(retry);
+    }
     const goPlans=node('a','button button-primary','Выбрать тариф');
     goPlans.href='/#plans';
     empty.append(goPlans);
@@ -690,10 +704,12 @@ function renderAccount(payload) {
   byId('auth-link').href='#account';
   text('account-name','Мой аккаунт');
   text('account-subtitle','Защищённый вход · '+(payload.identity?.email||'Telegram'));
+  state.trialRequestStatus=payload.trialRequestStatus||'NONE';
   const accesses=payload.access||[];
   state.lastOrders=payload.orders||[];
-  state.hasPendingProvisioning=accesses.some(a=>a.state==='PAID_PENDING_PROVISIONING');
+  state.hasPendingProvisioning=['PENDING','WAITING'].includes(state.trialRequestStatus)||accesses.some(a=>a.state==='PAID_PENDING_PROVISIONING');
   const active=accesses.filter(a=>a.state==='ACTIVE' && a.secondsRemaining>0);
+  state.activeTrialProducts=active.filter(a=>state.lastOrders.some(o=>o.id===a.sourceOrderId&&o.state==='TRIAL')).map(a=>a.product);
   text('active-count',active.length);
   const timed=active.filter(a=>a.secondsRemaining!==null).sort((a,b)=>a.secondsRemaining-b.secondsRemaining);
   text('days-left',timed.length?remaining(timed[0].secondsRemaining):'—');
@@ -745,7 +761,7 @@ function renderLoggedOut() {
   // A session that expires or is revoked must not leave stale private data on
   // a shared browser screen. Keep the public catalog and selected product.
   state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;
-  state.hasPendingProvisioning=false;state.lastOrders=[];state.trialProduct='vpn';
+  state.trialRequestStatus='NONE';state.activeTrialProducts=[];state.hasPendingProvisioning=false;state.lastOrders=[];state.trialProduct='vpn';
   state.telegramProxyBonusEnabled=false;
   state.wsProxyEnabled=false;
   state.appleDnsProfileEnabled=false;
@@ -765,8 +781,13 @@ function renderLoggedOut() {
   byId('orders-list').replaceChildren();
   renderPlan();
 }
-async function refresh() {
-  if(state.refreshing)return;
+let refreshInFlight=null;
+function refresh() {
+  if(refreshInFlight)return refreshInFlight;
+  refreshInFlight=refreshOnce().finally(()=>{refreshInFlight=null;});
+  return refreshInFlight;
+}
+async function refreshOnce() {
   state.refreshing=true;
   try {
     const data=await api('/api/me');
@@ -983,7 +1004,7 @@ async function claimTrial(){
     };
     // Successful requests already have a persistent setup status. Avoid
     // covering "Я установил приложение" and the import action with a toast.
-    if(!(['GRANTED','PENDING'].includes(response.status) &&
+    if(response.status!=='ALREADY_USED'&&!(['GRANTED','PENDING'].includes(response.status) &&
       document.body?.classList?.contains('journey-active')))
       toast(messages[response.status]||'Статус обновлён.');
     if(['GRANTED','PENDING','ALREADY_USED'].includes(response.status))consumeReferral();
@@ -994,15 +1015,23 @@ async function claimTrial(){
       }catch{}
     }
     await refresh();
-    if(response.status==='ALREADY_USED')
+    const alreadyActive=response.status==='ALREADY_USED'&&state.activeTrialProducts.includes(trialProduct);
+    if(response.status==='ALREADY_USED'&&!alreadyActive){
+      toast(messages.ALREADY_USED);
       byId('account').scrollIntoView({behavior:'smooth'});
-    else if(['GRANTED','PENDING'].includes(response.status)) {
+    }else if(alreadyActive||['GRANTED','PENDING'].includes(response.status)) {
       if(typeof window!=='undefined'&&window.MnebyvpnJourney)
         window.MnebyvpnJourney.show('setup',true);
       else byId('guest-trial-card').scrollIntoView({behavior:'smooth',block:'center'});
     }
-    return response.status;
+    return alreadyActive?'GRANTED':response.status;
   }catch(error){
+    if(['INVALID_TRIAL_REFERRAL','BROWSER_VERIFICATION_REQUIRED'].includes(error.message)){
+      try{
+        sessionStorage.removeItem('mnebyvpn-pending-trial');
+        sessionStorage.removeItem('mnebyvpn-pending-trial-product');
+      }catch{}
+    }
     toast(error.status===401?'Сессия истекла. Войдите повторно.':
       error.message==='BROWSER_VERIFICATION_REQUIRED'?'Обновите страницу и повторите получение доступа.':
       error.message==='INVALID_TRIAL_REFERRAL'?'Ссылка приглашения недействительна.':
@@ -1124,6 +1153,8 @@ async function finishEmail(event){
       headers:{'Content-Type':'application/json'},body:JSON.stringify(verifyPayload)});
     pendingEmail=null;pendingReviewCode=false;state.emailLinkMode=false;
     byId('email-verify-form').classList.add('hidden');
+    // A poll started before the session cookie was issued may be stale.
+    if(refreshInFlight)await refreshInFlight;
     await refresh();
     await consumePendingTrial();
     // The trial sign-in screen shares this exact OTP flow with the cabinet.
@@ -1281,14 +1312,13 @@ setInterval(()=>{
   const view=document.body?.dataset?.journeyView;
   const fastWait=view==='payment'||(view==='setup'&&state.hasPendingProvisioning);
   pollTick=(pollTick+1)%4;
-  if(fastWait||pollTick===0)refresh();
+  if(fastWait||pollTick===0)void refresh();
 },3800);
 window.addEventListener('online',()=>{
-  if(!state.plans.length)void loadCatalog();
+  void Promise.all([loadCatalog(),refresh()]).then(consumePendingTrial);
 });
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'){
-    refresh();
-    if(!state.plans.length)void loadCatalog();
+    void Promise.all([refresh(),state.plans.length?Promise.resolve():loadCatalog()]).then(consumePendingTrial);
   }
 });
