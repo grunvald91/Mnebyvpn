@@ -17,16 +17,16 @@ export type RegionalDnsCandidate={
   countryCode:RegionalDnsCountry;
   label:string;
   hostname:string;
-  /** Domain-separated credential digest; always verify country AND node. */
+  /** FI country-separated digest; DE retains legacy digest for compatibility. */
   tokenSha256:string;
   readyForCustomerRelease:false;
 };
 const COUNTRY_ZONE:Readonly<Record<RegionalDnsCountry,string>>=Object.freeze({
-  FI:'fi.dns.mnebyvpn.site',
-  DE:'de.dns.mnebyvpn.site',
+  FI:'fi.mnebyvpn.site',
+  DE:'dns.mnebyvpn.site',
 });
 const LABEL=/^[a-z0-9]{12}$/;
-const HOST=/^([a-z0-9]{12})\.(fi|de)\.dns\.mnebyvpn\.site$/;
+const HOST=/^([a-z0-9]{12})\.(fi|dns)\.mnebyvpn\.site$/;
 
 function approvedCountry(value:unknown):RegionalDnsCountry {
   if(value!=='FI'&&value!=='DE')throw Error('Unsupported regional DNS country');
@@ -47,14 +47,14 @@ export function proposeRegionalPersonalDnsIdentity(
   const hostname=identity.label+'.'+COUNTRY_ZONE[code];
   return {
     countryCode:code,label:identity.label,hostname,
-    tokenSha256:createHash('sha256')
+    tokenSha256:code==='DE'?identity.tokenSha256:createHash('sha256')
       .update('MNEBYVPN_COUNTRY_DNS_V1\0'+code+'\0'+identity.label,'ascii')
       .digest('hex'),
     readyForCustomerRelease:false,
   };
 }
 
-/** Exact match only; rejects legacy, cross-country, wildcard and URL forms. */
+/** Exact match only; Germany retains the legacy DNS zone and digest. */
 export function parseRegionalPersonalDnsHostname(value:unknown):
     {countryCode:RegionalDnsCountry;label:string}|null{
   if(typeof value!=='string'||value!==value.trim()||value.includes(':')||
