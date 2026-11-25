@@ -109,7 +109,7 @@ test('historical verified email cohort gets one real trial and mail only after f
  const c=await pool.connect();
  try{
   await c.query("UPDATE trial_offers SET enabled=true WHERE product='vpn'");
-  await c.query("INSERT INTO accounts(id,email_address,created_at) VALUES($1,$2,'2026-11-24T00:00:00Z'),($3,$4,'2026-11-26T00:00:00Z'),($5,$6,'2026-11-24T00:00:00Z'),($7,NULL,'2026-11-24T00:00:00Z')",
+  await c.query("INSERT INTO accounts(id,email_address,created_at) VALUES($1,$2,'2026-11-24T00:00:00Z'),($3,$4,clock_timestamp()+interval '1 day'),($5,$6,'2026-11-24T00:00:00Z'),($7,NULL,'2026-11-24T00:00:00Z')",
     [account,email,recent,'recent-'+recent.slice(0,8)+'@example.org',already,'used-'+already.slice(0,8)+'@example.org',unverified]);
   const store=new PgBillingStore(pool);
   assert.equal((await store.grantTrial(already,'vpn')).status,'GRANTED');
