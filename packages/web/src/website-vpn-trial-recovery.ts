@@ -5,7 +5,11 @@ import {deliverVpnTrialReadyEmail,normalizeLoginEmail} from './email-otp.ts';
 /** Only call for an explicitly requesting, successfully authenticated email account. */
 export async function rememberWebsiteVpnTrial(pool:Pool,accountId:string,deviceHash:string,inviteToken?:string):Promise<boolean>{
   await pool.query(`INSERT INTO website_vpn_trial_requests(account_id,device_hash,invite_token)
-    VALUES($1,$2,$3) ON CONFLICT(account_id) DO NOTHING`,[accountId,deviceHash,inviteToken??null]);
+    VALUES($1,$2,$3) ON CONFLICT(account_id) DO UPDATE
+    SET status='PENDING',device_hash=EXCLUDED.device_hash,invite_token=EXCLUDED.invite_token,
+      next_attempt_at=clock_timestamp(),locked_until=NULL,last_error_code=NULL
+    WHERE website_vpn_trial_requests.status='REJECTED'
+      AND website_vpn_trial_requests.order_id IS NULL`,[accountId,deviceHash,inviteToken??null]);
   const status=await pool.query('SELECT status FROM website_vpn_trial_requests WHERE account_id=$1',[accountId]);
   return ['PENDING','WAITING'].includes(status.rows[0]?.status);
 }
