@@ -50,6 +50,7 @@ import {
 import {websitePersonalDnsStatus,issueWebsitePersonalDnsProfile}
   from '../../../packages/web/src/personal-dns-apple.ts';
 import {normalizeLoginEmail} from '../../../packages/web/src/email-otp.ts';
+import {sendLegacyTrialInvite,validTrialInviteSignature} from '../../../packages/web/src/legacy-trial-invite.ts';
 import {rememberWebsiteVpnTrial,recoverWebsiteVpnTrials,websiteVpnTrialStatus} from '../../../packages/web/src/website-vpn-trial-recovery.ts';
 import {beginEmailCode,verifyEmailCode} from '../../../packages/web/src/email-auth-service.ts';
 import {isReviewEmail,isReviewAccount,beginReviewCode,verifyReviewCode}
@@ -1110,6 +1111,26 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       "ORDER BY created_at ASC, id ASC LIMIT 2 OFFSET $1",[offset]);
     res.setHeader('Cache-Control','no-store');
     json(res,200,{ticket:result.rows[0]??null,hasNext:result.rows.length>1});return;
+  }
+  if(req.method==='POST'&&url.pathname==='/api/support/operator-trial-invite'){
+    res.setHeader('Cache-Control','no-store');
+    if(!support||!supportAuthKey||!trialEnabled||!emailLoginEnabled){
+      json(res,503,{code:'TRIAL_INVITE_NOT_CONFIGURED'});return;
+    }
+    if(!req.headers['content-type']?.startsWith('application/json')){
+      json(res,415,{code:'UNSUPPORTED_MEDIA_TYPE'});return;
+    }
+    const body=await bodyJson(req),email=normalizeLoginEmail(body.email);
+    if(!email||body.operator!==support.operatorId||
+      !validTrialInviteSignature(supportAuthKey,req.headers['x-mnebyvpn-support-ts'],
+        req.headers['x-mnebyvpn-support-signature'],support.operatorId,email)){
+      json(res,403,{code:'FORBIDDEN'});return;
+    }
+    try{
+      const status=await sendLegacyTrialInvite(billingPool,email,mailGatewaySecret);
+      json(res,200,{status});
+    }catch{json(res,503,{code:'TRIAL_INVITE_FAILED'});}
+    return;
   }
   if(req.method==='POST'&&url.pathname==='/api/support/operator-reply'){
     if(!support||!supportAuthKey){json(res,503,{code:'SUPPORT_NOT_CONFIGURED'});return;}

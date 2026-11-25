@@ -234,6 +234,7 @@ jobs:
           test "$PGDATABASE" = mnebyvpn_test
           psql -v ON_ERROR_STOP=1 -f db/migrations/0152_fi_dns_snapshot_source.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/migrations/0153_website_vpn_trial_recovery.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0154_website_trial_recovery_invites.sql >/dev/null
           node --experimental-strip-types --test tests/ci/fi-dns-snapshot-publisher-pg.test.ts
       - name: Checkout exact reviewed FI node code for cross-repository E2E
         uses: actions/checkout@v4

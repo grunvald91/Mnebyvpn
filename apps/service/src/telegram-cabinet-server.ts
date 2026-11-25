@@ -78,6 +78,7 @@ const supportWebsiteReady=Number.isSafeInteger(supportWebsitePort)&&
 const supportRate=supportLimiter(3,15*60_000);
 const supportGlobalRate=supportLimiter(120,60_000);
 const deliveredUpdates=new Set<number>();
+const TRIAL_INVITE_PROMPT='Восстановление пробного VPN — ответьте email клиента, который уже подтвердил почту и сообщил о сбое выдачи. Будет отправлено одно приглашение без создания подписки.';
 const supportPrompt='✉️ MNEBYVPN — напишите вопрос в поддержку. Ответьте на это сообщение обычным текстом (10–1500 символов). Ответ оператора придёт сюда. Не отправляйте пароли и ссылки подписок.';
 type Button={text:string;callback_data?:string;url?:string;copy_text?:{text:string}};
 const homeButton:Button={text:'🏠 Главное',callback_data:'nav:home'};
@@ -103,6 +104,7 @@ const main=(id:number)=>msg(
      ...(offlineSalesEnabled&&id===dnsAdminId ? [[{text:'💼 Личные продажи',callback_data:'offsale:menu'}]] : []),
     [{text:support?.operatorId===id?'📥 Входящие заявки':'✉️ Поддержка',
       callback_data:support?.operatorId===id?'support:page:0':'nav:support'}],
+    ...(support?.operatorId===id ? [[{text:'✉️ Восстановить пробный VPN',callback_data:'support:trial-invite'}]] : []),
     [siteButton],
   ]);
 const dbUnavailable=()=>msg('⚠️ Система подписок временно недоступна. Данные не изменены. Попробуйте снова.',
@@ -597,6 +599,32 @@ async function handleOperatorReply(update:any){
   const m=update.message;
   if(!support||!m||m.chat?.type!=='private'||
      m.chat?.id!==support.operatorId||m.from?.id!==support.operatorId)return null;
+  if(m.reply_to_message?.from?.is_bot===true&&m.reply_to_message.text===TRIAL_INVITE_PROMPT){
+    const email=typeof m.text==='string'?m.text.trim().toLowerCase():'';
+    const answer=(text:string)=>({method:'sendMessage',chat_id:support.operatorId,text});
+    if(!email||email.length>254||!/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(email))
+      return answer('Укажите один корректный email.');
+    if(!supportAuthKey||!supportWebsiteReady)return answer('Канал восстановления недоступен.');
+    const stamp=String(Math.floor(Date.now()/1000));
+    const signature=createHmac('sha256',supportAuthKey)
+      .update('MNEBYVPN-trial-invite-v1\n'+stamp+'\n'+support.operatorId+'\n'+email).digest('hex');
+    try{
+      const r=await fetch('http://127.0.0.1:'+supportWebsitePort+'/api/support/operator-trial-invite',{
+        method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),
+        headers:{'Content-Type':'application/json','X-MNEBYVPN-Support-Ts':stamp,
+          'X-MNEBYVPN-Support-Signature':signature},
+        body:JSON.stringify({email,operator:support.operatorId}),
+      });
+      if(r.ok){
+        const result=await r.json() as {status?:string};
+        if(result.status==='SENT')return answer('✅ Почтовый шлюз подтвердил отправку приглашения.');
+        if(result.status==='ALREADY_SENT')return answer('Приглашение уже отправлено.');
+        if(result.status==='NOT_ELIGIBLE')return answer('Не найден подходящий аккаунт без заказов или пробного доступа.');
+        if(result.status==='IN_PROGRESS')return answer('Предыдущая отправка не завершена однозначно. Повторное письмо заблокировано.');
+      }
+    }catch{}
+    return answer('Отправку подтвердить не удалось. Не создавайте повторную заявку до проверки.');
+  }
   const parsed=operatorReplyTarget(m,support.operatorId);
   if(!parsed){
     // Website visitors did not necessarily open the Telegram bot. A Telegram
@@ -844,6 +872,8 @@ async function processUpdate(update:any){
     if(dnsTextCommand)return oneAction(actor,dnsAdminIntro());
   }
   if(operator){
+    if(actor.data==='support:trial-invite')return {method:'sendMessage',chat_id:actor.id,
+      text:TRIAL_INVITE_PROMPT,reply_markup:{force_reply:true,input_field_placeholder:'Email клиента'}};
     const page=/^support:page:(0|[1-9][0-9]{0,2})$/.exec(actor.data??'');
     if(page)return operatorSupportInbox(actor,Number(page[1]));
     // Older inbox cards are upgraded to the new button-based page.
