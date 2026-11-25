@@ -1,6 +1,7 @@
 import test,{after} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
 import {Pool} from 'pg';
 import {PgBillingStore} from '../../packages/billing/src/store.ts';
 import {rememberWebsiteVpnTrial,recoverWebsiteVpnTrials} from '../../packages/web/src/website-vpn-trial-recovery.ts';
@@ -42,4 +43,54 @@ test('website trial recovers without browser; mail only after final node ACK, re
  assert.equal((await pool.query('SELECT status FROM website_vpn_trial_requests WHERE account_id=$1',[account])).rows[0].status,'SENT');
  await due();await run();
  assert.equal(sent.filter(x=>x===email).length,2);
+});
+
+test('website billing role can create and recover an authenticated trial without unrestricted account writes',async()=>{
+ const client=await pool.connect();
+ let roleCreated=false;
+ const account=randomUUID(),email='role-trial-'+account.slice(0,8)+'@example.org';
+ const device=createHash('sha256').update(account).digest('hex');
+ try{
+  // The integration workflow uses only disposable PostgreSQL. Never alter
+  // or reuse an existing role from an external database.
+  assert.equal(process.env.PGDATABASE??'mnebyvpn_test','mnebyvpn_test');
+  const existing=await client.query("SELECT 1 FROM pg_roles WHERE rolname='mnebyvpn_site_pay'");
+  assert.equal(existing.rowCount,0);
+  await client.query('CREATE ROLE mnebyvpn_site_pay NOLOGIN');
+  roleCreated=true;
+  // Mirror the relevant existing infra site-pay grants. The migration must
+  // supply the trial-specific permissions missing from this baseline.
+  await client.query(`GRANT USAGE ON SCHEMA public TO mnebyvpn_site_pay;
+    GRANT SELECT ON accounts,billing_plans,trial_offers,referral_invites,provisioning_state TO mnebyvpn_site_pay;
+    GRANT UPDATE(created_at) ON accounts TO mnebyvpn_site_pay;
+    GRANT UPDATE(title) ON billing_plans TO mnebyvpn_site_pay;
+    GRANT SELECT,INSERT ON orders,reconcile_outbox TO mnebyvpn_site_pay;
+    GRANT UPDATE(state) ON orders TO mnebyvpn_site_pay;
+    GRANT SELECT,INSERT,UPDATE ON entitlements TO mnebyvpn_site_pay;
+    GRANT SELECT ON trial_grants TO mnebyvpn_site_pay;`);
+  const migration=await readFile(new URL('../../db/migrations/0153_website_vpn_trial_recovery.sql',import.meta.url),'utf8');
+  const grants=migration.slice(migration.indexOf('DO $$'),migration.lastIndexOf('COMMIT;'));
+  assert.ok(grants.startsWith('DO $$'));
+  await client.query(grants);
+  await client.query("UPDATE trial_offers SET enabled=true WHERE product='vpn'");
+  await client.query('INSERT INTO accounts(id,email_address) VALUES($1,$2)',[account,email]);
+  await client.query('SET ROLE mnebyvpn_site_pay');
+  const scoped={query:client.query.bind(client),
+    connect:async()=>({query:client.query.bind(client),release:()=>{}})} as unknown as Pool;
+  assert.equal(await rememberWebsiteVpnTrial(scoped,account,device),true);
+  const result=await new PgBillingStore(scoped).grantTrial(account,'vpn',undefined,device);
+  assert.equal(result.status,'GRANTED');
+  assert.equal((await client.query("SELECT has_column_privilege('accounts','email_address','UPDATE') AS allowed")).rows[0].allowed,false);
+  await recoverWebsiteVpnTrials(scoped,new PgBillingStore(scoped),'test-only-secret',async()=>{throw Error('Must not send before ACK');});
+  const request=await client.query('SELECT status,order_id FROM website_vpn_trial_requests WHERE account_id=$1',[account]);
+  assert.equal(request.rows[0].status,'WAITING');
+  assert.equal(request.rows[0].order_id,result.orderId);
+ }finally{
+  await client.query('RESET ROLE');
+  if(roleCreated){
+    await client.query('DROP OWNED BY mnebyvpn_site_pay');
+    await client.query('DROP ROLE mnebyvpn_site_pay');
+  }
+  client.release();
+ }
 });
