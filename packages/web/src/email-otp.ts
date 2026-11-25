@@ -40,3 +40,19 @@ export async function deliverEmailOtp(
     return response.status===200;
   }catch{return false;}
 }
+
+/** Fixed-template notice, authenticated by the existing isolated gateway. */
+export async function deliverVpnTrialReadyEmail(email:string,expiresAt:Date,secret:string,fetcher:typeof fetch=fetch):Promise<boolean>{
+  if(secret.length<32||normalizeLoginEmail(email)!==email||
+     !Number.isFinite(expiresAt.getTime())||expiresAt.getTime()<=Date.now())return false;
+  const timestamp=String(Math.floor(Date.now()/1000));
+  const nonce=randomBytes(24).toString('base64url');
+  const payload=JSON.stringify({email,kind:'vpn_trial_ready',expiresAt:expiresAt.toISOString()});
+  const signature=createHmac('sha256',secret).update(timestamp+'.'+nonce+'.'+payload).digest('hex');
+  try{
+    const response=await fetcher(ENDPOINT,{method:'POST',redirect:'error',signal:AbortSignal.timeout(9000),
+      headers:{'Content-Type':'application/json','X-Mnebyvpn-Timestamp':timestamp,
+        'X-Mnebyvpn-Nonce':nonce,'X-Mnebyvpn-Signature':signature},body:payload});
+    return response.status===200;
+  }catch{return false;}
+}

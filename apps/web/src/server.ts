@@ -50,6 +50,7 @@ import {
 import {websitePersonalDnsStatus,issueWebsitePersonalDnsProfile}
   from '../../../packages/web/src/personal-dns-apple.ts';
 import {normalizeLoginEmail} from '../../../packages/web/src/email-otp.ts';
+import {rememberWebsiteVpnTrial,recoverWebsiteVpnTrials} from '../../../packages/web/src/website-vpn-trial-recovery.ts';
 import {beginEmailCode,verifyEmailCode} from '../../../packages/web/src/email-auth-service.ts';
 import {isReviewEmail,isReviewAccount,beginReviewCode,verifyReviewCode}
   from '../../../packages/web/src/review-login.ts';
@@ -572,6 +573,26 @@ async function emailVerify(req:IncomingMessage,res:ServerResponse):Promise<void>
       code:result.status==='CONFLICT'?'EMAIL_ALREADY_LINKED':
         result.status==='RATE_LIMIT'?'EMAIL_RATE_LIMIT':'INVALID_OR_EXPIRED_CODE',
     });return;
+  }
+  // Persist explicit trial intent after OTP verification, before the browser
+  // can disconnect. Ordinary sign-ins and reviewer logins never enqueue.
+  if(trialEnabled&&!review&&body.trial==='vpn'){
+    const invite=body.trialInviteToken;
+    if(invite===undefined||(typeof invite==='string'&&/^[A-Za-z0-9_-]{16,24}$/.test(invite))){
+      let device=cookie(req,deviceCookie);
+      if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device)){
+        device=randomBytes(32).toString('base64url');
+        setCookie(res,deviceCookie,device,365*24*60*60);
+      }
+      try{
+        await rememberWebsiteVpnTrial(billingPool,result.accountId,
+          createHash('sha256').update('trial-device-v1:').update(device).digest('hex'),invite as string|undefined);
+      }catch(error){
+        const code=(error as {code?:unknown})?.code;
+        console.error(typeof code==='string'&&/^[0-9A-Z]{5}$/.test(code)
+          ?'MNEBYVPN_WEB_TRIAL_QUEUE_SQLSTATE_'+code:'MNEBYVPN_WEB_TRIAL_QUEUE_ERROR');
+      }
+    }
   }
   const token=issueAccountSession(result.accountId,sessionSecret);
   await authPool.query(
@@ -1436,10 +1457,26 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device)){
       json(res,403,{code:'BROWSER_VERIFICATION_REQUIRED'});return;
     }
-    const result = await store.grantTrial(auth.accountId,
-      body.product as 'vpn'|'smart_dns'|'bundle',body.inviteToken as string|undefined,
-      createHash('sha256').update('trial-device-v1:').update(device).digest('hex'));
-    json(res,200,{status:result.status,expiresAt:result.expiresAt?.toISOString()??null});
+    const deviceHash=createHash('sha256').update('trial-device-v1:').update(device).digest('hex');
+    let queued=false;
+    try{
+      if(body.product==='vpn'&&auth.email&&emailLoginEnabled&&
+         !await isReviewAccount(authPool,auth.accountId)){
+        queued=await rememberWebsiteVpnTrial(billingPool,auth.accountId,deviceHash,body.inviteToken as string|undefined);
+      }
+      const result=await store.grantTrial(auth.accountId,
+        body.product as 'vpn'|'smart_dns'|'bundle',body.inviteToken as string|undefined,deviceHash);
+      json(res,200,{status:result.status,expiresAt:result.expiresAt?.toISOString()??null});
+    }catch(error){
+      const code=(error as {code?:unknown})?.code;
+      console.error(typeof code==='string'&&/^[0-9A-Z]{5}$/.test(code)
+        ?'MNEBYVPN_WEB_TRIAL_SQLSTATE_'+code:'MNEBYVPN_WEB_TRIAL_SERVICE_ERROR');
+      if(error instanceof Error&&error.message==='Invalid or self-owned trial referral'){
+        json(res,400,{code:'INVALID_TRIAL_REFERRAL'});return;
+      }
+      if(queued){json(res,202,{status:'PENDING',expiresAt:null});return;}
+      json(res,503,{code:'TRIAL_SERVICE_UNAVAILABLE'});
+    }
     return;
   }
   if((req.method==='POST'&&url.pathname==='/api/awg/fi/device')||
@@ -1635,6 +1672,16 @@ if(support?.botToken){
       supportFlushBusy=false;
     });
   },30_000).unref();
+}
+if(!offline&&trialEnabled&&emailLoginEnabled){
+  let trialRecoveryBusy=false;
+  setInterval(()=>{
+    if(trialRecoveryBusy)return;
+    trialRecoveryBusy=true;
+    void recoverWebsiteVpnTrials(billingPool,store,mailGatewaySecret)
+      .catch(()=>console.error('MNEBYVPN_WEB_TRIAL_RECOVERY_LOOP_ERROR'))
+      .finally(()=>{trialRecoveryBusy=false;});
+  },5000).unref();
 }
 const server = createServer((req,res) => {
   handle(req,res).catch(() => json(res,503,{code:'SERVICE_UNAVAILABLE'}));
