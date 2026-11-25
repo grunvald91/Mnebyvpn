@@ -1,5 +1,5 @@
 -- One-time remediation of missed free VPN access for existing verified email accounts.
--- Cutoff: the previously deployed final recovery UI, 25 Nov 2026 20:47:34 UTC.
+-- Snapshot all accounts existing when this one-time migration starts.
 -- A verified account is the canonical result of successful email OTP verification.
 -- Never infer verification from an unconsumed OTP row, never invent a device hash.
 BEGIN;
@@ -17,7 +17,7 @@ INSERT INTO website_vpn_trial_requests(account_id,device_hash,request_source)
 SELECT a.id,NULL,'LEGACY_EMAIL'
 FROM accounts a
 WHERE a.email_address IS NOT NULL
- AND a.created_at <= TIMESTAMPTZ '2026-11-25 20:47:34+00'
+ AND a.created_at <= transaction_timestamp()
  AND NOT EXISTS(SELECT 1 FROM web_review_login r WHERE r.account_id=a.id OR r.email=a.email_address)
  AND NOT EXISTS(SELECT 1 FROM trial_grants t WHERE t.account_id=a.id)
  AND NOT EXISTS(SELECT 1 FROM entitlements e WHERE e.account_id=a.id)
