@@ -4,21 +4,24 @@
  */
 import type {Pool} from 'pg';
 import {makePersonalDoTIdentity} from '../../dns-policy/src/personal-dot-identity.ts';
+import {proposeRegionalPersonalDnsIdentity} from '../../dns-policy/src/regional-personal-dot-identity.ts';
 import {buildPersonalDnsMobileconfig} from '../../dns-policy/src/personal-dot-profile.ts';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const digest=/^[a-f0-9]{64}$/;
+export type WebsiteDnsCountry='DE'|'FI';
 export type WebsiteAppleDnsStatus={issued:boolean;revision:number|null;revoked:boolean};
 export type WebsiteAppleDnsResult=
   |{kind:'ready';xml:string;hostname:string}
   |{kind:'already-issued'|'stale'|'inactive'|'revoked'|'unavailable'};
 
 export async function websitePersonalDnsStatus(
-  db:Pick<Pool,'query'>,sessionHash:string,entitlementId:string,
+  db:Pick<Pool,'query'>,sessionHash:string,entitlementId:string,country:WebsiteDnsCountry='DE',
 ):Promise<WebsiteAppleDnsStatus|null>{
-  if(!digest.test(sessionHash)||!uuid.test(entitlementId))return null;
+  if(!digest.test(sessionHash)||!uuid.test(entitlementId)||(country!=='DE'&&country!=='FI'))return null;
   const {rows}=await db.query(
-    'SELECT website_personal_dns_status($1,$2) AS status',[sessionHash,entitlementId]);
+    country==='FI'?'SELECT website_regional_dns_status($1,$2) AS status':
+      'SELECT website_personal_dns_status($1,$2) AS status',[sessionHash,entitlementId]);
   const value:unknown=rows[0]?.status;
   if(!value||typeof value!=='object')return null;
   const result=value as {issued?:unknown;revision?:unknown;revoked?:unknown};
@@ -32,13 +35,25 @@ export async function websitePersonalDnsStatus(
  * paid order, product and active entitlement in a single SQL invocation. */
 export async function issueWebsitePersonalDnsProfile(
   db:Pick<Pool,'query'>,sessionHash:string,entitlementId:string,
-  action:'issue'|'rotate',expectedRevision?:number,
+  action:'issue'|'rotate',expectedRevision?:number,country:WebsiteDnsCountry='DE',
 ):Promise<WebsiteAppleDnsResult>{
   if(!digest.test(sessionHash)||!uuid.test(entitlementId)||
-    (action!=='issue'&&action!=='rotate')||
+    (country!=='DE'&&country!=='FI')||(action!=='issue'&&action!=='rotate')||
     (action==='rotate'&&(!Number.isSafeInteger(expectedRevision)||expectedRevision!<1)))
     return {kind:'inactive'};
   for(let attempt=0;attempt<3;attempt++){
+    if(country==='FI'){
+      const identity=proposeRegionalPersonalDnsIdentity('FI');
+      const {rows}=await db.query('SELECT website_issue_regional_dns_credential($1,$2,$3,$4) AS code',
+        [sessionHash,entitlementId,identity.label,action==='issue'?0:expectedRevision]);
+      const code=String(rows[0]?.code??'');
+      if(code==='ISSUED'||code==='ROTATED')return {kind:'ready',xml:buildPersonalDnsMobileconfig(identity.hostname),hostname:identity.hostname};
+      if(code==='DENY_TOKEN_COLLISION')continue;
+      if(code==='DENY_STALE'||code==='ALREADY_ISSUED')return {kind:'stale'};
+      if(code==='DENY_REVOKED')return {kind:'revoked'};
+      if(code==='DENY_OWNER'||code==='DENY_INACTIVE')return {kind:'inactive'};
+      return {kind:'unavailable'};
+    }
     const identity=makePersonalDoTIdentity();
     const sql=action==='issue'
       ?'SELECT website_issue_personal_dns_credential($1,$2,$3,$4) AS code'

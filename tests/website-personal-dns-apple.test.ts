@@ -60,3 +60,29 @@ test('never release a profile without paid, current, owner-authorized DB result'
   assert.deepEqual(await issueWebsitePersonalDnsProfile(db as never,session,'bad','issue'),
     {kind:'inactive'});
 });
+
+test('FI status and issue use the same authenticated entitlement, not DE rotation',async()=>{
+  const db={async query(sql:string,args:unknown[]){
+    assert.deepEqual(args.slice(0,2),[session,entitlement]);
+    if(sql.includes('website_regional_dns_status'))return {rows:[{status:{issued:false,revision:null,revoked:false}}]};
+    assert.match(sql,/website_issue_regional_dns_credential/);
+    assert.match(String(args[2]),/^[a-z0-9]{12}$/);
+    assert.equal(args[3],0);
+    return {rows:[{code:'ISSUED'}]};
+  }};
+  assert.deepEqual(await websitePersonalDnsStatus(db as never,session,entitlement,'FI'),{issued:false,revision:null,revoked:false});
+  const result=await issueWebsitePersonalDnsProfile(db as never,session,entitlement,'issue',undefined,'FI');
+  assert.equal(result.kind,'ready');
+  if(result.kind==='ready'){
+    assert.match(result.hostname,/^[a-z0-9]{12}\.fi\.mnebyvpn\.site$/);
+    assert.ok(result.xml.includes(result.hostname));
+  }
+});
+test('FI rotation carries only the expected FI revision; denied ownership never yields a bearer',async()=>{
+  const db={async query(sql:string,args:unknown[]){
+    assert.match(sql,/website_issue_regional_dns_credential/);
+    assert.equal(args[3],3);
+    return {rows:[{code:'DENY_OWNER'}]};
+  }};
+  assert.deepEqual(await issueWebsitePersonalDnsProfile(db as never,session,entitlement,'rotate',3,'FI'),{kind:'inactive'});
+});
