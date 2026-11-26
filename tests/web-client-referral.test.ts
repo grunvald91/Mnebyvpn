@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const script=readFileSync(new URL('../apps/web/public/app.js',import.meta.url),'utf8');
 const token='ReferralToken001';
-function openPage(href:string,stored:Map<string,string>,authenticated=false){
+function openPage(href:string,stored:Map<string,string>,authenticated=false,trialOffers=['vpn']){
   const elements=new Map<string,any>();
   const posts:Array<{path:string;body:any}>=[];
   const authState={value:authenticated};
@@ -30,7 +30,7 @@ function openPage(href:string,stored:Map<string,string>,authenticated=false){
     if(path==='/api/plans')return {ok:true,json:async()=>({
       plans:[{id:'vpn-30',title:'VPN 30 days',product:'vpn',
         durationDays:30,rubMinor:9900,dnsQuotaBytes:null}],
-      checkoutEnabled:true,loginEnabled:true,telegramLoginEnabled:true,emailLoginEnabled:true,trialOffers:['vpn'],
+      checkoutEnabled:true,loginEnabled:true,telegramLoginEnabled:true,emailLoginEnabled:true,trialOffers,
     })};
     if(path==='/api/me')return authState.value
       ?{ok:true,json:async()=>({csrf:'csrf-test',access:[],orders:[]})}
@@ -159,4 +159,17 @@ test('email OTP sign-in refreshes the same document and consumes pending trial o
   await vm.runInContext('consumePendingTrial()',client.context);
   assert.equal(client.posts.filter(p=>p.path==='/api/trial').length,1);
   assert.equal(client.location.redirect,null,'hash navigation cannot establish login state');
+});
+
+test('enabled bundle replaces legacy VPN intent and keeps its referral after login',async()=>{
+  const session=new Map<string,string>();
+  const first=openPage('https://vpn.example/?ref='+token+'&product=vpn&days=30',session);
+  await settle();
+  first.elements.get('trial-button').handlers.get('click')();
+  assert.equal(session.get('mnebyvpn-pending-trial-product'),'vpn');
+  const next=openPage('https://vpn.example/#account',session,true,['bundle']);
+  await settle();await settle();
+  assert.equal(next.posts.length,1);
+  assert.equal(next.posts[0].body.product,'bundle');
+  assert.equal(next.posts[0].body.inviteToken,token);
 });
