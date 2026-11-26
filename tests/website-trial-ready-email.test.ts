@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
-import {deliverVpnTrialReadyEmail} from '../packages/web/src/email-otp.ts';
+import {deliverVpnTrialReadyEmail,deliverVpnTrialRecoveryInvite} from '../packages/web/src/email-otp.ts';
 test('trial-ready email signs exactly the fixed recipient and deadline payload',async()=>{
  const secret='test-only-secret-for-trial-ready-mail-12345';
  const expires=new Date(Date.now()+3600_000);
@@ -19,4 +19,24 @@ test('trial-ready email signs exactly the fixed recipient and deadline payload',
  assert.equal(await deliverVpnTrialReadyEmail('test@example.org',expires,secret,fetcher),true);
  assert.equal(await deliverVpnTrialReadyEmail('test@example.org',new Date(0),secret,fetcher),false);
  assert.equal(called,1);
+});
+
+test('bundle ready and invite use distinct signed gateway kinds without changing VPN or OTP contract',async()=>{
+ const secret='test-only-secret-for-trial-ready-mail-12345';
+ const expires=new Date(Date.now()+3600_000),messages:unknown[]=[];
+ const fetcher:typeof fetch=async(input,init)=>{
+   assert.equal(String(input),'https://servgo.ru/api/auth/mnebyvpn/email-code');
+   const headers=new Headers(init?.headers);
+   const payload=String(init?.body);
+   const signed=headers.get('X-Mnebyvpn-Timestamp')+'.'+headers.get('X-Mnebyvpn-Nonce')+'.'+payload;
+   assert.equal(headers.get('X-Mnebyvpn-Signature'),createHmac('sha256',secret).update(signed).digest('hex'));
+   messages.push(JSON.parse(payload));
+   return new Response('{}',{status:200});
+ };
+ assert.equal(await deliverVpnTrialReadyEmail('test@example.org',expires,secret,fetcher,'bundle'),true);
+ assert.equal(await deliverVpnTrialRecoveryInvite('test@example.org',secret,fetcher,'bundle'),true);
+ assert.deepEqual(messages,[
+   {email:'test@example.org',kind:'bundle_trial_ready',expiresAt:expires.toISOString()},
+   {email:'test@example.org',kind:'bundle_trial_recovery_invite'},
+ ]);
 });
