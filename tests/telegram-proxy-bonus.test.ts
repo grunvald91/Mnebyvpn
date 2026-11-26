@@ -4,7 +4,7 @@ import {
   parseBonusRoutes,parseOwnerProxyRoutes,sealProxySecret,openProxySecret,
   makeBonusLinks,makeOwnerProxyLinks,
   loadCustomerProxyBonus,bonusReleaseReady,ownerProxyReleaseReady,
-  parseWsProxyRoutes,wsProxyReleaseReady,makeWsProxyLinks,loadCustomerWsProxy,
+  parseWsProxyRoutes,wsProxyReleaseReady,makeWsProxyLinks,loadCustomerWsProxy,loadSharedTrialWsProxy,
 } from '../packages/web/src/telegram-proxy-bonus.ts';
 
 const id='11111111-1111-4111-8111-111111111111';
@@ -208,4 +208,28 @@ test('WebSocket proxy validates routes, encodes 0x70 marked token and enforces p
   assert.equal(res?.expiresAt,'2026-12-20T00:00:00.000Z');
   assert.equal(await loadCustomerWsProxy(db as never,id,'invalid-uuid',wsRoutes),null);
   assert.equal(calls,1);
+});
+
+test('shared bundle trial proxy remains available without an expiry or personal MTProto credential',async()=>{
+ const routes=parseWsProxyRoutes(JSON.stringify([{route:'direct',server:'example.org/shared',secret:'a'.repeat(32)}]));
+ assert.ok(routes);
+ let eligible=true,calls=0;
+ const db={async query(sql:string,values:unknown[]){
+   calls++;
+   assert.match(sql,/t\.account_id=\$1/);
+   assert.match(sql,/t\.product='bundle'/);
+   assert.match(sql,/o\.provider='internal_trial'/);
+   assert.match(sql,/o\.state='TRIAL'/);
+   assert.doesNotMatch(sql,/expires_at|dns_mtproxy_bonus_credentials/);
+   assert.equal(values.length,1);
+   return {rows:eligible?[{ok:1}]:[]};
+ }};
+ const account='11111111-1111-4111-8111-111111111111';
+ const result=await loadSharedTrialWsProxy(db as never,account,routes);
+ assert.equal(result?.wsLinks.length,1);
+ assert.deepEqual(Object.keys(result??{}),['wsLinks']);
+ eligible=false;
+ assert.equal(await loadSharedTrialWsProxy(db as never,account,routes),null);
+ assert.equal(await loadSharedTrialWsProxy(db as never,'invalid',routes),null);
+ assert.equal(calls,2);
 });
