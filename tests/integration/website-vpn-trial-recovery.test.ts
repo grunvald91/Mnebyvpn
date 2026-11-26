@@ -192,7 +192,7 @@ test('website bundle recovery waits for both final service revisions and keeps o
  const ack=async(product:string,revision:number,provisional:boolean)=>{
    const e=rows.find(x=>x.product===product);
    const f=(await pool.query("SELECT claim_provisioning_fence($1,$2) AS fence",[e.id,product])).rows[0].fence;
-   return (await pool.query("SELECT acknowledge_provisioning_observed($1,$2,$3,$4,true,CASE WHEN $5::boolean THEN clock_timestamp()+interval '4 minutes' ELSE NULL END) AS ok",[e.id,product,revision,f,provisional])).rows[0].ok;
+   return (await pool.query("SELECT acknowledge_provisioning_observed($1,$2,$3,$4,true,CASE WHEN $5::boolean THEN clock_timestamp()+interval '4 minutes' ELSE (SELECT expires_at FROM entitlements WHERE id=$1) END) AS ok",[e.id,product,revision,f,provisional])).rows[0].ok;
  };
  assert.equal(await ack('vpn',1,true),true);
  assert.equal(await ack('smart_dns',1,true),true);
