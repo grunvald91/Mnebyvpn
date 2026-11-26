@@ -205,7 +205,7 @@ function triggerMobileconfigDownload(xml){
 }
 function renderPersonalDnsBox(item,hostname,xml,opts={}){
   if(!item)return;
-  const previous=item.querySelector('.dns-personal-credentials');
+  const previous=Array.from(item.children).find(child=>child.classList.contains('dns-personal-credentials'));
   if(previous)previous.remove();
   const box=node('section','dns-personal-credentials');
   const apple=opts.isApple??isAppleDevice();
@@ -256,6 +256,26 @@ function renderPersonalDnsBox(item,hostname,xml,opts={}){
     box.append(rotateBtn);
   }
   item.append(box);
+  if(country==='DE'&&opts.entitlementId){
+    box.append(node('p','','Если Smart DNS и VPN включены одновременно, выбирайте одну страну для обеих услуг: Германия с Германией, Финляндия с Финляндией. Иначе возможны проблемы с подключением и загрузкой сервисов.'));
+    const fiBox=node('section','dns-country-fi');
+    const fiButton=node('button','button button-secondary setup-button','Получить профиль · Финляндия');
+    fiButton.type='button';
+    fiButton.hidden=true;
+    fiButton.addEventListener('click',()=>downloadAppleDnsProfile(opts.entitlementId,fiButton,fiBox,'FI'));
+    fiBox.append(fiButton);
+    box.append(fiBox);
+    api('/api/dns/apple/status?entitlementId='+encodeURIComponent(opts.entitlementId)+'&country=FI').then(status=>{
+      if(status.revoked||!fiBox.isConnected)return;
+      fiButton.hidden=false;
+      fiButton.textContent=status.issued?'Профиль · Финляндия':'Получить профиль · Финляндия';
+      const fi=readCachedPersonalDns(opts.entitlementId,'FI');
+      if(status.issued&&fi?.revision===status.revision)
+        renderPersonalDnsBox(fiBox,fi.hostname,fi.mobileconfig,{entitlementId:opts.entitlementId,issued:true,country:'FI'});
+      else if(status.issued)renderPersonalDnsBox(fiBox,'','',{entitlementId:opts.entitlementId,issued:true,country:'FI'});
+      fiBox.append(node('p','','Германия и Финляндия используют общий лимит DNS-запросов.'));
+    }).catch(()=>{});
+  }
 }
 const dnsCredInFlight=new Map();
 async function ensurePersonalDnsCredentials(entitlementId,opts={}){
@@ -554,30 +574,11 @@ function renderAccess(accesses) {
       const apple=node('button','button button-secondary setup-button','Получить профиль · Германия');
       apple.type='button';
       apple.addEventListener('click',()=>downloadAppleDnsProfile(a.id,apple,item));
-      item.append(apple,node('p','','Персональный конфиг для iPhone / iPad / macOS и DoT-адрес для Android и роутера. После первого выпуска немецкого профиля обновите кабинет для выбора Финляндии. Повторный выпуск заменит прежний адрес выбранной страны на всех устройствах.'));
+      item.append(apple,node('p','','Персональный конфиг для iPhone / iPad / macOS и DoT-адрес для Android и роутера. Повторный выпуск заменит прежний адрес выбранной страны на всех устройствах.'));
       const cached=readCachedPersonalDns(a.id);
       if(cached)renderPersonalDnsBox(item,cached.hostname,cached.mobileconfig,{entitlementId:a.id,issued:true});
-      item.append(node('p','','Если Smart DNS и VPN включены одновременно, выбирайте одну страну для обеих услуг (Германия с Германией, Финляндия с Финляндией). Иначе возможны проблемы с подключением и загрузкой сервисов.'));
-      if(a.dnsQueryQuotaPer30d){
-        const fiBox=node('section','dns-country-fi');
-        const fiButton=node('button','button button-secondary setup-button','Получить профиль · Финляндия');
-        fiButton.type='button';
-        fiButton.hidden=true;
-        fiButton.addEventListener('click',()=>downloadAppleDnsProfile(a.id,fiButton,fiBox,'FI'));
-        fiBox.append(fiButton);
-        item.append(fiBox);
-        // Only expose the button when the owner-scoped FI status confirms eligibility.
-        api('/api/dns/apple/status?entitlementId='+encodeURIComponent(a.id)+'&country=FI').then(status=>{
-          if(status.revoked||!fiBox.isConnected)return;
-          fiButton.hidden=false;
-          fiButton.textContent=status.issued?'Профиль · Финляндия':'Получить профиль · Финляндия';
-          const fi=readCachedPersonalDns(a.id,'FI');
-          if(status.issued&&fi?.revision===status.revision)
-            renderPersonalDnsBox(fiBox,fi.hostname,fi.mobileconfig,{entitlementId:a.id,issued:true,country:'FI'});
-          else if(status.issued)renderPersonalDnsBox(fiBox,'','',{entitlementId:a.id,issued:true,country:'FI'});
-          fiBox.append(node('p','','Германия и Финляндия используют общий лимит DNS-запросов.'));
-        }).catch(()=>{});
-      }
+      else void ensurePersonalDnsCredentials(a.id,{targets:[item]}).catch(()=>{});
+
     }
     const isTrialOrder=Boolean(state.lastOrders?.some(o=>o.id===a.sourceOrderId&&o.state==='TRIAL'));
     if(!isTrialOrder&&a.product==='smart_dns'&&a.state==='ACTIVE'&&
