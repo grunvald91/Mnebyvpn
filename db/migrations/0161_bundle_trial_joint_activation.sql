@@ -13,6 +13,11 @@ BEGIN
     SELECT 1 FROM entitlements
      WHERE id = p_entitlement_id AND product = p_adapter
   ) THEN RAISE EXCEPTION 'Invalid adapter for entitlement'; END IF;
+  -- Serialize invalidation of a sibling's provisional receipt with joint
+  -- activation. A fresh fence cannot slip between readiness and commit.
+  PERFORM 1 FROM trial_grants t JOIN entitlements e ON e.source_order_id=t.order_id
+    WHERE e.id=p_entitlement_id AND t.product='bundle' AND t.activated_at IS NULL
+    FOR UPDATE OF t;
   INSERT INTO provisioning_state(entitlement_id, adapter, fencing_token)
     VALUES(p_entitlement_id, p_adapter, 1)
     ON CONFLICT (entitlement_id, adapter)
@@ -43,6 +48,14 @@ BEGIN
     JOIN entitlements e ON e.source_order_id = t.order_id
    WHERE e.id = p_entitlement_id
      FOR UPDATE OF t;
+  -- Hold both component rows before evaluating their readiness. A concurrent
+  -- cancellation/quota revision cannot invalidate the other component after
+  -- the readiness check but before the common clock is committed.
+  IF v_trial.product='bundle' AND v_trial.activated_at IS NULL THEN
+    PERFORM 1 FROM entitlements
+      WHERE source_order_id=v_trial.order_id AND account_id=v_trial.account_id
+      ORDER BY id FOR UPDATE;
+  END IF;
   SELECT * INTO v_ent FROM entitlements WHERE id = p_entitlement_id FOR UPDATE;
   IF NOT FOUND THEN RETURN false; END IF;
   IF v_ent.product IS DISTINCT FROM p_adapter
@@ -76,7 +89,10 @@ BEGIN
   -- Final bundle ACKs must carry the real observed hard deadline, not only
   -- an enabled bit. A legacy worker cannot publish a ready bundle.
   IF v_trial.product='bundle' AND NOT v_pending AND v_expected AND (
-    p_observed_expiry IS NULL OR p_observed_expiry<=clock_timestamp()
+    v_ent.account_id IS DISTINCT FROM v_trial.account_id
+    OR v_ent.starts_at IS DISTINCT FROM v_trial.activated_at
+    OR v_ent.expires_at IS DISTINCT FROM v_trial.access_expires_at
+    OR p_observed_expiry IS NULL OR p_observed_expiry<=clock_timestamp()
     OR abs(extract(epoch FROM (p_observed_expiry-v_ent.expires_at)))>1
   ) THEN RETURN false; END IF;
   UPDATE provisioning_state
