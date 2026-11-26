@@ -581,8 +581,8 @@ async function emailVerify(req:IncomingMessage,res:ServerResponse):Promise<void>
   }
   // Persist explicit trial intent after OTP verification, before the browser
   // can disconnect. Ordinary sign-ins and reviewer logins never enqueue.
-  if(trialEnabled&&!review&&(body.trial==='vpn'||body.trial==='bundle'||
-    (body.trial==='smart_dns'&&await bundleWebsiteTrialEnabled()))){
+  if(trialEnabled&&!review&&(body.trial==='vpn'||
+    (['bundle','smart_dns'].includes(String(body.trial))&&await bundleWebsiteTrialEnabled()))){
     const invite=body.trialInviteToken;
     if(invite===undefined||(typeof invite==='string'&&/^[A-Za-z0-9_-]{16,24}$/.test(invite))){
       let device=cookie(req,deviceCookie);
@@ -1496,7 +1496,9 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     const deviceHash=createHash('sha256').update('trial-device-v1:').update(device).digest('hex');
     let queued=false;
     try{
-      const product=await bundleWebsiteTrialEnabled()?'bundle':body.product as 'vpn'|'smart_dns'|'bundle';
+      const bundleOn=await bundleWebsiteTrialEnabled();
+      if(body.product==='bundle'&&!bundleOn){json(res,200,{status:'UNAVAILABLE',expiresAt:null});return;}
+      const product=bundleOn?'bundle':body.product as 'vpn'|'smart_dns'|'bundle';
       if((product==='vpn'||product==='bundle')&&auth.email&&emailLoginEnabled&&
          !await isReviewAccount(authPool,auth.accountId)){
         try{
