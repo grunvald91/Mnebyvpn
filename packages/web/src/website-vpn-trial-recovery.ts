@@ -85,7 +85,7 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
       if(!trial.ready){
         await finish('WAITING',job.order_id,15,'WAITING_FOR_NODE');continue;
       }
-      const delivered=await send(trial.email_address,new Date(trial.access_expires_at),secret,undefined,trial.product==='bundle'?'bundle':'vpn');
+      const delivered=await send(trial.email_address,new Date(trial.access_expires_at),secret,undefined,trial.product==='bundle'?'bundle':'vpn',job.order_id!);
       await finish(delivered?'SENT':'WAITING',job.order_id,delivered?0:retry,delivered?null:'MAIL_RETRY');
     }catch(error){
       const code=(error as {code?:unknown})?.code;
