@@ -8,6 +8,7 @@ export interface VpnTrialReadyNotice {
   telegramUserId:string;
   expiresAt:Date;
   attempt:number;
+  product?:'vpn'|'bundle';
 }
 export interface TrialReadySender {
   send(job:VpnTrialReadyNotice):Promise<DeliveryResult>;
@@ -68,18 +69,19 @@ export class PgVpnTrialReadyQueue {
         FROM pick WHERE n.order_id=pick.order_id
         RETURNING n.order_id,n.telegram_user_id,n.attempts
       )
-      SELECT c.*,t.access_expires_at FROM claimed c
+      SELECT c.*,t.access_expires_at,t.product FROM claimed c
         JOIN trial_grants t ON t.order_id=c.order_id`);
     if(result.rowCount!==1)return null;
     const row=result.rows[0];
     const expires=new Date(row.access_expires_at);
     const attempts=Number(row.attempts);
     if(!/^[1-9][0-9]{0,15}$/.test(String(row.telegram_user_id))||
+       !['vpn','bundle'].includes(row.product)||
        !Number.isFinite(expires.getTime())||
        !Number.isSafeInteger(attempts)||attempts<1)
       throw Error('Invalid trial notification');
     return {orderId:String(row.order_id),telegramUserId:String(row.telegram_user_id),
-      expiresAt:expires,attempt:attempts};
+      expiresAt:expires,attempt:attempts,product:row.product};
   }
   /** Recheck between claim and Telegram network I/O. */
   async stillEligible(job:VpnTrialReadyNotice):Promise<boolean>{
@@ -127,6 +129,17 @@ export function trialReadyMessage(job:VpnTrialReadyNotice){
     timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',year:'numeric',
     hour:'2-digit',minute:'2-digit',
   });
+  if(job.product==='bundle')return {
+    text:'🎉 MNEBYVPN — бесплатный пакет «3 в 1» готов!\n\n'+
+      '✅ VPN и Smart DNS готовы к настройке.\n'+
+      '⏰ Действуют до '+deadline+' (МСК).\n\n'+
+      'Выберите подключение. Общий Telegram-прокси не ограничен пробными сутками.',
+    reply_markup:{inline_keyboard:[
+      [{text:'🧭 Smart DNS',callback_data:'nav:dns'},
+       {text:'✈️ Telegram-прокси',callback_data:'nav:trial-proxy'}],
+      ...deviceOptions(),
+    ]},
+  };
   return {
     text:'🎉 MNEBYVPN — бесплатный VPN готов!\n\n'+
       '✅ Пробный доступ активирован VPN-сервером.\n'+
