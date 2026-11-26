@@ -14,6 +14,7 @@ test('cabinet trial control follows catalog, login, busy and durable request sta
  const sync=()=>vm.runInContext('syncCabinetTrialButton()',ctx);
  sync();assert.equal(retry.hidden,true);
  state.trialOffers=['vpn'];sync();assert.equal(retry.hidden,false);assert.equal(retry.disabled,false);
+ state.trialOffers=['bundle'];sync();assert.equal(retry.hidden,false);assert.equal(retry.disabled,false);
  state.busy=true;sync();assert.equal(retry.disabled,true);
  state.busy=false;sync();assert.equal(retry.disabled,false);
  for(const status of ['PENDING','WAITING','SENT']){
