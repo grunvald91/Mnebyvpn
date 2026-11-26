@@ -581,8 +581,7 @@ async function emailVerify(req:IncomingMessage,res:ServerResponse):Promise<void>
   }
   // Persist explicit trial intent after OTP verification, before the browser
   // can disconnect. Ordinary sign-ins and reviewer logins never enqueue.
-  if(trialEnabled&&!review&&(body.trial==='vpn'||
-    (['bundle','smart_dns'].includes(String(body.trial))&&await bundleWebsiteTrialEnabled()))){
+  if(trialEnabled&&!review&&['vpn','bundle','smart_dns'].includes(String(body.trial))){
     const invite=body.trialInviteToken;
     if(invite===undefined||(typeof invite==='string'&&/^[A-Za-z0-9_-]{16,24}$/.test(invite))){
       let device=cookie(req,deviceCookie);
@@ -591,7 +590,7 @@ async function emailVerify(req:IncomingMessage,res:ServerResponse):Promise<void>
         setCookie(res,deviceCookie,device,365*24*60*60);
       }
       try{
-        await rememberWebsiteVpnTrial(billingPool,result.accountId,
+        if(body.trial==='vpn'||await bundleWebsiteTrialEnabled())await rememberWebsiteVpnTrial(billingPool,result.accountId,
           createHash('sha256').update('trial-device-v1:').update(device).digest('hex'),invite as string|undefined);
       }catch(error){
         const code=(error as {code?:unknown})?.code;
