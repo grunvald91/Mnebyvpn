@@ -78,11 +78,11 @@ export class PgReconcileStore implements ReconcileStore {
       expiresAt:expiry,trialPendingActivation:pendingTrial,
       provisionalActivation:pendingPaid,isTrial:Boolean(r.trial_order_id)};
   }
-  async acknowledge(id:string,revision:number,fence:number,observedEnabled:boolean):Promise<boolean> {
+  async acknowledge(id:string,revision:number,fence:number,observedEnabled:boolean,observedExpiry?:Date|null):Promise<boolean> {
     const {rows}=await this.query(
-      `SELECT acknowledge_provisioning($1,
-        (SELECT product FROM entitlements WHERE id=$1),$2,$3,$4) AS ok`,
-      [id,revision,fence,observedEnabled]);
+      `SELECT acknowledge_provisioning_observed($1,
+        (SELECT product FROM entitlements WHERE id=$1),$2,$3,$4,$5) AS ok`,
+      [id,revision,fence,observedEnabled,observedExpiry??null]);
     return rows[0]?.ok===true;
   }
   async requestReconcile(id:string,reason:string):Promise<void> {
@@ -151,11 +151,19 @@ export class PgOutboxDispatcher {
           FROM entitlements e JOIN provisioning_state p
             ON p.entitlement_id=e.id AND p.adapter=e.product
           WHERE b.id=$1 AND b.entitlement_id=e.id
-            AND p.applied_revision>=b.desired_revision`,
+            AND p.applied_revision>=b.desired_revision
+            AND NOT EXISTS (SELECT 1 FROM trial_grants t WHERE t.order_id=e.source_order_id
+              AND t.product='bundle' AND t.activated_at IS NULL
+              AND e.state IN ('PAID_PENDING_PROVISIONING','PROVISIONING_FAILED'))`,
         [signal.id]);
       if(!r.rowCount) {
-        await this.retry(signal,'revision_race');
-        return {status:'retry',reason:'revision_race',signal};
+        const pending=await this.store.pool.query(
+          `SELECT 1 FROM entitlements e JOIN trial_grants t ON t.order_id=e.source_order_id
+            WHERE e.id=$1 AND t.product='bundle' AND t.activated_at IS NULL
+              AND e.state IN ('PAID_PENDING_PROVISIONING','PROVISIONING_FAILED')`,[signal.entitlementId]);
+        const reason=pending.rowCount?'bundle_waiting_for_other_service':'revision_race';
+        await this.retry(signal,reason);
+        return {status:'retry',reason,signal};
       }
       return {status:'synced',signal};
     } catch {
