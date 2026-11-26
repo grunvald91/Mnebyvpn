@@ -116,3 +116,40 @@ test('forwarded catalog supports eight configured 15/30/60/90-day rows',async()=
   if(active.length)await pool.query('UPDATE billing_plans SET enabled=true WHERE id=ANY($1::text[])',[active]);
  }
 });
+
+test('bundle trial accepts an existing VPN or DNS referral without duplicating access',async()=>{
+ await pool.query("UPDATE trial_offers SET enabled=true,dns_quota_bytes=1073741824 WHERE product='bundle'");
+ const referrer=90900821,recipient=90900822;
+ const offers=await db.referralOffers(referrer,16);
+ const invite=offers.find(o=>o.planId===dnsId);
+ assert.ok(invite);
+ await assert.rejects(()=>db.grantTrial(referrer,'bundle',invite.token),/self-owned/);
+ const result=await db.grantTrial(recipient,'bundle',invite.token);
+ assert.equal(result.status,'GRANTED');
+ assert.ok(result.orderId);
+ const {rows}=await pool.query(
+  `SELECT g.invite_token,o.product AS order_product,o.amount_minor,e.product,
+          e.starts_at,e.expires_at
+     FROM trial_grants g JOIN orders o ON o.id=g.order_id
+     JOIN entitlements e ON e.source_order_id=o.id
+     WHERE g.order_id=$1 ORDER BY e.product`,[result.orderId]);
+ assert.deepEqual(rows.map(r=>r.product),['smart_dns','vpn']);
+ assert.ok(rows.every(r=>r.invite_token===invite.token&&r.order_product==='bundle'&&
+  Number(r.amount_minor)===0&&r.starts_at===null&&r.expires_at===null));
+ assert.equal((await db.grantTrial(recipient,'vpn')).orderId,result.orderId);
+ assert.equal(await db.pendingOutboxForOrder(result.orderId!),2);
+});
+
+test('legacy verified email recovery may reserve a bundle but remains cohort restricted',async()=>{
+ await pool.query("UPDATE trial_offers SET enabled=true,dns_quota_bytes=1073741824 WHERE product='bundle'");
+ const account=randomUUID();
+ await pool.query('INSERT INTO accounts(id,email_address) VALUES($1,$2)',[account,'bundle-'+account+'@example.org']);
+ await assert.rejects(()=>db.grantTrial(account,'bundle',undefined,undefined,true),/Legacy email trial no longer eligible/);
+ await pool.query("INSERT INTO website_vpn_trial_requests(account_id,device_hash,request_source) VALUES($1,NULL,'LEGACY_EMAIL')",[account]);
+ const result=await db.grantTrial(account,'bundle',undefined,undefined,true);
+ assert.equal(result.status,'GRANTED');
+ assert.ok(result.orderId);
+ const {rows}=await pool.query('SELECT product FROM entitlements WHERE source_order_id=$1 ORDER BY product',[result.orderId]);
+ assert.deepEqual(rows.map(r=>r.product),['smart_dns','vpn']);
+ assert.equal((await db.grantTrial(account,'bundle',undefined,undefined,true)).orderId,result.orderId);
+});
