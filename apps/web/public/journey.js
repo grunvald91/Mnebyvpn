@@ -64,7 +64,7 @@
       offers,
       buyDisabled:Boolean(el('journey-buy').disabled),
       buyText:el('journey-buy').textContent||'Оплата подключается',
-      trialAvailable:state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'),
+      trialAvailable:state.trialOffers.includes('bundle')||state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'),
       trialOffers:state.trialOffers,
       trialDisabled:Boolean(el('journey-trial').disabled),
       error:el('journey-error').textContent||'',
@@ -108,7 +108,7 @@
       return;
     }
     if(msg.type==='trial'&&!el('journey-trial').disabled){
-      state.trialProduct=msg.product==='smart_dns'?'smart_dns':'vpn';
+      state.trialProduct=state.trialOffers.includes('bundle')?'bundle':msg.product==='smart_dns'?'smart_dns':'vpn';
       el('journey-trial').click();
     }
   });
@@ -255,7 +255,10 @@
     if(!trialAuth)return;
     const isDns=state.trialProduct==='smart_dns';
     const title=el('journey-trial-title');
-    if(title)title.textContent=isDns?'Ваши 24 часа Smart DNS':'Ваши 24 часа VPN';
+    const bundle=state.trialOffers.includes('bundle');
+    if(title)title.textContent=bundle?'«3 в 1» бесплатно на 24 часа':isDns?'Ваши 24 часа Smart DNS':'Ваши 24 часа VPN';
+    const explanation=trialAuth.querySelector?.('.journey-trial-explain');
+    if(explanation)explanation.textContent=bundle?'Войдите по email, чтобы получить VPN и Smart DNS на 24 часа. Telegram-прокси можно использовать и после пробного периода.':isDns?'Войдите по email, чтобы получить Smart DNS на 24 часа.':'Войдите по email, чтобы получить персональный VPN-доступ на 24 часа. После подтверждения кода покажем, как подключиться.';
     const emailOn=state.emailLoginEnabled===true;
     el('journey-email-unavailable').hidden=emailOn;
     if(view==='trial-auth'&&emailPanel){
@@ -311,9 +314,11 @@
     const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
     buy.disabled=original.disabled;
     buy.textContent=original.textContent;
-    const trialAvailable=state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns');
+    const trialAvailable=state.trialOffers.includes('bundle')||state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns');
     el('journey-trial').disabled=el('trial-button').disabled;
     el('journey-trial-offer').hidden=!trialAvailable;
+    const trialLabel=el('journey-trial-offer').querySelector?.('.journey-trial-label');
+    if(trialLabel)trialLabel.textContent=state.trialOffers.includes('bundle')?'⚡ «3 в 1» бесплатно на 24 часа':'⚡ Бесплатные 24 часа VPN';
     updateTrialAuth();
     const title=labels[state.product]||'Экосистема «3 в 1»';
     el('journey-summary').textContent=plan?
@@ -490,13 +495,13 @@
         activeDns&&!valid?(activeDnsTrial?'Подключите Smart DNS (24 часа)':'Подключите Smart DNS и Прокси'):'Подключите VPN';
     }
     el('journey-setup-status').textContent=valid?
-      (activeDns?'Экосистема «3 в 1» готова: настройте VPN, Smart DNS и Telegram-прокси ниже.':
+      (activeDns?(activeDnsTrial?'VPN и Smart DNS готовы к настройке. Telegram-прокси доступен отдельно.':'Экосистема «3 в 1» готова: настройте VPN, Smart DNS и Telegram-прокси ниже.'):
         'Ваш VPN готов. Установите приложение, добавьте подписку и включите защиту.'):
       activeDns?(activeDnsTrial
         ?'Ваши 24 часа Smart DNS готовы! Персональный профиль Apple (.mobileconfig) и DoT-адрес выданы ниже.'
         :'Ваш Smart Доступ готов! Профиль и WebSocket-прокси для Telegram выданы ниже.'):
       ['PENDING','WAITING'].includes(state.trialRequestStatus)
-        ?'Заявка на бесплатный VPN сохранена. Подключение готовится автоматически. Когда VPN будет готов, пришлём письмо.'
+        ?'Заявка на бесплатный доступ сохранена. Подключение готовится автоматически. Когда доступ будет готов, пришлём письмо.'
         :'Проверяем активацию на сервере. Если оплата прошла недавно, подключение подготавливается.';
     if(!valid){
       el('journey-url').value='';
@@ -745,7 +750,7 @@
     event.preventDefault();setView('plans',true);
   });
   el('journey-trial').addEventListener('click',async()=>{
-    const trialProduct=state.trialProduct==='smart_dns'?'smart_dns':'vpn';
+    const trialProduct=state.trialOffers.includes('bundle')?'bundle':state.trialProduct==='smart_dns'?'smart_dns':'vpn';
     if(!state.trialOffers.includes(trialProduct))return;
     if(!state.loggedIn){
       saveSelection();
