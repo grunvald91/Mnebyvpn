@@ -471,9 +471,15 @@ test('legacy cabinet never invents DNS query quota or device count when public c
 
 test('trial chooser stays disabled with no authorized trial, even if prices are available',()=>{
   const art=file('apps/web/public/landing-art.html');
-  assert.match(art,/const trialOpen=Boolean\(\(vpnTrialOn\|\|dnsTrialOn\)\&\&!serverData\?\.trialDisabled\)/);
+  assert.match(art,/const trialOpen=Boolean\(\(bundleTrialOn\|\|vpnTrialOn\|\|dnsTrialOn\)\&\&!serverData\?\.trialDisabled\)/);
   assert.match(art,/trial\.disabled=!trialOpen/);
-  assert.match(art,/if\(!trialOpen\&\&!trialOptions\.hidden\)setTrialChooser\(false\)/);
+  assert.match(art,/if\(\(!trialOpen\|\|bundleTrialOn\)\&\&!trialOptions\.hidden\)setTrialChooser\(false\)/);
   assert.match(art,/trialVpn\.disabled=!trialOpen\|\|!vpnTrialOn/);
   assert.doesNotMatch(art,/trial\.disabled=false/);
+});
+
+test('unified trial bypasses the old landing chooser only when the catalog enables bundle',()=>{
+ const art=file('apps/web/public/landing-art.html');
+ assert.ok(art.includes("if(serverData?.trialOffers?.includes('bundle')){send('trial',{product:'bundle'});return;}"));
+ assert.ok(art.includes("const bundleTrialOn=offers.includes('bundle')"));
 });
