@@ -17,7 +17,8 @@ type Job={account_id:string;device_hash:string|null;request_source:'WEBSITE'|'LE
 
 /** Durable bounded leases survive restart; trial uniqueness serializes grants. */
 export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStore,'grantTrial'>,secret:string,
- send:typeof deliverVpnTrialReadyEmail=deliverVpnTrialReadyEmail):Promise<void>{
+ send:typeof deliverVpnTrialReadyEmail=deliverVpnTrialReadyEmail,
+ newProduct:'vpn'|'bundle'='vpn'):Promise<void>{
   for(let i=0;i<5;i++){
     const claimed=await pool.query(`WITH pick AS (
         SELECT account_id FROM website_vpn_trial_requests
@@ -40,7 +41,7 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
     const retry=Math.min(300,10*2**Math.min(5,job.attempts-1));
     try{
       if(job.status==='PENDING'){
-        const grant=await store.grantTrial(job.account_id,'vpn',job.invite_token??undefined,
+        const grant=await store.grantTrial(job.account_id,newProduct,job.invite_token??undefined,
           job.device_hash??undefined,job.request_source==='LEGACY_EMAIL');
         if(grant.status==='DEVICE_ALREADY_USED'){
           await finish('REJECTED',null,0,'DEVICE_ALREADY_USED');continue;
@@ -57,12 +58,21 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
              ON p.entitlement_id=e.id AND p.adapter='vpn'
              WHERE e.source_order_id=t.order_id AND e.account_id=t.account_id
                AND e.product='vpn' AND e.state='ACTIVE' AND e.expires_at>clock_timestamp()
-               AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL)) AS ready
+               AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL
+               AND (t.product='vpn' OR (e.starts_at=t.activated_at AND e.expires_at=t.access_expires_at)))
+           AND (t.product='vpn' OR EXISTS (
+             SELECT 1 FROM entitlements d JOIN provisioning_state dp
+               ON dp.entitlement_id=d.id AND dp.adapter='smart_dns'
+             WHERE d.source_order_id=t.order_id AND d.account_id=t.account_id
+               AND d.product='smart_dns' AND d.state='ACTIVE'
+               AND d.starts_at=t.activated_at AND d.expires_at=t.access_expires_at
+               AND d.quota_state='AVAILABLE'
+               AND dp.applied_revision=d.revision AND dp.last_observed_at IS NOT NULL))) AS ready
          FROM trial_grants t JOIN accounts a ON a.id=t.account_id
          JOIN orders o ON o.id=t.order_id AND o.provider='internal_trial'
          WHERE t.account_id=$1 AND t.order_id=$2`,[job.account_id,job.order_id]);
       const trial=observed.rows[0];
-      if(!trial||trial.product!=='vpn'||trial.state!=='TRIAL'||
+      if(!trial||!['vpn','bundle'].includes(trial.product)||trial.state!=='TRIAL'||
          !normalizeLoginEmail(trial.email_address)||
          (trial.access_expires_at&&new Date(trial.access_expires_at).getTime()<=Date.now())){
         await finish('REJECTED',job.order_id,0,'TRIAL_NO_LONGER_ELIGIBLE');continue;
