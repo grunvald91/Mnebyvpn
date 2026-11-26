@@ -498,7 +498,7 @@ export class PgBillingStore {
     if(!(typeof telegramUserId==='number' && Number.isSafeInteger(telegramUserId) && telegramUserId>0 ||
        typeof telegramUserId==='string' && uuid.test(telegramUserId)) ||
        !['vpn','smart_dns','bundle'].includes(product))throw new Error('Invalid trial request');
-    if(legacyEmailRecovery&&(typeof telegramUserId!=='string'||product!=='vpn'||deviceHash!==undefined||inviteToken!==undefined))
+    if(legacyEmailRecovery&&(typeof telegramUserId!=='string'||!['vpn','bundle'].includes(product)||deviceHash!==undefined||inviteToken!==undefined))
       throw new Error('Invalid legacy email trial recovery');
     if(deviceHash!==undefined&&!/^[a-f0-9]{64}$/.test(deviceHash))
       throw new Error('Invalid hashed browser trial claim');
@@ -547,7 +547,7 @@ export class PgBillingStore {
         const referral=await c.query(
           `SELECT i.referrer_account_id FROM referral_invites i
              JOIN billing_plans p ON p.id=i.plan_id
-            WHERE i.token=$1 AND p.product=$2 AND p.enabled=true`,
+            WHERE i.token=$1 AND (p.product=$2 OR $2='bundle') AND p.enabled=true`,
           [inviteToken,product]);
         if(!referral.rowCount || referral.rows[0].referrer_account_id===accountId)
           throw new Error('Invalid or self-owned trial referral');
