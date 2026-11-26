@@ -40,3 +40,23 @@ test('bundle ready and invite use distinct signed gateway kinds without changing
    {email:'test@example.org',kind:'bundle_trial_recovery_invite'},
  ]);
 });
+
+test('retry of the same canonical ready notification uses the same signed delivery nonce',async()=>{
+ const secret='test-only-secret-for-trial-ready-mail-12345';
+ const expires=new Date(Date.now()+3600_000),nonces:string[]=[];
+ const fetcher:typeof fetch=async(_input,init)=>{
+   const headers=new Headers(init?.headers);
+   const nonce=headers.get('X-Mnebyvpn-Nonce')!;
+   nonces.push(nonce);
+   assert.match(nonce,/^trial_[a-f0-9]{56}$/);
+   const body=String(init?.body);
+   const signed=headers.get('X-Mnebyvpn-Timestamp')+'.'+nonce+'.'+body;
+   assert.equal(headers.get('X-Mnebyvpn-Signature'),createHmac('sha256',secret).update(signed).digest('hex'));
+   return new Response('{}',{status:200});
+ };
+ const order='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+ await deliverVpnTrialReadyEmail('test@example.org',expires,secret,fetcher,'bundle',order);
+ await deliverVpnTrialReadyEmail('test@example.org',expires,secret,fetcher,'bundle',order);
+ await deliverVpnTrialReadyEmail('test@example.org',expires,secret,fetcher,'bundle','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+ assert.equal(nonces[0],nonces[1]);assert.notEqual(nonces[0],nonces[2]);
+});
