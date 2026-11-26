@@ -15,7 +15,14 @@ Owner decision (2026-11-26): one new free offer, VPN + Smart DNS for 24h and exi
 
 ## Current branch scope
 
-Only preparatory billing guards and integration tests. No database migration, offer flag changes or production deployment in this first patch. Remaining work above is a release dependency, not already implemented.
+The branch now includes billing, joint activation, website, Telegram and email recovery changes (0160–0162). No offer flags have been enabled in production by this branch.
+
+### Cross-service email release dependency
+
+- Gateway change: https://github.com/grunvald91/booking_bot/pull/171. Deploy and verify the ServGo gateway accepts the new signed `bundle_trial_ready` and `bundle_trial_recovery_invite` kinds before turning on the bundle offer. Retain existing OTP and VPN-only formats.
+- 0162 snapshots previously missed verified-email accounts without prior access, trial or device claim, excludes reviewer accounts and preserves existing queue rows. These new rows are dormant until the bundle offer is enabled and the updated worker claims them. The worker preserves explicitly selected bundle requests even when the offer is disabled; existing WAITING requests remain tied to their actual grant.
+- Ready mail is selected from the actual canonical order only after both final VPN/DNS acknowledgements for bundles. SMTP acceptance is not proof of inbox delivery. A lost gateway response after successful SMTP acceptance may still cause a duplicate on a retry; gateway-level stable delivery idempotency remains a separate release-review item.
+- Before rollout verify the migration and worker on disposable PostgreSQL, then validate eligible account counts without exporting email addresses. Do not trigger real mail sends during CI.
 
 ## Source references
 
