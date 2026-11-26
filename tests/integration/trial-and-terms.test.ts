@@ -157,3 +157,18 @@ test('legacy verified email recovery may reserve a bundle but remains cohort res
  assert.deepEqual(rows.map(r=>r.product),['smart_dns','vpn']);
  assert.equal((await db.grantTrial(account,'bundle',undefined,undefined,true)).orderId,result.orderId);
 });
+
+test('bundle trial cannot be extended as a single paid component by an old client',async()=>{
+ await pool.query("UPDATE trial_offers SET enabled=true,dns_quota_bytes=1073741824 WHERE product='bundle'");
+ const actor=90900823;
+ const grant=await db.grantTrial(actor,'bundle');
+ assert.equal(grant.status,'GRANTED');
+ const order=grant.orderId!;
+ await pool.query("UPDATE trial_grants SET activated_at=statement_timestamp()-interval '1 minute',access_expires_at=statement_timestamp()+interval '23 hours 59 minutes' WHERE order_id=$1",[order]);
+ await pool.query("UPDATE entitlements e SET starts_at=t.activated_at,expires_at=t.access_expires_at,state='ACTIVE' FROM trial_grants t WHERE t.order_id=$1 AND e.source_order_id=t.order_id",[order]);
+ const rows=(await pool.query("SELECT id,product,account_id FROM entitlements WHERE source_order_id=$1",[order])).rows;
+ for(const e of rows){
+   await assert.rejects(()=>db.createWebsiteOrder(e.account_id,e.product==='vpn'?id:dnsId,'bundle-renew-'+e.product,undefined,e.id),/Renewal target not owned or not active yet/);
+ }
+ assert.equal((await pool.query("SELECT count(*)::int AS n FROM orders WHERE account_id=$1",[rows[0].account_id])).rows[0].n,1);
+});
