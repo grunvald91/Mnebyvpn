@@ -14,7 +14,7 @@ test('authenticated Telegram 24-hour VPN trial persists pending access once with
  const secret='test_telegram_integration_secret';
  const digest=createHash('sha256').update(secret).digest('hex');
  const user=3988339901,bundleUser=3988339902;
- const priorOffers=await pool.query("SELECT product,enabled,dns_quota_bytes FROM trial_offers WHERE product IN ('vpn','bundle')");
+ const priorOffers=await pool.query("SELECT product,enabled,dns_quota_bytes FROM trial_offers WHERE product IN ('vpn','bundle','smart_dns')");
  const srv=createServer();
  await new Promise<void>(resolve=>srv.listen(0,'127.0.0.1',resolve));
  const address=srv.address();
@@ -95,6 +95,11 @@ test('authenticated Telegram 24-hour VPN trial persists pending access once with
   // The proxy is deliberately not limited by the VPN/DNS trial deadline.
   await pool.query("UPDATE trial_grants SET activated_at=statement_timestamp()-interval '25 hours',access_expires_at=statement_timestamp()-interval '1 hour' WHERE order_id=$1",[canonical.rows[0].order_id]);
   assert.ok((await bundlePost(107,'nav:trial-proxy')).reply_markup.inline_keyboard.flat().some((b:any)=>b.url?.startsWith('https://t.me/webproxy?')));
+  await pool.query("UPDATE trial_offers SET enabled=false WHERE product IN ('vpn','bundle','smart_dns')");
+  const resumed=await bundlePost(108,'trial:bundle');
+  assert.match(resumed.text,/Пробный пакет уже оформлялся/);
+  assert.ok(resumed.reply_markup.inline_keyboard.flat().some((b:any)=>b.callback_data==='nav:trial-proxy'));
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM trial_grants WHERE telegram_user_id=$1',[String(bundleUser)])).rows[0].n,1);
  }finally{
   child.kill('SIGTERM');
   for(const offer of priorOffers.rows)await pool.query('UPDATE trial_offers SET enabled=$2,dns_quota_bytes=$3 WHERE product=$1',[offer.product,offer.enabled,offer.dns_quota_bytes]).catch(()=>{});
