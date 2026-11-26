@@ -164,3 +164,27 @@ test('Telegram trial-ready sender sends the onboarding device buttons, no bearer
   assert.ok(!JSON.stringify(sent.body).includes('vless://'));
   assert.ok(!JSON.stringify(sent.body).includes('/sub/'));
 });
+
+test('bundle Telegram notification waits for final VPN and Smart DNS revisions',async()=>{
+ const db=new PgBillingStore(pool), actor=921818005;
+ await pool.query("UPDATE trial_offers SET enabled=true,dns_quota_bytes=1073741824 WHERE product='bundle'");
+ const grant=await db.grantTrial(actor,'bundle');
+ assert.equal(grant.status,'GRANTED');
+ const order=grant.orderId!;
+ const {rows}=await pool.query("SELECT id,product FROM entitlements WHERE source_order_id=$1",[order]);
+ const vpn=rows.find(e=>e.product==='vpn').id,dns=rows.find(e=>e.product==='smart_dns').id;
+ const ack=async(id:string,product:string,revision:number,provisional:boolean)=>{
+   const f=(await pool.query("SELECT claim_provisioning_fence($1,$2) AS fence",[id,product])).rows[0].fence;
+   return (await pool.query("SELECT acknowledge_provisioning_observed($1,$2,$3,$4,true,CASE WHEN $5::boolean THEN clock_timestamp()+interval '4 minutes' ELSE NULL END) AS ok",[id,product,revision,f,provisional])).rows[0].ok;
+ };
+ const q=new PgVpnTrialReadyQueue(pool);
+ const count=async()=>(await pool.query("SELECT count(*)::int AS n FROM vpn_trial_ready_notifications WHERE order_id=$1",[order])).rows[0].n;
+ assert.equal(await ack(vpn,'vpn',1,true),true);
+ await q.discover();assert.equal(await count(),0);
+ assert.equal(await ack(dns,'smart_dns',1,true),true);
+ assert.equal(await ack(vpn,'vpn',2,false),true);
+ await q.discover();assert.equal(await count(),0);
+ assert.equal(await ack(dns,'smart_dns',2,false),true);
+ await q.discover();assert.equal(await count(),1);
+ await q.discover();assert.equal(await count(),1);
+});
