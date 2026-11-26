@@ -89,7 +89,7 @@ test('24h free trial starts at observed provisioning, not when reserved',async()
  assert.equal((await worker.processOnce()).status,'synced');
  assert.equal(applied.at(-1)?.enabled,false);
 });
-test('two bundle entitlements share activation deadline from first observed enable',async()=>{
+test('bundle trial starts only after both services have current provisional readiness',async()=>{
  await pool.query("UPDATE trial_offers SET enabled=true,dns_quota_bytes=1073741824 WHERE product='bundle'");
  const order=await db.grantTrial(919818002,'bundle');
  assert.equal(order.status,'GRANTED');
@@ -107,20 +107,35 @@ test('two bundle entitlements share activation deadline from first observed enab
   },
  });
  const worker=new PgOutboxDispatcher(pool,{vpn:mk(),smart_dns:mk()});
- assert.equal((await worker.processOnce()).status,'synced');
+ const vpn=rows.find(x=>x.product==='vpn')!.id;
+ const first=await worker.processOnce(['vpn']);
+ assert.equal(first.reason,'bundle_waiting_for_other_service');
+ const pending=await pool.query('SELECT activated_at,access_expires_at FROM trial_grants WHERE order_id=$1',[order.orderId]);
+ assert.equal(pending.rows[0].activated_at,null);
+ assert.equal(pending.rows[0].access_expires_at,null);
+ // An expired readiness receipt must not count toward simultaneous readiness.
+ await pool.query("UPDATE provisioning_state SET observed_provisional_until=clock_timestamp()-interval '1 second' WHERE entitlement_id=$1",[vpn]);
+ observed.set(vpn,{revision:1,enabled:true,expiresAt:new Date(Date.now()-1000)});
+ assert.equal((await worker.processOnce(['smart_dns'])).reason,'bundle_waiting_for_other_service');
+ assert.equal((await pool.query('SELECT activated_at FROM trial_grants WHERE order_id=$1',[order.orderId])).rows[0].activated_at,null);
+ await pool.query('UPDATE reconcile_outbox SET next_attempt_at=clock_timestamp() WHERE entitlement_id=$1 AND handled_at IS NULL',[vpn]);
+ assert.equal((await worker.processOnce(['vpn'])).status,'synced');
  const current=await pool.query(
-   'SELECT product,revision,starts_at,expires_at FROM entitlements WHERE source_order_id=$1',
+   'SELECT product,revision,state,starts_at,expires_at FROM entitlements WHERE source_order_id=$1',
    [order.orderId]);
  assert.equal(current.rows.length,2);
- assert.ok(current.rows.every(x=>x.starts_at instanceof Date));
+ assert.ok(current.rows.every(x=>x.starts_at instanceof Date&&x.state==='PAID_PENDING_PROVISIONING'&&Number(x.revision)===2));
  assert.equal(current.rows[0].starts_at.getTime(),current.rows[1].starts_at.getTime());
  assert.equal(current.rows[0].expires_at.getTime(),current.rows[1].expires_at.getTime());
+ assert.equal(current.rows[0].expires_at.getTime()-current.rows[0].starts_at.getTime(),86400000);
  // Finish all subsequent revision-2 and sibling claims without assuming order.
  for(let i=0;i<5;i++){
    const x=await worker.processOnce();
    if(x.status==='empty')break;
  }
  assert.equal((await db.pendingOutboxForOrder(order.orderId!)),0);
+ const active=await pool.query("SELECT state FROM entitlements WHERE source_order_id=$1",[order.orderId]);
+ assert.ok(active.rows.every(x=>x.state==='ACTIVE'));
 });
 
 test('real Smart DNS adapter activates an existing pending trial and retains exact 24h expiry',async()=>{
