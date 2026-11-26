@@ -173,10 +173,15 @@ test('website bundle recovery waits for both final service revisions and keeps o
  const device=createHash('sha256').update(account).digest('hex');
  await pool.query("UPDATE trial_offers SET enabled=true,dns_quota_bytes=1073741824 WHERE product='bundle'");
  await pool.query('INSERT INTO accounts(id,email_address) VALUES($1,$2)',[account,email]);
- await rememberWebsiteVpnTrial(pool,account,device);
+ await rememberWebsiteVpnTrial(pool,account,device,undefined,'bundle');
  const store=new PgBillingStore(pool);
  const sent:string[]=[];
- const run=()=>recoverWebsiteVpnTrials(pool,store,'test-only-secret',async(to)=>{sent.push(to);return true;},'bundle');
+ const products:string[]=[];
+ const run=()=>recoverWebsiteVpnTrials(pool,store,'test-only-secret',async(to,_expiry,_secret,_fetcher,product)=>{sent.push(to);products.push(product??'vpn');return true;},'bundle');
+ // The older fallback offer must not consume a queued bundle request.
+ await recoverWebsiteVpnTrials(pool,store,'test-only-secret',async()=>true,'vpn');
+ assert.equal((await pool.query('SELECT count(*)::int AS n FROM trial_grants WHERE account_id=$1',[account])).rows[0].n,0);
+ assert.equal((await pool.query('SELECT requested_product FROM website_vpn_trial_requests WHERE account_id=$1',[account])).rows[0].requested_product,'bundle');
  const due=()=>pool.query('UPDATE website_vpn_trial_requests SET next_attempt_at=clock_timestamp() WHERE account_id=$1',[account]);
  await run();
  const row=(await pool.query('SELECT order_id,status FROM website_vpn_trial_requests WHERE account_id=$1',[account])).rows[0];
@@ -197,6 +202,7 @@ test('website bundle recovery waits for both final service revisions and keeps o
  assert.equal(await ack('smart_dns',2,false),true);
  await due();await run();
  assert.equal(sent.filter(x=>x===email).length,1);
+ assert.equal(products[sent.indexOf(email)],'bundle');
  assert.equal(await websiteVpnTrialStatus(pool,account),'SENT');
  assert.equal((await pool.query('SELECT count(*)::int AS n FROM trial_grants WHERE account_id=$1',[account])).rows[0].n,1);
  await due();await run();
