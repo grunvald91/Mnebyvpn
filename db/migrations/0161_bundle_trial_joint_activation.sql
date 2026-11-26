@@ -5,7 +5,7 @@ ALTER TABLE public.provisioning_state ADD COLUMN observed_provisional_until time
 -- Starting a new observation invalidates the previous provisional receipt.
 -- A failed or interrupted retry cannot lend stale readiness to its sibling.
 CREATE OR REPLACE FUNCTION public.claim_provisioning_fence(p_entitlement_id uuid, p_adapter text)
-RETURNS bigint LANGUAGE plpgsql AS $
+RETURNS bigint LANGUAGE plpgsql AS $fence$
 DECLARE
   v_token bigint;
 BEGIN
@@ -21,7 +21,7 @@ BEGIN
     RETURNING fencing_token INTO v_token;
   RETURN v_token;
 END;
-$;
+$fence$;
 
 CREATE FUNCTION public.acknowledge_provisioning_observed(
   p_entitlement_id uuid, p_adapter text, p_revision bigint,
