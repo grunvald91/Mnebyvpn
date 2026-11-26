@@ -14,7 +14,7 @@ import {buildFiDnsSnapshot} from '../../packages/dns-policy/src/fi-dns-snapshot-
 const exec=promisify(execFile);
 import {handleFiMeterRequest,type MeterDatabase} from '../../packages/dns-policy/src/fi-dns-meter-rpc.ts';
 
-test('actual FI Python DoT TLS client, signed policy and TCP RPC charge one common database quota',async()=>{
+test('FI country pilot enforces one signed profile, local revocation and real PostgreSQL quota',async()=>{
  assert.equal(process.env.PGDATABASE,'mnebyvpn_test');
  const pool=new Pool({max:1,connectionTimeoutMillis:2500});
  const db=await pool.connect();
@@ -49,14 +49,14 @@ test('actual FI Python DoT TLS client, signed policy and TCP RPC charge one comm
   await db.query('RESET ROLE');
   await db.query('SET LOCAL ROLE mnebyvpn_fi_dns_meter');
   server=await startFiMeterLoopbackServer(0,input=>handleFiMeterRequest(input,np,controller.privateKey,adapter));
-  const hostname=label+'.fi.dns.mnebyvpn.site';
+  const hostname=label+'.fi.mnebyvpn.site';
   await writeFile(join(root,'node.key'),node.privateKey.export({format:'der',type:'pkcs8'}),{mode:0o600});
   await writeFile(join(root,'controller.pub'),controller.publicKey.export({format:'der',type:'spki'}),{mode:0o600});
   await writeFile(join(root,'snapshot.json'),JSON.stringify(snapshot),{mode:0o600});
   await writeFile(join(root,'fixture.json'),JSON.stringify({port:(server.address() as AddressInfo).port,hostname}),{mode:0o600});
-  await exec('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=*.fi.dns.mnebyvpn.site','-addext','subjectAltName=DNS:*.fi.dns.mnebyvpn.site','-keyout',join(root,'privkey.pem'),'-out',join(root,'fullchain.pem')],{timeout:10000});
+  await exec('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=*.fi.mnebyvpn.site','-addext','subjectAltName=DNS:*.fi.mnebyvpn.site','-keyout',join(root,'privkey.pem'),'-out',join(root,'fullchain.pem')],{timeout:10000});
   const {stdout}=await exec('python3',['tests/ci/fi-dns-cross-repo-canary.py',root],{timeout:45000});
-  assert.match(stdout,/FI_DOT_SIGNED_QUOTA_E2E_PASS/);
+  assert.match(stdout,/FI_DOT_PILOT_SIGNED_QUOTA_AND_REVOKE_E2E_PASS/);
   await db.query('RESET ROLE');
   const {rows}=await db.query('SELECT used_queries::int AS used,reserved_queries::int AS held FROM personal_dns_query_windows WHERE entitlement_id=$1',[entitlement]);
   assert.deepEqual(rows,[{used:2,held:0}]);

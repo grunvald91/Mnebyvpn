@@ -241,7 +241,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: grunvald91/telegram-proxy-infra
-          ref: 56ea805f5e5019cf3e0be9d9bcd8e35b02d4d7fe
+          ref: 6e8a721f03e9ab267227f6d0d69094f27c1f14fc
           path: fi-node-fixture
           persist-credentials: false
       - name: Exercise FI DoT TLS through signed controller and real PostgreSQL
@@ -251,10 +251,11 @@ jobs:
           PGPORT: '5432'
           PGUSER: test
           PGDATABASE: mnebyvpn_test
-          PYTHONPATH: fi-node-fixture/nodekit
         run: |
           set -Eeuo pipefail
           test "$PGDATABASE" = mnebyvpn_test
+          python3 -B fi-node-fixture/nodekit/fi_dns_pilot_build.py fi-node-fixture/nodekit "$RUNNER_TEMP/fi-node-pilot"
+          export PYTHONPATH="$RUNNER_TEMP/fi-node-pilot:${GITHUB_WORKSPACE}/fi-node-fixture/nodekit"
           node --experimental-strip-types --test tests/ci/fi-dns-cross-repo-pg.test.ts
       - name: Payment integration with disposable PostgreSQL
         env:
