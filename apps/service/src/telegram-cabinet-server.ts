@@ -90,13 +90,13 @@ const validId=(n:unknown):n is number=>typeof n==='number'&&Number.isSafeInteger
 const msg=(text:string,keyboard:Button[][])=>{
   return {text,reply_markup:{inline_keyboard:keyboard}};
 };
-const main=(id:number)=>msg(
-  '🌐 MNEBYVPN\n\nМы строим понятный сервис «3 в 1» без технической путаницы: Smart DNS (YouTube, ChatGPT, Claude, Gemini), Telegram-прокси и VPN.\n\nВыберите тариф ниже — оплата доступна через ⭐ Telegram Stars или 💳 ЮKassa (карта, СБП).\n\n🎁 Пробный доступ — 24 часа без оплаты; отсчёт начинается после подтверждения готовности.\n\n💙 Поддержите проект: расскажите о нём друзьям.',
+const main=(id:number,bundleTrial=false)=>msg(
+  '🌐 MNEBYVPN\n\nМы строим понятный сервис «3 в 1» без технической путаницы: Smart DNS (YouTube, ChatGPT, Claude, Gemini), Telegram-прокси и VPN.\n\nВыберите тариф ниже — оплата доступна через ⭐ Telegram Stars или 💳 ЮKassa (карта, СБП).\n\n'+(bundleTrial?'🎁 «3 в 1» бесплатно: VPN и Smart DNS на 24 часа, общий Telegram-прокси без ограничения срока.':'🎁 Пробный доступ — 24 часа без оплаты; отсчёт начинается после подтверждения готовности.')+'\n\n💙 Поддержите проект: расскажите о нём друзьям.',
   [
     [{text:'✨ Экосистема «3 в 1»',callback_data:'nav:bundle'}],
     [{text:'🌐 VPN Лайт',callback_data:'nav:vpn'},
      {text:'🧭 Smart Доступ',callback_data:'nav:dns'}],
-    [{text:'🎁 Бесплатные 24 часа',callback_data:'nav:trial'}],
+    [{text:bundleTrial?'🎁 «3 в 1» бесплатно':'🎁 Бесплатные 24 часа',callback_data:'nav:trial'}],
     [{text:'🔐 Мои подключения',callback_data:'nav:status'},
      {text:'🔌 Подключить',callback_data:'nav:connect'}],
     [{text:'🔁 Продление',callback_data:'nav:renew'},
@@ -109,6 +109,10 @@ const main=(id:number)=>msg(
     ...(support?.operatorId===id ? [[{text:'✉️ Восстановить пробный VPN',callback_data:'support:trial-invite'}]] : []),
     [siteButton],
   ]);
+async function homeView(id:number){
+  const offers=store?await store.trialProducts().catch(()=>[]):[];
+  return main(id,offers.includes('bundle'));
+}
 const dbUnavailable=()=>msg('⚠️ Система подписок временно недоступна. Данные не изменены. Попробуйте снова.',
   [[{text:'🔁 Повторить',callback_data:'nav:status'}],[homeButton]]);
 function authenticated(req:IncomingMessage):boolean{
@@ -322,7 +326,7 @@ async function catalogPlansView(
     heading+'\n\n'+(list.length?list.join('\n'):'Тарифы готовятся к публикации.')+
       '\n\n⭐ Stars — оплата внутри Telegram.\n💳 ЮKassa (карта, СБП) — оплата на сайте без автосписаний.',
     [...options,...extraButtons,
-     ...(product==='vpn'?[[{text:'🎁 Получить 24 часа бесплатно',callback_data:'trial:vpn'}]]:[]),
+     ...((await store.trialProducts()).includes('bundle')?[[{text:'🎁 «3 в 1» бесплатно',callback_data:'trial:bundle'}]]:product==='vpn'?[[{text:'🎁 Получить 24 часа бесплатно',callback_data:'trial:vpn'}]]:[]),
      [{text:'🔐 Мои подключения',callback_data:'nav:status'}],[homeButton]],
   );
 }
@@ -583,7 +587,7 @@ function info(data:string,id:number){
   return main(id);
 }
 async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
-  if(data==='nav:home'||data==='home')return main(id);
+  if(data==='nav:home'||data==='home')return homeView(id);
   if(data==='nav:vpn'||data==='info:vpn'||data==='nav:plans:vpn'||
     data==='nav:catalog'||data==='nav:plans')return vpnPlans();
   if(data==='nav:bundle'||data==='info:bundle'||data==='nav:plans:bundle')
@@ -956,11 +960,11 @@ async function processUpdate(update:any){
       return oneAction(actor,await trial(actor.id,offer.product,trialInvite[1]));
     }
     if(action==='nav:menu:legacy')
-      return {method:'sendMessage',chat_id:actor.id,...main(actor.id)};
+      return {method:'sendMessage',chat_id:actor.id,...await homeView(actor.id)};
     // Bot API 10.4 widgets are restricted for general bots in production.
     // Use reliable standard Telegram messages for the public entry and shop.
     if(action==='nav:home'||action==='home')
-      return oneAction(actor,main(actor.id));
+      return oneAction(actor,await homeView(actor.id));
     if(['nav:vpn','info:vpn','nav:plans:vpn','nav:catalog','nav:plans'].includes(action))
       return oneAction(actor,await vpnPlans());
     if(['nav:bundle','info:bundle','nav:plans:bundle'].includes(action))
