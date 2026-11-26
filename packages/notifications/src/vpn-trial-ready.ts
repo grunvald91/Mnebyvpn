@@ -24,7 +24,19 @@ const eligible = `FROM trial_grants t
     AND a.telegram_user_id=t.telegram_user_id
     AND t.activated_at IS NOT NULL AND t.access_expires_at>clock_timestamp()
     AND e.state='ACTIVE' AND e.expires_at>clock_timestamp()
-    AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL`;
+    AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL
+    AND (t.product='vpn' OR (
+      e.account_id=t.account_id AND e.starts_at=t.activated_at AND e.expires_at=t.access_expires_at
+      AND EXISTS (
+        SELECT 1 FROM entitlements d JOIN provisioning_state dp
+          ON dp.entitlement_id=d.id AND dp.adapter='smart_dns'
+        WHERE d.source_order_id=t.order_id AND d.account_id=t.account_id
+          AND d.product='smart_dns' AND d.state='ACTIVE'
+          AND d.starts_at=t.activated_at AND d.expires_at=t.access_expires_at
+          AND d.expires_at>clock_timestamp() AND d.quota_state='AVAILABLE'
+          AND dp.applied_revision=d.revision AND dp.last_observed_at IS NOT NULL
+      )
+    ))`;
 
 export class PgVpnTrialReadyQueue {
   private readonly pool:Pick<Pool,'query'>;
