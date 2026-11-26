@@ -245,6 +245,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/migrations/0160_bundle_trial_shared_vpn_capacity.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0160_bundle_trial_shared_vpn_capacity_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/migrations/0161_bundle_trial_joint_activation.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0162_bundle_trial_email_recovery.sql >/dev/null
           node --check apps/web/public/app.js
           node --experimental-strip-types --test tests/ci/fi-dns-snapshot-publisher-pg.test.ts
       - name: Checkout exact reviewed FI node code for cross-repository E2E
