@@ -21,7 +21,7 @@ The branch now includes billing, joint activation, website, Telegram and email r
 
 - Gateway change: https://github.com/grunvald91/booking_bot/pull/171. Deploy and verify the ServGo gateway accepts the new signed `bundle_trial_ready` and `bundle_trial_recovery_invite` kinds before turning on the bundle offer. Retain existing OTP and VPN-only formats.
 - 0162 snapshots previously missed verified-email accounts without prior access, trial or device claim, excludes reviewer accounts and preserves existing queue rows. These new rows are dormant until the bundle offer is enabled and the updated worker claims them. The worker preserves explicitly selected bundle requests even when the offer is disabled; existing WAITING requests remain tied to their actual grant.
-- Ready mail is selected from the actual canonical order only after both final VPN/DNS acknowledgements for bundles. SMTP acceptance is not proof of inbox delivery. A lost gateway response after successful SMTP acceptance may still cause a duplicate on a retry; gateway-level stable delivery idempotency remains a separate release-review item.
+- Ready mail is selected from the actual canonical order only after both final VPN/DNS acknowledgements for bundles. SMTP acceptance is not proof of inbox delivery. The ready notice uses a stable order-derived delivery nonce and a durable gateway acceptance marker. A retry with the identical signed payload confirms recorded SMTP acceptance without another send. A crash before the acceptance marker or an ambiguous SMTP failure remains unconfirmed, never automatically resent; review these cases separately before the trial expires. This is not an exactly-once inbox delivery guarantee.
 - Before rollout verify the migration and worker on disposable PostgreSQL, then validate eligible account counts without exporting email addresses. Do not trigger real mail sends during CI.
 
 ## Source references
@@ -34,3 +34,14 @@ The branch now includes billing, joint activation, website, Telegram and email r
 - packages/web/src/website-vpn-trial-recovery.ts
 - apps/web/src/server.ts
 - apps/service/src/telegram-cabinet-server.ts
+
+## Release gate: do not enable the offer on code-only evidence
+
+- Both repository heads must pass CI; deploy and verify the backward-compatible ServGo gateway first.
+- Apply migrations 0160–0162 before restarting upgraded workers; verify the running provisioning and expiry workers can execute the new observed acknowledgement under their actual restricted roles. Keep the existing offer flags unchanged during this rollout.
+- Verify the currently configured trial DNS quota against the owner-approved policy. The 1 GiB value in test fixtures is not a production quota.
+- Verify an actual newly issued test account: Germany and Finland VPN/Smart DNS links, a single canonical 24-hour deadline, both final acknowledgements, common proxy links and correct email.
+- Verify **actual** admission on both VPN data planes: three simultaneous connections in any DE/FI mix, fourth denied, slot released, expiry and loss of controller contact deny new and established traffic. The SQL claim gate alone is insufficient. The shared admission flag is intentionally not enabled by this PR.
+- Verify expiry on live nodes, not just the database: Germany and Finland DNS credential denial and VPN session termination. The shared HTTPS relay is not a per-user entitlement gate; do not claim revocation of generic HTTPS reachability on a previously learned relay IP. Telegram common proxy stays usable.
+- Verify that purchasing a paid bundle creates a separate subscription; this branch does not promise reuse of expired trial credentials.
+- Only after these gates pass, switch to the bundle-only offer with the validated DNS allowance. Confirm public catalog and new website/Telegram/email recovery requests use it. Verify counts without exporting customer addresses or credentials. Keep a rollback path for offer flags and workers.
