@@ -142,6 +142,25 @@ test('bundle trial starts only after both services have current provisional read
  assert.equal((await db.pendingOutboxForOrder(order.orderId!)),0);
  const active=await pool.query("SELECT state FROM entitlements WHERE source_order_id=$1",[order.orderId]);
  assert.ok(active.rows.every(x=>x.state==='ACTIVE'));
+ // Both entitlements expire at a single canonical deadline, even if the
+ // reconciler did not run at that moment. The next sweep is idempotent.
+ const id=order.orderId!;
+ await pool.query("UPDATE trial_grants SET activated_at=statement_timestamp()-interval '25 hours',access_expires_at=statement_timestamp()-interval '1 hour' WHERE order_id=$1",[id]);
+ await pool.query("UPDATE entitlements e SET starts_at=t.activated_at,expires_at=t.access_expires_at FROM trial_grants t WHERE t.order_id=$1 AND e.source_order_id=t.order_id",[id]);
+ await worker.expireDue();
+ const expired=await pool.query("SELECT state,revision FROM entitlements WHERE source_order_id=$1",[id]);
+ assert.equal(expired.rowCount,2);
+ assert.ok(expired.rows.every(x=>x.state==='EXPIRED'&&Number(x.revision)===3));
+ assert.equal(await db.pendingOutboxForOrder(id),2);
+ await worker.expireDue();
+ assert.equal(await db.pendingOutboxForOrder(id),2);
+ for(let i=0;i<5;i++){
+   const result=await worker.processOnce();
+   if(result.status==='empty')break;
+ }
+ assert.equal(await db.pendingOutboxForOrder(id),0);
+ assert.ok(rows.every(x=>observed.get(x.id)?.enabled===false&&observed.get(x.id)?.revision===3));
+ assert.equal((await db.grantTrial(919818002,'bundle')).status,'ALREADY_USED');
 });
 
 test('real Smart DNS adapter activates an existing pending trial and retains exact 24h expiry',async()=>{
