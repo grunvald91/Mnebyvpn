@@ -182,6 +182,10 @@ test('bundle Telegram notification waits for final VPN and Smart DNS revisions',
  assert.equal(await ack(vpn,'vpn',1,true),true);
  await q.discover();assert.equal(await count(),0);
  assert.equal(await ack(dns,'smart_dns',1,true),true);
+ const finalFence=(await pool.query("SELECT claim_provisioning_fence($1,'vpn') AS fence",[vpn])).rows[0].fence;
+ assert.equal((await pool.query("SELECT acknowledge_provisioning($1,'vpn',2,$2,true) AS ok",[vpn,finalFence])).rows[0].ok,false);
+ assert.equal((await pool.query("SELECT acknowledge_provisioning_observed($1,'vpn',2,$2,true,(SELECT expires_at+interval '1 minute' FROM entitlements WHERE id=$1)) AS ok",[vpn,finalFence])).rows[0].ok,false);
+ await q.discover();assert.equal(await count(),0);
  assert.equal(await ack(vpn,'vpn',2,false),true);
  await q.discover();assert.equal(await count(),0);
  assert.equal(await ack(dns,'smart_dns',2,false),true);
