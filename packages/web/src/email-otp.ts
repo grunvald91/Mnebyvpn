@@ -1,4 +1,4 @@
-import {createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
+import {createHash,createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
 
 /** Preserve a single canonical case-insensitive ASCII mailbox identity. */
 export function normalizeLoginEmail(value:unknown):string|null{
@@ -47,7 +47,7 @@ export async function deliverVpnTrialReadyEmail(email:string,expiresAt:Date,secr
      !Number.isFinite(expiresAt.getTime())||expiresAt.getTime()<=Date.now())return false;
   const timestamp=String(Math.floor(Date.now()/1000));
   // One durable notice per canonical order. Do not expose the order ID.
-  const nonce=orderId?'trial_'+privateDigest('trial-ready-delivery-v1',orderId,secret).slice(0,56):randomBytes(24).toString('base64url');
+  const nonce=orderId?'trial_'+createHash('sha256').update('trial-ready-delivery-v1:'+orderId).digest('hex').slice(0,56):randomBytes(24).toString('base64url');
   const payload=JSON.stringify({email,kind:product==='bundle'?'bundle_trial_ready':'vpn_trial_ready',expiresAt:expiresAt.toISOString()});
   const signature=createHmac('sha256',secret).update(timestamp+'.'+nonce+'.'+payload).digest('hex');
   try{
