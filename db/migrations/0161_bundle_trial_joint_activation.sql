@@ -2,6 +2,27 @@
 -- trial activation retain their prior behavior. Never extend an existing clock.
 BEGIN;
 ALTER TABLE public.provisioning_state ADD COLUMN observed_provisional_until timestamptz;
+-- Starting a new observation invalidates the previous provisional receipt.
+-- A failed or interrupted retry cannot lend stale readiness to its sibling.
+CREATE OR REPLACE FUNCTION public.claim_provisioning_fence(p_entitlement_id uuid, p_adapter text)
+RETURNS bigint LANGUAGE plpgsql AS $
+DECLARE
+  v_token bigint;
+BEGIN
+  IF p_adapter NOT IN ('vpn', 'smart_dns') OR NOT EXISTS (
+    SELECT 1 FROM entitlements
+     WHERE id = p_entitlement_id AND product = p_adapter
+  ) THEN RAISE EXCEPTION 'Invalid adapter for entitlement'; END IF;
+  INSERT INTO provisioning_state(entitlement_id, adapter, fencing_token)
+    VALUES(p_entitlement_id, p_adapter, 1)
+    ON CONFLICT (entitlement_id, adapter)
+    DO UPDATE SET fencing_token = provisioning_state.fencing_token + 1,
+                  observed_provisional_until = NULL
+    RETURNING fencing_token INTO v_token;
+  RETURN v_token;
+END;
+$;
+
 CREATE FUNCTION public.acknowledge_provisioning_observed(
   p_entitlement_id uuid, p_adapter text, p_revision bigint,
   p_fencing_token bigint, p_observed_enabled boolean, p_observed_expiry timestamptz
@@ -31,8 +52,8 @@ BEGIN
     AND v_trial.activated_at IS NULL
     AND v_ent.starts_at IS NULL AND v_ent.expires_at IS NULL;
   v_bundle_pending := v_pending AND v_trial.product='bundle';
-  IF v_bundle_pending AND (
-    p_observed_enabled IS DISTINCT FROM true OR p_observed_expiry IS NULL
+  IF v_bundle_pending AND p_observed_enabled IS TRUE AND (
+    p_observed_expiry IS NULL
     OR p_observed_expiry <= clock_timestamp()+interval '10 seconds'
     OR p_observed_expiry > clock_timestamp()+interval '5 minutes 1 second'
   ) THEN RETURN false; END IF;
@@ -54,7 +75,7 @@ BEGIN
   IF p_observed_enabled IS DISTINCT FROM v_expected THEN RETURN false; END IF;
   UPDATE provisioning_state
      SET applied_revision = p_revision, last_observed_at = clock_timestamp(),
-         observed_provisional_until = CASE WHEN v_bundle_pending THEN p_observed_expiry ELSE NULL END
+         observed_provisional_until = CASE WHEN v_bundle_pending AND p_observed_enabled THEN p_observed_expiry ELSE NULL END
    WHERE entitlement_id = p_entitlement_id AND adapter = p_adapter
      AND fencing_token = p_fencing_token;
   GET DIAGNOSTICS v_rows = ROW_COUNT;
