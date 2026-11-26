@@ -3,17 +3,20 @@ import type {PgBillingStore} from '../../billing/src/store.ts';
 import {deliverVpnTrialReadyEmail,normalizeLoginEmail} from './email-otp.ts';
 
 /** Only call for an explicitly requesting, successfully authenticated email account. */
-export async function rememberWebsiteVpnTrial(pool:Pool,accountId:string,deviceHash:string,inviteToken?:string):Promise<boolean>{
-  await pool.query(`INSERT INTO website_vpn_trial_requests(account_id,device_hash,invite_token)
-    VALUES($1,$2,$3) ON CONFLICT(account_id) DO UPDATE
+export async function rememberWebsiteVpnTrial(pool:Pool,accountId:string,deviceHash:string,inviteToken?:string,requestedProduct?:'bundle'):Promise<boolean>{
+  await pool.query(`INSERT INTO website_vpn_trial_requests(account_id,device_hash,invite_token,requested_product)
+    VALUES($1,$2,$3,$4) ON CONFLICT(account_id) DO UPDATE
     SET status='PENDING',device_hash=EXCLUDED.device_hash,invite_token=EXCLUDED.invite_token,request_source='WEBSITE',
-      next_attempt_at=clock_timestamp(),locked_until=NULL,last_error_code=NULL
+      next_attempt_at=clock_timestamp(),locked_until=NULL,last_error_code=NULL,
+      requested_product=COALESCE(EXCLUDED.requested_product,website_vpn_trial_requests.requested_product)
     WHERE website_vpn_trial_requests.status='REJECTED'
-      AND website_vpn_trial_requests.order_id IS NULL`,[accountId,deviceHash,inviteToken??null]);
+      AND website_vpn_trial_requests.order_id IS NULL`,[accountId,deviceHash,inviteToken??null,requestedProduct??null]);
+  if(requestedProduct==='bundle')await pool.query(`UPDATE website_vpn_trial_requests SET requested_product='bundle'
+    WHERE account_id=$1 AND status='PENDING' AND order_id IS NULL AND requested_product IS NULL`,[accountId]);
   const status=await pool.query('SELECT status FROM website_vpn_trial_requests WHERE account_id=$1',[accountId]);
   return ['PENDING','WAITING'].includes(status.rows[0]?.status);
 }
-type Job={account_id:string;device_hash:string|null;request_source:'WEBSITE'|'LEGACY_EMAIL';invite_token:string|null;order_id:string|null;status:'PENDING'|'WAITING';attempts:number};
+type Job={account_id:string;device_hash:string|null;request_source:'WEBSITE'|'LEGACY_EMAIL';requested_product:'bundle'|null;invite_token:string|null;order_id:string|null;status:'PENDING'|'WAITING';attempts:number};
 
 /** Durable bounded leases survive restart; trial uniqueness serializes grants. */
 export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStore,'grantTrial'>,secret:string,
@@ -22,13 +25,15 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
   for(let i=0;i<5;i++){
     const claimed=await pool.query(`WITH pick AS (
         SELECT account_id FROM website_vpn_trial_requests
-        WHERE status IN ('PENDING','WAITING') AND next_attempt_at<=clock_timestamp()
+        WHERE status IN ('PENDING','WAITING')
+          AND (status='WAITING' OR requested_product IS DISTINCT FROM 'bundle' OR $1::boolean)
+          AND (next_attempt_at<=clock_timestamp() OR (requested_product='bundle' AND next_attempt_at='infinity'::timestamptz AND $1::boolean))
           AND (locked_until IS NULL OR locked_until<=clock_timestamp())
-        ORDER BY next_attempt_at LIMIT 1 FOR UPDATE SKIP LOCKED
+        ORDER BY CASE WHEN next_attempt_at='infinity'::timestamptz THEN created_at ELSE next_attempt_at END LIMIT 1 FOR UPDATE SKIP LOCKED
       )
       UPDATE website_vpn_trial_requests r SET attempts=r.attempts+1,
         locked_until=clock_timestamp()+interval '120 seconds'
-      FROM pick WHERE r.account_id=pick.account_id RETURNING r.*`);
+      FROM pick WHERE r.account_id=pick.account_id RETURNING r.*`,[newProduct==='bundle']);
     const job=claimed.rows[0] as Job|undefined;
     if(!job)return;
     const finish=async(status:'PENDING'|'WAITING'|'SENT'|'REJECTED',orderId:string|null,delay:number,reason:string|null)=>{
@@ -41,7 +46,7 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
     const retry=Math.min(300,10*2**Math.min(5,job.attempts-1));
     try{
       if(job.status==='PENDING'){
-        const grant=await store.grantTrial(job.account_id,newProduct,job.invite_token??undefined,
+        const grant=await store.grantTrial(job.account_id,job.requested_product??newProduct,job.invite_token??undefined,
           job.device_hash??undefined,job.request_source==='LEGACY_EMAIL');
         if(grant.status==='DEVICE_ALREADY_USED'){
           await finish('REJECTED',null,0,'DEVICE_ALREADY_USED');continue;
