@@ -175,7 +175,7 @@ test('bundle Telegram notification waits for final VPN and Smart DNS revisions',
  const vpn=rows.find(e=>e.product==='vpn').id,dns=rows.find(e=>e.product==='smart_dns').id;
  const ack=async(id:string,product:string,revision:number,provisional:boolean)=>{
    const f=(await pool.query("SELECT claim_provisioning_fence($1,$2) AS fence",[id,product])).rows[0].fence;
-   return (await pool.query("SELECT acknowledge_provisioning_observed($1,$2,$3,$4,true,CASE WHEN $5::boolean THEN clock_timestamp()+interval '4 minutes' ELSE NULL END) AS ok",[id,product,revision,f,provisional])).rows[0].ok;
+   return (await pool.query("SELECT acknowledge_provisioning_observed($1,$2,$3,$4,true,CASE WHEN $5::boolean THEN clock_timestamp()+interval '4 minutes' ELSE (SELECT expires_at FROM entitlements WHERE id=$1) END) AS ok",[id,product,revision,f,provisional])).rows[0].ok;
  };
  const q=new PgVpnTrialReadyQueue(pool);
  const count=async()=>(await pool.query("SELECT count(*)::int AS n FROM vpn_trial_ready_notifications WHERE order_id=$1",[order])).rows[0].n;
