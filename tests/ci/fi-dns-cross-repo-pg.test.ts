@@ -11,10 +11,11 @@ import {promisify} from 'node:util';
 import type {AddressInfo,Server} from 'node:net';
 import {startFiMeterLoopbackServer} from '../../packages/dns-policy/src/fi-dns-meter-loopback.ts';
 import {buildFiDnsSnapshot} from '../../packages/dns-policy/src/fi-dns-snapshot-publisher.ts';
+import {proposeRegionalPersonalDnsIdentity} from '../../packages/dns-policy/src/regional-personal-dot-identity.ts';
 const exec=promisify(execFile);
 import {handleFiMeterRequest,type MeterDatabase} from '../../packages/dns-policy/src/fi-dns-meter-rpc.ts';
 
-test('actual FI Python DoT TLS client, signed policy and TCP RPC charge one common database quota',async()=>{
+test('FI country pilot enforces one signed profile, local revocation and real PostgreSQL quota',async()=>{
  assert.equal(process.env.PGDATABASE,'mnebyvpn_test');
  const pool=new Pool({max:1,connectionTimeoutMillis:2500});
  const db=await pool.connect();
@@ -25,14 +26,16 @@ test('actual FI Python DoT TLS client, signed policy and TCP RPC charge one comm
  };
  const np=pin(node.publicKey);
  const account=randomUUID(),order=randomUUID(),entitlement=randomUUID();
- const label=randomBytes(6).toString('hex');
+ const {label,hostname,tokenSha256:digest}=proposeRegionalPersonalDnsIdentity('FI');
  const legacyDigest=createHash('sha256').update(label).digest('hex');
- const digest=createHash('sha256').update('MNEBYVPN_COUNTRY_DNS_V1\0FI\0'+label,'ascii').digest('hex');
  const root=await mkdtemp(join(tmpdir(),'fi-dns-e2e-'));
  const adapter:MeterDatabase={query:(sql,values)=>db.query<{result:unknown}>(sql,values)};
  let server:Server|undefined;
  try{
   await db.query('BEGIN');
+  // The shared disposable CI database may already contain seeded FI grants.
+  // Isolate the single-profile publisher input inside this rollback-only transaction.
+  await db.query('UPDATE fi_dns_regional_credentials SET revoked_at=clock_timestamp() WHERE revoked_at IS NULL');
   await db.query("INSERT INTO vpn_node_enrollment_inventory(node_id,endpoint_host,identity_public_spki) VALUES('fi-test-01','ci-meter-fi.example.org',$1)",[np.spki]);
   await db.query("UPDATE vpn_node_enrollment_inventory SET status='approved',approved_at=clock_timestamp() WHERE node_id='fi-test-01'");
   await db.query("INSERT INTO vpn_node_enrollment_challenges(challenge_id,node_id,nonce_sha256,issued_at,expires_at,consumed_at) VALUES($1,'fi-test-01',$2,clock_timestamp()-interval '1 second',clock_timestamp()+interval '1 minute',clock_timestamp())",[randomUUID(),randomBytes(32).toString('hex')]);
@@ -46,17 +49,18 @@ test('actual FI Python DoT TLS client, signed policy and TCP RPC charge one comm
 
   await db.query('SET LOCAL ROLE mnebyvpn_fi_dns_publisher');
   const snapshot=await buildFiDnsSnapshot({query:sql=>db.query<{snapshot:unknown}>(sql)},controller.privateKey);
+  assert.equal(snapshot.grants.length,1,'expected one synthetic regional grant');
+  assert.ok(snapshot.grants[0].tokenSha256===digest,'published digest differs from the regional profile');
   await db.query('RESET ROLE');
   await db.query('SET LOCAL ROLE mnebyvpn_fi_dns_meter');
   server=await startFiMeterLoopbackServer(0,input=>handleFiMeterRequest(input,np,controller.privateKey,adapter));
-  const hostname=label+'.fi.dns.mnebyvpn.site';
   await writeFile(join(root,'node.key'),node.privateKey.export({format:'der',type:'pkcs8'}),{mode:0o600});
   await writeFile(join(root,'controller.pub'),controller.publicKey.export({format:'der',type:'spki'}),{mode:0o600});
   await writeFile(join(root,'snapshot.json'),JSON.stringify(snapshot),{mode:0o600});
   await writeFile(join(root,'fixture.json'),JSON.stringify({port:(server.address() as AddressInfo).port,hostname}),{mode:0o600});
-  await exec('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=*.fi.dns.mnebyvpn.site','-addext','subjectAltName=DNS:*.fi.dns.mnebyvpn.site','-keyout',join(root,'privkey.pem'),'-out',join(root,'fullchain.pem')],{timeout:10000});
+  await exec('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=*.fi.mnebyvpn.site','-addext','subjectAltName=DNS:*.fi.mnebyvpn.site','-keyout',join(root,'privkey.pem'),'-out',join(root,'fullchain.pem')],{timeout:10000});
   const {stdout}=await exec('python3',['tests/ci/fi-dns-cross-repo-canary.py',root],{timeout:45000});
-  assert.match(stdout,/FI_DOT_SIGNED_QUOTA_E2E_PASS/);
+  assert.match(stdout,/FI_DOT_PILOT_SIGNED_QUOTA_AND_REVOKE_E2E_PASS/);
   await db.query('RESET ROLE');
   const {rows}=await db.query('SELECT used_queries::int AS used,reserved_queries::int AS held FROM personal_dns_query_windows WHERE entitlement_id=$1',[entitlement]);
   assert.deepEqual(rows,[{used:2,held:0}]);
