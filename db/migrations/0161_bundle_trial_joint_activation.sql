@@ -73,6 +73,12 @@ BEGIN
       COALESCE(v_ent.expires_at > clock_timestamp(), false));
 
   IF p_observed_enabled IS DISTINCT FROM v_expected THEN RETURN false; END IF;
+  -- Final bundle ACKs must carry the real observed hard deadline, not only
+  -- an enabled bit. A legacy worker cannot publish a ready bundle.
+  IF v_trial.product='bundle' AND NOT v_pending AND v_expected AND (
+    p_observed_expiry IS NULL OR p_observed_expiry<=clock_timestamp()
+    OR abs(extract(epoch FROM (p_observed_expiry-v_ent.expires_at)))>1
+  ) THEN RETURN false; END IF;
   UPDATE provisioning_state
      SET applied_revision = p_revision, last_observed_at = clock_timestamp(),
          observed_provisional_until = CASE WHEN v_bundle_pending AND p_observed_enabled THEN p_observed_expiry ELSE NULL END
