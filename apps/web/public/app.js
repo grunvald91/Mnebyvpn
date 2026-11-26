@@ -624,15 +624,16 @@ function renderAccess(accesses) {
         item.append(fi);
       }
     }
-    const durations=state.plans.filter(p=>p.product===a.product);
+    const bundleTrial=Boolean(state.lastOrders?.some(o=>o.id===a.sourceOrderId&&o.state==='TRIAL'&&o.product==='bundle'));
+    const durations=state.plans.filter(p=>p.product===(bundleTrial?'bundle':a.product));
     if (durations.length && a.startsAt && a.expiresAt &&
       !['REFUNDED','CANCELLED','PENDING_PAYMENT'].includes(a.state)) {
-      const renew=node('button','button button-secondary renew-button','Продлить доступ ↗');
+      const renew=node('button','button button-secondary renew-button',bundleTrial?'Купить «3 в 1» ↗':'Продлить доступ ↗');
       renew.type='button';
       renew.addEventListener('click',()=>{
         const preferred=durations.find(p=>p.durationDays===30)||durations[0];
-        setSelection(a.product,preferred.durationDays);
-        state.renewalTargetId=a.id;
+        setSelection(bundleTrial?'bundle':a.product,preferred.durationDays);
+        state.renewalTargetId=bundleTrial?null:a.id;
         state.requestId=null;
         renderPlan();
         if(typeof window!=='undefined'&&window.MnebyvpnJourney)
