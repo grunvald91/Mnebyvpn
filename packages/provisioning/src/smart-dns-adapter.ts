@@ -20,7 +20,7 @@ export class SmartDnsProvisioningAdapter implements ProvisioningAdapter {
   readonly enforcesHardExpiry=true as const;
   private readonly db:Pick<Pool,'query'>;
   private readonly healthCheck?:SmartDnsHealthCheck;
-  private readonly applied=new Map<string,{revision:number;enabled:boolean}>();
+  private readonly applied=new Map<string,{revision:number;enabled:boolean;provisionalUntil:Date|null}>();
 
   constructor(db:Pick<Pool,'query'>,healthCheck?:SmartDnsHealthCheck){
     this.db=db;
@@ -35,27 +35,37 @@ export class SmartDnsProvisioningAdapter implements ProvisioningAdapter {
     const row=(rows as EntitlementRow[])[0];
     if(!row)return {revision:0,enabled:false,absent:true};
     const revision=Number(row.revision);
-    const notExpired=row.expires_at!==null && row.expires_at.getTime()>Date.now();
     const record=this.applied.get(entitlementId);
-    const activeInDb=row.state==='ACTIVE'&&notExpired;
+    const sameRevision=record?.revision===revision;
+    // Unstarted trials have no DB expiry until the first provisioning ACK.
+    // This is a bounded readiness observation, not a credential grant: the
+    // gateway still denies all premium requests until the DB is ACTIVE.
+    const pending=['PAID_PENDING_PROVISIONING','PROVISIONING_FAILED'].includes(row.state);
+    const observedExpiry=row.expires_at??(pending&&sameRevision&&record.enabled?record.provisionalUntil:null);
+    const notExpired=observedExpiry!==null&&observedExpiry.getTime()>Date.now();
+    const activeInDb=row.state==='ACTIVE'&&row.expires_at!==null&&notExpired;
     const confirmedThisCycle=record?.revision===revision&&record.enabled;
     return {
       revision,
       enabled:(activeInDb||confirmedThisCycle)&&
         (row.state==='ACTIVE'||['PAID_PENDING_PROVISIONING','PROVISIONING_FAILED'].includes(row.state))&&
-        notExpired&&record?.enabled!==false,
-      expiresAt:row.expires_at,
+        notExpired&&(!sameRevision||record.enabled!==false),
+      expiresAt:observedExpiry,
     };
   }
 
   async apply(desired:DesiredAccess,operationId:string):Promise<'applied'|'unknown'>{
     const expected=[desired.entitlementId,desired.revision,desired.enabled?'enable':'disable'].join(':');
     if(operationId!==expected)return 'unknown';
+    const provisional=desired.trialPendingActivation===true||desired.provisionalActivation===true;
+    if(desired.enabled&&provisional&&(!this.healthCheck||!desired.expiresAt||
+       desired.expiresAt.getTime()<=Date.now()||desired.expiresAt.getTime()>Date.now()+5*60*1000))return 'unknown';
     if(desired.enabled&&this.healthCheck){
       const ok=await this.healthCheck().catch(()=>false);
       if(!ok)return 'unknown';
     }
-    this.applied.set(desired.entitlementId,{revision:desired.revision,enabled:desired.enabled});
+    this.applied.set(desired.entitlementId,{revision:desired.revision,enabled:desired.enabled,
+      provisionalUntil:desired.enabled&&provisional?desired.expiresAt:null});
     return 'applied';
   }
 }
