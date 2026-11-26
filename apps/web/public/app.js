@@ -134,12 +134,12 @@ function renderPlan() {
     !state.checkoutEnabled?'Оплата подключается':
     !state.loggedIn?'Войти для оплаты':state.renewalTargetId?'К оплате продления':'Перейти к оплате';
   const trial=byId('trial-button');
-  const trialAvailable=(state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'))&&state.loginEnabled;
+  const trialAvailable=(state.trialOffers.includes('bundle')||state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'))&&state.loginEnabled;
   trial.disabled=!trialAvailable||state.busy;
   syncCabinetTrialButton();
   trial.textContent=state.busy?'Проверяем заявку…':
     !state.loginEnabled?'Бесплатный доступ временно недоступен':
-    trialAvailable?(state.loggedIn?'🎁 Получить 24 часа VPN бесплатно':'Войти и получить 24 часа VPN бесплатно'):
+    trialAvailable?(state.trialOffers.includes('bundle')?'🎁 Попробовать «3 в 1» бесплатно':(state.loggedIn?'🎁 Получить 24 часа VPN бесплатно':'Войти и получить 24 часа VPN бесплатно')):
     'Бесплатный доступ временно недоступен';
   text('checkout-hint',
     !plan?'Неопубликованные тарифы не продаются.':
@@ -507,7 +507,7 @@ async function loadTelegramProxyBonus(entitlementId, button, item) {
 function syncCabinetTrialButton(){
   const retry=byId('cabinet-trial-retry');
   if(!retry)return;
-  retry.hidden=!state.loggedIn||!state.trialOffers.includes('vpn')||
+  retry.hidden=!state.loggedIn||!(state.trialOffers.includes('bundle')||state.trialOffers.includes('vpn'))||
     ['PENDING','WAITING','SENT'].includes(state.trialRequestStatus);
   retry.disabled=state.busy||retry.hidden;
 }
@@ -517,7 +517,7 @@ function renderAccess(accesses) {
   if(!accesses.length) {
     const empty=node('div','empty');
     if(['PENDING','WAITING'].includes(state.trialRequestStatus)){
-      empty.append(node('p','','Заявка на бесплатный VPN сохранена. Продолжаем подключение автоматически; когда VPN будет готов, отправим письмо на вашу почту.'));
+      empty.append(node('p','','Заявка на бесплатный доступ сохранена. Продолжаем подключение автоматически; когда доступ будет готов, отправим письмо на вашу почту.'));
       list.append(empty);return;
     }
     if(state.trialRequestStatus==='UNKNOWN'){
@@ -525,9 +525,9 @@ function renderAccess(accesses) {
     }else{
       empty.append(node('p','','Пока нет активных подписок.'));
     }
-    const retry=node('button','button button-primary','Получить бесплатный VPN на 24 часа');
+    const retry=node('button','button button-primary',state.trialOffers.includes('bundle')?'Попробовать «3 в 1» бесплатно':'Получить бесплатный VPN на 24 часа');
     retry.type='button';retry.id='cabinet-trial-retry';
-    retry.addEventListener('click',()=>{state.trialProduct='vpn';void claimTrial();});
+    retry.addEventListener('click',()=>{state.trialProduct=state.trialOffers.includes('bundle')?'bundle':'vpn';void claimTrial();});
     empty.append(retry);
     const goPlans=node('a','button button-primary','Выбрать тариф');
     goPlans.href='/#plans';
@@ -745,6 +745,9 @@ function renderAccount(payload) {
   state.hasPendingProvisioning=['PENDING','WAITING'].includes(state.trialRequestStatus)||accesses.some(a=>a.state==='PAID_PENDING_PROVISIONING');
   const active=accesses.filter(a=>a.state==='ACTIVE' && a.secondsRemaining>0);
   state.activeTrialProducts=active.filter(a=>state.lastOrders.some(o=>o.id===a.sourceOrderId&&o.state==='TRIAL')).map(a=>a.product);
+  if(state.lastOrders.some(o=>o.state==='TRIAL'&&o.product==='bundle'&&
+     ['vpn','smart_dns'].every(product=>active.some(a=>a.sourceOrderId===o.id&&a.product===product))))
+    state.activeTrialProducts.push('bundle');
   text('active-count',active.length);
   const timed=active.filter(a=>a.secondsRemaining!==null).sort((a,b)=>a.secondsRemaining-b.secondsRemaining);
   text('days-left',timed.length?remaining(timed[0].secondsRemaining):'—');
@@ -760,17 +763,17 @@ function renderAccount(payload) {
     byId('guest-trial-card').classList.add('hidden');
   }
   const pendingVpn=accesses.filter(a=>a.product==='vpn' &&
-    a.state==='PAID_PENDING_PROVISIONING');
+    ['PAID_PENDING_PROVISIONING','PROVISIONING_FAILED'].includes(a.state));
   if(pendingVpn.length){
     const isPaid=pendingVpn.some(a=>(payload.orders||[]).some(o=>
       o.id===a.sourceOrderId && o.state==='PAID'));
     const card=byId('guest-trial-card');
     card.classList.remove('hidden');
     byId('guest-trial-title').textContent=isPaid?
-      'Подключаем оплаченный VPN':'Подключаем пробный VPN';
+      'Подключаем оплаченный VPN':state.lastOrders.some(o=>o.state==='TRIAL'&&o.product==='bundle'&&pendingVpn.some(a=>a.sourceOrderId===o.id))?'Подключаем «3 в 1»':'Подключаем пробный VPN';
     byId('guest-trial-status').textContent=isPaid?
       'Оплата подтверждена. VPN-сервер готовит подключение. Проверьте статус в личном кабинете.':
-      'Пробные 24 часа начнутся только после подтверждения активации сервером.';
+      'Пробные 24 часа начнутся после подтверждения готовности доступа.';
     if(!state.guestSubscriptionUrl)byId('guest-trial-ready').classList.add('hidden');
   }
   renderPlan();
@@ -1008,7 +1011,7 @@ async function purchase() {
 }
 async function claimTrial(){
   if(state.busy)return;
-  const trialProduct=state.trialProduct==='smart_dns'?'smart_dns':'vpn';
+  const trialProduct=state.trialOffers.includes('bundle')?'bundle':state.trialProduct==='smart_dns'?'smart_dns':'vpn';
   if(!state.trialOffers.includes(trialProduct)){
     toast('Бесплатный доступ сейчас недоступен.');return;
   }
@@ -1050,7 +1053,7 @@ async function claimTrial(){
       }catch{}
     }
     await refresh();
-    const alreadyActive=response.status==='ALREADY_USED'&&state.activeTrialProducts.includes(trialProduct);
+    const alreadyActive=response.status==='ALREADY_USED'&&(trialProduct==='bundle'?state.activeTrialProducts.includes('bundle'):state.activeTrialProducts.includes(trialProduct));
     if(response.status==='ALREADY_USED'&&!alreadyActive){
       toast(messages.ALREADY_USED);
       byId('account').scrollIntoView({behavior:'smooth'});
@@ -1179,8 +1182,8 @@ async function finishEmail(event){
     try{
       const raw=sessionStorage.getItem('mnebyvpn-pending-trial');
       const product=sessionStorage.getItem('mnebyvpn-pending-trial-product');
-      if((raw==='1'||raw==='vpn')&&product!=='smart_dns'){
-        verifyPayload.trial='vpn';
+      if(['1','vpn','smart_dns','bundle'].includes(raw)&&(state.trialOffers.includes('bundle')||product==='bundle'||((raw==='1'||raw==='vpn')&&product!=='smart_dns'))){
+        verifyPayload.trial=(state.trialOffers.includes('bundle')||product==='bundle')?'bundle':'vpn';
         if(state.inviteToken)verifyPayload.trialInviteToken=state.inviteToken;
       }
     }catch{}
@@ -1325,13 +1328,13 @@ function applyInitialSelectionFromUrl(){
 applyInitialSelectionFromUrl();
 applyLinkOptions();
 async function consumePendingTrial(){
-  if(state.loggedIn && (state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'))){
+  if(state.loggedIn && (state.trialOffers.includes('bundle')||state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'))){
     let pending=null;
     try{
       const raw=sessionStorage.getItem('mnebyvpn-pending-trial');
       const prod=sessionStorage.getItem('mnebyvpn-pending-trial-product');
-      if(raw==='1'||raw==='vpn'||raw==='smart_dns')
-        pending=(prod==='smart_dns'||raw==='smart_dns')?'smart_dns':'vpn';
+      if(['1','vpn','smart_dns','bundle'].includes(raw))
+        pending=state.trialOffers.includes('bundle')?'bundle':(prod==='bundle'||raw==='bundle')?'bundle':(prod==='smart_dns'||raw==='smart_dns')?'smart_dns':'vpn';
     }catch{}
     if(pending&&state.trialOffers.includes(pending)){
       state.trialProduct=pending;
