@@ -11,6 +11,7 @@ import {promisify} from 'node:util';
 import type {AddressInfo,Server} from 'node:net';
 import {startFiMeterLoopbackServer} from '../../packages/dns-policy/src/fi-dns-meter-loopback.ts';
 import {buildFiDnsSnapshot} from '../../packages/dns-policy/src/fi-dns-snapshot-publisher.ts';
+import {proposeRegionalPersonalDnsIdentity} from '../../packages/dns-policy/src/regional-personal-dot-identity.ts';
 const exec=promisify(execFile);
 import {handleFiMeterRequest,type MeterDatabase} from '../../packages/dns-policy/src/fi-dns-meter-rpc.ts';
 
@@ -25,9 +26,8 @@ test('FI country pilot enforces one signed profile, local revocation and real Po
  };
  const np=pin(node.publicKey);
  const account=randomUUID(),order=randomUUID(),entitlement=randomUUID();
- const label=randomBytes(6).toString('hex');
+ const {label,hostname,tokenSha256:digest}=proposeRegionalPersonalDnsIdentity('FI');
  const legacyDigest=createHash('sha256').update(label).digest('hex');
- const digest=createHash('sha256').update('MNEBYVPN_COUNTRY_DNS_V1\0FI\0'+label,'ascii').digest('hex');
  const root=await mkdtemp(join(tmpdir(),'fi-dns-e2e-'));
  const adapter:MeterDatabase={query:(sql,values)=>db.query<{result:unknown}>(sql,values)};
  let server:Server|undefined;
@@ -46,10 +46,11 @@ test('FI country pilot enforces one signed profile, local revocation and real Po
 
   await db.query('SET LOCAL ROLE mnebyvpn_fi_dns_publisher');
   const snapshot=await buildFiDnsSnapshot({query:sql=>db.query<{snapshot:unknown}>(sql)},controller.privateKey);
+  assert.equal(snapshot.grants.length,1,'expected one synthetic regional grant');
+  assert.ok(snapshot.grants[0].tokenSha256===digest,'published digest differs from the regional profile');
   await db.query('RESET ROLE');
   await db.query('SET LOCAL ROLE mnebyvpn_fi_dns_meter');
   server=await startFiMeterLoopbackServer(0,input=>handleFiMeterRequest(input,np,controller.privateKey,adapter));
-  const hostname=label+'.fi.mnebyvpn.site';
   await writeFile(join(root,'node.key'),node.privateKey.export({format:'der',type:'pkcs8'}),{mode:0o600});
   await writeFile(join(root,'controller.pub'),controller.publicKey.export({format:'der',type:'spki'}),{mode:0o600});
   await writeFile(join(root,'snapshot.json'),JSON.stringify(snapshot),{mode:0o600});

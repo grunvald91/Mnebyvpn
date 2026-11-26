@@ -37,12 +37,15 @@ async def main():
     marker = root / "pilot-permit"
     pilot = fi_dns_pilot.PilotGrant(marker)
     authorizer = fi_dns_pilot.PilotAuthorizer(Authorizer(), pilot)
-    now = int(time.time())
-    permit = f"{hostname_digest(cfg['hostname'])} {now} {now + 90}\n"
+    expected_digest = hostname_digest(cfg["hostname"])
+    assert len(snap["grants"]) == 1, "invalid synthetic grant count"
+    assert snap["grants"][0]["tokenSha256"] == expected_digest, "country identity mismatch"
 
     def arm():
-        marker.write_text(permit)
+        now = int(time.time())
+        marker.write_bytes(f"{expected_digest} {now - 1:010d} {now + 90:010d}\n".encode("ascii"))
         marker.chmod(0o600)
+        assert pilot.digest() == expected_digest, "invalid temporary pilot permit"
 
     # Test certificate only. Use actual production SNI binding and TLS
     # framing, replacing the staged LE file location and preflight in CI.
