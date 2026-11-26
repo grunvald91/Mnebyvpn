@@ -70,3 +70,13 @@ test('SEO crawler fails fast and honestly when GitHub runner cannot reach HTTPS'
   assert.match(result.stdout,/SEO_PUBLIC_CRAWLER_GATE=FAIL_NETWORK/);
   assert.doesNotMatch(result.stdout,/PATH=\/robots\.txt/);
 });
+
+test('canonical home and legal routes accept HEAD without enabling HEAD checkout',()=>{
+  assert.match(server,/\(\(req\.method === 'GET' \|\| req\.method === 'HEAD'\) && url\.pathname === '\/'\)/);
+  for(const path of ['/terms','/privacy','/agreement']){
+    assert.ok(server.includes("if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '"+path+"')"),path);
+  }
+  assert.ok(server.includes("req.method === 'GET' && (url.pathname === '/payment/success' || url.pathname === '/payment/return')"));
+  assert.match(audit,/for path in PUBLIC_ROUTES:\s+req=urllib\.request\.Request\(ORIGIN\+path,method="HEAD"/);
+  assert.match(audit,/HEAD must return indexable canonical HTML status 200/);
+});

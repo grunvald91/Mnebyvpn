@@ -811,7 +811,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       send(res,200,informationalPage,'text/html; charset=utf-8','public, max-age=300, must-revalidate');return;
     }
   }
-  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/payment/success' || url.pathname === '/payment/return')) {
+  if (((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/') ||
+      (req.method === 'GET' && (url.pathname === '/payment/success' || url.pathname === '/payment/return'))) {
     const device=cookie(req,deviceCookie);
     if(!device||!/^[A-Za-z0-9_-]{43}$/.test(device))
       setCookie(res,deviceCookie,randomBytes(32).toString('base64url'),365*24*60*60);
@@ -850,13 +851,13 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     res.setHeader('Cache-Control','public, max-age=86400');
     send(res, 200, bgDesktopPoster, 'image/webp'); return;
   }
-  if (req.method === 'GET' && (url.pathname === '/terms' || url.pathname === '/terms.html')) {
+  if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/terms') {
     send(res,200,termsHtml,'text/html; charset=utf-8');return;
   }
-  if (req.method === 'GET' && (url.pathname === '/privacy' || url.pathname === '/privacy.html')) {
+  if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/privacy') {
     send(res,200,privacyHtml,'text/html; charset=utf-8');return;
   }
-  if (req.method === 'GET' && (url.pathname === '/agreement' || url.pathname === '/agreement.html')) {
+  if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/agreement') {
     send(res,200,agreementHtml,'text/html; charset=utf-8');return;
   }
   if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/seo-pages.css') {
