@@ -163,21 +163,21 @@ function isAppleDevice(){
     (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)||
     /Mac OS X|Macintosh/i.test(ua);
 }
-function dnsStorageKey(id){return 'mnebyvpn-dns-cred:'+id;}
-function readCachedPersonalDns(id){
+function dnsStorageKey(id,country='DE'){return 'mnebyvpn-dns-cred:'+id+(country==='FI'?':FI':'');}
+function readCachedPersonalDns(id,country='DE'){
   try{
-    const raw=sessionStorage.getItem(dnsStorageKey(id));
+    const raw=sessionStorage.getItem(dnsStorageKey(id,country));
     if(!raw)return null;
     const p=JSON.parse(raw);
     if(p&&typeof p.hostname==='string'&&typeof p.mobileconfig==='string')return p;
   }catch{}
   return null;
 }
-function saveCachedPersonalDns(id,creds){
+function saveCachedPersonalDns(id,creds,country='DE'){
   try{
     if(creds?.hostname&&creds?.mobileconfig)
-      sessionStorage.setItem(dnsStorageKey(id),JSON.stringify({
-        hostname:creds.hostname,mobileconfig:creds.mobileconfig,savedAt:Date.now(),
+      sessionStorage.setItem(dnsStorageKey(id,country),JSON.stringify({
+        hostname:creds.hostname,mobileconfig:creds.mobileconfig,revision:creds.revision,savedAt:Date.now(),
       }));
   }catch{}
 }
@@ -210,7 +210,8 @@ function renderPersonalDnsBox(item,hostname,xml,opts={}){
   const box=node('section','dns-personal-credentials');
   const apple=opts.isApple??isAppleDevice();
   const hasCreds=Boolean(hostname||xml);
-  box.append(node('h4','',hasCreds?'✅ Персональный Smart DNS готов':'🧭 Персональный Smart DNS'));
+  const country=opts.country==='FI'?'FI':'DE';
+  box.append(node('h4','',(hasCreds?'✅ Smart DNS · ':'🧭 Smart DNS · ')+(country==='FI'?'Финляндия':'Германия')));
   if(xml){
     const dl=node('button','button button-primary setup-button',
       apple?'⬇️ Скачать профиль Apple (.mobileconfig)':'Скачать профиль для iPhone / Mac (.mobileconfig)');
@@ -251,7 +252,7 @@ function renderPersonalDnsBox(item,hostname,xml,opts={}){
       'Персональный DoT-адрес и профиль Apple уже выпускались ранее в другой сессии (в базе хранится только хеш). Нажмите ниже, чтобы перевыпустить новый адрес и скачать новый файл .mobileconfig — старый адрес при этом отключится.'));
     const rotateBtn=node('button','button button-secondary setup-button','🔄 Перевыпустить адрес и профиль (.mobileconfig)');
     rotateBtn.type='button';
-    rotateBtn.addEventListener('click',()=>void downloadAppleDnsProfile(opts.entitlementId,rotateBtn,item));
+    rotateBtn.addEventListener('click',()=>void downloadAppleDnsProfile(opts.entitlementId,rotateBtn,item,country));
     box.append(rotateBtn);
   }
   item.append(box);
@@ -291,31 +292,31 @@ async function ensurePersonalDnsCredentials(entitlementId,opts={}){
   dnsCredInFlight.set(entitlementId,job);
   return job;
 }
-async function downloadAppleDnsProfile(entitlementId, button, item){
+async function downloadAppleDnsProfile(entitlementId, button, item,country='DE'){
   if(!state.loggedIn||button.disabled)return;
   button.disabled=true;
   try{
-    const cached=readCachedPersonalDns(entitlementId);
-    if(cached?.mobileconfig){
+    const status=await api('/api/dns/apple/status?entitlementId='+encodeURIComponent(entitlementId)+(country==='FI'?'&country=FI':''));
+    if(status.revoked)throw Error('DNS_ACCESS_REVOKED');
+    const cached=readCachedPersonalDns(entitlementId,country);
+    if(cached?.mobileconfig&&(country==='DE'||(status.issued&&cached.revision===status.revision))){
       triggerMobileconfigDownload(cached.mobileconfig);
-      if(item)renderPersonalDnsBox(item,cached.hostname,cached.mobileconfig,{entitlementId,issued:true});
+      if(item)renderPersonalDnsBox(item,cached.hostname,cached.mobileconfig,{entitlementId,issued:true,country});
       toast('Профиль Apple (.mobileconfig) загружен.');
       return;
     }
-    const status=await api('/api/dns/apple/status?entitlementId='+encodeURIComponent(entitlementId));
-    if(status.revoked)throw Error('DNS_ACCESS_REVOKED');
     let action='issue';
     if(status.issued){
       if(!Number.isSafeInteger(status.revision)||status.revision<1)
         throw Error('DNS_PROFILE_UNAVAILABLE');
       const confirmed=window.confirm(
         'Персональный DNS-профиль уже выдавался. В целях безопасности прежний адрес не хранится. '+
-        'Для выпуска нового профиля и DoT-адреса придётся заменить прежний: старая конфигурация перестанет работать '+
+        'Для выпуска нового профиля и DoT-адреса придётся заменить прежний: старая конфигурация этой страны перестанет работать '+
         'на всех устройствах. Продолжить?');
       if(!confirmed)return;
       action='rotate';
     }
-    const payload=JSON.stringify({action,entitlementId,
+    const payload=JSON.stringify({action,entitlementId,...(country==='FI'?{country}:{}),
       ...(action==='rotate'?{expectedRevision:status.revision}:{})});
     const reqInit={
       method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
@@ -325,14 +326,15 @@ async function downloadAppleDnsProfile(entitlementId, button, item){
     const combined=await fetch('/api/dns/personal/credentials',reqInit);
     if(combined.ok){
       const creds=await combined.json();
-      saveCachedPersonalDns(entitlementId,creds);
+      creds.revision=action==='rotate'?status.revision+1:1;
+      saveCachedPersonalDns(entitlementId,creds,country);
       if(creds?.mobileconfig)triggerMobileconfigDownload(creds.mobileconfig);
       if(item&&(creds?.hostname||creds?.mobileconfig))
-        renderPersonalDnsBox(item,creds.hostname||'',creds.mobileconfig||'',{entitlementId,issued:true});
+        renderPersonalDnsBox(item,creds.hostname||'',creds.mobileconfig||'',{entitlementId,issued:true,country});
       toast('Smart DNS создан: профиль .mobileconfig загружен, адрес DoT показан в карточке.');
       return;
     }
-    if(combined.status!==404){
+    if(combined.status!==404||country==='FI'){
       const problem=await combined.json().catch(()=>({code:'DNS_PROFILE_UNAVAILABLE'}));
       throw Error(problem.code||'DNS_PROFILE_UNAVAILABLE');
     }
@@ -345,7 +347,7 @@ async function downloadAppleDnsProfile(entitlementId, button, item){
       throw Error('DNS_PROFILE_UNAVAILABLE');
     const xml=await response.text();
     triggerMobileconfigDownload(xml);
-    if(item)renderPersonalDnsBox(item,'',xml,{entitlementId,issued:true});
+    if(item)renderPersonalDnsBox(item,'',xml,{entitlementId,issued:true,country});
     toast('Профиль создан. Сохраните файл. На iPhone/iPad откройте Настройки → Профиль загружен; на Mac — Системные настройки → Основные → Управление устройством.');
   }catch(error){
     const messages={
@@ -549,12 +551,33 @@ function renderAccess(accesses) {
     if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
        a.secondsRemaining!==null&&a.secondsRemaining>0&&
        (state.personalDnsEnabled||state.appleDnsProfileEnabled)){
-      const apple=node('button','button button-secondary setup-button','Получить профиль Apple (.mobileconfig) и DoT');
+      const apple=node('button','button button-secondary setup-button','Получить профиль · Германия');
       apple.type='button';
       apple.addEventListener('click',()=>downloadAppleDnsProfile(a.id,apple,item));
-      item.append(apple,node('p','','Персональный конфиг для iPhone / iPad / macOS и DoT-адрес для Android и роутера. Повторный выпуск заменит прежний адрес на всех устройствах.'));
+      item.append(apple,node('p','','Персональный конфиг для iPhone / iPad / macOS и DoT-адрес для Android и роутера. После первого выпуска немецкого профиля обновите кабинет для выбора Финляндии. Повторный выпуск заменит прежний адрес выбранной страны на всех устройствах.'));
       const cached=readCachedPersonalDns(a.id);
       if(cached)renderPersonalDnsBox(item,cached.hostname,cached.mobileconfig,{entitlementId:a.id,issued:true});
+      item.append(node('p','','Если Smart DNS и VPN включены одновременно, выбирайте одну страну для обеих услуг (Германия с Германией, Финляндия с Финляндией). Иначе возможны проблемы с подключением и загрузкой сервисов.'));
+      if(a.dnsQueryQuotaPer30d){
+        const fiBox=node('section','dns-country-fi');
+        const fiButton=node('button','button button-secondary setup-button','Получить профиль · Финляндия');
+        fiButton.type='button';
+        fiButton.hidden=true;
+        fiButton.addEventListener('click',()=>downloadAppleDnsProfile(a.id,fiButton,fiBox,'FI'));
+        fiBox.append(fiButton);
+        item.append(fiBox);
+        // Only expose the button when the owner-scoped FI status confirms eligibility.
+        api('/api/dns/apple/status?entitlementId='+encodeURIComponent(a.id)+'&country=FI').then(status=>{
+          if(status.revoked||!fiBox.isConnected)return;
+          fiButton.hidden=false;
+          fiButton.textContent=status.issued?'Профиль · Финляндия':'Получить профиль · Финляндия';
+          const fi=readCachedPersonalDns(a.id,'FI');
+          if(status.issued&&fi?.revision===status.revision)
+            renderPersonalDnsBox(fiBox,fi.hostname,fi.mobileconfig,{entitlementId:a.id,issued:true,country:'FI'});
+          else if(status.issued)renderPersonalDnsBox(fiBox,'','',{entitlementId:a.id,issued:true,country:'FI'});
+          fiBox.append(node('p','','Германия и Финляндия используют общий лимит DNS-запросов.'));
+        }).catch(()=>{});
+      }
     }
     const isTrialOrder=Boolean(state.lastOrders?.some(o=>o.id===a.sourceOrderId&&o.state==='TRIAL'));
     if(!isTrialOrder&&a.product==='smart_dns'&&a.state==='ACTIVE'&&
