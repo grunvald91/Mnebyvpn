@@ -1507,7 +1507,13 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     let queued=false;
     try{
       const bundleOn=await bundleWebsiteTrialEnabled();
-      if(body.product==='bundle'&&!bundleOn){json(res,200,{status:'UNAVAILABLE',expiresAt:null});return;}
+      if(!bundleOn){
+        // A client with a durable bundle reservation may retry from an old
+        // browser. Never let that retry consume the one-trial quota as VPN.
+        const queuedBundle=await billingPool.query("SELECT 1 FROM website_vpn_trial_requests WHERE account_id=$1 AND requested_product='bundle' AND status='PENDING' AND order_id IS NULL",[auth.accountId]);
+        if(queuedBundle.rowCount){json(res,202,{status:'PENDING',expiresAt:null});return;}
+        if(body.product==='bundle'){json(res,200,{status:'UNAVAILABLE',expiresAt:null});return;}
+      }
       const product=bundleOn?'bundle':body.product as 'vpn'|'smart_dns'|'bundle';
       if((product==='vpn'||product==='bundle')&&auth.email&&emailLoginEnabled&&
          !await isReviewAccount(authPool,auth.accountId)){
