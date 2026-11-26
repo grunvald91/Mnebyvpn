@@ -267,8 +267,8 @@ function renderPersonalDnsBox(item,hostname,xml,opts={}){
     box.append(fiBox);
     api('/api/dns/apple/status?entitlementId='+encodeURIComponent(opts.entitlementId)+'&country=FI').then(status=>{
       if(status.revoked||!fiBox.isConnected)return;
-      fiButton.hidden=false;
-      fiButton.textContent=status.issued?'Профиль · Финляндия':'Получить профиль · Финляндия';
+      fiButton.hidden=status.issued;
+      fiButton.textContent='Получить профиль · Финляндия';
       const fi=readCachedPersonalDns(opts.entitlementId,'FI');
       if(status.issued&&fi?.revision===status.revision)
         renderPersonalDnsBox(fiBox,fi.hostname,fi.mobileconfig,{entitlementId:opts.entitlementId,issued:true,country:'FI'});
@@ -282,14 +282,18 @@ async function ensurePersonalDnsCredentials(entitlementId,opts={}){
   if(!state.loggedIn||!(state.personalDnsEnabled||state.appleDnsProfileEnabled))return null;
   const cached=readCachedPersonalDns(entitlementId);
   const targets=(opts.targets||[]).filter(Boolean);
-  if(cached){
-    for(const t of targets)renderPersonalDnsBox(t,cached.hostname,cached.mobileconfig,{entitlementId,issued:true});
-    return cached;
-  }
-  if(dnsCredInFlight.has(entitlementId))return dnsCredInFlight.get(entitlementId);
+  if(dnsCredInFlight.has(entitlementId))return dnsCredInFlight.get(entitlementId).then(result=>{
+    if(result?.hostname)for(const t of targets)renderPersonalDnsBox(t,result.hostname,result.mobileconfig,{entitlementId,issued:true});
+    else if(result?.issued)for(const t of targets)renderPersonalDnsBox(t,'','',{entitlementId,issued:true});
+    return result;
+  });
   const job=(async()=>{
     const status=await api('/api/dns/apple/status?entitlementId='+encodeURIComponent(entitlementId));
     if(status.revoked)return null;
+    if(status.issued&&cached?.revision===status.revision){
+      for(const t of targets)renderPersonalDnsBox(t,cached.hostname,cached.mobileconfig,{entitlementId,issued:true});
+      return cached;
+    }
     if(!status.issued&&opts.autoIssue){
       const payload=JSON.stringify({action:'issue',entitlementId});
       const res=await fetch('/api/dns/personal/credentials',{
@@ -299,6 +303,7 @@ async function ensurePersonalDnsCredentials(entitlementId,opts={}){
       });
       if(res.ok){
         const creds=await res.json();
+        creds.revision=1;
         saveCachedPersonalDns(entitlementId,creds);
         for(const t of targets)renderPersonalDnsBox(t,creds.hostname||'',creds.mobileconfig||'',{entitlementId,issued:true});
         return creds;
@@ -319,7 +324,7 @@ async function downloadAppleDnsProfile(entitlementId, button, item,country='DE')
     const status=await api('/api/dns/apple/status?entitlementId='+encodeURIComponent(entitlementId)+(country==='FI'?'&country=FI':''));
     if(status.revoked)throw Error('DNS_ACCESS_REVOKED');
     const cached=readCachedPersonalDns(entitlementId,country);
-    if(cached?.mobileconfig&&(country==='DE'||(status.issued&&cached.revision===status.revision))){
+    if(cached?.mobileconfig&&status.issued&&cached.revision===status.revision){
       triggerMobileconfigDownload(cached.mobileconfig);
       if(item)renderPersonalDnsBox(item,cached.hostname,cached.mobileconfig,{entitlementId,issued:true,country});
       toast('Профиль Apple (.mobileconfig) загружен.');
@@ -351,6 +356,7 @@ async function downloadAppleDnsProfile(entitlementId, button, item,country='DE')
       if(creds?.mobileconfig)triggerMobileconfigDownload(creds.mobileconfig);
       if(item&&(creds?.hostname||creds?.mobileconfig))
         renderPersonalDnsBox(item,creds.hostname||'',creds.mobileconfig||'',{entitlementId,issued:true,country});
+      if(country==='FI')button.hidden=true;
       toast('Smart DNS создан: профиль .mobileconfig загружен, адрес DoT показан в карточке.');
       return;
     }
@@ -575,9 +581,7 @@ function renderAccess(accesses) {
       apple.type='button';
       apple.addEventListener('click',()=>downloadAppleDnsProfile(a.id,apple,item));
       item.append(apple,node('p','','Персональный конфиг для iPhone / iPad / macOS и DoT-адрес для Android и роутера. Повторный выпуск заменит прежний адрес выбранной страны на всех устройствах.'));
-      const cached=readCachedPersonalDns(a.id);
-      if(cached)renderPersonalDnsBox(item,cached.hostname,cached.mobileconfig,{entitlementId:a.id,issued:true});
-      else void ensurePersonalDnsCredentials(a.id,{targets:[item]}).catch(()=>{});
+      void ensurePersonalDnsCredentials(a.id,{targets:[item]}).catch(()=>{});
 
     }
     const isTrialOrder=Boolean(state.lastOrders?.some(o=>o.id===a.sourceOrderId&&o.state==='TRIAL'));
