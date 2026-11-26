@@ -150,12 +150,15 @@ export class PgOutboxDispatcher {
           SET handled_at=clock_timestamp(),last_error_code=NULL
           FROM entitlements e JOIN provisioning_state p
             ON p.entitlement_id=e.id AND p.adapter=e.product
-          WHERE b.id=$1 AND b.entitlement_id=e.id
+          WHERE b.entitlement_id=e.id AND b.handled_at IS NULL
+            AND (b.id=$1 OR (e.id=$2 AND EXISTS (
+              SELECT 1 FROM trial_grants t WHERE t.order_id=e.source_order_id
+                AND t.product='bundle' AND t.activated_at IS NOT NULL)))
             AND p.applied_revision>=b.desired_revision
             AND NOT EXISTS (SELECT 1 FROM trial_grants t WHERE t.order_id=e.source_order_id
               AND t.product='bundle' AND t.activated_at IS NULL
               AND e.state IN ('PAID_PENDING_PROVISIONING','PROVISIONING_FAILED'))`,
-        [signal.id]);
+        [signal.id,signal.entitlementId]);
       if(!r.rowCount) {
         const pending=await this.store.pool.query(
           `SELECT 1 FROM entitlements e JOIN trial_grants t ON t.order_id=e.source_order_id
