@@ -61,6 +61,7 @@ const store=pool?new PgBillingStore(pool):null;
 // One release switch: enable only after external strict DoT/853 verification.
 // Authorization and paid entitlement validation remain mandatory separately.
 const personalDnsReady=process.env.MNEBYDNS_PERSONAL_DOT_ENABLED==='yes';
+const regionalDnsReady=process.env.MNEBYDNS_REGIONAL_DOT_ENABLED==='yes';
 const support=supportConfig();
 const dnsAdminId=dnsAdminOwner();
 const ownerLinkKey=ownerDnsKey(process.env.MNEBYDNS_OWNER_LINK_KEY);
@@ -562,7 +563,7 @@ async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
       const offers=starPlans.filter(p=>
         approvedPersonalDnsOffer(p)!==null||
         (p.rubMinor!==null&&p.stars!==null&&p.dnsQuotaBytes===null&&p.dnsQuotaQueriesPer30d===1_000_000n));
-      return personalDnsTelegramMenu(pool,id,offers,rubPlans);
+      return personalDnsTelegramMenu(pool,id,offers,rubPlans,regionalDnsReady);
     }
     return dnsStorefrontMenu();
   }
@@ -924,11 +925,12 @@ async function processUpdate(update:any){
     if(action==='nav:vpn:list')return oneAction(actor,await vpnPlans());
     if(/^dns:guide:(ios|android|router|services)$/.test(action))
       return oneAction(actor,personalDnsGuide(action.slice('dns:guide:'.length)));
-    if(action==='dns:issue'||/^dns:rotate:(confirm|execute):[1-9][0-9]{0,12}$/.test(action)){
+    if(action==='dns:issue'||/^dns:rotate:(confirm|execute):[1-9][0-9]{0,12}$/.test(action)||
+       (regionalDnsReady&&/^dns:fi:(confirm|execute):(0|[1-9][0-9]{0,8})$/.test(action))){
       // Paid entitlement and public DNS readiness are independent gates.
       if(!personalDnsReady||!pool)return oneAction(actor,info('nav:dns',actor.id));
       const view=await personalDnsTelegramAction(pool,actor.id,action,hostname=>
-        sendPersonalDnsMobileconfig(actor.id,hostname,outboundBotToken));
+        sendPersonalDnsMobileconfig(actor.id,hostname,outboundBotToken),regionalDnsReady);
       // One-time credential and sendDocument result are private, not editable.
       return {method:'sendMessage',chat_id:actor.id,...view};
     }

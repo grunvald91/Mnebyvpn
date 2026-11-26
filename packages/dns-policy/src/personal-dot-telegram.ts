@@ -7,6 +7,7 @@
  */
 import type {Pool} from 'pg';
 import {makePersonalDoTIdentity} from './personal-dot-identity.ts';
+import {proposeRegionalPersonalDnsIdentity} from './regional-personal-dot-identity.ts';
 
 const identity=makePersonalDoTIdentity;
 const MAX_RETRIES=3;
@@ -31,6 +32,39 @@ export type TelegramDnsSummary={
 export type TelegramDnsAction=
   |{kind:'issued'|'rotated';hostname:string;credentialRevision:number}
   |{kind:'already-issued'|'not-active'|'not-issued'|'stale'|'revoked'|'unavailable'};
+
+export async function telegramFinnishDnsRevision(db:Pick<Pool,'query'>,telegramId:number):Promise<number|null>{
+  actor(telegramId);
+  const {rows}=await db.query("SELECT public.telegram_regional_dns_revision($1,'FI') AS revision",[String(telegramId)]);
+  const revision=rows[0]?.revision;
+  if(revision===undefined||revision===null)return null;
+  const value=Number(revision);
+  return Number.isSafeInteger(value)&&value>=0&&value<=999_999_999?value:null;
+}
+
+export async function issueTelegramFinnishDns(
+  db:Pick<Pool,'query'>,telegramId:number,expectedRevision:number,
+):Promise<TelegramDnsAction>{
+  actor(telegramId);
+  if(!Number.isSafeInteger(expectedRevision)||expectedRevision<0||expectedRevision>999_999_999)
+    return {kind:'stale'};
+  for(let attempt=0;attempt<MAX_RETRIES;attempt++){
+    const candidate=proposeRegionalPersonalDnsIdentity('FI');
+    const {rows}=await db.query("SELECT public.telegram_issue_regional_dns_credential($1,'FI',$2,$3) AS result",
+      [String(telegramId),candidate.label,expectedRevision]);
+    const status=String(rows[0]?.result??'');
+    if(status==='ISSUED'||status==='ROTATED')return {
+      kind:status==='ISSUED'?'issued':'rotated',hostname:candidate.hostname,
+      credentialRevision:expectedRevision+1,
+    };
+    if(status==='DENY_TOKEN_COLLISION')continue;
+    if(status==='DENY_INACTIVE')return {kind:'not-active'};
+    if(status==='DENY_REVOKED')return {kind:'revoked'};
+    if(status==='DENY_STALE'||status==='ALREADY_ISSUED')return {kind:'stale'};
+    return {kind:'unavailable'};
+  }
+  return {kind:'unavailable'};
+}
 
 function actor(id:number){
   if(!Number.isSafeInteger(id)||id<=0)throw Error('Invalid trusted Telegram actor');

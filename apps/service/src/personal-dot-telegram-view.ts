@@ -2,8 +2,8 @@
  * Paid options are supplied ONLY from the published billing_plans table.
  */
 import type {Pool} from 'pg';
-import {issueTelegramPersonalDns,rotateTelegramPersonalDns,
-  telegramPersonalDnsSummary} from '../../../packages/dns-policy/src/personal-dot-telegram.ts';
+import {issueTelegramFinnishDns,issueTelegramPersonalDns,rotateTelegramPersonalDns,
+  telegramFinnishDnsRevision,telegramPersonalDnsSummary} from '../../../packages/dns-policy/src/personal-dot-telegram.ts';
 import {approvedPersonalDnsOffer,PERSONAL_DNS_STARS_OFFERS,
   type DnsPublishedPlan} from '../../../packages/dns-policy/src/smart-dns-offers.ts';
 
@@ -69,7 +69,7 @@ export function personalDnsGuide(kind:string):PersonalDnsBotMessage{
 }
 export async function personalDnsTelegramMenu(
   db:Pool,telegramUserId:number,publishedPlans:ReadonlyArray<DnsPublishedPlan>=[],
-  rubPlans:ReadonlyArray<DnsRubPlan>=[],
+  rubPlans:ReadonlyArray<DnsRubPlan>=[],regionalEnabled=false,
 ):Promise<PersonalDnsBotMessage>{
   const status=await telegramPersonalDnsSummary(db,telegramUserId);
   const buy:Button[][]=[];
@@ -111,22 +111,29 @@ export async function personalDnsTelegramMenu(
     :'\nСчётчик появится после выдачи персонального адреса.';
   const actions:Button[][]=[];
   if(active&&!status.credentialIssued)
-    actions.push([{text:'🔑 Получить персональный адрес и файл iOS',callback_data:'dns:issue'}]);
+    actions.push([{text:regionalEnabled?'🔑 Получить профиль · Германия':'🔑 Получить персональный адрес и файл iOS',
+      callback_data:'dns:issue'}]);
   if(active&&status.credentialIssued&&status.credentialRevision!==null)
-    actions.push([{text:'🔄 Заменить адрес и получить новый файл',
+    actions.push([{text:regionalEnabled?'🔄 Заменить профиль · Германия':'🔄 Заменить адрес и получить новый файл',
       callback_data:'dns:rotate:confirm:'+status.credentialRevision}]);
+  const fiRevision=regionalEnabled&&active&&status.credentialIssued
+    ?await telegramFinnishDnsRevision(db,telegramUserId):null;
+  if(fiRevision!==null)
+    actions.push([{text:fiRevision===0?'🔑 Получить профиль · Финляндия':'🔄 Заменить профиль · Финляндия',
+      callback_data:'dns:fi:'+(fiRevision===0?'execute':'confirm')+':'+fiRevision}]);
   actions.push(...buy,[{text:'🔁 Обновить статус',callback_data:'nav:dns'}],...guideButtons);
   return message(headline+'\n\n'+
     (exhausted?'⚠️ Лимит запросов исчерпан. Для нового лимита купите ещё один тариф и после активации получите новый адрес.':
       active?'Подписка активна.':'Платные маршруты сейчас неактивны.')+
     '\nДействует до: '+date+counters+
+    (fiRevision!==null?'\nГермания и Финляндия расходуют общий лимит этой подписки.':'')+
     (status.credentialIssued
       ?'\n\nАдрес уже выдавался. В базе хранится только его хэш. Сохраните файл; при потере замените персональный адрес.':''),
     actions);
 }
 type DeliverIosProfile=(hostname:string)=>Promise<boolean>;
 async function issuedMessage(
-  hostname:string,rotated:boolean,deliver?:DeliverIosProfile,
+  hostname:string,rotated:boolean,deliver?:DeliverIosProfile,region?:'Германия'|'Финляндия',
 ):Promise<PersonalDnsBotMessage>{
   let sent=false;
   if(deliver){try{sent=await deliver(hostname);}catch{sent=false;}}
@@ -134,9 +141,11 @@ async function issuedMessage(
     ?'📎 Файл .mobileconfig отправлен отдельным документом в этот чат.'
     :'⚠️ Автоматическую отправку iOS-файла подтвердить не удалось. Сохраните DNS-адрес ниже. Для повторного выпуска файла потребуется замена адреса в «Мой Smart DNS».';
   return message(
-    (rotated?'✅ Персональный DNS заменён. Старый адрес отключён.':
+    (region?'✅ Персональный Smart DNS · '+region:
+      rotated?'✅ Персональный DNS заменён. Старый адрес отключён.':
       '✅ Ваш персональный Smart DNS:')+
     '\n\n'+hostname+'\n\n'+delivery+
+    (region==='Финляндия'?'\nДождитесь обновления допуска на узле, затем подключите этот профиль.':'')+
     '\n\nAndroid: Настройки → Частный DNS → Имя хоста провайдера. Вставьте адрес целиком.\n'+
     'iPhone/iPad: откройте инструкцию ниже и установите файл .mobileconfig через системные настройки.\n\n'+
     'Адрес и профиль — персональные. Не пересылайте посторонним.',
@@ -145,11 +154,11 @@ async function issuedMessage(
      [{text:'🤖 Android',callback_data:'dns:guide:android'}],[menu]]);
 }
 export async function personalDnsTelegramAction(
-  db:Pool,telegramUserId:number,action:string,deliver?:DeliverIosProfile,
+  db:Pool,telegramUserId:number,action:string,deliver?:DeliverIosProfile,regionalEnabled=false,
 ):Promise<PersonalDnsBotMessage>{
   if(action==='dns:issue'){
     const r=await issueTelegramPersonalDns(db,telegramUserId);
-    if(r.kind==='issued')return issuedMessage(r.hostname,false,deliver);
+    if(r.kind==='issued')return issuedMessage(r.hostname,false,deliver,regionalEnabled?'Германия':undefined);
     if(r.kind==='already-issued')return message(
       'Адрес уже выдавался и не хранится в открытом виде. Если файл потерян, откройте «Мой Smart DNS» и замените адрес.',
       [[menu]]);
@@ -158,6 +167,19 @@ export async function personalDnsTelegramAction(
       [[menu]]);
     if(r.kind==='revoked')return message('Доступ отозван. Обратитесь в поддержку.',[[menu]]);
     return message('Не удалось выдать адрес. Попробуйте позже.',[[menu]]);
+  }
+  const regional=/^dns:fi:(confirm|execute):(0|[1-9][0-9]{0,8})$/.exec(action);
+  if(regional&&regionalEnabled){
+    const revision=Number(regional[2]);
+    if(await telegramFinnishDnsRevision(db,telegramUserId)!==revision)
+      return message('Финский профиль уже изменён или недоступен. Обновите статус.',[[menu]]);
+    if(regional[1]==='confirm')
+      return message('Заменить финский профиль? После синхронизации прежний финский адрес отключится. Счётчик запросов сохранится.',
+        [[{text:'Подтвердить',callback_data:'dns:fi:execute:'+revision}],[menu]]);
+    const result=await issueTelegramFinnishDns(db,telegramUserId,revision);
+    if(result.kind==='issued'||result.kind==='rotated')
+      return issuedMessage(result.hostname,result.kind==='rotated',deliver,'Финляндия');
+    return message('Финский профиль сейчас недоступен. Обновите статус и попробуйте ещё раз.',[[menu]]);
   }
   const match=/^dns:rotate:(confirm|execute):([1-9][0-9]{0,12})$/.exec(action);
   if(!match)return message('Неподдерживаемое действие DNS.',[[menu]]);
@@ -174,6 +196,6 @@ export async function personalDnsTelegramAction(
     [[{text:'🔄 Подтвердить замену',callback_data:'dns:rotate:execute:'+expectedRevision}],
      [{text:'Отмена',callback_data:'nav:dns'}]]);
   const r=await rotateTelegramPersonalDns(db,telegramUserId,expectedRevision);
-  if(r.kind==='rotated')return issuedMessage(r.hostname,true,deliver);
+  if(r.kind==='rotated')return issuedMessage(r.hostname,true,deliver,regionalEnabled?'Германия':undefined);
   return message('Замена не выполнена: адрес уже изменён, отозван или подписка неактивна.',[[menu]]);
 }
