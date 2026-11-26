@@ -538,8 +538,10 @@ async function trial(id:number,requested:'vpn'|'smart_dns'|'bundle'='vpn',invite
   if(!store)throw new Error('DB unavailable');
   const enabled=await store.trialProducts();
   const product=enabled.includes('bundle')?'bundle':requested;
-  if(!enabled.includes(product))return msg('🎁 Бесплатный доступ сейчас недоступен. Попробуйте позднее.',[[homeButton]]);
+  // The store resumes a previously issued grant before checking offer flags.
+  // A disabled catalog must not hide an existing user's access.
   const r=await store.grantTrial(id,product,inviteToken);
+  if(r.status==='UNAVAILABLE')return msg('🎁 Бесплатный доступ сейчас недоступен. Попробуйте позднее.',[[homeButton]]);
   // Use actual existing order, not requested tariff, when resuming an older trial.
   const actual=pool&&r.orderId?(await pool.query(
     "SELECT t.product FROM trial_grants t JOIN accounts a ON a.id=t.account_id WHERE t.order_id=$1 AND a.telegram_user_id=$2",
@@ -565,7 +567,7 @@ async function trial(id:number,requested:'vpn'|'smart_dns'|'bundle'='vpn',invite
   const text=r.status==='GRANTED'
     ? '🎁 Пробные 24 часа '+(actual==='smart_dns'?'Smart DNS':'VPN')+'\n\nЗаявка принята. 24 часа начнутся после активации.'
     :r.status==='PENDING'
-    ? '⏳ Бесплатный доступ подключается. Бот автоматически пришлёт инструкцию, когда сервер подтвердит активацию VPN. Проверять вручную не нужно.'
+    ? (actual==='smart_dns'?'⏳ Smart DNS подключается. Проверьте готовность в разделе «Мой Smart DNS».':'⏳ Бесплатный доступ подключается. Бот автоматически пришлёт инструкцию, когда сервер подтвердит активацию VPN. Проверять вручную не нужно.')
     :r.status==='ALREADY_USED'
     ? '🎁 Пробные 24 часа уже использованы этим Telegram-аккаунтом.'
     : '🎁 Бесплатный доступ сейчас недоступен. Попробуйте позднее.';
@@ -615,8 +617,10 @@ async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
     return pool?deviceView(pool,id,data.slice('nav:device:'.length)):dbUnavailable();
   return info(data,id);
 }
-function oneAction(actor:{id:number;messageId?:number;callbackId?:string;currentText?:string},view:ReturnType<typeof msg>){
-  if(actor.callbackId&&actor.currentText===view.text)
+function oneAction(actor:{id:number;messageId?:number;callbackId?:string;currentText?:string;data?:string},view:ReturnType<typeof msg>){
+  // Shared proxy links may rotate without changing the message text. Do not
+  // suppress the keyboard update in this case.
+  if(actor.callbackId&&actor.currentText===view.text&&actor.data!=='nav:trial-proxy')
     return {method:'answerCallbackQuery',callback_query_id:actor.callbackId,
       text:'Список без изменений.',show_alert:false};
   if(actor.callbackId&&validId(actor.messageId))
