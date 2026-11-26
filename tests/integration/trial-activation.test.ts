@@ -115,6 +115,20 @@ test('bundle trial starts only after both services have current provisional read
  assert.equal(pending.rows[0].access_expires_at,null);
  // A new fence must immediately invalidate the old receipt, even before a
  // new network operation completes. Simulate a failed/stalled observation.
+ // Hold the common activation lock on another connection. A fence claim
+ // must wait for that lock instead of invalidating readiness mid-commit.
+ const lock=await pool.connect(), contender=await pool.connect();
+ try{
+   await lock.query('BEGIN');
+   await lock.query('SELECT order_id FROM trial_grants WHERE order_id=$1 FOR UPDATE',[order.orderId]);
+   await contender.query('BEGIN');
+   await contender.query("SET LOCAL lock_timeout='150ms'");
+   await assert.rejects(()=>contender.query("SELECT claim_provisioning_fence($1,'vpn')",[vpn]),
+     (error:unknown)=>(error as {code?:string}).code==='55P03');
+ }finally{
+   try{await contender.query('ROLLBACK');}finally{contender.release();}
+   try{await lock.query('ROLLBACK');}finally{lock.release();}
+ }
  const refence=(await pool.query("SELECT claim_provisioning_fence($1,'vpn') AS fence",[vpn])).rows[0].fence;
  assert.equal((await pool.query("SELECT observed_provisional_until FROM provisioning_state WHERE entitlement_id=$1",[vpn])).rows[0].observed_provisional_until,null);
  // Even an old still-unexpired receipt is rejected under the previous fence.
@@ -197,6 +211,9 @@ test('pending bundle can acknowledge a verified disable without starting the clo
  await pool.query("UPDATE entitlements SET state='CANCELLED' WHERE id=$1",[vpn]);
  const fence=(await pool.query("SELECT claim_provisioning_fence($1,'vpn') AS fence",[vpn])).rows[0].fence;
  assert.equal((await pool.query("SELECT acknowledge_provisioning_observed($1,'vpn',1,$2,false,NULL) AS ok",[vpn,fence])).rows[0].ok,true);
+ const dns=(await pool.query("SELECT id FROM entitlements WHERE source_order_id=$1 AND product='smart_dns'",[order])).rows[0].id;
+ const dnsFence=(await pool.query("SELECT claim_provisioning_fence($1,'smart_dns') AS fence",[dns])).rows[0].fence;
+ assert.equal((await pool.query("SELECT acknowledge_provisioning_observed($1,'smart_dns',1,$2,true,clock_timestamp()+interval '4 minutes') AS ok",[dns,dnsFence])).rows[0].ok,true);
  const row=(await pool.query("SELECT activated_at,access_expires_at FROM trial_grants WHERE order_id=$1",[order])).rows[0];
  assert.equal(row.activated_at,null);
  assert.equal(row.access_expires_at,null);
