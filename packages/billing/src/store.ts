@@ -203,6 +203,7 @@ export class PgBillingStore {
             AND e.state IN ('ACTIVE','EXPIRED','SUSPENDED',
                             'PAID_PENDING_PROVISIONING','PROVISIONING_FAILED')
             AND e.starts_at IS NOT NULL AND e.expires_at IS NOT NULL
+            AND NOT EXISTS(SELECT 1 FROM trial_grants t WHERE t.order_id=e.source_order_id AND t.account_id=e.account_id AND t.product='bundle')
           FOR UPDATE OF e`,[renewalTargetId,accountId,p.product]);
         if(renewal.rowCount!==1)throw new Error('Renewal target not owned or not active yet');
       }
