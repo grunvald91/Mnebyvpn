@@ -17,6 +17,7 @@ export async function sendLegacyTrialInvite(pool:Pool,email:string,secret:string
  if(normalizeLoginEmail(email)!==email||secret.length<32)return 'FAILED';
  const client=await pool.connect();
  let account:string|undefined;
+ let product:'vpn'|'bundle'='vpn';
  const attempt=randomUUID();
  try{
   await client.query('BEGIN');
@@ -28,6 +29,8 @@ export async function sendLegacyTrialInvite(pool:Pool,email:string,secret:string
     FOR UPDATE`,[email]);
   if(r.rowCount!==1){await client.query('COMMIT');return 'NOT_ELIGIBLE';}
   account=r.rows[0].id;
+  const offers=await client.query("SELECT 1 FROM trial_offers WHERE product='bundle' AND enabled=true");
+  if(offers.rowCount)product='bundle';
   const prev=await client.query('SELECT status FROM website_vpn_trial_recovery_invites WHERE account_id=$1',[account]);
   if(prev.rows[0]?.status==='SENT'){await client.query('COMMIT');return 'ALREADY_SENT';}
   // Ambiguous crash after SMTP acceptance is not automatically retried.
@@ -39,7 +42,7 @@ export async function sendLegacyTrialInvite(pool:Pool,email:string,secret:string
   await client.query('COMMIT');
  }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
  // A FALSE transport response may be ambiguous; don't automatically replay.
- const delivered=await send(email,secret);
+ const delivered=await send(email,secret,undefined,product);
  if(!delivered)return 'FAILED';
  await pool.query(`UPDATE website_vpn_trial_recovery_invites SET status='SENT',sent_at=clock_timestamp()
    WHERE account_id=$1 AND attempt_id=$2 AND status='SENDING'`,[account,attempt]);
