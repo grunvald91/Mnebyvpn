@@ -188,3 +188,13 @@ test('bundle Telegram notification waits for final VPN and Smart DNS revisions',
  await q.discover();assert.equal(await count(),1);
  await q.discover();assert.equal(await count(),1);
 });
+
+test('bundle ready notice offers all three connection types without bearer links',()=>{
+ const message=trialReadyMessage({orderId:randomUUID(),telegramUserId:'921818005',expiresAt:new Date(Date.now()+3600000),attempt:1,product:'bundle'});
+ assert.match(message.text,/«3 в 1» готов/);
+ assert.match(message.text,/VPN и Smart DNS/);
+ const buttons=message.reply_markup.inline_keyboard.flat();
+ for(const action of ['nav:dns','nav:trial-proxy','nav:device:android','nav:device:ios'])
+   assert.ok(buttons.some(b=>b.callback_data===action),action);
+ assert.ok(!JSON.stringify(message).includes('/sub/'));
+});
