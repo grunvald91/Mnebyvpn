@@ -43,7 +43,7 @@ import {
 } from '../../../packages/web/src/security.ts';
 import { loadDashboard } from '../../../packages/web/src/dashboard.ts';
 import {
-  bonusReleaseReady,loadCustomerProxyBonus,loadCustomerWsProxy,parseBonusRoutes,
+  bonusReleaseReady,loadCustomerProxyBonus,loadCustomerWsProxy,loadSharedTrialWsProxy,parseBonusRoutes,
   parseWsProxyRoutes,wsProxyReleaseReady,
 }
   from '../../../packages/web/src/telegram-proxy-bonus.ts';
@@ -1356,7 +1356,17 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       try{trialRequestStatus=await websiteVpnTrialStatus(billingPool,auth.accountId);}
       catch{trialRequestStatus='UNKNOWN';}
     }
-    json(res,200,{ ...dashboard, trialRequestStatus, telegramProxyBonusEnabled:proxyBonusEnabled||wsProxyEnabled, wsProxyEnabled, appleDnsProfileEnabled, personalDnsEnabled:appleDnsProfileEnabled,
+    // Only the existing common WS routes, never per-customer MTProto material.
+    // A canonical bundle trial retains this shared benefit after VPN/DNS expiry.
+    let sharedTrialProxy:Awaited<ReturnType<typeof loadSharedTrialWsProxy>>=null;
+    if(wsProxyEnabled){
+      const routes=parseWsProxyRoutes(process.env.WEB_TELEGRAM_WS_PROXY_ROUTES_JSON);
+      if(routes){try{sharedTrialProxy=await loadSharedTrialWsProxy(billingPool,auth.accountId,routes);}
+        catch{console.error('MNEBYVPN_SHARED_TRIAL_PROXY_UNAVAILABLE');}}
+    }
+    res.setHeader('Cache-Control','private, no-store, max-age=0');
+    res.setHeader('Referrer-Policy','no-referrer');
+    json(res,200,{ ...dashboard, trialRequestStatus, sharedTrialProxy, telegramProxyBonusEnabled:proxyBonusEnabled||wsProxyEnabled, wsProxyEnabled, appleDnsProfileEnabled, personalDnsEnabled:appleDnsProfileEnabled,
       fiAwgRegistrationAvailable, identity:{provider:auth.email?'email':'telegram',email:auth.email,emailLinked:!!auth.email,telegramLinked:auth.telegramUserId!==null,yandexLinked:false}, csrf:csrfForSession(auth.raw,sessionSecret) }); return;
   }
 
