@@ -493,11 +493,13 @@ export class PgBillingStore {
    * PostgreSQL account row lock + trial_grants PK serialize repeated clicks.
    * No live VPN/DNS activation occurs until a data-plane adapter observes it.
    */
-  async grantTrial(telegramUserId:number|string,product:Product,inviteToken?:string,deviceHash?:string):
+  async grantTrial(telegramUserId:number|string,product:Product,inviteToken?:string,deviceHash?:string,legacyEmailRecovery=false):
   Promise<{status:'GRANTED'|'PENDING'|'ALREADY_USED'|'DEVICE_ALREADY_USED'|'UNAVAILABLE';orderId?:string;expiresAt?:Date}> {
     if(!(typeof telegramUserId==='number' && Number.isSafeInteger(telegramUserId) && telegramUserId>0 ||
        typeof telegramUserId==='string' && uuid.test(telegramUserId)) ||
        !['vpn','smart_dns','bundle'].includes(product))throw new Error('Invalid trial request');
+    if(legacyEmailRecovery&&(typeof telegramUserId!=='string'||product!=='vpn'||deviceHash!==undefined||inviteToken!==undefined))
+      throw new Error('Invalid legacy email trial recovery');
     if(deviceHash!==undefined&&!/^[a-f0-9]{64}$/.test(deviceHash))
       throw new Error('Invalid hashed browser trial claim');
     if(inviteToken!==undefined&&!/^[A-Za-z0-9_-]{16,24}$/.test(inviteToken))
@@ -524,6 +526,19 @@ export class PgBillingStore {
         await c.query('COMMIT');
         return {status:earlier.rows[0].activated_at===null?'PENDING':'ALREADY_USED',
           orderId:earlier.rows[0].order_id};
+      }
+      // Only the preselected historical cohort may use this server-side path.
+      // Revalidate under the same account lock as the grant; an existing grant
+      // above must be resumed, not rejected because another order appeared.
+      if(legacyEmailRecovery){
+        const eligible=await c.query(`SELECT 1 FROM accounts a
+          WHERE a.id=$1 AND a.email_address IS NOT NULL
+            AND EXISTS(SELECT 1 FROM website_vpn_trial_requests q WHERE q.account_id=a.id
+              AND q.request_source='LEGACY_EMAIL' AND q.status='PENDING' AND q.device_hash IS NULL)
+            AND NOT EXISTS(SELECT 1 FROM entitlements e WHERE e.account_id=a.id)
+            AND NOT EXISTS(SELECT 1 FROM orders o WHERE o.account_id=a.id AND o.state IN ('PAID','TRIAL','REFUNDED'))
+            AND NOT EXISTS(SELECT 1 FROM trial_device_claims d WHERE d.account_id=a.id)`,[accountId]);
+        if(eligible.rowCount!==1)throw new Error('Legacy email trial no longer eligible');
       }
       const offer=await c.query('SELECT * FROM trial_offers WHERE product=$1 AND enabled=true',
         [product]);

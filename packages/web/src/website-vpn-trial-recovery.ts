@@ -40,17 +40,8 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
     const retry=Math.min(300,10*2**Math.min(5,job.attempts-1));
     try{
       if(job.status==='PENDING'){
-        // Historical verified accounts are an explicit one-time remediation cohort.
-        // Ordinary website requests still require their real browser device hash.
-        if(job.request_source==='LEGACY_EMAIL'){
-          const account=await pool.query(`SELECT 1 FROM accounts a
-            WHERE a.id=$1 AND a.email_address IS NOT NULL
-            AND NOT EXISTS(SELECT 1 FROM entitlements e WHERE e.account_id=a.id
-              AND NOT EXISTS(SELECT 1 FROM trial_grants t WHERE t.account_id=a.id AND t.order_id=e.source_order_id AND t.product='vpn'))`,[job.account_id]);
-          if(account.rowCount!==1){await finish('REJECTED',null,0,'LEGACY_NO_LONGER_ELIGIBLE');continue;}
-        }
         const grant=await store.grantTrial(job.account_id,'vpn',job.invite_token??undefined,
-          job.device_hash??undefined);
+          job.device_hash??undefined,job.request_source==='LEGACY_EMAIL');
         if(grant.status==='DEVICE_ALREADY_USED'){
           await finish('REJECTED',null,0,'DEVICE_ALREADY_USED');continue;
         }
@@ -84,6 +75,9 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
     }catch(error){
       const code=(error as {code?:unknown})?.code;
       const reason=typeof code==='string'&&/^[0-9A-Z]{5}$/.test(code)?'SQLSTATE_'+code:'TRIAL_RECOVERY_ERROR';
+      if(error instanceof Error&&error.message==='Legacy email trial no longer eligible'){
+        await finish('REJECTED',null,0,'LEGACY_NO_LONGER_ELIGIBLE');continue;
+      }
       if(error instanceof Error&&error.message==='Invalid or self-owned trial referral'){
         await finish('REJECTED',job.order_id,0,'INVALID_REFERRAL');continue;
       }
