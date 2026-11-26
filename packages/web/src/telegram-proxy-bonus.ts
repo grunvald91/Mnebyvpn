@@ -259,3 +259,19 @@ export async function loadCustomerWsProxy(
   if(!row)return null;
   return {expiresAt:row.expires_at.toISOString(),wsLinks:makeWsProxyLinks(routes)};
 }
+
+/** Shared WS routes are intentionally reusable after a bundle trial ends.
+ * This is separate from paid-only personalized MTProto credentials.
+ * The caller must supply existing verified, owner-designated shared routes. */
+export async function loadSharedTrialWsProxy(
+  db:Pick<Pool,'query'>,accountId:string,routes:ProxyWsRoute[],
+):Promise<{wsLinks:ProxyWsLink[]}|null>{
+  if(!uuid.test(accountId))return null;
+  const {rows}=await db.query(
+    `SELECT 1 FROM trial_grants t JOIN orders o
+       ON o.id=t.order_id AND o.account_id=t.account_id
+     WHERE t.account_id=$1 AND t.product='bundle' AND o.product='bundle'
+       AND o.provider='internal_trial' AND o.state='TRIAL' AND o.amount_minor=0
+     LIMIT 1`,[accountId]);
+  return rows.length===1?{wsLinks:makeWsProxyLinks(routes)}:null;
+}
