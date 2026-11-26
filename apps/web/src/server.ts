@@ -1365,17 +1365,19 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     const entitlementId=body.entitlementId;
     const action=body.action;
     const revision=body.expectedRevision;
-    if(typeof entitlementId!=='string'||
+    const country=body.country===undefined?'DE':body.country;
+    const keys=Object.keys(body).filter(k=>k!=='country').sort().join(',');
+    if((country!=='DE'&&country!=='FI')||typeof entitlementId!=='string'||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entitlementId)||
       (action!=='issue'&&action!=='rotate')||
-      (action==='issue'&&Object.keys(body).sort().join(',')!=='action,entitlementId')||
+      (action==='issue'&&keys!=='action,entitlementId')||
       (action==='rotate'&&
-        (Object.keys(body).sort().join(',')!=='action,entitlementId,expectedRevision'||
+        (keys!=='action,entitlementId,expectedRevision'||
          !Number.isSafeInteger(revision)||Number(revision)<1))){
       json(res,400,{code:'INVALID_DNS_PROFILE_REQUEST'});return null;
     }
     const result=await issueWebsitePersonalDnsProfile(authPool,sessionHash(rawSession),
-      entitlementId,action,action==='rotate'?revision as number:undefined);
+      entitlementId,action,action==='rotate'?revision as number:undefined,country);
     if(result.kind!=='ready'){
       const code=result.kind==='already-issued'?'DNS_PROFILE_ALREADY_ISSUED':
         result.kind==='stale'?'DNS_PROFILE_REVISION_CHANGED':
@@ -1392,11 +1394,13 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     res.setHeader('X-Robots-Tag','noindex');
     if(!appleDnsProfileEnabled){json(res,503,{code:'APPLE_DNS_PROFILE_NOT_READY'});return;}
     const entitlementId=url.searchParams.get('entitlementId')??'';
-    if(url.searchParams.size!==1||
+    const country=url.searchParams.get('country')??'DE';
+    if((country!=='DE'&&country!=='FI')||url.searchParams.getAll('entitlementId').length!==1||
+      url.searchParams.getAll('country').length>1||[...url.searchParams.keys()].some(k=>k!=='entitlementId'&&k!=='country')||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entitlementId)){
       json(res,400,{code:'INVALID_ENTITLEMENT'});return;
     }
-    const status=await websitePersonalDnsStatus(authPool,sessionHash(auth.raw),entitlementId);
+    const status=await websitePersonalDnsStatus(authPool,sessionHash(auth.raw),entitlementId,country);
     if(!status){json(res,404,{code:'DNS_ACCESS_NOT_ACTIVE'});return;}
     json(res,200,status);return;
   }
