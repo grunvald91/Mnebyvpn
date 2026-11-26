@@ -410,7 +410,9 @@ export class PgBillingStore {
          RETURNING id`,[String(telegramUserId)]);
       const owner=users[0].id as string;
       const plans=await c.query(
-        `SELECT p.*,COALESCE(t.enabled,false) AS trial_available
+        `SELECT p.*,(COALESCE(t.enabled,false) OR EXISTS (
+             SELECT 1 FROM trial_offers b WHERE b.product='bundle' AND b.enabled=true
+           )) AS trial_available
            FROM billing_plans p
            LEFT JOIN trial_offers t ON t.product=p.product
           WHERE p.enabled=true AND p.stars IS NOT NULL
