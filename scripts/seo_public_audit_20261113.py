@@ -109,7 +109,8 @@ for path in ROUTES:
               " xml_urlset="+str("<urlset" in body),flush=True)
         if path in ("/","/terms","/privacy","/agreement"):
             expected="https://mnebyvpn.site"+path
-            if r.status!=200 or not meta.description or meta.canonical!=expected:
+            if (r.status!=200 or not meta.description or meta.canonical!=expected or
+                "noindex" in (meta.robots+" "+h.get("X-Robots-Tag","")).lower()):
                 failures.append(path+": canonical/description/status")
             # The live site may still serve the previous heading structure until
             # production deployment. The source H1 contract is checked in unit CI.
@@ -162,6 +163,27 @@ for path in ROUTES:
         elif path=="/seo-nonexistent-20261113":
             if r.status!=404 or "noindex" not in h.get("X-Robots-Tag",""):
                 failures.append(path+": incorrect 404")
+# Check the same canonical public paths via HEAD, with redirects disabled.
+# HEAD must never claim a valid public page is missing or redirected.
+for path in PUBLIC_ROUTES:
+    req=urllib.request.Request(ORIGIN+path,method="HEAD",
+        headers={"User-Agent":"MNEBYVPN-own-site-SEO-audit/1.0","Accept":"text/html"})
+    try:
+        try:
+            response=opener.open(req,timeout=7)
+        except urllib.error.HTTPError as exc:
+            response=exc
+        with response as r:
+            h=r.headers
+            print("HEAD_PATH="+path+" code="+str(r.status),flush=True)
+            if (r.status!=200 or h.get("Location") or
+                "noindex" in h.get("X-Robots-Tag","").lower() or
+                "text/html" not in h.get("Content-Type","").lower()):
+                failures.append(path+": HEAD must return indexable canonical HTML status 200")
+    except (OSError,urllib.error.URLError) as exc:
+        print("SEO_CRAWLER_TRANSPORT_UNAVAILABLE=HEAD "+path,flush=True)
+        print("SEO_PUBLIC_CRAWLER_GATE=FAIL_NETWORK",flush=True)
+        sys.exit(2)
 if failures:
     for issue in failures:print("SEO_CRAWLER_REGRESSION="+issue,flush=True)
     sys.exit(1)
