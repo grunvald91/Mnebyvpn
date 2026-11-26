@@ -33,6 +33,9 @@ test('FI country pilot enforces one signed profile, local revocation and real Po
  let server:Server|undefined;
  try{
   await db.query('BEGIN');
+  // The shared disposable CI database may already contain seeded FI grants.
+  // Isolate the single-profile publisher input inside this rollback-only transaction.
+  await db.query('UPDATE fi_dns_regional_credentials SET revoked_at=clock_timestamp() WHERE revoked_at IS NULL');
   await db.query("INSERT INTO vpn_node_enrollment_inventory(node_id,endpoint_host,identity_public_spki) VALUES('fi-test-01','ci-meter-fi.example.org',$1)",[np.spki]);
   await db.query("UPDATE vpn_node_enrollment_inventory SET status='approved',approved_at=clock_timestamp() WHERE node_id='fi-test-01'");
   await db.query("INSERT INTO vpn_node_enrollment_challenges(challenge_id,node_id,nonce_sha256,issued_at,expires_at,consumed_at) VALUES($1,'fi-test-01',$2,clock_timestamp()-interval '1 second',clock_timestamp()+interval '1 minute',clock_timestamp())",[randomUUID(),randomBytes(32).toString('hex')]);
