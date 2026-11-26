@@ -477,6 +477,20 @@ function renderProxyBonusBox(item,data){
   }
   item.append(container);
 }
+// The free shared proxy is not an entitlement and survives trial expiration.
+// Render it outside VPN/DNS cards and clear it on logout/account changes.
+function renderSharedTrialProxy(data){
+  for(const id of ['cabinet-shared-trial-proxy','journey-shared-trial-proxy']){
+    const slot=byId(id);
+    if(!slot)continue;
+    slot.replaceChildren();
+    slot.hidden=!Array.isArray(data?.wsLinks)||!data.wsLinks.length;
+    if(slot.hidden)continue;
+    slot.append(node('h3','','Telegram-прокси · бесплатно без ограничения срока'),
+      node('p','','После завершения 24 часов VPN и Smart DNS эти общие подключения остаются доступны.'));
+    renderProxyBonusBox(slot,{wsLinks:data.wsLinks});
+  }
+}
 async function ensureProxyCredentials(entitlementId,targets=[]){
   if(!state.loggedIn||!state.telegramProxyBonusEnabled)return null;
   const cached=proxyCredCache.get(entitlementId);
@@ -753,6 +767,7 @@ function renderAccount(payload) {
   text('days-left',timed.length?remaining(timed[0].secondsRemaining):'—');
   text('days-hint',timed.length?'До ближайшего окончания':'Нет активных подписок');
   renderAccess(accesses);renderOrders(payload.orders||[]);
+  renderSharedTrialProxy(payload.sharedTrialProxy);
   renderPurchaseResult(payload);
   byId('link-email').classList.toggle('hidden',!state.emailLoginEnabled||payload.identity?.emailLinked);
   byId('link-telegram').classList.toggle('hidden',!state.telegramLoginEnabled||payload.identity?.telegramLinked);
@@ -805,6 +820,7 @@ function renderLoggedOut() {
   state.appleDnsProfileEnabled=false;
   state.personalDnsEnabled=false;
   proxyCredCache.clear();
+  renderSharedTrialProxy(null);
   clearCachedCredentials();
   byId('guest-trial-card').classList.add('hidden');
   byId('purchase-result').classList.add('hidden');
