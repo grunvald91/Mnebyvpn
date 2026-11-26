@@ -11,6 +11,11 @@ test('valid iPhone profile contains only the personal TLS DNS, never VPN, MDM or
   assert.match(xml,/<key>DNSProtocol<\/key><string>TLS<\/string>/);
   assert.match(xml,/<key>ServerName<\/key><string>aa11bb22cc33\.dns\.mnebyvpn\.site<\/string>/);
   assert.match(xml,/<key>PayloadRemovalDisallowed<\/key><false\/>/);
+  assert.match(xml,/Германия/);
+  const finnish=buildPersonalDnsMobileconfig('bb22cc33dd44.fi.mnebyvpn.site');
+  assert.match(finnish,/Финляндия/);
+  assert.match(finnish,/<key>PayloadIdentifier<\/key><string>site\.mnebyvpn\.personal-dns\.fi<\/string>/);
+  assert.match(finnish,/<key>ServerName<\/key><string>bb22cc33dd44\.fi\.mnebyvpn\.site<\/string>/);
   assert.ok(!/IPSec|VPNType|PayloadCertificate|PayloadPassword|https?:\/\/api\.telegram\.org/.test(xml));
   for(const bad of ['https://dns.mnebyvpn.site','dns.mnebyvpn.site',
     '0.local','AA11BB22CC33.evil.org','bad\n.host.dns.mnebyvpn.site'])

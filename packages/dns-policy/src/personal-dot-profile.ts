@@ -2,15 +2,15 @@
  * The hostname is personal; never log it, cache it publicly or commit it.
  */
 import {randomUUID} from 'node:crypto';
-import {parsePersonalDoTHostname} from './personal-dot-identity.ts';
+import {parseRegionalPersonalDnsHostname} from './regional-personal-dot-identity.ts';
 
-function safeHostname(value:string):string{
-  const label=parsePersonalDoTHostname(value);
-  if(!label)throw new Error('Unrecognized personal DoT hostname');
-  return label+'.dns.mnebyvpn.site';
-}
 export function buildPersonalDnsMobileconfig(hostname:string):string{
-  const server=safeHostname(hostname);
+  const parsed=parseRegionalPersonalDnsHostname(hostname);
+  if(!parsed)throw new Error('Unrecognized personal DoT hostname');
+  const finnish=parsed.countryCode==='FI';
+  const server=parsed.label+(finnish?'.fi':'.dns')+'.mnebyvpn.site';
+  const identifier='site.mnebyvpn.personal-dns'+(finnish?'.fi':'');
+  const country=finnish?'Финляндия':'Германия';
   const profileId=randomUUID(),dnsId=randomUUID();
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -18,16 +18,16 @@ export function buildPersonalDnsMobileconfig(hostname:string):string{
     '<plist version="1.0"><dict>',
     '<key>PayloadType</key><string>Configuration</string>',
     '<key>PayloadVersion</key><integer>1</integer>',
-    '<key>PayloadIdentifier</key><string>site.mnebyvpn.personal-dns</string>',
+    '<key>PayloadIdentifier</key><string>'+identifier+'</string>',
     '<key>PayloadUUID</key><string>'+profileId+'</string>',
-    '<key>PayloadDisplayName</key><string>Мне бы DNS — персональный</string>',
+    '<key>PayloadDisplayName</key><string>Мне бы DNS · '+country+'</string>',
     '<key>PayloadDescription</key><string>Персональный DNS-over-TLS. Для удаления: Настройки → Основные → VPN и управление устройством.</string>',
     '<key>PayloadOrganization</key><string>MNEBYVPN</string>',
     '<key>PayloadRemovalDisallowed</key><false/>',
     '<key>PayloadContent</key><array><dict>',
     '<key>PayloadType</key><string>com.apple.dnsSettings.managed</string>',
     '<key>PayloadVersion</key><integer>1</integer>',
-    '<key>PayloadIdentifier</key><string>site.mnebyvpn.personal-dns.settings</string>',
+    '<key>PayloadIdentifier</key><string>'+identifier+'.settings</string>',
     '<key>PayloadUUID</key><string>'+dnsId+'</string>',
     '<key>PayloadDisplayName</key><string>Персональный DNS (DoT)</string>',
     '<key>DNSSettings</key><dict>',
