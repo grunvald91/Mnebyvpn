@@ -29,6 +29,7 @@ import {dnsAdminOwner,dnsAdminIntro,dnsAdminPrompt,dnsAdminSearchPrompt,dnsAdmin
 import {effectiveAccessState,formatRemainingTime,formatRemainingQuota} from '../../../packages/telegram-ui/src/access-format.ts';
 import {personalDnsTelegramMenu,personalDnsTelegramAction,personalDnsGuide,
   personalDnsPreview} from './personal-dot-telegram-view.ts';
+import {loadSharedTrialWsProxy,parseWsProxyRoutes,wsProxyReleaseReady} from '../../../packages/web/src/telegram-proxy-bonus.ts';
 import {approvedPersonalDnsOffer} from '../../../packages/dns-policy/src/smart-dns-offers.ts';
 import {sendPersonalDnsMobileconfig} from '../../../packages/dns-policy/src/personal-dot-profile.ts';
 import {ownerDnsKey,ownerDnsLinksAction,ownerDnsExpiryPrompt,ownerDnsExpiryReply,OWNER_DNS_EXPIRY_PROMPT} from './owner-dns-links.ts';
@@ -90,7 +91,7 @@ const msg=(text:string,keyboard:Button[][])=>{
   return {text,reply_markup:{inline_keyboard:keyboard}};
 };
 const main=(id:number)=>msg(
-  '🌐 MNEBYVPN\n\nМы строим понятный сервис «3 в 1» без технической путаницы: Smart DNS (YouTube, ChatGPT, Claude, Gemini), Telegram-прокси и VPN.\n\nВыберите тариф ниже — оплата доступна через ⭐ Telegram Stars или 💳 ЮKassa (карта, СБП).\n\n🎁 Пробные 24 часа VPN — без оплаты; отсчёт начинается после активации.\n\n💙 Поддержите проект: расскажите о нём друзьям.',
+  '🌐 MNEBYVPN\n\nМы строим понятный сервис «3 в 1» без технической путаницы: Smart DNS (YouTube, ChatGPT, Claude, Gemini), Telegram-прокси и VPN.\n\nВыберите тариф ниже — оплата доступна через ⭐ Telegram Stars или 💳 ЮKassa (карта, СБП).\n\n🎁 Пробный доступ — 24 часа без оплаты; отсчёт начинается после подтверждения готовности.\n\n💙 Поддержите проект: расскажите о нём друзьям.',
   [
     [{text:'✨ Экосистема «3 в 1»',callback_data:'nav:bundle'}],
     [{text:'🌐 VPN Лайт',callback_data:'nav:vpn'},
@@ -170,7 +171,7 @@ function privateActor(update:any):{id:number;messageId?:number;callbackId?:strin
 async function packages(id:number){
   if(!store)throw new Error('DB unavailable');
   const rows=await store.listUserPackages(id);
-  if(!rows.length)return msg('🔐 Мои подключения\n\nПодписок пока нет. Начните с бесплатных 24 часов VPN.',
+  if(!rows.length)return msg('🔐 Мои подключения\n\nПодписок пока нет. Попробуйте бесплатный доступ на 24 часа.',
     [[{text:'🎁 Бесплатные 24 часа',callback_data:'trial:vpn'}],
      [{text:'🌐 Выбрать VPN',callback_data:'nav:vpn'}],[homeButton]]);
   const items=rows.map((row,index)=>{
@@ -190,9 +191,11 @@ async function packages(id:number){
       (remaining?' · '+remaining:'')+(quota?'\n'+quota:'');
   });
   return msg('🔐 Мои подключения\n\n'+items.join('\n\n')+
-    '\n\nСрок пробного VPN не расходуется, пока узел не подтвердит выдачу.',
+    '\n\nПробный период начинается после подтверждения готовности доступа.',
     [[{text:'🔁 Обновить',callback_data:'nav:status'},
       {text:'🔌 Подключить VPN',callback_data:'nav:connect'}],
+     [{text:'🧭 Мой Smart DNS',callback_data:'nav:dns'}],
+     [{text:'✈️ Telegram-прокси',callback_data:'nav:trial-proxy'}],
      [{text:'🌐 Тарифы VPN',callback_data:'nav:vpn'}],[homeButton]]);
 }
 
@@ -516,20 +519,52 @@ async function receiveStars(update:any){
   }
   return null;
 }
-async function trial(id:number){
+async function sharedTrialProxy(id:number){
+  if(!pool)throw Error('DB unavailable');
+  const account=await pool.query('SELECT id FROM accounts WHERE telegram_user_id=$1',[String(id)]);
+  const accountId=account.rows[0]?.id;
+  const routes=wsProxyReleaseReady(process.env)?parseWsProxyRoutes(process.env.WEB_TELEGRAM_WS_PROXY_ROUTES_JSON):null;
+  const links=accountId&&routes?await loadSharedTrialWsProxy(pool,accountId,routes):null;
+  if(!links)return msg('✈️ Telegram-прокси\n\nЕсли вы оформили «3 в 1», общие ссылки доступны в личном кабинете при готовности сервиса. Они не зависят от срока VPN и Smart DNS.',
+    [[{text:'🌍 Мой доступ',url:'https://mnebyvpn.site/#account'}],[homeButton]]);
+  return msg('✈️ Общий Telegram-прокси\n\nОткройте ссылку и подтвердите добавление в Telegram. Эти общие подключения остаются доступными после окончания пробных суток VPN и Smart DNS.',
+    [...links.wsLinks.map(link=>[{text:link.route==='ru'?'Подключить через российский сервер':'Подключить через зарубежный сервер',url:link.url}]),[homeButton]]);
+}
+async function trial(id:number,requested:'vpn'|'smart_dns'|'bundle'='vpn',inviteToken?:string){
   if(!store)throw new Error('DB unavailable');
-  const r=await store.grantTrial(id,'vpn');
-  if(pool&&r.status==='ALREADY_USED'){
+  const enabled=await store.trialProducts();
+  const product=enabled.includes('bundle')?'bundle':requested;
+  if(!enabled.includes(product))return msg('🎁 Бесплатный доступ сейчас недоступен. Попробуйте позднее.',[[homeButton]]);
+  const r=await store.grantTrial(id,product,inviteToken);
+  // Use actual existing order, not requested tariff, when resuming an older trial.
+  const actual=pool&&r.orderId?(await pool.query(
+    "SELECT t.product FROM trial_grants t JOIN accounts a ON a.id=t.account_id WHERE t.order_id=$1 AND a.telegram_user_id=$2",
+    [r.orderId,String(id)])).rows[0]?.product:product;
+  const bundle=actual==='bundle';
+  if(pool&&r.status==='ALREADY_USED'&&!bundle){
     const ready=await activationView(pool,id,true);
     if(ready)return ready;
   }
+  if(bundle){
+    const text=r.status==='GRANTED'
+      ? '🎁 «3 в 1» бесплатно на 24 часа\n\nЗаявка принята. Готовим VPN и Smart DNS. Бот автоматически пришлёт инструкцию после подтверждения готовности обоих сервисов. Общий Telegram-прокси не ограничен пробными сутками.'
+      :r.status==='PENDING'
+      ? '⏳ Пакет «3 в 1» подключается. Бот автоматически пришлёт инструкцию, когда VPN и Smart DNS будут готовы.'
+      :r.status==='ALREADY_USED'
+      ? '🎁 Пробный пакет уже оформлялся. Проверьте действующие подключения в личном кабинете. Общий Telegram-прокси доступен и после окончания пробного периода.'
+      : '🎁 Бесплатный доступ сейчас недоступен. Попробуйте позднее.';
+    return msg(text,[[{text:'🔐 Мои подключения',callback_data:'nav:status'}],
+      [{text:'🔌 VPN',callback_data:'nav:connect'},{text:'🧭 Smart DNS',callback_data:'nav:dns'}],
+      [{text:'✈️ Telegram-прокси',callback_data:'nav:trial-proxy'}],
+      [{text:'✨ Тарифы «3 в 1»',callback_data:'nav:bundle'}],[homeButton]]);
+  }
   const text=r.status==='GRANTED'
-    ? '🎁 Пробные 24 часа VPN\n\nЗаявка принята. Сервер готовит VPN-профиль. Как только подключение будет активировано, бот сам пришлёт сообщение с выбором устройства.\n\nНичего проверять не нужно. 24 часа начнутся после активации.'
+    ? '🎁 Пробные 24 часа '+(actual==='smart_dns'?'Smart DNS':'VPN')+'\n\nЗаявка принята. 24 часа начнутся после активации.'
     :r.status==='PENDING'
-    ? '⏳ Бесплатный VPN подключается. Бот автоматически пришлёт инструкцию, когда сервер подтвердит активацию. Проверять вручную не нужно.'
+    ? '⏳ Бесплатный доступ подключается. Бот автоматически пришлёт инструкцию, когда сервер подтвердит активацию VPN. Проверять вручную не нужно.'
     :r.status==='ALREADY_USED'
     ? '🎁 Пробные 24 часа уже использованы этим Telegram-аккаунтом.'
-    : '🎁 Бесплатный VPN сейчас недоступен. Попробуйте позднее.';
+    : '🎁 Бесплатный доступ сейчас недоступен. Попробуйте позднее.';
   return msg(text,[[{text:'🔐 Мои подключения',callback_data:'nav:status'}],
     [{text:'🌐 Тарифы VPN',callback_data:'nav:vpn'}],[homeButton]]);
 }
@@ -540,7 +575,7 @@ function info(data:string,id:number){
       [[{text:'📤 Поделиться',url:'https://t.me/share/url?url=https%3A%2F%2Ft.me%2FMNEBYVPN_bot'}],
        [homeButton]]);
   if(data==='nav:help'||data==='info:help')
-    return msg('❔ Помощь\n\n1. Выберите VPN.\n2. Нажмите «24 часа бесплатно» или просмотрите тарифы.\n3. После выдачи пробного VPN бот сам пришлёт инструкцию. В «Мои подключения» смотрите остаток срока.\n\nИнтернет при ограничениях мобильной сети и совместный тариф находятся в разработке.',
+    return msg('❔ Помощь\n\n1. Нажмите «24 часа бесплатно» или просмотрите тарифы.\n2. После подтверждения готовности VPN бот пришлёт инструкцию.\n3. В «Мои подключения» смотрите остаток срока и кнопки настройки.',
       [[support?.operatorId===id
          ?{text:'📥 Входящие заявки',callback_data:'support:page:0'}
          :{text:'✉️ Написать оператору',callback_data:'nav:support'}],
@@ -567,7 +602,9 @@ async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
     }
     return dnsStorefrontMenu();
   }
-  if(data==='nav:trial'||data==='trial:vpn')return trial(id);
+  if(data==='nav:trial')return trial(id);
+  if(data==='trial:vpn'||data==='trial:smart_dns'||data==='trial:bundle')return trial(id,data.slice(6) as 'vpn'|'smart_dns'|'bundle');
+  if(data==='nav:trial-proxy')return sharedTrialProxy(id);
   if(data==='nav:connect')return pool?await activationView(pool,id)??dbUnavailable():dbUnavailable();
   if(data==='nav:manual')return pool?manualView(pool,id):dbUnavailable();
   if(data.startsWith('nav:device:'))
@@ -912,6 +949,12 @@ async function processUpdate(update:any){
     else if(text==='/dns')action='nav:dns';
   }
   try {
+    const trialInvite=!actor.callbackId?/^\/start\s+t([A-Za-z0-9_-]{16,24})$/.exec(text):null;
+    if(trialInvite&&store){
+      const offer=await store.referralPlan(trialInvite[1]);
+      if(!offer)return oneAction(actor,msg('Ссылка приглашения недействительна.',[[homeButton]]));
+      return oneAction(actor,await trial(actor.id,offer.product,trialInvite[1]));
+    }
     if(action==='nav:menu:legacy')
       return {method:'sendMessage',chat_id:actor.id,...main(actor.id)};
     // Bot API 10.4 widgets are restricted for general bots in production.
