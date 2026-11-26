@@ -119,10 +119,14 @@ test('forwarded catalog supports eight configured 15/30/60/90-day rows',async()=
 
 test('bundle trial accepts an existing VPN or DNS referral without duplicating access',async()=>{
  await pool.query("UPDATE trial_offers SET enabled=true,dns_quota_bytes=1073741824 WHERE product='bundle'");
+ const prior=await pool.query("SELECT product,enabled FROM trial_offers WHERE product IN ('vpn','smart_dns')");
  const referrer=90900821,recipient=90900822;
+ await pool.query("UPDATE trial_offers SET enabled=false WHERE product IN ('vpn','smart_dns')");
  const offers=await db.referralOffers(referrer,16);
+ for(const row of prior.rows)await pool.query('UPDATE trial_offers SET enabled=$2 WHERE product=$1',[row.product,row.enabled]);
  const invite=offers.find(o=>o.planId===dnsId);
  assert.ok(invite);
+ assert.equal(invite.trialAvailable,true);
  await assert.rejects(()=>db.grantTrial(referrer,'bundle',invite.token),/self-owned/);
  const result=await db.grantTrial(recipient,'bundle',invite.token);
  assert.equal(result.status,'GRANTED');
