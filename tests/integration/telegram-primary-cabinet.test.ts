@@ -93,7 +93,7 @@ test('authenticated Telegram 24-hour VPN trial persists pending access once with
   const oldProxy=await bundlePost(106,'nav:trial-proxy',user);
   assert.ok(!oldProxy.reply_markup.inline_keyboard.flat().some((b:any)=>b.url?.startsWith('https://t.me/webproxy?')));
   // The proxy is deliberately not limited by the VPN/DNS trial deadline.
-  await pool.query("UPDATE trial_grants SET activated_at=clock_timestamp()-interval '25 hours',access_expires_at=clock_timestamp()-interval '1 hour' WHERE order_id=$1",[canonical.rows[0].order_id]);
+  await pool.query("UPDATE trial_grants SET activated_at=statement_timestamp()-interval '25 hours',access_expires_at=statement_timestamp()-interval '1 hour' WHERE order_id=$1",[canonical.rows[0].order_id]);
   assert.ok((await bundlePost(107,'nav:trial-proxy')).reply_markup.inline_keyboard.flat().some((b:any)=>b.url?.startsWith('https://t.me/webproxy?')));
  }finally{
   child.kill('SIGTERM');
