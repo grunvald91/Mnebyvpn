@@ -287,13 +287,17 @@ const aboutJs = await readFile(new URL('../public/about.js', import.meta.url));
 const vpnInstallJs=await readFile(new URL('../public/vpn-install.js',import.meta.url));
 const workerProfileToken=process.env.VPN_WORKER_PROFILE_TOKEN??'';
 /** Public-only, DB-authoritative catalog. Does not expose a user's orders or secrets. */
+async function bundleWebsiteTrialEnabled():Promise<boolean>{
+  const result=await billingPool.query("SELECT 1 FROM trial_offers WHERE product='bundle' AND enabled=true");
+  return result.rowCount===1;
+}
 async function publicCatalog(){
   const plans=await store.plans(activePaymentProvider??'yookassa');
   const trialOffers=trialEnabled
     ? (await billingPool.query('SELECT product FROM trial_offers WHERE enabled=true')).rows.map(r=>r.product as string)
     : [];
   return {loginEnabled,telegramLoginEnabled,emailLoginEnabled,checkoutEnabled,
-    paymentProvider:activePaymentProvider,trialOffers,
+    paymentProvider:activePaymentProvider,trialOffers:trialOffers.includes('bundle')?['bundle']:trialOffers,
     plans:plans.map(p=>({
       id:p.planId,title:p.title,product:p.product,
       durationDays:p.durationSeconds/86400,rubMinor:p.rubMinor,
@@ -577,7 +581,8 @@ async function emailVerify(req:IncomingMessage,res:ServerResponse):Promise<void>
   }
   // Persist explicit trial intent after OTP verification, before the browser
   // can disconnect. Ordinary sign-ins and reviewer logins never enqueue.
-  if(trialEnabled&&!review&&body.trial==='vpn'){
+  if(trialEnabled&&!review&&(body.trial==='vpn'||body.trial==='bundle'||
+    (body.trial==='smart_dns'&&await bundleWebsiteTrialEnabled()))){
     const invite=body.trialInviteToken;
     if(invite===undefined||(typeof invite==='string'&&/^[A-Za-z0-9_-]{16,24}$/.test(invite))){
       let device=cookie(req,deviceCookie);
@@ -1491,7 +1496,8 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     const deviceHash=createHash('sha256').update('trial-device-v1:').update(device).digest('hex');
     let queued=false;
     try{
-      if(body.product==='vpn'&&auth.email&&emailLoginEnabled&&
+      const product=await bundleWebsiteTrialEnabled()?'bundle':body.product as 'vpn'|'smart_dns'|'bundle';
+      if((product==='vpn'||product==='bundle')&&auth.email&&emailLoginEnabled&&
          !await isReviewAccount(authPool,auth.accountId)){
         try{
           queued=await rememberWebsiteVpnTrial(billingPool,auth.accountId,deviceHash,body.inviteToken as string|undefined);
@@ -1503,7 +1509,7 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
         }
       }
       const result=await store.grantTrial(auth.accountId,
-        body.product as 'vpn'|'smart_dns'|'bundle',body.inviteToken as string|undefined,deviceHash);
+        product,body.inviteToken as string|undefined,deviceHash);
       json(res,200,{status:result.status,expiresAt:result.expiresAt?.toISOString()??null});
     }catch(error){
       const code=(error as {code?:unknown})?.code;
@@ -1716,7 +1722,7 @@ if(!offline&&trialEnabled&&emailLoginEnabled){
   setInterval(()=>{
     if(trialRecoveryBusy)return;
     trialRecoveryBusy=true;
-    void recoverWebsiteVpnTrials(billingPool,store,mailGatewaySecret)
+    void bundleWebsiteTrialEnabled().then(bundle=>recoverWebsiteVpnTrials(billingPool,store,mailGatewaySecret,undefined,bundle?'bundle':'vpn'))
       .catch(()=>console.error('MNEBYVPN_WEB_TRIAL_RECOVERY_LOOP_ERROR'))
       .finally(()=>{trialRecoveryBusy=false;});
   },5000).unref();
