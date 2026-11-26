@@ -167,3 +167,38 @@ test('legacy recovery rechecks eligibility inside grant and resumes a committed 
  assert.equal(good?.status,'WAITING');assert.equal(good?.order_id,first.orderId);
  assert.equal((await pool.query('SELECT count(*)::int AS n FROM trial_grants WHERE account_id=$1',[resumed])).rows[0].n,1);
 });
+
+test('website bundle recovery waits for both final service revisions and keeps one grant',async()=>{
+ const account=randomUUID(),email='bundle-'+account.slice(0,8)+'@example.org';
+ const device=createHash('sha256').update(account).digest('hex');
+ await pool.query("UPDATE trial_offers SET enabled=true,dns_quota_bytes=1073741824 WHERE product='bundle'");
+ await pool.query('INSERT INTO accounts(id,email_address) VALUES($1,$2)',[account,email]);
+ await rememberWebsiteVpnTrial(pool,account,device);
+ const store=new PgBillingStore(pool);
+ const sent:string[]=[];
+ const run=()=>recoverWebsiteVpnTrials(pool,store,'test-only-secret',async(to)=>{sent.push(to);return true;},'bundle');
+ const due=()=>pool.query('UPDATE website_vpn_trial_requests SET next_attempt_at=clock_timestamp() WHERE account_id=$1',[account]);
+ await run();
+ const row=(await pool.query('SELECT order_id,status FROM website_vpn_trial_requests WHERE account_id=$1',[account])).rows[0];
+ assert.equal(row.status,'WAITING');
+ const order=row.order_id;
+ const {rows}=await pool.query('SELECT id,product FROM entitlements WHERE source_order_id=$1',[order]);
+ assert.deepEqual(rows.map(x=>x.product).sort(),['smart_dns','vpn']);
+ const ack=async(product:string,revision:number,provisional:boolean)=>{
+   const e=rows.find(x=>x.product===product);
+   const f=(await pool.query("SELECT claim_provisioning_fence($1,$2) AS fence",[e.id,product])).rows[0].fence;
+   return (await pool.query("SELECT acknowledge_provisioning_observed($1,$2,$3,$4,true,CASE WHEN $5::boolean THEN clock_timestamp()+interval '4 minutes' ELSE NULL END) AS ok",[e.id,product,revision,f,provisional])).rows[0].ok;
+ };
+ assert.equal(await ack('vpn',1,true),true);
+ assert.equal(await ack('smart_dns',1,true),true);
+ assert.equal(await ack('vpn',2,false),true);
+ await due();await run();
+ assert.equal(sent.filter(x=>x===email).length,0);
+ assert.equal(await ack('smart_dns',2,false),true);
+ await due();await run();
+ assert.equal(sent.filter(x=>x===email).length,1);
+ assert.equal(await websiteVpnTrialStatus(pool,account),'SENT');
+ assert.equal((await pool.query('SELECT count(*)::int AS n FROM trial_grants WHERE account_id=$1',[account])).rows[0].n,1);
+ await due();await run();
+ assert.equal(sent.filter(x=>x===email).length,1);
+});
