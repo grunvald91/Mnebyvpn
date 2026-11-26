@@ -590,8 +590,9 @@ async function emailVerify(req:IncomingMessage,res:ServerResponse):Promise<void>
         setCookie(res,deviceCookie,device,365*24*60*60);
       }
       try{
-        if(body.trial==='vpn'||await bundleWebsiteTrialEnabled())await rememberWebsiteVpnTrial(billingPool,result.accountId,
-          createHash('sha256').update('trial-device-v1:').update(device).digest('hex'),invite as string|undefined);
+        const bundleOn=await bundleWebsiteTrialEnabled();
+        if(body.trial==='vpn'||bundleOn)await rememberWebsiteVpnTrial(billingPool,result.accountId,
+          createHash('sha256').update('trial-device-v1:').update(device).digest('hex'),invite as string|undefined,bundleOn?'bundle':undefined);
       }catch(error){
         const code=(error as {code?:unknown})?.code;
         console.error(typeof code==='string'&&/^[0-9A-Z]{5}$/.test(code)
@@ -1511,7 +1512,7 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
       if((product==='vpn'||product==='bundle')&&auth.email&&emailLoginEnabled&&
          !await isReviewAccount(authPool,auth.accountId)){
         try{
-          queued=await rememberWebsiteVpnTrial(billingPool,auth.accountId,deviceHash,body.inviteToken as string|undefined);
+          queued=await rememberWebsiteVpnTrial(billingPool,auth.accountId,deviceHash,body.inviteToken as string|undefined,product==='bundle'?'bundle':undefined);
         }catch(error){
           const code=(error as {code?:unknown})?.code;
           console.error(typeof code==='string'&&/^[0-9A-Z]{5}$/.test(code)
