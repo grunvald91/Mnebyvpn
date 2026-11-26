@@ -155,7 +155,9 @@ test('legacy recovery rechecks eligibility inside grant and resumes a committed 
  assert.equal(first.status,'GRANTED');
  // Simulate restart after the grant committed but before the queue was advanced.
  // A later unrelated order must not cause the original successful grant to be lost.
- await pool.query("INSERT INTO orders(id,account_id,product,provider,amount_minor,currency,state) VALUES($1,$2,'vpn','internal_trial',0,'XTR','CANCELLED')",[randomUUID(),resumed]);
+ const paid=randomUUID();
+ await pool.query("INSERT INTO orders(id,account_id,product,provider,amount_minor,currency,state) VALUES($1,$2,'vpn','manual_sale',10000,'RUB','PAID')",[paid,resumed]);
+ await pool.query("INSERT INTO entitlements(id,account_id,source_order_id,product,state,revision,starts_at,expires_at) VALUES($1,$2,$3,'vpn','PAID_PENDING_PROVISIONING',1,clock_timestamp(),clock_timestamp()+interval '1 day')",[randomUUID(),resumed,paid]);
  const second=await store.grantTrial(resumed,'vpn',undefined,undefined,true);
  assert.equal(second.orderId,first.orderId);
  await recoverWebsiteVpnTrials(pool,store,'test-only-secret',async()=>{throw Error('Must not mail before activation');});
