@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {Pool} from 'pg';
 import {PgBillingStore} from '../../packages/billing/src/store.ts';
 import {PgOutboxDispatcher,type AdapterMap} from '../../packages/provisioning/src/pg-worker.ts';
+import {SmartDnsProvisioningAdapter} from '../../packages/provisioning/src/smart-dns-adapter.ts';
 import type {DesiredAccess,ObservedAccess} from '../../packages/provisioning/src/reconciler.ts';
 
 const pool=new Pool({host:process.env.PGHOST??'localhost',port:Number(process.env.PGPORT??5432),
@@ -120,4 +121,30 @@ test('two bundle entitlements share activation deadline from first observed enab
    if(x.status==='empty')break;
  }
  assert.equal((await db.pendingOutboxForOrder(order.orderId!)),0);
+});
+
+test('real Smart DNS adapter activates an existing pending trial and retains exact 24h expiry',async()=>{
+ await pool.query("UPDATE trial_offers SET enabled=true,dns_quota_bytes=1073741824 WHERE product='smart_dns'");
+ const grant=await db.grantTrial(919818003,'smart_dns');
+ assert.equal(grant.status,'GRANTED');
+ const order=grant.orderId!;
+ const initial=(await pool.query('SELECT id,state,expires_at FROM entitlements WHERE source_order_id=$1',[order])).rows[0];
+ assert.equal(initial.state,'PAID_PENDING_PROVISIONING');
+ assert.equal(initial.expires_at,null);
+ let healthy=false;
+ const worker=new PgOutboxDispatcher(pool,{smart_dns:new SmartDnsProvisioningAdapter(pool,async()=>healthy)});
+ assert.equal((await worker.processOnce(['smart_dns'])).reason,'unknown_outcome');
+ assert.equal((await pool.query('SELECT activated_at FROM trial_grants WHERE order_id=$1',[order])).rows[0].activated_at,null);
+ healthy=true;
+ await pool.query('UPDATE reconcile_outbox SET next_attempt_at=clock_timestamp() WHERE entitlement_id=$1',[initial.id]);
+ assert.equal((await worker.processOnce(['smart_dns'])).status,'synced');
+ const active=(await pool.query('SELECT state,revision,starts_at,expires_at FROM entitlements WHERE id=$1',[initial.id])).rows[0];
+ assert.equal(active.state,'ACTIVE');
+ assert.equal(Number(active.revision),2);
+ assert.equal(active.expires_at.getTime()-active.starts_at.getTime(),86400000);
+ assert.equal((await worker.processOnce(['smart_dns'])).status,'synced');
+ assert.equal(await db.pendingOutboxForOrder(order),0);
+ const retry=await db.grantTrial(919818003,'smart_dns');
+ assert.equal(retry.status,'ALREADY_USED');
+ assert.equal(retry.orderId,order);
 });

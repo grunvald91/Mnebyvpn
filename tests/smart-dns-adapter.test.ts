@@ -45,3 +45,21 @@ test('SmartDnsProvisioningAdapter activates PAID_PENDING_PROVISIONING smart_dns 
   assert.equal(requested,'unknown_outcome');
   assert.equal(state,'PAID_PENDING_PROVISIONING');
 });
+
+test('provisional DNS readiness never confirms without health, after expiry, or after revision changes',async()=>{
+ const id='trial';
+ let row={product:'smart_dns',state:'PAID_PENDING_PROVISIONING',revision:1,expires_at:null as Date|null};
+ const db={async query(){return {rows:[row]};}};
+ const desired={entitlementId:id,revision:1,enabled:true,expiresAt:new Date(Date.now()+60000),trialPendingActivation:true};
+ const noHealth=new SmartDnsProvisioningAdapter(db as never);
+ assert.equal(await noHealth.apply(desired,id+':1:enable'),'unknown');
+ const adapter=new SmartDnsProvisioningAdapter(db as never,async()=>true);
+ assert.equal(await adapter.apply({...desired,expiresAt:new Date(Date.now()+600000)},id+':1:enable'),'unknown');
+ assert.equal(await adapter.apply(desired,id+':1:enable'),'applied');
+ assert.equal((await adapter.inspect(id)).enabled,true);
+ assert.equal((await adapter.inspect(id)).expiresAt,desired.expiresAt);
+ row={...row,revision:2};
+ assert.equal((await adapter.inspect(id)).enabled,false);
+ row={...row,revision:1,state:'REFUNDED'};
+ assert.equal((await adapter.inspect(id)).enabled,false);
+});
