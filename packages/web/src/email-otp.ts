@@ -42,11 +42,12 @@ export async function deliverEmailOtp(
 }
 
 /** Fixed-template notice, authenticated by the existing isolated gateway. */
-export async function deliverVpnTrialReadyEmail(email:string,expiresAt:Date,secret:string,fetcher:typeof fetch=fetch,product:'vpn'|'bundle'='vpn'):Promise<boolean>{
+export async function deliverVpnTrialReadyEmail(email:string,expiresAt:Date,secret:string,fetcher:typeof fetch=fetch,product:'vpn'|'bundle'='vpn',orderId?:string):Promise<boolean>{
   if(secret.length<32||normalizeLoginEmail(email)!==email||
      !Number.isFinite(expiresAt.getTime())||expiresAt.getTime()<=Date.now())return false;
   const timestamp=String(Math.floor(Date.now()/1000));
-  const nonce=randomBytes(24).toString('base64url');
+  // One durable notice per canonical order. Do not expose the order ID.
+  const nonce=orderId?'trial_'+privateDigest('trial-ready-delivery-v1',orderId,secret).slice(0,56):randomBytes(24).toString('base64url');
   const payload=JSON.stringify({email,kind:product==='bundle'?'bundle_trial_ready':'vpn_trial_ready',expiresAt:expiresAt.toISOString()});
   const signature=createHmac('sha256',secret).update(timestamp+'.'+nonce+'.'+payload).digest('hex');
   try{
