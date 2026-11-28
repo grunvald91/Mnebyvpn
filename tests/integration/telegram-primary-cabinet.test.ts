@@ -90,6 +90,11 @@ test('authenticated Telegram 24-hour VPN trial persists pending access once with
   assert.equal(new Set(canonical.rows.map(x=>x.order_id)).size,1);
   const proxy=await bundlePost(105,'nav:trial-proxy');
   assert.ok(proxy.reply_markup.inline_keyboard.flat().some((b:any)=>b.url?.startsWith('https://t.me/webproxy?')));
+  assert.match(proxy.text,/Избранное/);
+  assert.match(proxy.text,/Порт: 443/);
+  assert.match(proxy.text,/Секрет:/);
+  assert.ok(proxy.reply_markup.inline_keyboard.flat().some((b:any)=>b.copy_text?.text.startsWith('https://t.me/webproxy?')));
+  assert.ok(proxy.reply_markup.inline_keyboard.flat().some((b:any)=>b.copy_text?.text.includes('Порт: 443')));
   const oldProxy=await bundlePost(106,'nav:trial-proxy',user);
   assert.ok(!oldProxy.reply_markup.inline_keyboard.flat().some((b:any)=>b.url?.startsWith('https://t.me/webproxy?')));
   // The proxy is deliberately not limited by the VPN/DNS trial deadline.
