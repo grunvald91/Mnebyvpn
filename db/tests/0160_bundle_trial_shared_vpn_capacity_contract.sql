@@ -63,12 +63,14 @@ BEGIN
  IF vpn_shared_connection_claim(e,s1,de_node,repeat('c',64))<>'REFRESHED'
  THEN RAISE EXCEPTION 'Existing trial session could not refresh'; END IF;
  IF vpn_shared_connection_release(e,s1,de_node,repeat('c',64))<>'RELEASED'
- OR vpn_shared_connection_claim(e,s2,fi_node,repeat('d',64))<>'ADMITTED'
+ THEN RAISE EXCEPTION 'DE trial slot not released'; END IF;
+ IF vpn_shared_connection_claim(e,s2,fi_node,repeat('d',64))<>'ADMITTED'
  THEN RAISE EXCEPTION 'Trial could not switch from DE to FI'; END IF;
  IF vpn_shared_connection_claim(e,s4,de_node,repeat('f',64))<>'DENY_LIMIT'
  THEN RAISE EXCEPTION 'DE session admitted while FI session active'; END IF;
  IF vpn_shared_connection_release(e,s2,fi_node,repeat('d',64))<>'RELEASED'
- OR vpn_shared_connection_claim(e,s4,de_node,repeat('f',64))<>'ADMITTED'
+ THEN RAISE EXCEPTION 'FI trial slot not released'; END IF;
+ IF vpn_shared_connection_claim(e,s4,de_node,repeat('f',64))<>'ADMITTED'
  THEN RAISE EXCEPTION 'Trial could not switch from FI to DE'; END IF;
  UPDATE entitlements SET expires_at=at_time+interval '25 hours' WHERE id=e;
  IF vpn_shared_connection_claim(e,s4,de_node,repeat('f',64))<>'DENY_ENTITLEMENT'
