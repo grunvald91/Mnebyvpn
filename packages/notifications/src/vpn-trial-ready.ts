@@ -17,8 +17,8 @@ export interface TrialReadySender {
 /** A final, node-observed active entitlement is the ONLY delivery trigger. */
 const eligible = `FROM trial_grants t
   JOIN accounts a ON a.id=t.account_id
-  JOIN orders o ON o.id=t.order_id AND o.provider='internal_trial' AND o.state='TRIAL'
-  JOIN entitlements e ON e.source_order_id=t.order_id AND e.product='vpn'
+  JOIN orders o ON o.id=t.order_id AND o.account_id=t.account_id AND o.product=t.product AND o.amount_minor=0 AND o.provider='internal_trial' AND o.state='TRIAL'
+  JOIN entitlements e ON e.source_order_id=t.order_id AND e.account_id=t.account_id AND e.product='vpn'
   JOIN provisioning_state p ON p.entitlement_id=e.id AND p.adapter='vpn'
   WHERE t.product IN ('vpn','bundle')
     AND t.telegram_user_id IS NOT NULL AND t.telegram_user_id>0
@@ -27,7 +27,7 @@ const eligible = `FROM trial_grants t
     AND e.state='ACTIVE' AND e.expires_at>clock_timestamp()
     AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL
     AND (t.product='vpn' OR (
-      e.account_id=t.account_id AND e.starts_at=t.activated_at AND e.expires_at=t.access_expires_at
+      t.access_expires_at=t.activated_at+interval '24 hours' AND e.starts_at=t.activated_at AND e.expires_at=t.access_expires_at
       AND EXISTS (
         SELECT 1 FROM entitlements d JOIN provisioning_state dp
           ON dp.entitlement_id=d.id AND dp.adapter='smart_dns'
@@ -133,11 +133,11 @@ export function trialReadyMessage(job:VpnTrialReadyNotice){
     text:'🎉 MNEBYVPN — бесплатный пакет «3 в 1» готов!\n\n'+
       '✅ VPN и Smart DNS готовы к настройке.\nПробный доступ для одного устройства (одно одновременное VPN-подключение).\n'+
       '⏰ Действуют до '+deadline+' (МСК).\n\n'+
-      'Выберите подключение. Общий Telegram-прокси не ограничен пробными сутками.',
+      'Выберите страну для VPN, Smart DNS и Telegram-прокси. Общий лимит DNS — 30 000 запросов за пробные сутки. Общий Telegram-прокси не ограничен пробными сутками.',
     reply_markup:{inline_keyboard:[
-      [{text:'🧭 Smart DNS',callback_data:'nav:dns'},
-       {text:'✈️ Telegram-прокси',callback_data:'nav:trial-proxy'}],
-      ...deviceOptions(),
+      [{text:'🇩🇪 Германия',callback_data:'nav:trial-country:DE'},
+       {text:'🇫🇮 Финляндия',callback_data:'nav:trial-country:FI'}],
+      [{text:'✈️ Telegram-прокси',callback_data:'nav:trial-proxy'}],
     ]},
   };
   return {
