@@ -275,3 +275,32 @@ export async function loadSharedTrialWsProxy(
      LIMIT 1`,[accountId]);
   return rows.length===1?{wsLinks:makeWsProxyLinks(routes)}:null;
 }
+
+
+export type TrialProxyCountry='DE'|'FI';
+export type TrialRegionalProxyLink=ProxyWsLink&{country:TrialProxyCountry};
+/** Explicit owner-designated country routes. Never infer exit country from
+ * the ingress hostname or from direct/ru. Keep paid routes unchanged. */
+export function trialRegionalProxyLinks(env:NodeJS.ProcessEnv):TrialRegionalProxyLink[]{
+  if(!wsProxyReleaseReady(env))return [];
+  const result:TrialRegionalProxyLink[]=[];
+  for(const country of ['DE','FI'] as const){
+    if(env['WEB_TRIAL_WS_PROXY_'+country+'_VERIFIED']!=='yes')continue;
+    const routes=parseWsProxyRoutes(env['WEB_TRIAL_WS_PROXY_'+country+'_ROUTES_JSON']);
+    if(!routes)continue;
+    for(const link of makeWsProxyLinks(routes))result.push({...link,country,
+      label:(country==='DE'?'Германия':'Финляндия')+' · '+link.label});
+  }
+  // A single ingress+secret cannot be asserted to terminate in two countries.
+  const duplicates=new Set(result.filter(a=>result.some(b=>a.country!==b.country&&a.server===b.server&&a.secret===b.secret)).map(a=>a.server+'|'+a.secret));
+  return result.filter(a=>!duplicates.has(a.server+'|'+a.secret));
+}
+export async function loadSharedTrialCountryProxy(
+  db:Pick<Pool,'query'>,accountId:string,env:NodeJS.ProcessEnv,
+):Promise<{wsLinks:ProxyWsLink[];regionalLinks:TrialRegionalProxyLink[]}|null>{
+  if(!wsProxyReleaseReady(env))return null;
+  const routes=parseWsProxyRoutes(env.WEB_TELEGRAM_WS_PROXY_ROUTES_JSON);
+  if(!routes)return null;
+  const shared=await loadSharedTrialWsProxy(db,accountId,routes);
+  return shared?{...shared,regionalLinks:trialRegionalProxyLinks(env)}:null;
+}
