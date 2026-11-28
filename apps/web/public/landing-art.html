@@ -688,9 +688,13 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
     const offers=Array.isArray(serverData?.trialOffers)?serverData.trialOffers:[];
     const vpnTrialOn=offers.includes('vpn');
     const dnsTrialOn=offers.includes('smart_dns');
-    const trialOpen=Boolean((vpnTrialOn||dnsTrialOn)&&!serverData?.trialDisabled);
+    const bundleTrialOn=offers.includes('bundle');
+    const trialOpen=Boolean((bundleTrialOn||vpnTrialOn||dnsTrialOn)&&!serverData?.trialDisabled);
     trial.disabled=!trialOpen;
-    if(!trialOpen&&!trialOptions.hidden)setTrialChooser(false);
+    if((!trialOpen||bundleTrialOn)&&!trialOptions.hidden)setTrialChooser(false);
+    setText(trialSlot.querySelector('.free-left b'),bundleTrialOn?'«3 в 1» · 24 часа бесплатно':'Бесплатные 24 часа');
+    if(bundleTrialOn){trial.removeAttribute('aria-controls');trial.removeAttribute('aria-expanded');}
+    else{trial.setAttribute('aria-controls','trial-options');trial.setAttribute('aria-expanded',String(!trialOptions.hidden));}
     setText(trial.querySelector?.('.try-text')||trial,trialOpen?'Попробовать':'Недоступно');
     trialVpn.disabled=!trialOpen||!vpnTrialOn;
     setText(trialVpn.querySelector('small'),trialVpn.disabled?'Пока недоступно':'24 часа');
@@ -747,7 +751,11 @@ document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e
     trial.setAttribute('aria-expanded',String(open));trialDnsStatus.hidden=true;
     if(open)trialVpn.focus();else if(trialSlot.contains(document.activeElement))trial.focus();
   };
-  trial.addEventListener('click',()=>setTrialChooser(trialOptions.hidden));
+  trial.addEventListener('click',()=>{
+    if(trial.disabled)return;
+    if(serverData?.trialOffers?.includes('bundle')){send('trial',{product:'bundle'});return;}
+    setTrialChooser(trialOptions.hidden);
+  });
   trialClose.addEventListener('click',()=>setTrialChooser(false));
   trialVpn.addEventListener('click',()=>{if(!trialVpn.disabled){setTrialChooser(false);send('trial');}});
   trialDns.addEventListener('click',()=>{

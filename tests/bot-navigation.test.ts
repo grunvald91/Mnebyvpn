@@ -15,13 +15,13 @@ const plans=planIds.flatMap((days,i)=>[
 const cfg={starsPayloadSecret:'z'.repeat(48),telegramBotUsername:'MnebyvpnTestBot',
  prodamus:{formUrl:'https://merchant.payform.ru/',notificationUrl:'https://store.example/hook',
  successUrl:'https://store.example/ok',returnUrl:'https://store.example/return',secret:'z'.repeat(48)}};
-function fake(){
+function fake(trialProducts=['vpn','smart_dns']){
  const actions:string[]=[];
  const calls:{method:string;params:Record<string,unknown>}[]=[];
  const db={
   plans:async()=>plans,
   plan:async(id:string)=>plans.find(p=>p.planId===id)??null,
-  trialProducts:async()=>['vpn','smart_dns'],
+  trialProducts:async()=>trialProducts,
   grantTrial:async(id:number,product:string)=>{actions.push('grant:'+id+':'+product);return {status:'GRANTED'};},
   reserveStarsInvoice:async()=>true,
   finishStarsInvoice:async()=>{},
@@ -112,4 +112,11 @@ test('reply keyboard home has share and trial actions without typed commands',as
  assert.ok(buttons.includes(MENU.share));
  assert.ok(buttons.includes(MENU.trial));
  assert.ok(buttons.includes(MENU.mine));
+});
+
+test('legacy trial callbacks select enabled bundle rather than issuing separate DNS',async()=>{
+ const f=fake(['vpn','smart_dns','bundle']);
+ await handleTelegramUpdate(callback('trial:smart_dns',104),f.db,f.tg,cfg);
+ assert.ok(f.actions.includes('grant:'+user+':bundle'));
+ assert.ok(!f.actions.includes('grant:'+user+':smart_dns'));
 });

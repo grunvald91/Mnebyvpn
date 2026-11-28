@@ -3,7 +3,7 @@
  */
 import type {Pool} from 'pg';
 import {issueTelegramFinnishDns,issueTelegramPersonalDns,rotateTelegramPersonalDns,
-  telegramFinnishDnsRevision,telegramPersonalDnsSummary} from '../../../packages/dns-policy/src/personal-dot-telegram.ts';
+  telegramFinnishDnsRevision,telegramPersonalDnsSummary,telegramBundleTrialDnsStatus,issueTelegramBundleTrialDns} from '../../../packages/dns-policy/src/personal-dot-telegram.ts';
 import {approvedPersonalDnsOffer,PERSONAL_DNS_STARS_OFFERS,
   type DnsPublishedPlan} from '../../../packages/dns-policy/src/smart-dns-offers.ts';
 
@@ -24,7 +24,7 @@ const tariffs=PERSONAL_DNS_STARS_OFFERS
 const quotaText='1 000 000 DNS-запросов на каждые 30 дней; для тарифа на 14 дней — 1 000 000 на его срок.';
 const renewText='Если запросы закончились раньше срока, можно купить тариф заново. После активации нового доступа получите новый персональный адрес и файл.';
 const guideButtons:Button[][]=[
-  [{text:'📱 iPhone / iPad',callback_data:'dns:guide:ios'},
+  [{text:'🍏 iPhone / iPad / Mac',callback_data:'dns:guide:ios'},
     {text:'🤖 Android',callback_data:'dns:guide:android'}],
   [{text:'📡 Роутер / телевизор',callback_data:'dns:guide:router'},
     {text:'🌐 Сервисы',callback_data:'dns:guide:services'}],
@@ -38,17 +38,18 @@ export function personalDnsPreview():PersonalDnsBotMessage{
 }
 export function personalDnsGuide(kind:string):PersonalDnsBotMessage{
   if(kind==='ios')return message(
-    '📱 Smart DNS на iPhone и iPad\n\n'+
-    '1. После оплаты дождитесь активации и откройте «Мой Smart DNS» → «Получить персональный адрес».\n'+
-    '2. Бот пришлёт персональный файл MNEBYDNS-iPhone-iPad.mobileconfig. Сохраните его.\n'+
+    '📱 Smart DNS на iPhone, iPad и Mac\n\n'+
+    '1. Дождитесь активации. Для пробного пакета откройте «Мои подключения» → «Выбрать страну 3 в 1»; для платного — «Мой Smart DNS».\n'+
+    '2. Получите и сохраните персональный файл MNEBYDNS-Apple-DE.mobileconfig (Германия) или MNEBYDNS-Apple-FI.mobileconfig (Финляндия).\n'+
     '3. Для надёжной установки откройте вложение .mobileconfig из приложения «Почта» (Mail) или скачайте через Safari с доверенной страницы. Если Telegram не открывает профиль для установки, отправьте вложение только на собственную почту и откройте в Mail.\n'+
     '4. Перейдите в «Настройки» → «Профиль загружен» → «Установить» и подтвердите код устройства. Если пункта нет: «Основные» → «VPN и управление устройством».\n'+
-    '5. Apple удаляет неустановленный загруженный профиль примерно через 8 минут — при необходимости загрузите его повторно из сохранённого вложения.\n\n'+
+    'На Mac: откройте файл, затем «Системные настройки» → «Основные» → «Управление устройством», выберите загруженный профиль и установите. Перед сменой страны удалите прежний DNS-профиль.\n'+
+    '5. На iPhone/iPad Apple удаляет неустановленный загруженный профиль примерно через 8 минут — при необходимости загрузите его повторно из сохранённого вложения.\n\n'+
     'Профиль персональный: не публикуйте и не пересылайте посторонним. Удаление: «Основные» → «VPN и управление устройством».',
     [[menu],...guideButtons]);
   if(kind==='android')return message(
     '🤖 Smart DNS на Android\n\n'+
-    '1. Откройте «Мой Smart DNS» и получите адрес.\n'+
+    '1. Для пробного пакета выберите страну в «Мои подключения», для платного откройте «Мой Smart DNS». Получите персональный адрес.\n'+
     '2. Настройки → Сеть и интернет (или Подключения) → Частный DNS.\n'+
     '3. Выберите «Имя хоста провайдера частного DNS», вставьте свой адрес целиком и сохраните.\n'+
     '4. При конфликте с VPN или DNS в отдельном браузере используйте штатные настройки приложения.\n\n'+
@@ -133,13 +134,13 @@ export async function personalDnsTelegramMenu(
 }
 type DeliverIosProfile=(hostname:string)=>Promise<boolean>;
 async function issuedMessage(
-  hostname:string,rotated:boolean,deliver?:DeliverIosProfile,region?:'Германия'|'Финляндия',
+  hostname:string,rotated:boolean,deliver?:DeliverIosProfile,region?:'Германия'|'Финляндия',trial=false,
 ):Promise<PersonalDnsBotMessage>{
   let sent=false;
   if(deliver){try{sent=await deliver(hostname);}catch{sent=false;}}
   const delivery=sent
     ?'📎 Файл .mobileconfig отправлен отдельным документом в этот чат.'
-    :'⚠️ Автоматическую отправку iOS-файла подтвердить не удалось. Сохраните DNS-адрес ниже. Для повторного выпуска файла потребуется замена адреса в «Мой Smart DNS».';
+    :'⚠️ Автоматическую отправку Apple-файла подтвердить не удалось. Сохраните DNS-адрес ниже. Для повторного выпуска файла потребуется подтверждённая замена адреса'+(trial?' в настройках выбранной страны пробного пакета.':' в «Мой Smart DNS».');
   return message(
     (region?'✅ Персональный Smart DNS · '+region:
       rotated?'✅ Персональный DNS заменён. Старый адрес отключён.':
@@ -147,11 +148,11 @@ async function issuedMessage(
     '\n\n'+hostname+'\n\n'+delivery+
     (region==='Финляндия'?'\nДождитесь обновления допуска на узле, затем подключите этот профиль. Если одновременно используете VPN, рекомендуем выбрать VPN Финляндия, чтобы избежать рассогласования маршрутов.':'')+
     '\n\nAndroid: Настройки → Частный DNS → Имя хоста провайдера. Вставьте адрес целиком.\n'+
-    'iPhone/iPad: откройте инструкцию ниже и установите файл .mobileconfig через системные настройки.\n\n'+
+    'iPhone/iPad/Mac: откройте инструкцию ниже и установите файл .mobileconfig через системные настройки.\n\n'+
     'Адрес и профиль — персональные. Не пересылайте посторонним.',
     [[{text:'📋 Скопировать DNS-адрес',copy_text:{text:hostname}}],
-     [{text:'📱 Как установить на iPhone',callback_data:'dns:guide:ios'}],
-     [{text:'🤖 Android',callback_data:'dns:guide:android'}],[menu]]);
+     [{text:'🍏 Как установить на Apple',callback_data:'dns:guide:ios'}],
+     [{text:'🤖 Android',callback_data:'dns:guide:android'}],...(trial?[]:[[menu]])]);
 }
 export async function personalDnsTelegramAction(
   db:Pool,telegramUserId:number,action:string,deliver?:DeliverIosProfile,regionalEnabled=false,
@@ -198,4 +199,31 @@ export async function personalDnsTelegramAction(
   const r=await rotateTelegramPersonalDns(db,telegramUserId,expectedRevision);
   if(r.kind==='rotated')return issuedMessage(r.hostname,true,deliver,regionalEnabled?'Германия':undefined);
   return message('Замена не выполнена: адрес уже изменён, отозван или подписка неактивна.',[[menu]]);
+}
+
+export async function bundleTrialDnsButtons(db:Pool,id:number,country:'DE'|'FI',regionalEnabled:boolean):Promise<Button[][]>{
+ const status=await telegramBundleTrialDnsStatus(db,id);
+ if(!status)return [];
+ const revision=country==='DE'?status.deRevision:regionalEnabled?status.fiRevision:null;
+ if(revision===null){
+   if(country==='FI'&&regionalEnabled&&status.deRevision===0)return [[{text:'Сначала получить немецкий DNS-профиль',callback_data:'dns:trial:DE:execute:0'}]];
+   return [];
+ }
+ return [[{text:(revision===0?'🍏 Получить DNS-адрес и файл Apple':'🔄 Заменить DNS-адрес и файл Apple'),
+   callback_data:'dns:trial:'+country+':'+(revision===0?'execute':'confirm')+':'+revision}]];
+}
+export async function bundleTrialDnsAction(db:Pool,id:number,action:string,deliver:DeliverIosProfile,regionalEnabled:boolean):Promise<PersonalDnsBotMessage>{
+ const m=/^dns:trial:(DE|FI):(confirm|execute):(0|[1-9][0-9]{0,8})$/.exec(action);
+ if(!m||m[1]==='FI'&&!regionalEnabled)return message('Профиль выбранной страны недоступен.',[[home]]);
+ const country=m[1] as 'DE'|'FI',revision=Number(m[3]),name=country==='DE'?'Германия':'Финляндия';
+ const back:Button={text:'🌍 Настройки · '+name,callback_data:'nav:trial-country:'+country};
+ const status=await telegramBundleTrialDnsStatus(db,id);
+ if(!status||(country==='DE'?status.deRevision:status.fiRevision)!==revision)return message('Пробный профиль изменён или недоступен. Обновите статус.',[[back]]);
+ if(m[2]==='confirm'&&revision>0)return message('Заменить профиль '+name+'? Старый адрес этой страны отключится. Срок и общий лимит не изменятся.',[[{text:'Подтвердить замену',callback_data:'dns:trial:'+country+':execute:'+revision}],[back]]);
+ if(m[2]!=='execute')return message('Некорректное действие.',[[back]]);
+ const result=await issueTelegramBundleTrialDns(db,id,country,revision);
+ if(result.kind!=='issued'&&result.kind!=='rotated')return message('Пробный профиль не выдан. Обновите статус.',[[back]]);
+ const view=await issuedMessage(result.hostname,result.kind==='rotated',deliver,name,true);
+ view.reply_markup.inline_keyboard.unshift([back]);
+ return view;
 }

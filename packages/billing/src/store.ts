@@ -203,6 +203,7 @@ export class PgBillingStore {
             AND e.state IN ('ACTIVE','EXPIRED','SUSPENDED',
                             'PAID_PENDING_PROVISIONING','PROVISIONING_FAILED')
             AND e.starts_at IS NOT NULL AND e.expires_at IS NOT NULL
+            AND NOT EXISTS(SELECT 1 FROM trial_grants t WHERE t.order_id=e.source_order_id AND t.account_id=e.account_id AND t.product='bundle')
           FOR UPDATE OF e`,[renewalTargetId,accountId,p.product]);
         if(renewal.rowCount!==1)throw new Error('Renewal target not owned or not active yet');
       }
@@ -410,7 +411,9 @@ export class PgBillingStore {
          RETURNING id`,[String(telegramUserId)]);
       const owner=users[0].id as string;
       const plans=await c.query(
-        `SELECT p.*,COALESCE(t.enabled,false) AS trial_available
+        `SELECT p.*,(COALESCE(t.enabled,false) OR EXISTS (
+             SELECT 1 FROM trial_offers b WHERE b.product='bundle' AND b.enabled=true
+           )) AS trial_available
            FROM billing_plans p
            LEFT JOIN trial_offers t ON t.product=p.product
           WHERE p.enabled=true AND p.stars IS NOT NULL
@@ -498,7 +501,7 @@ export class PgBillingStore {
     if(!(typeof telegramUserId==='number' && Number.isSafeInteger(telegramUserId) && telegramUserId>0 ||
        typeof telegramUserId==='string' && uuid.test(telegramUserId)) ||
        !['vpn','smart_dns','bundle'].includes(product))throw new Error('Invalid trial request');
-    if(legacyEmailRecovery&&(typeof telegramUserId!=='string'||product!=='vpn'||deviceHash!==undefined||inviteToken!==undefined))
+    if(legacyEmailRecovery&&(typeof telegramUserId!=='string'||!['vpn','bundle'].includes(product)||deviceHash!==undefined||inviteToken!==undefined))
       throw new Error('Invalid legacy email trial recovery');
     if(deviceHash!==undefined&&!/^[a-f0-9]{64}$/.test(deviceHash))
       throw new Error('Invalid hashed browser trial claim');
@@ -547,7 +550,7 @@ export class PgBillingStore {
         const referral=await c.query(
           `SELECT i.referrer_account_id FROM referral_invites i
              JOIN billing_plans p ON p.id=i.plan_id
-            WHERE i.token=$1 AND p.product=$2 AND p.enabled=true`,
+            WHERE i.token=$1 AND (p.product=$2 OR $2='bundle') AND p.enabled=true`,
           [inviteToken,product]);
         if(!referral.rowCount || referral.rows[0].referrer_account_id===accountId)
           throw new Error('Invalid or self-owned trial referral');

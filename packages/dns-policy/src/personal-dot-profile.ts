@@ -52,8 +52,8 @@ export async function sendPersonalDnsMobileconfig(
   const form=new FormData();
   form.set('chat_id',String(chatId));
   form.set('document',new Blob([xml],{type:'application/x-apple-aspen-config'}),
-    'MNEBYDNS-iPhone-iPad.mobileconfig');
-  form.set('caption','🔐 Ваш персональный профиль Smart DNS для iPhone/iPad. Не пересылайте файл другим людям. Инструкция — в сообщении бота.');
+    'MNEBYDNS-Apple-'+(parseRegionalPersonalDnsHostname(hostname)?.countryCode==='FI'?'FI':'DE')+'.mobileconfig');
+  form.set('caption','🔐 Ваш персональный профиль Smart DNS для iPhone, iPad и Mac. Не пересылайте файл другим людям. Инструкция — в сообщении бота.');
   try{
     const response=await transport('https://api.telegram.org/bot'+botToken+'/sendDocument',{
       method:'POST',body:form,redirect:'error',signal:AbortSignal.timeout(7500),

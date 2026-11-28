@@ -1,4 +1,4 @@
-import {createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
+import {createHash,createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
 
 /** Preserve a single canonical case-insensitive ASCII mailbox identity. */
 export function normalizeLoginEmail(value:unknown):string|null{
@@ -42,12 +42,13 @@ export async function deliverEmailOtp(
 }
 
 /** Fixed-template notice, authenticated by the existing isolated gateway. */
-export async function deliverVpnTrialReadyEmail(email:string,expiresAt:Date,secret:string,fetcher:typeof fetch=fetch):Promise<boolean>{
+export async function deliverVpnTrialReadyEmail(email:string,expiresAt:Date,secret:string,fetcher:typeof fetch=fetch,product:'vpn'|'bundle'='vpn',orderId?:string):Promise<boolean>{
   if(secret.length<32||normalizeLoginEmail(email)!==email||
      !Number.isFinite(expiresAt.getTime())||expiresAt.getTime()<=Date.now())return false;
   const timestamp=String(Math.floor(Date.now()/1000));
-  const nonce=randomBytes(24).toString('base64url');
-  const payload=JSON.stringify({email,kind:'vpn_trial_ready',expiresAt:expiresAt.toISOString()});
+  // One durable notice per canonical order. Do not expose the order ID.
+  const nonce=orderId?'trial_'+createHash('sha256').update('trial-ready-delivery-v1:'+orderId).digest('hex').slice(0,56):randomBytes(24).toString('base64url');
+  const payload=JSON.stringify({email,kind:product==='bundle'?'bundle_trial_ready':'vpn_trial_ready',expiresAt:expiresAt.toISOString()});
   const signature=createHmac('sha256',secret).update(timestamp+'.'+nonce+'.'+payload).digest('hex');
   try{
     const response=await fetcher(ENDPOINT,{method:'POST',redirect:'error',signal:AbortSignal.timeout(9000),
@@ -58,10 +59,10 @@ export async function deliverVpnTrialReadyEmail(email:string,expiresAt:Date,secr
 }
 
 /** One fixed transactional invitation; does not assert that access is activated. */
-export async function deliverVpnTrialRecoveryInvite(email:string,secret:string,fetcher:typeof fetch=fetch):Promise<boolean>{
+export async function deliverVpnTrialRecoveryInvite(email:string,secret:string,fetcher:typeof fetch=fetch,product:'vpn'|'bundle'='vpn'):Promise<boolean>{
   if(secret.length<32||normalizeLoginEmail(email)!==email)return false;
   const stamp=String(Math.floor(Date.now()/1000)),nonce=randomBytes(24).toString('base64url');
-  const payload=JSON.stringify({email,kind:'vpn_trial_recovery_invite'});
+  const payload=JSON.stringify({email,kind:product==='bundle'?'bundle_trial_recovery_invite':'vpn_trial_recovery_invite'});
   const signature=createHmac('sha256',secret).update(stamp+'.'+nonce+'.'+payload).digest('hex');
   try{
     const r=await fetcher(ENDPOINT,{method:'POST',redirect:'error',signal:AbortSignal.timeout(9000),

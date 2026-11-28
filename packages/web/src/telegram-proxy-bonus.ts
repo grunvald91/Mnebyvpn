@@ -259,3 +259,59 @@ export async function loadCustomerWsProxy(
   if(!row)return null;
   return {expiresAt:row.expires_at.toISOString(),wsLinks:makeWsProxyLinks(routes)};
 }
+
+/** Shared WS routes are intentionally reusable after a bundle trial ends.
+ * This is separate from paid-only personalized MTProto credentials.
+ * The caller must supply existing verified, owner-designated shared routes. */
+export async function loadSharedTrialWsProxy(
+  db:Pick<Pool,'query'>,accountId:string,routes:ProxyWsRoute[],
+):Promise<{wsLinks:ProxyWsLink[]}|null>{
+  if(!uuid.test(accountId))return null;
+  const {rows}=await db.query(
+    `SELECT 1 FROM trial_grants t JOIN orders o
+       ON o.id=t.order_id AND o.account_id=t.account_id
+     WHERE t.account_id=$1 AND t.product='bundle' AND o.product='bundle'
+       AND o.provider='internal_trial' AND o.state='TRIAL' AND o.amount_minor=0
+     LIMIT 1`,[accountId]);
+  return rows.length===1?{wsLinks:makeWsProxyLinks(routes)}:null;
+}
+
+
+export type TrialProxyCountry='DE'|'FI';
+export type TrialRegionalProxyLink=ProxyWsLink&{country:TrialProxyCountry};
+/** Explicit owner-designated country routes. Never infer exit country from
+ * the ingress hostname or from direct/ru. Keep paid routes unchanged. */
+export function trialRegionalProxyLinks(env:NodeJS.ProcessEnv):TrialRegionalProxyLink[]{
+  if(!wsProxyReleaseReady(env))return [];
+  const result:TrialRegionalProxyLink[]=[];
+  for(const country of ['DE','FI'] as const){
+    if(env['WEB_TRIAL_WS_PROXY_'+country+'_VERIFIED']!=='yes')continue;
+    const routes=parseWsProxyRoutes(env['WEB_TRIAL_WS_PROXY_'+country+'_ROUTES_JSON']);
+    if(!routes)continue;
+    for(const link of makeWsProxyLinks(routes))result.push({...link,country,
+      label:(country==='DE'?'Германия':'Финляндия')+' · '+link.label});
+  }
+  // A single ingress path cannot be asserted to terminate in two countries.
+  const routeKey=(server:string)=>{const slash=server.indexOf('/');return server.slice(0,slash).toLowerCase()+server.slice(slash);};
+  const duplicates=new Set(result.filter(a=>result.some(b=>a.country!==b.country&&routeKey(a.server)===routeKey(b.server))).map(a=>routeKey(a.server)));
+  return result.filter(a=>!duplicates.has(routeKey(a.server)));
+}
+export async function loadSharedTrialCountryProxy(
+  db:Pick<Pool,'query'>,accountId:string,env:NodeJS.ProcessEnv,
+):Promise<{wsLinks:ProxyWsLink[];regionalLinks:TrialRegionalProxyLink[]}|null>{
+  if(!wsProxyReleaseReady(env))return null;
+  const routes=parseWsProxyRoutes(env.WEB_TELEGRAM_WS_PROXY_ROUTES_JSON);
+  if(!routes)return null;
+  const shared=await loadSharedTrialWsProxy(db,accountId,routes);
+  return shared?{...shared,regionalLinks:trialRegionalProxyLinks(env)}:null;
+}
+
+
+/** Only for the common trial links, never personalized paid credentials. */
+export const sharedTrialProxyInstructions='1. Откройте ссылку подключения и подтвердите добавление прокси в Telegram.\n'+
+ '2. Если приложение не открылось, скопируйте ссылку, отправьте себе в «Избранное» и нажмите на неё из сообщения.\n'+
+ '3. Или откройте настройки Telegram → Данные и память → Прокси (Desktop: Продвинутые → Тип соединения). Если клиент поддерживает WEB-прокси / WebSocket, введите сервер целиком (включая путь), секрет и порт 443, если есть отдельное поле порта. Не выбирайте SOCKS5 или MTProto для этих параметров.\n'+
+ 'При смене страны выберите соответствующий прокси в Telegram. Общие ссылки не отключаются по окончании пробных суток VPN и DNS.';
+export function sharedTrialProxyParameters(link:ProxyWsLink):string{
+ return 'Название: '+link.label+'\nТип: WEB-прокси / WebSocket\nСервер: '+link.server+'\nПорт: 443 (HTTPS)\nСекрет: '+link.secret;
+}

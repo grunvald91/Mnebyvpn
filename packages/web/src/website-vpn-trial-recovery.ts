@@ -3,31 +3,38 @@ import type {PgBillingStore} from '../../billing/src/store.ts';
 import {deliverVpnTrialReadyEmail,normalizeLoginEmail} from './email-otp.ts';
 
 /** Only call for an explicitly requesting, successfully authenticated email account. */
-export async function rememberWebsiteVpnTrial(pool:Pool,accountId:string,deviceHash:string,inviteToken?:string):Promise<boolean>{
-  await pool.query(`INSERT INTO website_vpn_trial_requests(account_id,device_hash,invite_token)
-    VALUES($1,$2,$3) ON CONFLICT(account_id) DO UPDATE
+export async function rememberWebsiteVpnTrial(pool:Pool,accountId:string,deviceHash:string,inviteToken?:string,requestedProduct?:'bundle'):Promise<boolean>{
+  await pool.query(`INSERT INTO website_vpn_trial_requests(account_id,device_hash,invite_token,requested_product)
+    VALUES($1,$2,$3,$4) ON CONFLICT(account_id) DO UPDATE
     SET status='PENDING',device_hash=EXCLUDED.device_hash,invite_token=EXCLUDED.invite_token,request_source='WEBSITE',
-      next_attempt_at=clock_timestamp(),locked_until=NULL,last_error_code=NULL
+      next_attempt_at=clock_timestamp(),locked_until=NULL,last_error_code=NULL,
+      requested_product=COALESCE(EXCLUDED.requested_product,website_vpn_trial_requests.requested_product)
     WHERE website_vpn_trial_requests.status='REJECTED'
-      AND website_vpn_trial_requests.order_id IS NULL`,[accountId,deviceHash,inviteToken??null]);
+      AND website_vpn_trial_requests.order_id IS NULL`,[accountId,deviceHash,inviteToken??null,requestedProduct??null]);
+  if(requestedProduct==='bundle')await pool.query(`UPDATE website_vpn_trial_requests SET requested_product='bundle'
+    WHERE account_id=$1 AND status='PENDING' AND order_id IS NULL AND requested_product IS NULL`,[accountId]);
   const status=await pool.query('SELECT status FROM website_vpn_trial_requests WHERE account_id=$1',[accountId]);
   return ['PENDING','WAITING'].includes(status.rows[0]?.status);
 }
-type Job={account_id:string;device_hash:string|null;request_source:'WEBSITE'|'LEGACY_EMAIL';invite_token:string|null;order_id:string|null;status:'PENDING'|'WAITING';attempts:number};
+type Job={account_id:string;device_hash:string|null;request_source:'WEBSITE'|'LEGACY_EMAIL';requested_product:'bundle'|null;invite_token:string|null;order_id:string|null;status:'PENDING'|'WAITING';attempts:number};
 
 /** Durable bounded leases survive restart; trial uniqueness serializes grants. */
 export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStore,'grantTrial'>,secret:string,
- send:typeof deliverVpnTrialReadyEmail=deliverVpnTrialReadyEmail):Promise<void>{
+ send:typeof deliverVpnTrialReadyEmail=deliverVpnTrialReadyEmail,
+ newProduct:'vpn'|'bundle'='vpn'):Promise<void>{
   for(let i=0;i<5;i++){
     const claimed=await pool.query(`WITH pick AS (
         SELECT account_id FROM website_vpn_trial_requests
-        WHERE status IN ('PENDING','WAITING') AND next_attempt_at<=clock_timestamp()
+        WHERE status IN ('PENDING','WAITING')
+          AND (status='WAITING' OR requested_product IS DISTINCT FROM 'bundle' OR $1::boolean)
+          AND (next_attempt_at<=clock_timestamp() OR (requested_product='bundle' AND next_attempt_at='infinity'::timestamptz AND $1::boolean))
           AND (locked_until IS NULL OR locked_until<=clock_timestamp())
-        ORDER BY next_attempt_at LIMIT 1 FOR UPDATE SKIP LOCKED
+        ORDER BY CASE WHEN next_attempt_at='infinity'::timestamptz THEN created_at ELSE next_attempt_at END LIMIT 1 FOR UPDATE SKIP LOCKED
       )
       UPDATE website_vpn_trial_requests r SET attempts=r.attempts+1,
-        locked_until=clock_timestamp()+interval '120 seconds'
-      FROM pick WHERE r.account_id=pick.account_id RETURNING r.*`);
+        locked_until=clock_timestamp()+interval '120 seconds',
+        requested_product=CASE WHEN r.status='PENDING' AND $1::boolean THEN 'bundle' ELSE r.requested_product END
+      FROM pick WHERE r.account_id=pick.account_id RETURNING r.*`,[newProduct==='bundle']);
     const job=claimed.rows[0] as Job|undefined;
     if(!job)return;
     const finish=async(status:'PENDING'|'WAITING'|'SENT'|'REJECTED',orderId:string|null,delay:number,reason:string|null)=>{
@@ -40,7 +47,7 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
     const retry=Math.min(300,10*2**Math.min(5,job.attempts-1));
     try{
       if(job.status==='PENDING'){
-        const grant=await store.grantTrial(job.account_id,'vpn',job.invite_token??undefined,
+        const grant=await store.grantTrial(job.account_id,job.requested_product??newProduct,job.invite_token??undefined,
           job.device_hash??undefined,job.request_source==='LEGACY_EMAIL');
         if(grant.status==='DEVICE_ALREADY_USED'){
           await finish('REJECTED',null,0,'DEVICE_ALREADY_USED');continue;
@@ -53,16 +60,27 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
       // Resolve recipient from canonical verified account; require final node ACK.
       const observed=await pool.query(`SELECT a.email_address,t.product,t.access_expires_at,o.state,
           (t.activated_at IS NOT NULL AND t.access_expires_at>clock_timestamp()
+           AND (t.product='vpn' OR t.access_expires_at=t.activated_at+interval '24 hours')
            AND EXISTS (SELECT 1 FROM entitlements e JOIN provisioning_state p
              ON p.entitlement_id=e.id AND p.adapter='vpn'
              WHERE e.source_order_id=t.order_id AND e.account_id=t.account_id
                AND e.product='vpn' AND e.state='ACTIVE' AND e.expires_at>clock_timestamp()
-               AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL)) AS ready
+               AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL
+               AND (t.product='vpn' OR (e.starts_at=t.activated_at AND e.expires_at=t.access_expires_at)))
+           AND (t.product='vpn' OR EXISTS (
+             SELECT 1 FROM entitlements d JOIN provisioning_state dp
+               ON dp.entitlement_id=d.id AND dp.adapter='smart_dns'
+             WHERE d.source_order_id=t.order_id AND d.account_id=t.account_id
+               AND d.product='smart_dns' AND d.state='ACTIVE'
+               AND d.starts_at=t.activated_at AND d.expires_at=t.access_expires_at
+               AND d.quota_state='AVAILABLE'
+               AND dp.applied_revision=d.revision AND dp.last_observed_at IS NOT NULL))) AS ready
          FROM trial_grants t JOIN accounts a ON a.id=t.account_id
-         JOIN orders o ON o.id=t.order_id AND o.provider='internal_trial'
+         JOIN orders o ON o.id=t.order_id AND o.account_id=t.account_id AND o.provider='internal_trial'
+           AND o.product=t.product AND o.amount_minor=0
          WHERE t.account_id=$1 AND t.order_id=$2`,[job.account_id,job.order_id]);
       const trial=observed.rows[0];
-      if(!trial||trial.product!=='vpn'||trial.state!=='TRIAL'||
+      if(!trial||!['vpn','bundle'].includes(trial.product)||trial.state!=='TRIAL'||
          !normalizeLoginEmail(trial.email_address)||
          (trial.access_expires_at&&new Date(trial.access_expires_at).getTime()<=Date.now())){
         await finish('REJECTED',job.order_id,0,'TRIAL_NO_LONGER_ELIGIBLE');continue;
@@ -70,7 +88,12 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
       if(!trial.ready){
         await finish('WAITING',job.order_id,15,'WAITING_FOR_NODE');continue;
       }
-      const delivered=await send(trial.email_address,new Date(trial.access_expires_at),secret);
+      // Do not send from a superseded worker lease.
+      const current=await pool.query(`SELECT 1 FROM website_vpn_trial_requests
+        WHERE account_id=$1 AND attempts=$2 AND status='WAITING' AND order_id=$3
+          AND locked_until>clock_timestamp()`,[job.account_id,job.attempts,job.order_id]);
+      if(current.rowCount!==1)continue;
+      const delivered=await send(trial.email_address,new Date(trial.access_expires_at),secret,undefined,trial.product==='bundle'?'bundle':'vpn',job.order_id!);
       await finish(delivered?'SENT':'WAITING',job.order_id,delivered?0:retry,delivered?null:'MAIL_RETRY');
     }catch(error){
       const code=(error as {code?:unknown})?.code;

@@ -134,12 +134,12 @@ function renderPlan() {
     !state.checkoutEnabled?'Оплата подключается':
     !state.loggedIn?'Войти для оплаты':state.renewalTargetId?'К оплате продления':'Перейти к оплате';
   const trial=byId('trial-button');
-  const trialAvailable=(state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'))&&state.loginEnabled;
+  const trialAvailable=(state.trialOffers.includes('bundle')||state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'))&&state.loginEnabled;
   trial.disabled=!trialAvailable||state.busy;
   syncCabinetTrialButton();
   trial.textContent=state.busy?'Проверяем заявку…':
     !state.loginEnabled?'Бесплатный доступ временно недоступен':
-    trialAvailable?(state.loggedIn?'🎁 Получить 24 часа VPN бесплатно':'Войти и получить 24 часа VPN бесплатно'):
+    trialAvailable?(state.trialOffers.includes('bundle')?'🎁 Попробовать «3 в 1» бесплатно':(state.loggedIn?'🎁 Получить 24 часа VPN бесплатно':'Войти и получить 24 часа VPN бесплатно')):
     'Бесплатный доступ временно недоступен';
   text('checkout-hint',
     !plan?'Неопубликованные тарифы не продаются.':
@@ -190,13 +190,13 @@ function clearCachedCredentials(){
     }
   }catch{}
 }
-function triggerMobileconfigDownload(xml){
+function triggerMobileconfigDownload(xml,country='DE'){
   const blob=new Blob([xml],{type:'application/x-apple-aspen-config'});
   if(blob.size<200||blob.size>32768)throw Error('DNS_PROFILE_UNAVAILABLE');
   const url=URL.createObjectURL(blob);
   const link=node('a');
   link.href=url;
-  link.download='MNEBYDNS-Apple.mobileconfig';
+  link.download='MNEBYDNS-Apple-'+(country==='FI'?'FI':'DE')+'.mobileconfig';
   document.body.append(link);
   link.click();
   link.remove();
@@ -214,12 +214,12 @@ function renderPersonalDnsBox(item,hostname,xml,opts={}){
   box.append(node('h4','',(hasCreds?'✅ Smart DNS · ':'🧭 Smart DNS · ')+(country==='FI'?'Финляндия':'Германия')));
   if(xml){
     const dl=node('button','button button-primary setup-button',
-      apple?'⬇️ Скачать профиль Apple (.mobileconfig)':'Скачать профиль для iPhone / Mac (.mobileconfig)');
+      apple?'⬇️ Скачать профиль Apple (.mobileconfig)':'Скачать профиль для iPhone / iPad / Mac (.mobileconfig)');
     dl.type='button';
-    dl.addEventListener('click',()=>triggerMobileconfigDownload(xml));
+    dl.addEventListener('click',()=>triggerMobileconfigDownload(xml,country));
     box.append(dl);
     box.append(node('p','',
-      'Установка на Apple (iPhone, iPad, Mac): откройте страницу в Safari и нажмите кнопку выше → разрешите загрузку профиля → откройте «Настройки» → «Профиль загружен» → «Установить» (или «Основные» → «VPN и управление устройством»). На Mac — «Системные настройки» → «Основные» → «Управление устройством». Неустановленный профиль удаляется системой через 8 минут.'));
+      'Установка на Apple (iPhone, iPad, Mac): откройте страницу в Safari и нажмите кнопку выше → разрешите загрузку профиля → откройте «Настройки» → «Профиль загружен» → «Установить» (или «Основные» → «VPN и управление устройством»). На Mac — откройте файл и перейдите в «Системные настройки» → «Основные» → «Управление устройством». На iPhone/iPad неустановленный загруженный профиль удаляется примерно через 8 минут. При смене страны сначала удалите прежний DNS-профиль.'));
   }
   if(hostname){
     const row=node('div','journey-copy-field');
@@ -252,11 +252,11 @@ function renderPersonalDnsBox(item,hostname,xml,opts={}){
       'Персональный DoT-адрес и профиль Apple уже выпускались ранее в другой сессии (в базе хранится только хеш). Нажмите ниже, чтобы перевыпустить новый адрес и скачать новый файл .mobileconfig — старый адрес при этом отключится.'));
     const rotateBtn=node('button','button button-secondary setup-button','🔄 Перевыпустить адрес и профиль (.mobileconfig)');
     rotateBtn.type='button';
-    rotateBtn.addEventListener('click',()=>void downloadAppleDnsProfile(opts.entitlementId,rotateBtn,item,country));
+    rotateBtn.addEventListener('click',()=>void downloadAppleDnsProfile(opts.entitlementId,rotateBtn,item,country,opts.singleCountry===true));
     box.append(rotateBtn);
   }
   item.append(box);
-  if(country==='DE'&&opts.entitlementId){
+  if(country==='DE'&&opts.entitlementId&&!opts.singleCountry){
     box.append(node('p','','Если Smart DNS и VPN включены одновременно, выбирайте одну страну для обеих услуг: Германия с Германией, Финляндия с Финляндией. Иначе возможны проблемы с подключением и загрузкой сервисов.'));
     const fiBox=node('section','dns-country-fi');
     const fiButton=node('button','button button-secondary setup-button','Получить профиль · Финляндия');
@@ -317,7 +317,7 @@ async function ensurePersonalDnsCredentials(entitlementId,opts={}){
   dnsCredInFlight.set(entitlementId,job);
   return job;
 }
-async function downloadAppleDnsProfile(entitlementId, button, item,country='DE'){
+async function downloadAppleDnsProfile(entitlementId, button, item,country='DE',singleCountry=false){
   if(!state.loggedIn||button.disabled)return;
   button.disabled=true;
   try{
@@ -325,8 +325,8 @@ async function downloadAppleDnsProfile(entitlementId, button, item,country='DE')
     if(status.revoked)throw Error('DNS_ACCESS_REVOKED');
     const cached=readCachedPersonalDns(entitlementId,country);
     if(cached?.mobileconfig&&status.issued&&cached.revision===status.revision){
-      triggerMobileconfigDownload(cached.mobileconfig);
-      if(item)renderPersonalDnsBox(item,cached.hostname,cached.mobileconfig,{entitlementId,issued:true,country});
+      triggerMobileconfigDownload(cached.mobileconfig,country);
+      if(item)renderPersonalDnsBox(item,cached.hostname,cached.mobileconfig,{entitlementId,issued:true,country,singleCountry});
       toast('Профиль Apple (.mobileconfig) загружен.');
       return;
     }
@@ -353,9 +353,9 @@ async function downloadAppleDnsProfile(entitlementId, button, item,country='DE')
       const creds=await combined.json();
       creds.revision=action==='rotate'?status.revision+1:1;
       saveCachedPersonalDns(entitlementId,creds,country);
-      if(creds?.mobileconfig)triggerMobileconfigDownload(creds.mobileconfig);
+      if(creds?.mobileconfig)triggerMobileconfigDownload(creds.mobileconfig,country);
       if(item&&(creds?.hostname||creds?.mobileconfig))
-        renderPersonalDnsBox(item,creds.hostname||'',creds.mobileconfig||'',{entitlementId,issued:true,country});
+        renderPersonalDnsBox(item,creds.hostname||'',creds.mobileconfig||'',{entitlementId,issued:true,country,singleCountry});
       if(country==='FI')button.hidden=true;
       toast('Smart DNS создан: профиль .mobileconfig загружен, адрес DoT показан в карточке.');
       return;
@@ -372,8 +372,8 @@ async function downloadAppleDnsProfile(entitlementId, button, item,country='DE')
     if(!(response.headers.get('content-type')||'').includes('application/x-apple-aspen-config'))
       throw Error('DNS_PROFILE_UNAVAILABLE');
     const xml=await response.text();
-    triggerMobileconfigDownload(xml);
-    if(item)renderPersonalDnsBox(item,'',xml,{entitlementId,issued:true,country});
+    triggerMobileconfigDownload(xml,country);
+    if(item)renderPersonalDnsBox(item,'',xml,{entitlementId,issued:true,country,singleCountry});
     toast('Профиль создан. Сохраните файл. На iPhone/iPad откройте Настройки → Профиль загружен; на Mac — Системные настройки → Основные → Управление устройством.');
   }catch(error){
     const messages={
@@ -392,6 +392,7 @@ function renderProxyBonusBox(item,data){
   if(!item)return;
   const wsLinks=Array.isArray(data?.wsLinks)?data.wsLinks:[];
   const mtLinks=Array.isArray(data?.links)?data.links:[];
+  const sharedTrial=data?.sharedTrial===true;
   if(!wsLinks.length&&!mtLinks.length)return;
   const previous=item.querySelector('.dns-proxy-bonus-links');
   if(previous)previous.remove();
@@ -426,16 +427,38 @@ function renderProxyBonusBox(item,data){
         webAnchor.rel='noopener noreferrer';webAnchor.referrerPolicy='no-referrer';
         row.append(webAnchor);
       }
-      const manual=node('button','button button-secondary','Скопировать сервер и секрет');
+      if(sharedTrial&&targetUrl){
+        const field=node('input','');
+        field.type='text';field.readOnly=true;field.value=targetUrl;
+        field.setAttribute('aria-label','Ссылка подключения Telegram-прокси');
+        const copy=node('button','button button-secondary','Скопировать ссылку');
+        copy.type='button';
+        copy.addEventListener('click',async()=>{
+          try{await navigator.clipboard.writeText(targetUrl);toast('Ссылка скопирована. Отправьте её себе в «Избранное» Telegram.');}
+          catch{field.focus();field.select();toast('Скопируйте выделенную ссылку.');}
+        });
+        const copyRow=node('div','journey-copy-field');
+        copyRow.append(field,copy);row.append(copyRow);
+      }
+      const manual=node('button','button button-secondary',sharedTrial?'Скопировать параметры':'Скопировать сервер и секрет');
       manual.type='button';
+      const trialParams='Название: '+String(link.label||'Telegram-прокси')+'\nТип: WEB-прокси / WebSocket\nСервер: '+String(link.server||'')+'\nПорт: 443 (HTTPS)\nСекрет: '+String(link.secret||'');
+      let manualField=null;
+      if(sharedTrial){
+        const details=node('details','');
+        details.append(node('summary','','Ручная настройка'));
+        manualField=node('textarea','');manualField.readOnly=true;manualField.value=trialParams;
+        manualField.rows=5;manualField.setAttribute('aria-label','Ручные параметры Telegram-прокси');
+        details.append(manualField);row.append(details);
+      }
       manual.addEventListener('click',async()=>{
-        const txt='Сервер (WEB-прокси / WebSocket): '+String(link.server||'')+
+        const txt=sharedTrial?trialParams:'Сервер (WEB-прокси / WebSocket): '+String(link.server||'')+
           '\nСекрет: '+String(link.secret||'')+
           (tgTarget?'\nСсылка: '+tgTarget:'');
         try{
           await navigator.clipboard.writeText(txt);
           toast('Параметры WebSocket-прокси скопированы.');
-        }catch{toast('Копирование недоступно. Используйте кнопку подключения.');}
+        }catch{if(manualField){manualField.parentElement.open=true;manualField.focus();manualField.select();toast('Скопируйте выделенные параметры.');}else toast('Копирование недоступно. Используйте кнопку подключения.');}
       });
       row.append(manual);
       container.append(row);
@@ -443,7 +466,7 @@ function renderProxyBonusBox(item,data){
     container.append(node('h4','','Как включить WebSocket-прокси'));
     container.append(node('p','',
       '1. Нажмите «Подключить в Telegram» на нужном устройстве и подтвердите добавление прокси. '+
-      '2. Если кнопка не открывает клиент автоматически, скопируйте параметры и в Telegram откройте Настройки → Данные и память → Прокси (в Telegram Desktop: Продвинутые → Тип соединения) → выберите WEB-прокси / WebSocket и вставьте сервер и секрет.'));
+      (sharedTrial?'2. Если приложение не открылось, скопируйте ссылку, отправьте себе в «Избранное» Telegram и откройте её из сообщения. 3. Для ручного подключения откройте Настройки → Данные и память → Прокси (Desktop: Продвинутые → Тип соединения), выберите WEB-прокси / WebSocket, если он поддерживается клиентом, и введите сервер целиком, секрет и порт 443, если есть отдельное поле. Не выбирайте SOCKS5 или MTProto.':'2. Если кнопка не открывает клиент автоматически, скопируйте параметры и в Telegram откройте Настройки → Данные и память → Прокси (в Telegram Desktop: Продвинутые → Тип соединения) → выберите WEB-прокси / WebSocket и вставьте сервер и секрет.')));
   }
   if(mtLinks.length){
     container.append(node('h4','',wsLinks.length?'Резервный MTProto-прокси':'Ваш Telegram-прокси · бесплатно с DNS'));
@@ -477,6 +500,94 @@ function renderProxyBonusBox(item,data){
   }
   item.append(container);
 }
+// The free shared proxy is not an entitlement and survives trial expiration.
+// Render it outside VPN/DNS cards and clear it on logout/account changes.
+let trialCountry='DE';
+let trialCountryOrder=null;
+const trialCountryRendered=new WeakMap();
+let latestTrialModel={data:null,accesses:[]};
+function jointTrialAccess(a,accesses,orders=state.lastOrders){
+  return Boolean(a&&orders.some(o=>o.id===a.sourceOrderId&&o.state==='TRIAL'&&o.product==='bundle'&&
+    ['vpn','smart_dns'].every(p=>accesses.some(x=>x.sourceOrderId===o.id&&x.product===p&&x.state==='ACTIVE'&&x.secondsRemaining>0))));
+}
+function renderSharedTrialProxy(data,accesses=[]){
+  latestTrialModel={data,accesses};
+  const active=accesses.filter(a=>a.state==='ACTIVE'&&a.secondsRemaining>0);
+  const order=state.lastOrders.find(o=>o.state==='TRIAL'&&o.product==='bundle'&&
+    ['vpn','smart_dns'].every(p=>active.some(a=>a.sourceOrderId===o.id&&a.product===p)));
+  if(order&&trialCountryOrder!==order.id){
+    trialCountryOrder=order.id;
+    trialCountry=new URLSearchParams(location.search).get('trialCountry')==='FI'?'FI':'DE';
+  }
+  if(!order){trialCountryOrder=null;trialCountry='DE';}
+  for(const id of ['cabinet-shared-trial-proxy','journey-shared-trial-proxy']){
+    const slot=byId(id);
+    if(!slot)continue;
+    const shared=Array.isArray(data?.wsLinks)?data.wsLinks:[];
+    const regional=Array.isArray(data?.regionalLinks)?data.regionalLinks:[];
+    const key=JSON.stringify([order?.id??null,trialCountry,active.filter(a=>a.sourceOrderId===order?.id).map(a=>[a.id,a.product]),state.fiAwgRegistrationAvailable,state.personalDnsEnabled,state.appleDnsProfileEnabled,shared,regional]);
+    if(trialCountryRendered.get(slot)===key)continue;
+    trialCountryRendered.set(slot,key);
+    slot.replaceChildren();
+    slot.hidden=!order&&!shared.length&&!regional.length;
+    if(slot.hidden)continue;
+    if(order){
+      const vpn=active.find(a=>a.sourceOrderId===order.id&&a.product==='vpn');
+      const dns=active.find(a=>a.sourceOrderId===order.id&&a.product==='smart_dns');
+      const name=trialCountry==='FI'?'Финляндия':'Германия';
+      slot.append(node('h3','','Пробный доступ «3 в 1» · '+name),
+        node('p','','Выберите одну страну для VPN, Smart DNS и Telegram-прокси. Переключение не продлевает 24 часа и не сбрасывает общий лимит 30 000 DNS-запросов. VPN — одно одновременное подключение.'));
+      for(const country of ['DE','FI']){
+        const b=node('button','button '+(country===trialCountry?'button-primary':'button-secondary'),country==='DE'?'🇩🇪 Германия':'🇫🇮 Финляндия');
+        b.type='button';b.setAttribute('aria-pressed',String(country===trialCountry));
+        b.addEventListener('click',()=>{
+          if(!b.isConnected||trialCountryOrder!==order.id)return;
+          if(trialCountry===country)return;
+          trialCountry=country;
+          renderSharedTrialProxy(latestTrialModel.data,latestTrialModel.accesses);
+          if(typeof window!=='undefined')window.MnebyvpnJourney?.updateSetup?.();
+        });
+        slot.append(b);
+      }
+      const selected=trialCountry;
+      const stillCurrent=()=>trialCountryOrder===order.id&&trialCountry===selected&&
+        jointTrialAccess(vpn,latestTrialModel.accesses);
+      const v=node('button','button button-secondary setup-button','VPN · '+name);
+      v.type='button';v.disabled=selected==='FI'&&!state.fiAwgRegistrationAvailable;
+      v.addEventListener('click',()=>{if(!v.isConnected||!stillCurrent())return;if(selected==='FI')location.href='/awg/setup?entitlementId='+encodeURIComponent(vpn.id);else void loadSubscription(vpn.id);});
+      slot.append(v);
+      if(v.disabled)slot.append(node('p','','VPN выбранной страны пока недоступен.'));
+      const dnsPanel=node('section','trial-country-dns');
+      const d=node('button','button button-secondary setup-button','Smart DNS · '+name);
+      d.type='button';d.disabled=true;
+      const info=node('p','','Проверяем доступность профиля…');
+      dnsPanel.append(d,info);slot.append(dnsPanel);
+      if(state.personalDnsEnabled||state.appleDnsProfileEnabled){
+        Promise.resolve(dnsCredInFlight.get(dns.id)).catch(()=>null).then(()=>api('/api/dns/apple/status?entitlementId='+encodeURIComponent(dns.id)+(selected==='FI'?'&country=FI':''))).then(status=>{
+          if(!dnsPanel.isConnected||!stillCurrent())return;
+          if(status.revoked){info.textContent='Профиль отозван.';return;}
+          const cached=readCachedPersonalDns(dns.id,selected);
+          d.disabled=false;info.textContent='Получите адрес DoT и файл Apple. При смене страны старый профиль не заменяется автоматически.';
+          d.addEventListener('click',()=>{if(dnsPanel.isConnected&&stillCurrent())void downloadAppleDnsProfile(dns.id,d,dnsPanel,selected,true);});
+          if(status.issued&&cached?.revision===status.revision)renderPersonalDnsBox(dnsPanel,cached.hostname,cached.mobileconfig,{entitlementId:dns.id,issued:true,country:selected,singleCountry:true});
+        }).catch(()=>{if(dnsPanel.isConnected){info.textContent='Профиль выбранной страны пока недоступен. Обновите кабинет.';trialCountryRendered.delete(slot);}});
+      }else info.textContent='Выдача Smart DNS пока недоступна.';
+      const matches=regional.filter(link=>link.country===selected);
+      if(matches.length)renderProxyBonusBox(slot,{wsLinks:matches,sharedTrial:true});
+      else slot.append(node('p','','Подтверждённый Telegram-прокси для этой страны пока недоступен.'));
+      slot.append(node('p','','Выбор здесь показывает настройки. Переключите VPN, DNS-профиль и прокси на устройстве вручную; сначала отключите предыдущий VPN.'));
+    }else if(regional.length){
+      renderProxyBonusBox(slot,{wsLinks:regional,sharedTrial:true});
+    }
+    if(shared.length){
+      const fallback=node('details','trial-shared-proxy-fallback');
+      fallback.append(node('summary','','Общие Telegram-прокси · бесплатно без ограничения срока'),
+        node('p','','Эти ссылки остаются доступны после пробных суток. Страна выхода не подтверждена для выбора выше.'));
+      renderProxyBonusBox(fallback,{wsLinks:shared,sharedTrial:true});
+      slot.append(fallback);
+    }
+  }
+}
 async function ensureProxyCredentials(entitlementId,targets=[]){
   if(!state.loggedIn||!state.telegramProxyBonusEnabled)return null;
   const cached=proxyCredCache.get(entitlementId);
@@ -507,7 +618,7 @@ async function loadTelegramProxyBonus(entitlementId, button, item) {
 function syncCabinetTrialButton(){
   const retry=byId('cabinet-trial-retry');
   if(!retry)return;
-  retry.hidden=!state.loggedIn||!state.trialOffers.includes('vpn')||
+  retry.hidden=!state.loggedIn||!(state.trialOffers.includes('bundle')||state.trialOffers.includes('vpn'))||
     ['PENDING','WAITING','SENT'].includes(state.trialRequestStatus);
   retry.disabled=state.busy||retry.hidden;
 }
@@ -517,7 +628,7 @@ function renderAccess(accesses) {
   if(!accesses.length) {
     const empty=node('div','empty');
     if(['PENDING','WAITING'].includes(state.trialRequestStatus)){
-      empty.append(node('p','','Заявка на бесплатный VPN сохранена. Продолжаем подключение автоматически; когда VPN будет готов, отправим письмо на вашу почту.'));
+      empty.append(node('p','','Заявка на бесплатный доступ сохранена. Продолжаем подключение автоматически; когда доступ будет готов, отправим письмо на вашу почту.'));
       list.append(empty);return;
     }
     if(state.trialRequestStatus==='UNKNOWN'){
@@ -525,9 +636,9 @@ function renderAccess(accesses) {
     }else{
       empty.append(node('p','','Пока нет активных подписок.'));
     }
-    const retry=node('button','button button-primary','Получить бесплатный VPN на 24 часа');
+    const retry=node('button','button button-primary',state.trialOffers.includes('bundle')?'Попробовать «3 в 1» бесплатно':'Получить бесплатный VPN на 24 часа');
     retry.type='button';retry.id='cabinet-trial-retry';
-    retry.addEventListener('click',()=>{state.trialProduct='vpn';void claimTrial();});
+    retry.addEventListener('click',()=>{state.trialProduct=state.trialOffers.includes('bundle')?'bundle':'vpn';void claimTrial();});
     empty.append(retry);
     const goPlans=node('a','button button-primary','Выбрать тариф');
     goPlans.href='/#plans';
@@ -537,6 +648,7 @@ function renderAccess(accesses) {
     return;
   }
   for(const a of accesses) {
+    const jointTrial=jointTrialAccess(a,accesses);
     const item=node('article','access-item');
     const top=node('div','access-top');
     const h=node('h4','',productNames[a.product] || a.product);
@@ -553,7 +665,7 @@ function renderAccess(accesses) {
           : 'Срок начнётся после подтверждённой активации.';
     item.append(top,node('p','',accessDetail));
     if (a.product==='smart_dns') {
-      const dnsCap=a.dnsQueryQuotaPer30d
+      const dnsCap=jointTrial?'Пакет Smart DNS: до 30 000 запросов / 24 часа (общий для двух стран)':a.dnsQueryQuotaPer30d
         ? 'Пакет Smart DNS: до ' + Number(a.dnsQueryQuotaPer30d).toLocaleString('ru-RU') + ' запросов / 30 дн'
         : a.quotaLimitBytes
           ? 'Пакет DNS: ' + fmtBytes(a.quotaLimitBytes)
@@ -574,7 +686,11 @@ function renderAccess(accesses) {
         box.append(track,totals);item.append(box);
       }
     }
-    if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
+    if(jointTrial&&a.product==='smart_dns'&&(state.personalDnsEnabled||state.appleDnsProfileEnabled)){
+      // FI issuance requires the existing canonical DE credential. Provision it once through the existing deduplicated path, without showing a conflicting DE card.
+      void ensurePersonalDnsCredentials(a.id,{autoIssue:true,targets:[]}).catch(()=>{});
+    }
+    if(!jointTrial&&a.product==='smart_dns'&&a.state==='ACTIVE'&&
        a.secondsRemaining!==null&&a.secondsRemaining>0&&
        (state.personalDnsEnabled||state.appleDnsProfileEnabled)){
       const apple=node('button','button button-secondary setup-button','Получить профиль · Германия');
@@ -594,7 +710,7 @@ function renderAccess(accesses) {
       const cachedProxy=proxyCredCache.get(a.id);
       if(cachedProxy)renderProxyBonusBox(item,cachedProxy);
     }
-    if(a.product==='vpn' &&
+    if(!jointTrial&&a.product==='vpn' &&
        a.state==='ACTIVE' && a.secondsRemaining!==null && a.secondsRemaining>0){
       const setup=node('button','button button-secondary setup-button','Подключить VPN');
       setup.type='button';
@@ -610,15 +726,16 @@ function renderAccess(accesses) {
         item.append(fi);
       }
     }
-    const durations=state.plans.filter(p=>p.product===a.product);
+    const bundleTrial=Boolean(state.lastOrders?.some(o=>o.id===a.sourceOrderId&&o.state==='TRIAL'&&o.product==='bundle'));
+    const durations=state.plans.filter(p=>p.product===(bundleTrial?'bundle':a.product));
     if (durations.length && a.startsAt && a.expiresAt &&
       !['REFUNDED','CANCELLED','PENDING_PAYMENT'].includes(a.state)) {
-      const renew=node('button','button button-secondary renew-button','Продлить доступ ↗');
+      const renew=node('button','button button-secondary renew-button',bundleTrial?'Купить «3 в 1» ↗':'Продлить доступ ↗');
       renew.type='button';
       renew.addEventListener('click',()=>{
         const preferred=durations.find(p=>p.durationDays===30)||durations[0];
-        setSelection(a.product,preferred.durationDays);
-        state.renewalTargetId=a.id;
+        setSelection(bundleTrial?'bundle':a.product,preferred.durationDays);
+        state.renewalTargetId=bundleTrial?null:a.id;
         state.requestId=null;
         renderPlan();
         if(typeof window!=='undefined'&&window.MnebyvpnJourney)
@@ -745,11 +862,15 @@ function renderAccount(payload) {
   state.hasPendingProvisioning=['PENDING','WAITING'].includes(state.trialRequestStatus)||accesses.some(a=>a.state==='PAID_PENDING_PROVISIONING');
   const active=accesses.filter(a=>a.state==='ACTIVE' && a.secondsRemaining>0);
   state.activeTrialProducts=active.filter(a=>state.lastOrders.some(o=>o.id===a.sourceOrderId&&o.state==='TRIAL')).map(a=>a.product);
+  if(state.lastOrders.some(o=>o.state==='TRIAL'&&o.product==='bundle'&&
+     ['vpn','smart_dns'].every(product=>active.some(a=>a.sourceOrderId===o.id&&a.product===product))))
+    state.activeTrialProducts.push('bundle');
   text('active-count',active.length);
   const timed=active.filter(a=>a.secondsRemaining!==null).sort((a,b)=>a.secondsRemaining-b.secondsRemaining);
   text('days-left',timed.length?remaining(timed[0].secondsRemaining):'—');
   text('days-hint',timed.length?'До ближайшего окончания':'Нет активных подписок');
   renderAccess(accesses);renderOrders(payload.orders||[]);
+  renderSharedTrialProxy(payload.sharedTrialProxy,accesses);
   renderPurchaseResult(payload);
   byId('link-email').classList.toggle('hidden',!state.emailLoginEnabled||payload.identity?.emailLinked);
   byId('link-telegram').classList.toggle('hidden',!state.telegramLoginEnabled||payload.identity?.telegramLinked);
@@ -760,17 +881,17 @@ function renderAccount(payload) {
     byId('guest-trial-card').classList.add('hidden');
   }
   const pendingVpn=accesses.filter(a=>a.product==='vpn' &&
-    a.state==='PAID_PENDING_PROVISIONING');
+    ['PAID_PENDING_PROVISIONING','PROVISIONING_FAILED'].includes(a.state));
   if(pendingVpn.length){
     const isPaid=pendingVpn.some(a=>(payload.orders||[]).some(o=>
       o.id===a.sourceOrderId && o.state==='PAID'));
     const card=byId('guest-trial-card');
     card.classList.remove('hidden');
     byId('guest-trial-title').textContent=isPaid?
-      'Подключаем оплаченный VPN':'Подключаем пробный VPN';
+      'Подключаем оплаченный VPN':state.lastOrders.some(o=>o.state==='TRIAL'&&o.product==='bundle'&&pendingVpn.some(a=>a.sourceOrderId===o.id))?'Подключаем «3 в 1»':'Подключаем пробный VPN';
     byId('guest-trial-status').textContent=isPaid?
       'Оплата подтверждена. VPN-сервер готовит подключение. Проверьте статус в личном кабинете.':
-      'Пробные 24 часа начнутся только после подтверждения активации сервером.';
+      'Пробные 24 часа начнутся после подтверждения готовности доступа.';
     if(!state.guestSubscriptionUrl)byId('guest-trial-ready').classList.add('hidden');
   }
   renderPlan();
@@ -795,13 +916,14 @@ function syncLoginLinks(){
 function renderLoggedOut() {
   // A session that expires or is revoked must not leave stale private data on
   // a shared browser screen. Keep the public catalog and selected product.
-  state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;
+  state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;state.guestSubscriptionEntitlementId=null;
   state.trialRequestStatus='NONE';state.activeTrialProducts=[];state.hasPendingProvisioning=false;state.lastOrders=[];state.trialProduct='vpn';
   state.telegramProxyBonusEnabled=false;
   state.wsProxyEnabled=false;
   state.appleDnsProfileEnabled=false;
   state.personalDnsEnabled=false;
   proxyCredCache.clear();
+  renderSharedTrialProxy(null);
   clearCachedCredentials();
   byId('guest-trial-card').classList.add('hidden');
   byId('purchase-result').classList.add('hidden');
@@ -1008,7 +1130,7 @@ async function purchase() {
 }
 async function claimTrial(){
   if(state.busy)return;
-  const trialProduct=state.trialProduct==='smart_dns'?'smart_dns':'vpn';
+  const trialProduct=state.trialOffers.includes('bundle')?'bundle':state.trialProduct==='smart_dns'?'smart_dns':'vpn';
   if(!state.trialOffers.includes(trialProduct)){
     toast('Бесплатный доступ сейчас недоступен.');return;
   }
@@ -1050,7 +1172,7 @@ async function claimTrial(){
       }catch{}
     }
     await refresh();
-    const alreadyActive=response.status==='ALREADY_USED'&&state.activeTrialProducts.includes(trialProduct);
+    const alreadyActive=response.status==='ALREADY_USED'&&(trialProduct==='bundle'?state.activeTrialProducts.includes('bundle'):state.activeTrialProducts.includes(trialProduct));
     if(response.status==='ALREADY_USED'&&!alreadyActive){
       toast(messages.ALREADY_USED);
       byId('account').scrollIntoView({behavior:'smooth'});
@@ -1108,6 +1230,7 @@ async function loadSubscription(entitlementId){
     const data=await api('/api/vpn/subscription',{method:'POST',
       headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
       body:JSON.stringify({entitlementId})});
+    state.guestSubscriptionEntitlementId=entitlementId;
     renderVpnSetup(data);
   }catch(error){
     toast(error.message==='VPN_NOT_ACTIVE'?
@@ -1179,8 +1302,8 @@ async function finishEmail(event){
     try{
       const raw=sessionStorage.getItem('mnebyvpn-pending-trial');
       const product=sessionStorage.getItem('mnebyvpn-pending-trial-product');
-      if((raw==='1'||raw==='vpn')&&product!=='smart_dns'){
-        verifyPayload.trial='vpn';
+      if(['1','vpn','smart_dns','bundle'].includes(raw)&&(state.trialOffers.includes('bundle')||product==='bundle'||((raw==='1'||raw==='vpn')&&product!=='smart_dns'))){
+        verifyPayload.trial=(state.trialOffers.includes('bundle')||product==='bundle')?'bundle':'vpn';
         if(state.inviteToken)verifyPayload.trialInviteToken=state.inviteToken;
       }
     }catch{}
@@ -1325,13 +1448,13 @@ function applyInitialSelectionFromUrl(){
 applyInitialSelectionFromUrl();
 applyLinkOptions();
 async function consumePendingTrial(){
-  if(state.loggedIn && (state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'))){
+  if(state.loggedIn && (state.trialOffers.includes('bundle')||state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'))){
     let pending=null;
     try{
       const raw=sessionStorage.getItem('mnebyvpn-pending-trial');
       const prod=sessionStorage.getItem('mnebyvpn-pending-trial-product');
-      if(raw==='1'||raw==='vpn'||raw==='smart_dns')
-        pending=(prod==='smart_dns'||raw==='smart_dns')?'smart_dns':'vpn';
+      if(['1','vpn','smart_dns','bundle'].includes(raw))
+        pending=state.trialOffers.includes('bundle')?'bundle':(prod==='bundle'||raw==='bundle')?'bundle':(prod==='smart_dns'||raw==='smart_dns')?'smart_dns':'vpn';
     }catch{}
     if(pending&&state.trialOffers.includes(pending)){
       state.trialProduct=pending;

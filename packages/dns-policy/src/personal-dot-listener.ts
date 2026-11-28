@@ -128,6 +128,8 @@ export function queryLoopbackDnsTcp(
 
 export interface PersonalDotListenerOptions {
   ownerLinkStatus?:OwnerDnsStatus;
+  /** Production recognizes trial policy atomically with bearer identity. */
+  trialMeterPolicy?:boolean;
   key:string|Buffer;
   cert:string|Buffer;
   db:Pick<Pool,'query'>;
@@ -158,7 +160,7 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
   // the last successful lookup; cached identity NEVER authorizes premium use.
   // Revocation of direct-only use takes effect no later than next recheck.
   // Cache stores only SHA-256 key digests, never plaintext bearer names.
-  const authCache=new Map<string,number>();
+  const authCache=new Map<string,{verifiedAt:number;meterAll:boolean}>();
   const labelRates=new Map<string,{tokens:number,last:number}>();
   // TLS clients forwarded by Nginx stream often all have loopback source IP.
   // Limit *per credential*, not by that shared proxy socket source.
@@ -179,7 +181,7 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
     if(connected>=MAX_CREDENTIAL_CONNECTIONS){socket.destroy();return;}
     credentialConnections.set(digest,connected+1);
     const activeSignals=new Set<AbortController>();
-    type AuthResult={ok:boolean;offlineDirectOnly:boolean};
+    type AuthResult={ok:boolean;offlineDirectOnly:boolean;meterAll?:boolean};
     let buffer=Buffer.alloc(0),inFlight=0,closed=false;
     let ownerLink:boolean|undefined;
     let authCheck:Promise<AuthResult>|null=null;
@@ -208,7 +210,8 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
         }
         ownerLink=status==='ALLOWED'||status==='ALLOWED_SMART_DNS';
       }
-      const verifiedAt=authCache.get(digest);
+      const cachedAuth=authCache.get(digest);
+      const verifiedAt=cachedAuth?.verifiedAt;
       // Auth-cache hits skip only the credential existence check. Premium
       // DNS messages still reserve and settle quota individually below.
       if(ownerLink){
@@ -218,21 +221,25 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
       if(verifiedAt!==undefined&&current>=verifiedAt&&
          current-verifiedAt<AUTH_RECHECK_MS){
         authCache.delete(digest);
-        authCache.set(digest,verifiedAt); // LRU touch, not sliding TTL
-        return{ok:true,offlineDirectOnly:false};
+        authCache.set(digest,cachedAuth!); // LRU touch, not sliding TTL
+        return{ok:true,offlineDirectOnly:false,meterAll:cachedAuth!.meterAll};
       }
       try{
         // All connections, including direct routes, must initially be
         // recognized. Failed/revoked identities are NEVER cached.
         const {rows}=await o.db.query(
-          'SELECT recognize_personal_dns_credential($1) AS known',[label]);
-        if(rows.length!==1||rows[0].known!==true){
+          o.trialMeterPolicy?'SELECT personal_dns_meter_policy($1) AS policy':
+            'SELECT recognize_personal_dns_credential($1) AS known',[label]);
+        const policy=rows[0]?.policy;
+        if(rows.length!==1||(o.trialMeterPolicy
+          ?policy!=='TRIAL'&&policy!=='LEGACY':rows[0].known!==true)){
           authCache.delete(digest);stop();return{ok:false,offlineDirectOnly:false};
         }
         authCache.delete(digest);
-        authCache.set(digest,current);
+        const meterAll=policy==='TRIAL';
+        authCache.set(digest,{verifiedAt:current,meterAll});
         trim(authCache);
-        return{ok:true,offlineDirectOnly:false};
+        return{ok:true,offlineDirectOnly:false,meterAll};
       }catch{
         // Old positive status permits DIRECT-only DNS temporarily,
         // never paid/mapped answers during an authorization DB outage.
@@ -240,7 +247,7 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
            current-verifiedAt>=AUTH_OUTAGE_GRACE_MS){
           authCache.delete(digest);stop();return{ok:false,offlineDirectOnly:false};
         }
-        return{ok:true,offlineDirectOnly:true};
+        return{ok:true,offlineDirectOnly:true,meterAll:cachedAuth?.meterAll};
       }
     }
     function ensureAuthorized(current:number):Promise<AuthResult>{
@@ -269,7 +276,7 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
             ?(async()=>{
               try{
                 const route=await o.classify(parseDnsQuestion(request));
-                if(route==='direct')return o.direct(request,controller.signal);
+                if(route==='direct'&&!auth.meterAll)return o.direct(request,controller.signal);
               }catch{/* unknown policy is never a safe direct route */}
               return servfailDnsResponse(request);
             })()
@@ -285,7 +292,7 @@ export function createPersonalDotListener(o:PersonalDotListenerOptions):TlsServe
                   'SELECT finish_personal_dns_query($1::uuid,$2) AS verdict',
                   [id,success]);
                 return String(r.rows[0]?.verdict??'DENY_UNKNOWN');
-              },o.mapped,o.direct,controller.signal);
+              },o.mapped,o.direct,controller.signal,auth.meterAll===true);
           answer=await Promise.race([
             work,
             new Promise<never>((_,reject)=>{

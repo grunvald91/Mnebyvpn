@@ -209,3 +209,14 @@ test('account name remains updatable and reverts to strong off the account view'
   assert.equal(b.map.get('account-name').textContent,'Мой аккаунт');
   assert.equal(b.map.get('journey-front-heading').tagName,'H1');
 });
+
+test('enabled unified trial opens the same email-first screen with one bundle product',async()=>{
+ const b=browser('https://mnebyvpn.site/#plans',false);
+ b.state.trialOffers=['bundle'];
+ b.state.trialProduct='vpn';
+ b.map.get('journey-trial').handlers.get('click')?.();
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(b.actions.trials,0);
+ assert.equal(b.map.get('journey-trial-auth').hidden,false);
+ assert.equal(b.map.get('journey-trial-title').textContent,'«3 в 1» бесплатно на 24 часа');
+});

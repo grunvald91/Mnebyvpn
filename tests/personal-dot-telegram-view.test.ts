@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {Pool} from 'pg';
-import {personalDnsTelegramAction,personalDnsTelegramMenu,personalDnsPreview,personalDnsGuide}
+import {personalDnsTelegramAction,personalDnsTelegramMenu,personalDnsPreview,personalDnsGuide,bundleTrialDnsButtons,bundleTrialDnsAction}
   from '../apps/service/src/personal-dot-telegram-view.ts';
 import {PERSONAL_DNS_STARS_OFFERS} from '../packages/dns-policy/src/smart-dns-offers.ts';
 const db={query:async()=>({rows:[]})} as unknown as Pool;
@@ -80,4 +80,31 @@ test('DNS purchase buttons come ONLY from approved published tariff entries',asy
     published.map(p=>({...p,dnsQuotaQueriesPer30d:42n})));
   assert.equal(blocked.reply_markup.inline_keyboard.flat()
     .filter(x=>x.callback_data?.startsWith('buy:')).length,0);
+});
+
+test('bundle-only DNS buttons use scoped revision and send actual regional bearer',async()=>{
+ const calls:{sql:string;params:unknown[]}[]=[];
+ let rev=0;
+ const scoped={query:async(sql:string,params:unknown[])=>{
+  calls.push({sql,params});
+  if(sql.includes('telegram_bundle_trial_dns_status'))return {rows:[{status:{deRevision:1,fiRevision:rev}}]};
+  if(sql.includes('telegram_bundle_trial_dns_issue')){rev++;return {rows:[{result:'ISSUED'}]};}
+  throw Error('unexpected generic or paid query');
+ }} as unknown as Pool;
+ const buttons=await bundleTrialDnsButtons(scoped,2222,'FI',true);
+ assert.equal(buttons[0][0].callback_data,'dns:trial:FI:execute:0');
+ assert.deepEqual(await bundleTrialDnsButtons(scoped,2222,'FI',false),[]);
+ const delivered:string[]=[];
+ const deliver=async(hostname:string)=>{delivered.push(hostname);return true;};
+ const view=await bundleTrialDnsAction(scoped,2222,'dns:trial:FI:execute:0',deliver,true);
+ assert.match(view.text,/Финляндия/);
+ assert.match(delivered[0],/^[a-z0-9]{12}\.fi\.mnebyvpn\.site$/);
+ assert.ok(calls.some(c=>c.sql.includes('telegram_bundle_trial_dns_issue')&&c.params[0]==='2222'&&c.params[1]==='FI'&&c.params[3]===0));
+ const repeated=await bundleTrialDnsAction(scoped,2222,'dns:trial:FI:execute:0',deliver,true);
+ assert.match(repeated.text,/изменён или недоступен/);
+ assert.equal(delivered.length,1);
+ const confirm=await bundleTrialDnsAction(scoped,2222,'dns:trial:FI:confirm:1',deliver,true);
+ assert.match(confirm.text,/Срок и общий лимит не изменятся/);
+ assert.equal(delivered.length,1);
+ assert.match(personalDnsGuide('ios').text,/Управление устройством/);
 });

@@ -242,6 +242,21 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/tests/0158_website_regional_dns_access_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/migrations/0159_fi_dns_trial_eligibility.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0159_fi_dns_trial_eligibility_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0160_bundle_trial_shared_vpn_capacity.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/tests/0160_bundle_trial_shared_vpn_capacity_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0161_bundle_trial_joint_activation.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0162_bundle_trial_email_recovery.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0163_bundle_trial_dns_query_quota.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/tests/0163_bundle_trial_dns_query_quota_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0164_personal_dns_trial_meter_policy.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/tests/0164_personal_dns_trial_meter_policy_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0165_fi_bundle_trial_signed_meter_policy.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/tests/0165_fi_bundle_trial_signed_meter_policy_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0166_trial_dns_telegram_profiles.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/tests/0166_trial_dns_telegram_profiles_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0167_bundle_trial_recovery_missing_queue.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0168_shared_vpn_admission_controller.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -f db/tests/0168_shared_vpn_admission_controller_contract.sql
           node --check apps/web/public/app.js
           node --experimental-strip-types --test tests/ci/fi-dns-snapshot-publisher-pg.test.ts
       - name: Checkout exact reviewed FI node code for cross-repository E2E
@@ -263,6 +278,33 @@ jobs:
           test "$PGDATABASE" = mnebyvpn_test
           python3 -B fi-node-fixture/nodekit/fi_dns_pilot_build.py fi-node-fixture/nodekit "$RUNNER_TEMP/fi-node-pilot"
           export PYTHONPATH="$RUNNER_TEMP/fi-node-pilot:${GITHUB_WORKSPACE}/fi-node-fixture/nodekit"
+          node --experimental-strip-types --test tests/ci/fi-dns-cross-repo-pg.test.ts
+      - name: Checkout exact companion FI trial code for policy contracts
+        uses: actions/checkout@v4
+        with:
+          repository: grunvald91/telegram-proxy-infra
+          ref: 9f53501144e0843f6cea01c127894537cad3b1b9
+          path: fi-trial-fixture
+          persist-credentials: false
+      - name: Verify FI trial-aware policy and generated runtime
+        run: |
+          set -Eeuo pipefail
+          python3 -B -m unittest discover -s fi-trial-fixture/nodekit/tests -p 'test_fi_dns_customer_policy.py'
+          python3 -B -m unittest discover -s fi-trial-fixture/nodekit/tests -p 'test_fi_dns_signed_grants.py'
+          python3 -B -m unittest discover -s fi-trial-fixture/nodekit/tests -p 'test_fi_dns_metered_dot.py'
+          python3 -B fi-trial-fixture/nodekit/fi_dns_customer_build.py fi-trial-fixture/nodekit "$RUNNER_TEMP/fi-trial-customer"
+          python3 -B fi-trial-fixture/nodekit/fi_dns_pilot_build.py fi-trial-fixture/nodekit "$RUNNER_TEMP/fi-trial-pilot"
+      - name: Exercise trial TLS on exact companion runtime with shared PostgreSQL quota
+        env:
+          PGPASSWORD: test
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: test
+          PGDATABASE: mnebyvpn_test
+          FI_BUNDLE_TRIAL_E2E: '1'
+        run: |
+          set -Eeuo pipefail
+          export PYTHONPATH="$RUNNER_TEMP/fi-trial-customer:${GITHUB_WORKSPACE}/fi-trial-fixture/nodekit"
           node --experimental-strip-types --test tests/ci/fi-dns-cross-repo-pg.test.ts
       - name: Payment integration with disposable PostgreSQL
         env:

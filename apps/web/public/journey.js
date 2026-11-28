@@ -64,7 +64,7 @@
       offers,
       buyDisabled:Boolean(el('journey-buy').disabled),
       buyText:el('journey-buy').textContent||'Оплата подключается',
-      trialAvailable:state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'),
+      trialAvailable:state.trialOffers.includes('bundle')||state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns'),
       trialOffers:state.trialOffers,
       trialDisabled:Boolean(el('journey-trial').disabled),
       error:el('journey-error').textContent||'',
@@ -108,7 +108,7 @@
       return;
     }
     if(msg.type==='trial'&&!el('journey-trial').disabled){
-      state.trialProduct=msg.product==='smart_dns'?'smart_dns':'vpn';
+      state.trialProduct=state.trialOffers.includes('bundle')?'bundle':msg.product==='smart_dns'?'smart_dns':'vpn';
       el('journey-trial').click();
     }
   });
@@ -224,7 +224,7 @@
     if(heading)heading.hidden=next!=='payment';
     if(next==='setup'){
       updateSetup();
-      const activeDns=(lastAccount?.access||[]).filter(a=>a.product==='smart_dns'&&a.state==='ACTIVE'&&a.secondsRemaining>0);
+      const activeDns=(lastAccount?.access||[]).filter(a=>a.product==='smart_dns'&&a.state==='ACTIVE'&&a.secondsRemaining>0&&!isJointTrial(a));
       if(activeDns.length){
         const dnsTarget=activeDns[0];
         const isTrial=isTrialAccess(dnsTarget);
@@ -255,7 +255,10 @@
     if(!trialAuth)return;
     const isDns=state.trialProduct==='smart_dns';
     const title=el('journey-trial-title');
-    if(title)title.textContent=isDns?'Ваши 24 часа Smart DNS':'Ваши 24 часа VPN';
+    const bundle=state.trialOffers.includes('bundle');
+    if(title)title.textContent=bundle?'«3 в 1» бесплатно на 24 часа':isDns?'Ваши 24 часа Smart DNS':'Ваши 24 часа VPN';
+    const explanation=trialAuth.querySelector?.('.journey-trial-explain');
+    if(explanation)explanation.textContent=bundle?'Войдите по email, чтобы получить VPN и Smart DNS на 24 часа для одного устройства (одно одновременное VPN-подключение). Telegram-прокси можно использовать и после пробного периода.':isDns?'Войдите по email, чтобы получить Smart DNS на 24 часа.':'Войдите по email, чтобы получить персональный VPN-доступ на 24 часа. После подтверждения кода покажем, как подключиться.';
     const emailOn=state.emailLoginEnabled===true;
     el('journey-email-unavailable').hidden=emailOn;
     if(view==='trial-auth'&&emailPanel){
@@ -311,9 +314,11 @@
     const plan=state.plans.find(p=>p.product===state.product&&p.durationDays===state.days);
     buy.disabled=original.disabled;
     buy.textContent=original.textContent;
-    const trialAvailable=state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns');
+    const trialAvailable=state.trialOffers.includes('bundle')||state.trialOffers.includes('vpn')||state.trialOffers.includes('smart_dns');
     el('journey-trial').disabled=el('trial-button').disabled;
     el('journey-trial-offer').hidden=!trialAvailable;
+    const trialLabel=el('journey-trial-offer').querySelector?.('.journey-trial-label');
+    if(trialLabel)trialLabel.textContent=state.trialOffers.includes('bundle')?'⚡ «3 в 1» бесплатно на 24 часа':'⚡ Бесплатные 24 часа VPN';
     updateTrialAuth();
     const title=labels[state.product]||'Экосистема «3 в 1»';
     el('journey-summary').textContent=plan?
@@ -457,6 +462,9 @@
   function isTrialAccess(access){
     return Boolean(access&&(lastAccount?.orders||[]).some(o=>o.id===access.sourceOrderId&&o.state==='TRIAL'));
   }
+  function isJointTrial(access){
+    return typeof jointTrialAccess==='function'&&jointTrialAccess(access,lastAccount?.access||[],lastAccount?.orders||[]);
+  }
   function safeSubscriptionUrl(value){
     try{
       const url=new URL(value);
@@ -474,7 +482,10 @@
     // repeating the three-step installation guide on a compact phone screen.
     const installGuide=el('journey-vpn-guide');
     if(installGuide)installGuide.hidden=installed;
-    const value=state.loggedIn?state.guestSubscriptionUrl:null;
+    const activeVpn=(lastAccount?.access||[]).filter(a=>a.product==='vpn'&&a.state==='ACTIVE'&&a.secondsRemaining>0);
+    const selectedFi=typeof trialCountry!=='undefined'&&trialCountry==='FI'&&activeVpn.some(isJointTrial)&&
+      (activeVpn.every(isJointTrial)||activeVpn.some(a=>a.id===state.guestSubscriptionEntitlementId&&isJointTrial(a)));
+    const value=state.loggedIn&&!selectedFi?state.guestSubscriptionUrl:null;
     const valid=typeof value==='string'&&safeSubscriptionUrl(value);
     const activeDnsItem=(lastAccount?.access||[]).find(a=>a.product==='smart_dns'&&a.state==='ACTIVE'&&a.secondsRemaining>0);
     const activeDns=Boolean(activeDnsItem);
@@ -482,7 +493,7 @@
     const dnsSlot=el('journey-dns-setup-slot'),proxySlot=el('journey-proxy-setup-slot');
     const hasDnsContent=Boolean((dnsSlot?.children?.length||0)>0||(proxySlot?.children?.length||0)>0);
     const dnsWrap=el('journey-dns-proxy-setup');
-    if(dnsWrap)dnsWrap.hidden=!(activeDns&&hasDnsContent);
+    if(dnsWrap)dnsWrap.hidden=!(activeDns&&hasDnsContent)||isJointTrial(activeDnsItem);
     el('journey-setup-controls').hidden=!valid;
     const title=el('journey-setup-title');
     if(title){
@@ -490,14 +501,18 @@
         activeDns&&!valid?(activeDnsTrial?'Подключите Smart DNS (24 часа)':'Подключите Smart DNS и Прокси'):'Подключите VPN';
     }
     el('journey-setup-status').textContent=valid?
-      (activeDns?'Экосистема «3 в 1» готова: настройте VPN, Smart DNS и Telegram-прокси ниже.':
+      (activeDns?(activeDnsTrial?'VPN и Smart DNS готовы к настройке. Пробный доступ — на одно устройство, одно одновременное VPN-подключение. Telegram-прокси доступен отдельно.':'Экосистема «3 в 1» готова: настройте VPN, Smart DNS и Telegram-прокси ниже.'):
         'Ваш VPN готов. Установите приложение, добавьте подписку и включите защиту.'):
       activeDns?(activeDnsTrial
         ?'Ваши 24 часа Smart DNS готовы! Персональный профиль Apple (.mobileconfig) и DoT-адрес выданы ниже.'
         :'Ваш Smart Доступ готов! Профиль и WebSocket-прокси для Telegram выданы ниже.'):
       ['PENDING','WAITING'].includes(state.trialRequestStatus)
-        ?'Заявка на бесплатный VPN сохранена. Подключение готовится автоматически. Когда VPN будет готов, пришлём письмо.'
+        ?'Заявка на бесплатный доступ сохранена. Подключение готовится автоматически. Когда доступ будет готов, пришлём письмо.'
         :'Проверяем активацию на сервере. Если оплата прошла недавно, подключение подготавливается.';
+    if(selectedFi){
+      if(title)title.textContent='Подключите «3 в 1» · Финляндия';
+      el('journey-setup-status').textContent='Настройки VPN, Smart DNS и Telegram-прокси выбранной страны находятся ниже.';
+    }
     if(!valid){
       el('journey-url').value='';
       el('journey-auto').removeAttribute('href');
@@ -526,6 +541,7 @@
       if(!safeSubscriptionUrl(res.subscriptionUrl))throw Error('INVALID_LINK');
       // Show the actual field for fallback copy in browsers that disallow clipboard.
       state.guestSubscriptionUrl=res.subscriptionUrl;
+      state.guestSubscriptionEntitlementId=id;
       el('journey-url').value=res.subscriptionUrl;
       if(field)field.value=res.subscriptionUrl;
       await copyLink(res.subscriptionUrl,field||el('journey-url'));
@@ -548,7 +564,7 @@
     }
     el('access-list').querySelectorAll('.access-item').forEach((card,index)=>{
       const data=(payload.access||[])[index];
-      if(!data||data.state!=='ACTIVE'||data.secondsRemaining<=0)return;
+      if(!data||data.state!=='ACTIVE'||data.secondsRemaining<=0||isJointTrial(data))return;
       if(data.product==='smart_dns'){
         if(typeof ensurePersonalDnsCredentials==='function'&&(state.personalDnsEnabled||state.appleDnsProfileEnabled)){
           void ensurePersonalDnsCredentials(data.id,{autoIssue:true,targets:[card]}).catch(()=>{});
@@ -645,8 +661,9 @@
         void deliverDnsAndProxyForSetup(dnsEntitlement.id,!entitlement);
       }
     }
-    if(view==='setup'&&activeDns.length){
-      const dnsTarget=activeDns[0];
+    const legacyDns=activeDns.filter(a=>!isJointTrial(a));
+    if(view==='setup'&&legacyDns.length){
+      const dnsTarget=legacyDns[0];
       const isTrial=isTrialAccess(dnsTarget);
       const dnsSlot=el('journey-dns-setup-slot'),proxySlot=el('journey-proxy-setup-slot');
       const needsDns=!dnsSlot?.children?.length&&(state.personalDnsEnabled||state.appleDnsProfileEnabled);
@@ -663,9 +680,9 @@
     // Automatically fetch its verified subscription when a polling refresh
     // reports ACTIVE, without asking the buyer to press a check button.
     if(view==='setup'&&!state.guestSubscriptionUrl&&!state.setupLoading&&active.length){
-      const target=active[0];
-      const last=lastSetupAttempt.get(target.id)||0;
-      if(Date.now()-last>30000){
+      const target=active.find(a=>!isJointTrial(a)||typeof trialCountry==='undefined'||trialCountry==='DE');
+      const last=target?(lastSetupAttempt.get(target.id)||0):0;
+      if(target&&Date.now()-last>30000){
         lastSetupAttempt.set(target.id,Date.now());
         void loadSubscription(target.id);
       }
@@ -745,7 +762,7 @@
     event.preventDefault();setView('plans',true);
   });
   el('journey-trial').addEventListener('click',async()=>{
-    const trialProduct=state.trialProduct==='smart_dns'?'smart_dns':'vpn';
+    const trialProduct=state.trialOffers.includes('bundle')?'bundle':state.trialProduct==='smart_dns'?'smart_dns':'vpn';
     if(!state.trialOffers.includes(trialProduct))return;
     if(!state.loggedIn){
       saveSelection();
@@ -808,7 +825,7 @@
   setView(getRoute());
   updatePlan();
   updateOrder();
-  window.MnebyvpnJourney={show:setView,beginCheckout,updatePlan,
+  window.MnebyvpnJourney={show:setView,beginCheckout,updatePlan,updateSetup,
     afterEmailAuthenticated(){
       if(view==='setup')return true; // successful trial already opened installer
       if(view==='trial-auth'){

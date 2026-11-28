@@ -8,6 +8,7 @@ export interface VpnTrialReadyNotice {
   telegramUserId:string;
   expiresAt:Date;
   attempt:number;
+  product?:'vpn'|'bundle';
 }
 export interface TrialReadySender {
   send(job:VpnTrialReadyNotice):Promise<DeliveryResult>;
@@ -16,15 +17,27 @@ export interface TrialReadySender {
 /** A final, node-observed active entitlement is the ONLY delivery trigger. */
 const eligible = `FROM trial_grants t
   JOIN accounts a ON a.id=t.account_id
-  JOIN orders o ON o.id=t.order_id AND o.provider='internal_trial' AND o.state='TRIAL'
-  JOIN entitlements e ON e.source_order_id=t.order_id AND e.product='vpn'
+  JOIN orders o ON o.id=t.order_id AND o.account_id=t.account_id AND o.product=t.product AND o.amount_minor=0 AND o.provider='internal_trial' AND o.state='TRIAL'
+  JOIN entitlements e ON e.source_order_id=t.order_id AND e.account_id=t.account_id AND e.product='vpn'
   JOIN provisioning_state p ON p.entitlement_id=e.id AND p.adapter='vpn'
   WHERE t.product IN ('vpn','bundle')
     AND t.telegram_user_id IS NOT NULL AND t.telegram_user_id>0
     AND a.telegram_user_id=t.telegram_user_id
     AND t.activated_at IS NOT NULL AND t.access_expires_at>clock_timestamp()
     AND e.state='ACTIVE' AND e.expires_at>clock_timestamp()
-    AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL`;
+    AND p.applied_revision=e.revision AND p.last_observed_at IS NOT NULL
+    AND (t.product='vpn' OR (
+      t.access_expires_at=t.activated_at+interval '24 hours' AND e.starts_at=t.activated_at AND e.expires_at=t.access_expires_at
+      AND EXISTS (
+        SELECT 1 FROM entitlements d JOIN provisioning_state dp
+          ON dp.entitlement_id=d.id AND dp.adapter='smart_dns'
+        WHERE d.source_order_id=t.order_id AND d.account_id=t.account_id
+          AND d.product='smart_dns' AND d.state='ACTIVE'
+          AND d.starts_at=t.activated_at AND d.expires_at=t.access_expires_at
+          AND d.expires_at>clock_timestamp() AND d.quota_state='AVAILABLE'
+          AND dp.applied_revision=d.revision AND dp.last_observed_at IS NOT NULL
+      )
+    ))`;
 
 export class PgVpnTrialReadyQueue {
   private readonly pool:Pick<Pool,'query'>;
@@ -56,18 +69,19 @@ export class PgVpnTrialReadyQueue {
         FROM pick WHERE n.order_id=pick.order_id
         RETURNING n.order_id,n.telegram_user_id,n.attempts
       )
-      SELECT c.*,t.access_expires_at FROM claimed c
+      SELECT c.*,t.access_expires_at,t.product FROM claimed c
         JOIN trial_grants t ON t.order_id=c.order_id`);
     if(result.rowCount!==1)return null;
     const row=result.rows[0];
     const expires=new Date(row.access_expires_at);
     const attempts=Number(row.attempts);
     if(!/^[1-9][0-9]{0,15}$/.test(String(row.telegram_user_id))||
+       !['vpn','bundle'].includes(row.product)||
        !Number.isFinite(expires.getTime())||
        !Number.isSafeInteger(attempts)||attempts<1)
       throw Error('Invalid trial notification');
     return {orderId:String(row.order_id),telegramUserId:String(row.telegram_user_id),
-      expiresAt:expires,attempt:attempts};
+      expiresAt:expires,attempt:attempts,product:row.product};
   }
   /** Recheck between claim and Telegram network I/O. */
   async stillEligible(job:VpnTrialReadyNotice):Promise<boolean>{
@@ -115,6 +129,17 @@ export function trialReadyMessage(job:VpnTrialReadyNotice){
     timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',year:'numeric',
     hour:'2-digit',minute:'2-digit',
   });
+  if(job.product==='bundle')return {
+    text:'🎉 MNEBYVPN — бесплатный пакет «3 в 1» готов!\n\n'+
+      '✅ VPN и Smart DNS готовы к настройке.\nПробный доступ для одного устройства (одно одновременное VPN-подключение).\n'+
+      '⏰ Действуют до '+deadline+' (МСК).\n\n'+
+      'Выберите страну для VPN, Smart DNS и Telegram-прокси. Общий лимит DNS — 30 000 запросов за пробные сутки. Общий Telegram-прокси не ограничен пробными сутками.',
+    reply_markup:{inline_keyboard:[
+      [{text:'🇩🇪 Германия',callback_data:'nav:trial-country:DE'},
+       {text:'🇫🇮 Финляндия',callback_data:'nav:trial-country:FI'}],
+      [{text:'✈️ Telegram-прокси',callback_data:'nav:trial-proxy'}],
+    ]},
+  };
   return {
     text:'🎉 MNEBYVPN — бесплатный VPN готов!\n\n'+
       '✅ Пробный доступ активирован VPN-сервером.\n'+

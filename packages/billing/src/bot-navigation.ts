@@ -22,7 +22,7 @@ export interface NavConfig {
   telegramBotUsername?:string;
 }
 function categoryLabel(product:string):string {
-  return product==='vpn'?'🌐 VPN':product==='smart_dns'?'🧭 Smart DNS':'🔐 VPN + DNS';
+  return product==='vpn'?'🌐 VPN':product==='smart_dns'?'🧭 Smart DNS':'✨ «3 в 1»';
 }
 export async function showHome(id:number,tg:BotSend):Promise<void> {
   await tg.call('sendMessage',{
@@ -63,7 +63,8 @@ export async function showProductPlans(
   // Native HTML checkout is the primary VPN purchase surface. Keep a small
   // old-client fallback and the existing trial action on its native keyboard.
   if(product==='vpn'&&!plain&&plans.length<=4) {
-    const trialAvailable=(await db.trialProducts()).includes('vpn');
+    const availableTrials=await db.trialProducts();
+    const trialAvailable=availableTrials.includes('bundle')||availableTrials.includes('vpn');
     const inline_keyboard=[
       ...(trialAvailable?[[{text:'🎁 Попробовать 1 день бесплатно',callback_data:'trial:vpn'}]]:[]),
       [{text:'📋 Список тарифов',callback_data:'nav:plans:vpn:list'}],
@@ -78,7 +79,8 @@ export async function showProductPlans(
     p.stars+' ⭐ / '+formatRoubles(p.rubMinor));
   const keyboard=visible.map(p=>[{text:formatDuration(p.durationSeconds)+' · '+p.stars+' ⭐',
     callback_data:'buy:'+planWidgetKey(p)}]);
-  if((await db.trialProducts()).includes(product))
+  const availableTrials=await db.trialProducts();
+  if(availableTrials.includes('bundle')||availableTrials.includes(product))
     keyboard.unshift([{text:'🎁 Попробовать 1 день бесплатно',callback_data:'trial:'+product}]);
   keyboard.push([{text:'↩️ К услугам',callback_data:'nav:catalog'}]);
   await tg.call('sendMessage',{
@@ -107,7 +109,8 @@ export async function showShare(id:number,db:PgBillingStore,tg:BotSend,config:Na
     reply_markup:{inline_keyboard:[[{text:MENU.home,callback_data:'nav:home'}]]}});
 }
 export async function showTrialMenu(id:number,db:PgBillingStore,tg:BotSend):Promise<void> {
-  const products=await db.trialProducts();
+  const offered=await db.trialProducts();
+  const products:Product[]=offered.includes('bundle')?['bundle']:offered;
   if(!products.length){
     await tg.call('sendMessage',{chat_id:id,
       text:'Бесплатный день подготовлен, но пока не включён: сначала нужна проверенная выдача доступа на VPN/DNS-сервере.',
@@ -126,10 +129,12 @@ export async function showTrialMenu(id:number,db:PgBillingStore,tg:BotSend):Prom
 export async function startTrial(
   id:number,product:Product,db:PgBillingStore,tg:BotSend,inviteToken?:string,
 ):Promise<void> {
+  const offered=await db.trialProducts();
+  product=offered.includes('bundle')?'bundle':product;
   const outcome=await db.grantTrial(id,product,inviteToken);
   const text=outcome.status==='GRANTED'
     ? '🎁 Заявка на пробный доступ принята: '+categoryLabel(product)+
-      '. Отсчёт 24 часов начнётся только после подтверждённой активации на узле.'
+      (product==='bundle'?'. Пробный доступ для одного устройства (одно одновременное VPN-подключение). Отсчёт 24 часов начнётся после готовности VPN и Smart DNS. Общий Telegram-прокси не ограничен пробными сутками.':'. Отсчёт 24 часов начнётся только после подтверждённой активации на узле.')
     : outcome.status==='PENDING'
       ? '⏳ Пробная заявка уже создана, но доступ ещё не активирован. 24 часа пока не расходуются. Повторная покупка не нужна.'
     : outcome.status==='ALREADY_USED'

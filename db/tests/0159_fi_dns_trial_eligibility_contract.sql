@@ -35,6 +35,8 @@ BEGIN
  UPDATE trial_grants SET activated_at=at_time-interval '24 hours',access_expires_at=at_time WHERE order_id=o;
  IF website_regional_dns_status(ss,e) IS NOT NULL OR telegram_regional_dns_revision(actor,'FI') IS NOT NULL THEN RAISE EXCEPTION 'expired menus'; END IF;
  IF fi_dns_meter_apply('reserve',gen_random_uuid(),digest)<>'DENY_INACTIVE' THEN RAISE EXCEPTION 'expired meter'; END IF;
+ IF reserve_personal_dns_query(de,gen_random_uuid())='RESERVED' THEN RAISE EXCEPTION 'expired DE meter'; END IF;
+ IF website_personal_dns_status(ss,e) IS NOT NULL THEN RAISE EXCEPTION 'expired DE profile status'; END IF;
  IF EXISTS(SELECT 1 FROM jsonb_array_elements(fi_dns_snapshot_next()->'grants') g WHERE g->>'tokenSha256'=digest) THEN RAISE EXCEPTION 'expired snapshot grant'; END IF;
 END;
 $test$;

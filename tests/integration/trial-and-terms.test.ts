@@ -116,3 +116,59 @@ test('forwarded catalog supports eight configured 15/30/60/90-day rows',async()=
   if(active.length)await pool.query('UPDATE billing_plans SET enabled=true WHERE id=ANY($1::text[])',[active]);
  }
 });
+
+test('bundle trial accepts an existing VPN or DNS referral without duplicating access',async()=>{
+ await pool.query("UPDATE trial_offers SET enabled=true,dns_quota_bytes=1073741824 WHERE product='bundle'");
+ const prior=await pool.query("SELECT product,enabled FROM trial_offers WHERE product IN ('vpn','smart_dns')");
+ const referrer=90900821,recipient=90900822;
+ await pool.query("UPDATE trial_offers SET enabled=false WHERE product IN ('vpn','smart_dns')");
+ const offers=await db.referralOffers(referrer,16);
+ for(const row of prior.rows)await pool.query('UPDATE trial_offers SET enabled=$2 WHERE product=$1',[row.product,row.enabled]);
+ const invite=offers.find(o=>o.planId===dnsId);
+ assert.ok(invite);
+ assert.equal(invite.trialAvailable,true);
+ await assert.rejects(()=>db.grantTrial(referrer,'bundle',invite.token),/self-owned/);
+ const result=await db.grantTrial(recipient,'bundle',invite.token);
+ assert.equal(result.status,'GRANTED');
+ assert.ok(result.orderId);
+ const {rows}=await pool.query(
+  `SELECT g.invite_token,o.product AS order_product,o.amount_minor,e.product,
+          e.starts_at,e.expires_at
+     FROM trial_grants g JOIN orders o ON o.id=g.order_id
+     JOIN entitlements e ON e.source_order_id=o.id
+     WHERE g.order_id=$1 ORDER BY e.product`,[result.orderId]);
+ assert.deepEqual(rows.map(r=>r.product),['smart_dns','vpn']);
+ assert.ok(rows.every(r=>r.invite_token===invite.token&&r.order_product==='bundle'&&
+  Number(r.amount_minor)===0&&r.starts_at===null&&r.expires_at===null));
+ assert.equal((await db.grantTrial(recipient,'vpn')).orderId,result.orderId);
+ assert.equal(await db.pendingOutboxForOrder(result.orderId!),2);
+});
+
+test('legacy verified email recovery may reserve a bundle but remains cohort restricted',async()=>{
+ await pool.query("UPDATE trial_offers SET enabled=true,dns_quota_bytes=1073741824 WHERE product='bundle'");
+ const account=randomUUID();
+ await pool.query('INSERT INTO accounts(id,email_address) VALUES($1,$2)',[account,'bundle-'+account+'@example.org']);
+ await assert.rejects(()=>db.grantTrial(account,'bundle',undefined,undefined,true),/Legacy email trial no longer eligible/);
+ await pool.query("INSERT INTO website_vpn_trial_requests(account_id,device_hash,request_source) VALUES($1,NULL,'LEGACY_EMAIL')",[account]);
+ const result=await db.grantTrial(account,'bundle',undefined,undefined,true);
+ assert.equal(result.status,'GRANTED');
+ assert.ok(result.orderId);
+ const {rows}=await pool.query('SELECT product FROM entitlements WHERE source_order_id=$1 ORDER BY product',[result.orderId]);
+ assert.deepEqual(rows.map(r=>r.product),['smart_dns','vpn']);
+ assert.equal((await db.grantTrial(account,'bundle',undefined,undefined,true)).orderId,result.orderId);
+});
+
+test('bundle trial cannot be extended as a single paid component by an old client',async()=>{
+ await pool.query("UPDATE trial_offers SET enabled=true,dns_quota_bytes=1073741824 WHERE product='bundle'");
+ const actor=90900823;
+ const grant=await db.grantTrial(actor,'bundle');
+ assert.equal(grant.status,'GRANTED');
+ const order=grant.orderId!;
+ await pool.query("UPDATE trial_grants SET activated_at=statement_timestamp()-interval '1 minute',access_expires_at=statement_timestamp()+interval '23 hours 59 minutes' WHERE order_id=$1",[order]);
+ await pool.query("UPDATE entitlements e SET starts_at=t.activated_at,expires_at=t.access_expires_at,state='ACTIVE' FROM trial_grants t WHERE t.order_id=$1 AND e.source_order_id=t.order_id",[order]);
+ const rows=(await pool.query("SELECT id,product,account_id FROM entitlements WHERE source_order_id=$1",[order])).rows;
+ for(const e of rows){
+   await assert.rejects(()=>db.createWebsiteOrder(e.account_id,e.product==='vpn'?id:dnsId,'bundle-renew-'+e.product,undefined,e.id),/Renewal target not owned or not active yet/);
+ }
+ assert.equal((await pool.query("SELECT count(*)::int AS n FROM orders WHERE account_id=$1",[rows[0].account_id])).rows[0].n,1);
+});

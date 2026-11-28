@@ -1,0 +1,132 @@
+-- Offline verified admission, temporary fixture fully rolled back.
+BEGIN;
+DO $fixture$
+DECLARE
+ aid uuid:='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+ oid uuid:='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+ eid uuid:='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+ de_session uuid:='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+ fi_session uuid:='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+ de_node text; fi_node text; de_pin text; node text; pin text; der bytea; fixture record;
+BEGIN
+ IF EXISTS(SELECT 1 FROM vpn_shared_connection_authorized_peers)
+ OR EXISTS(SELECT 1 FROM vpn_shared_connection_nonces)
+ OR (SELECT enabled FROM vpn_release_flags WHERE feature='vpn_shared_connection_admission') IS DISTINCT FROM false
+ THEN RAISE EXCEPTION 'Verified admission unexpectedly enabled'; END IF;
+ INSERT INTO accounts(id) VALUES(aid);
+ INSERT INTO orders(id,account_id,product,provider,amount_minor,currency,state)
+ VALUES(oid,aid,'vpn','telegram_stars',100,'XTR','PAID');
+ INSERT INTO order_terms(order_id,plan_id,plan_title,duration_seconds,expires_at,device_limit)
+ VALUES(oid,'vpn_30d_1device','CI Test',2592000,
+        clock_timestamp()+interval '30 days',1);
+ INSERT INTO entitlements(id,account_id,source_order_id,product,state,
+    revision,starts_at,expires_at)
+ VALUES(eid,aid,oid,'vpn','ACTIVE',1,
+        clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 day');
+ INSERT INTO provisioning_state(entitlement_id,adapter,applied_revision,last_observed_at)
+ VALUES(eid,'vpn',1,clock_timestamp());
+ FOR fixture IN SELECT * FROM (VALUES
+ ('DE','trial-controller-de','d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a'),
+ ('FI','trial-controller-fi','3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c')
+ ) AS keys(code,node_id,public_hex)
+ LOOP
+   SELECT n.node_id,n.node_public_key_sha256 INTO node,pin FROM vpn_shared_connection_nodes n WHERE n.country_code=fixture.code AND n.enabled;
+   IF NOT FOUND THEN
+     node:=fixture.node_id;
+     der:=decode('302a300506032b6570032100'||fixture.public_hex,'hex');
+     pin:=encode(sha256(der),'hex');
+     INSERT INTO vpn_node_enrollment_inventory(node_id,endpoint_host,identity_public_spki)
+       VALUES(node,node||'.example.org',rtrim(translate(encode(der,'base64'),'+/','-_'),'='));
+     UPDATE vpn_node_enrollment_inventory SET status='approved',approved_at=clock_timestamp() WHERE node_id=node;
+     INSERT INTO vpn_node_enrollment_challenges(challenge_id,node_id,nonce_sha256,issued_at,expires_at,consumed_at)
+       VALUES(gen_random_uuid(),node,encode(sha256(convert_to(node,'UTF8')),'hex'),clock_timestamp()-interval '1 second',clock_timestamp()+interval '1 minute',clock_timestamp());
+     UPDATE vpn_node_enrollment_inventory SET status='enrolled',enrolled_at=clock_timestamp() WHERE node_id=node;
+     INSERT INTO vpn_shared_connection_nodes(node_id,country_code,node_public_key_sha256,enabled) VALUES(node,fixture.code,pin,true);
+   END IF;
+   IF fixture.code='DE' THEN de_node:=node; de_pin:=pin; ELSE fi_node:=node; END IF;
+ END LOOP;
+ IF vpn_shared_connection_verified_apply(
+  eid,de_session,de_node,repeat('c',64),'claim',repeat('1',64),repeat('e',64)
+ )<>'DENY_DISABLED' THEN RAISE EXCEPTION 'Disabled gate admitted a peer'; END IF;
+ UPDATE vpn_release_flags SET enabled=true
+ WHERE feature='vpn_shared_connection_admission';
+ IF vpn_shared_connection_verified_apply(
+  eid,de_session,de_node,repeat('c',64),'claim',repeat('1',64),repeat('e',64)
+ )<>'DENY_PEER' THEN RAISE EXCEPTION 'Unbound peer admitted'; END IF;
+ INSERT INTO vpn_shared_connection_authorized_peers(entitlement_id,node_id,
+  peer_sha256,entitlement_revision,grant_receipt_sha256,verified_at,grant_expires_at)
+ VALUES (eid,de_node,repeat('c',64),1,repeat('d',64),
+         clock_timestamp(),clock_timestamp()+interval '1 day'),
+        (eid,fi_node,repeat('e',64),1,repeat('f',64),
+         clock_timestamp(),clock_timestamp()+interval '1 day');
+ IF vpn_shared_connection_verified_apply(
+  eid,de_session,de_node,repeat('c',64),'claim',repeat('1',64),repeat('e',64)
+ )<>'DENY_REPLAY' THEN RAISE EXCEPTION 'A denied nonce was replayed'; END IF;
+ IF vpn_shared_connection_verified_apply(
+  eid,de_session,de_node,repeat('c',64),'refresh',repeat('2',64),repeat('e',64)
+ )<>'DENY_REPLAY' THEN RAISE EXCEPTION 'Fresh heartbeat minted session'; END IF;
+ IF (vpn_shared_admission_node_identity(de_node)->>'countryCode') IS DISTINCT FROM 'DE'
+ OR vpn_shared_admission_node_identity('unknown-node') IS NOT NULL
+ THEN RAISE EXCEPTION 'Identity RPC returned wrong node'; END IF;
+ IF (vpn_shared_admission_decide(eid,de_session,de_node,repeat('c',64),'claim',
+    repeat('0',63)||'1',repeat('e',64),'FI',de_pin,clock_timestamp())->>'result')<>'DENY_NODE'
+ THEN RAISE EXCEPTION 'Wrong country accepted'; END IF;
+ IF (vpn_shared_admission_decide(eid,de_session,de_node,repeat('c',64),'claim',
+    repeat('0',63)||'2',repeat('e',64),'DE',de_pin,clock_timestamp()-interval '16 seconds')->>'result')<>'DENY_REPLAY'
+ THEN RAISE EXCEPTION 'Stale request accepted'; END IF;
+ UPDATE vpn_shared_connection_authorized_peers SET grant_expires_at=clock_timestamp()+interval '12 seconds'
+ WHERE entitlement_id=eid AND node_id=de_node;
+ IF (vpn_shared_admission_decide(eid,de_session,de_node,repeat('c',64),'claim',
+    repeat('3',64),repeat('e',64),'DE',de_pin,clock_timestamp())->>'result')<>'ADMITTED'
+ THEN RAISE EXCEPTION 'Verified claim denied'; END IF;
+ IF (SELECT lease_until FROM vpn_shared_connection_leases WHERE entitlement_id=eid AND connection_id=de_session)
+ IS DISTINCT FROM (SELECT grant_expires_at FROM vpn_shared_connection_authorized_peers WHERE entitlement_id=eid AND node_id=de_node)
+ THEN RAISE EXCEPTION 'Lease exceeded independently verified peer grant'; END IF;
+ IF (vpn_shared_admission_decide(eid,de_session,de_node,repeat('c',64),'claim',
+    repeat('0',63)||'3',repeat('e',64),'DE',de_pin,clock_timestamp())->>'result')<>'DENY_REPLAY'
+ THEN RAISE EXCEPTION 'Duplicate claim refreshed lease'; END IF;
+ IF (vpn_shared_admission_decide(eid,de_session,de_node,repeat('c',64),'refresh',
+    repeat('4',64),repeat('e',64),'DE',de_pin,clock_timestamp())->>'result')<>'REFRESHED'
+ THEN RAISE EXCEPTION 'Verified heartbeat denied'; END IF;
+ IF (SELECT lease_until FROM vpn_shared_connection_leases WHERE entitlement_id=eid AND connection_id=de_session)
+ IS DISTINCT FROM (SELECT grant_expires_at FROM vpn_shared_connection_authorized_peers WHERE entitlement_id=eid AND node_id=de_node)
+ THEN RAISE EXCEPTION 'Heartbeat exceeded peer grant'; END IF;
+ IF vpn_shared_connection_verified_apply(
+  eid,fi_session,fi_node,repeat('e',64),'claim',repeat('5',64),repeat('e',64)
+ )<>'DENY_LIMIT' THEN RAISE EXCEPTION 'Global limit was not shared'; END IF;
+ UPDATE vpn_shared_connection_authorized_peers SET state='REVOKED'
+ WHERE entitlement_id=eid AND node_id=de_node;
+ IF vpn_shared_connection_verified_apply(
+  eid,de_session,de_node,repeat('c',64),'refresh',repeat('6',64),repeat('e',64)
+ )<>'DENY_PEER' THEN RAISE EXCEPTION 'Revoked peer refreshed'; END IF;
+ IF vpn_shared_connection_verified_apply(
+  eid,de_session,de_node,repeat('c',64),'release',repeat('7',64),repeat('e',64)
+ )<>'RELEASED' THEN RAISE EXCEPTION 'Release did not free global place'; END IF;
+ IF vpn_shared_connection_verified_apply(
+  eid,fi_session,fi_node,repeat('e',64),'claim',repeat('8',64),repeat('e',64)
+ )<>'ADMITTED' THEN RAISE EXCEPTION 'FI could not reuse freed capacity'; END IF;
+ UPDATE orders SET state='REFUNDED' WHERE id=oid;
+ IF vpn_shared_connection_verified_apply(
+  eid,gen_random_uuid(),fi_node,repeat('e',64),'claim',repeat('9',64),repeat('e',64)
+ )<>'DENY_ENTITLEMENT' THEN RAISE EXCEPTION 'Refund still permitted admission'; END IF;
+ IF vpn_shared_connection_verified_apply(
+  eid,fi_session,fi_node,repeat('e',64),'release',repeat('a',64),repeat('e',64)
+ )<>'RELEASED' THEN RAISE EXCEPTION 'Refund prevented session release'; END IF;
+END $fixture$;
+DO $acl$
+BEGIN
+ IF has_function_privilege('mnebyvpn_connection_admission',
+   'public.vpn_shared_connection_claim(uuid,uuid,text,text)','EXECUTE')
+ OR has_function_privilege('mnebyvpn_connection_admission',
+   'public.vpn_shared_connection_release(uuid,uuid,text,text)','EXECUTE')
+ THEN RAISE EXCEPTION 'Old unverified admission remained callable'; END IF;
+ IF NOT has_function_privilege('mnebyvpn_connection_admission',
+   'public.vpn_shared_connection_verified_apply(uuid,uuid,text,text,text,text,text)','EXECUTE')
+ THEN RAISE EXCEPTION 'Privileged verified apply is missing'; END IF;
+ IF has_table_privilege('mnebyvpn_connection_admission',
+   'public.vpn_shared_connection_authorized_peers','INSERT') OR
+    has_table_privilege('mnebyvpn_connection_admission',
+   'public.vpn_shared_connection_nonces','INSERT')
+ THEN RAISE EXCEPTION 'Admission role gained unauthorized write privilege'; END IF;
+END $acl$;
+ROLLBACK;

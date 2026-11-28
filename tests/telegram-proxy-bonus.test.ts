@@ -4,7 +4,7 @@ import {
   parseBonusRoutes,parseOwnerProxyRoutes,sealProxySecret,openProxySecret,
   makeBonusLinks,makeOwnerProxyLinks,
   loadCustomerProxyBonus,bonusReleaseReady,ownerProxyReleaseReady,
-  parseWsProxyRoutes,wsProxyReleaseReady,makeWsProxyLinks,loadCustomerWsProxy,
+  parseWsProxyRoutes,wsProxyReleaseReady,makeWsProxyLinks,loadCustomerWsProxy,loadSharedTrialWsProxy,trialRegionalProxyLinks,loadSharedTrialCountryProxy,sharedTrialProxyInstructions,sharedTrialProxyParameters,
 } from '../packages/web/src/telegram-proxy-bonus.ts';
 
 const id='11111111-1111-4111-8111-111111111111';
@@ -208,4 +208,70 @@ test('WebSocket proxy validates routes, encodes 0x70 marked token and enforces p
   assert.equal(res?.expiresAt,'2026-12-20T00:00:00.000Z');
   assert.equal(await loadCustomerWsProxy(db as never,id,'invalid-uuid',wsRoutes),null);
   assert.equal(calls,1);
+});
+
+test('shared bundle trial proxy remains available without an expiry or personal MTProto credential',async()=>{
+ const routes=parseWsProxyRoutes(JSON.stringify([{route:'direct',server:'example.org/shared',secret:'a'.repeat(32)}]));
+ assert.ok(routes);
+ let eligible=true,calls=0;
+ const db={async query(sql:string,values:unknown[]){
+   calls++;
+   assert.match(sql,/t\.account_id=\$1/);
+   assert.match(sql,/t\.product='bundle'/);
+   assert.match(sql,/o\.provider='internal_trial'/);
+   assert.match(sql,/o\.state='TRIAL'/);
+   assert.doesNotMatch(sql,/expires_at|dns_mtproxy_bonus_credentials/);
+   assert.equal(values.length,1);
+   return {rows:eligible?[{ok:1}]:[]};
+ }};
+ const account='11111111-1111-4111-8111-111111111111';
+ const result=await loadSharedTrialWsProxy(db as never,account,routes);
+ assert.equal(result?.wsLinks.length,1);
+ assert.deepEqual(Object.keys(result??{}),['wsLinks']);
+ eligible=false;
+ assert.equal(await loadSharedTrialWsProxy(db as never,account,routes),null);
+ assert.equal(await loadSharedTrialWsProxy(db as never,'invalid',routes),null);
+ assert.equal(calls,2);
+});
+
+test('trial country proxy routes require explicit independent verification and trial ownership',async()=>{
+ const route=(server:string)=>JSON.stringify([{route:'ru',server,secret:raw}]);
+ const env={
+  WEB_TELEGRAM_WS_PROXY_ENABLED:'yes',
+  WEB_TELEGRAM_WS_PROXY_ROUTES_JSON:route('shared.example.org/path'),
+  WEB_TRIAL_WS_PROXY_DE_ROUTES_JSON:route('de.example.org/path'),
+  WEB_TRIAL_WS_PROXY_FI_ROUTES_JSON:route('fi.example.org/path'),
+  WEB_TRIAL_WS_PROXY_DE_VERIFIED:'yes',
+  WEB_TRIAL_WS_PROXY_FI_VERIFIED:'yes',
+ };
+ assert.deepEqual(trialRegionalProxyLinks(env).map(l=>l.country),['DE','FI']);
+ assert.deepEqual(trialRegionalProxyLinks({...env,WEB_TRIAL_WS_PROXY_FI_VERIFIED:'no'}).map(l=>l.country),['DE']);
+ assert.deepEqual(trialRegionalProxyLinks({...env,WEB_TRIAL_WS_PROXY_FI_ROUTES_JSON:env.WEB_TRIAL_WS_PROXY_DE_ROUTES_JSON}),[]);
+ assert.deepEqual(trialRegionalProxyLinks({...env,WEB_TELEGRAM_WS_PROXY_ENABLED:'no'}),[]);
+ const yes={query:async()=>({rows:[{ok:1}]})};
+ const no={query:async()=>({rows:[]})};
+ const allowed=await loadSharedTrialCountryProxy(yes as never,id,env);
+ assert.equal(allowed?.regionalLinks.length,2);
+ assert.equal(allowed?.wsLinks.length,1);
+ assert.equal(await loadSharedTrialCountryProxy(no as never,id,env),null);
+});
+
+test('trial proxy instructions preserve the complete WebSocket path and separate HTTPS link from manual secret',()=>{
+ const link=makeWsProxyLinks([{route:'ru',server:'example.org/testpath',secret:raw}])[0];
+ const manual=sharedTrialProxyParameters(link);
+ assert.ok(manual.includes('Название: '+link.label));
+ assert.ok(manual.includes('Сервер: example.org/testpath'));
+ assert.ok(manual.includes('Порт: 443 (HTTPS)'));
+ assert.ok(manual.includes('Секрет: '+raw));
+ assert.match(sharedTrialProxyInstructions,/Избранное/);
+ assert.match(sharedTrialProxyInstructions,/если есть отдельное поле порта/);
+ assert.match(sharedTrialProxyInstructions,/не отключаются по окончании/);
+ const env={
+  WEB_TELEGRAM_WS_PROXY_ENABLED:'yes',
+  WEB_TELEGRAM_WS_PROXY_ROUTES_JSON:JSON.stringify([{route:'ru',server:'shared.example.org/path',secret:raw}]),
+  WEB_TRIAL_WS_PROXY_DE_VERIFIED:'yes',WEB_TRIAL_WS_PROXY_FI_VERIFIED:'yes',
+  WEB_TRIAL_WS_PROXY_DE_ROUTES_JSON:JSON.stringify([{route:'ru',server:'example.org/testpath',secret:raw}]),
+  WEB_TRIAL_WS_PROXY_FI_ROUTES_JSON:JSON.stringify([{route:'direct',server:'EXAMPLE.ORG/testpath',secret:'b'.repeat(32)}]),
+ };
+ assert.deepEqual(trialRegionalProxyLinks(env),[]);
 });

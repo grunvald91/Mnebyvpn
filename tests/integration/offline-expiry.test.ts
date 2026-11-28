@@ -58,3 +58,55 @@ test('simulated VPN node enforces deadline for new and existing sessions while d
  assert.equal(post.rows[0].state,'EXPIRED');
  assert.equal(node.connect(rows[0].id),null);
 });
+
+test('both trial services enforce one hard deadline during a control-plane partition',async()=>{
+ const old=await pool.query("SELECT enabled,dns_quota_bytes FROM trial_offers WHERE product='bundle'");
+ await pool.query("UPDATE trial_offers SET enabled=true,dns_quota_bytes=1073741824 WHERE product='bundle'");
+ try{
+  const grant=await store.grantTrial(94771104,'bundle');
+  assert.equal(grant.status,'GRANTED');
+  const order=grant.orderId!;
+  const rows=(await pool.query("SELECT id,product FROM entitlements WHERE source_order_id=$1",[order])).rows;
+  assert.equal(rows.length,2);
+  let instant=new Date();
+  const vpn=new OfflineExpiryNodeSimulator(()=>instant),dns=new OfflineExpiryNodeSimulator(()=>instant);
+  const worker=new PgOutboxDispatcher(pool,{vpn,smart_dns:dns});
+  // Provisional receipts share the activation deadline; complete both final revisions.
+  assert.equal((await worker.processOnce(['vpn'])).reason,'bundle_waiting_for_other_service');
+  assert.equal((await worker.processOnce(['smart_dns'])).status,'synced');
+  for(let i=0;i<6;i++){
+   const result=await worker.processOnce();
+   if(result.status==='empty')break;
+  }
+  assert.equal(await store.pendingOutboxForOrder(order),0);
+  const active=(await pool.query("SELECT id,product,state,expires_at FROM entitlements WHERE source_order_id=$1",[order])).rows;
+  assert.ok(active.every(x=>x.state==='ACTIVE'));
+  assert.equal(active[0].expires_at.getTime(),active[1].expires_at.getTime());
+  const v=active.find(x=>x.product==='vpn').id,d=active.find(x=>x.product==='smart_dns').id;
+  const deadline=active[0].expires_at.getTime();
+  instant=new Date(deadline-1);
+  const vs=vpn.connect(v),ds=dns.connect(d);
+  assert.ok(vs&&ds);
+  vpn.setControlLink(false);dns.setControlLink(false);
+  instant=new Date(deadline);
+  assert.equal(vpn.connect(v),null);assert.equal(dns.connect(d),null);
+  assert.equal(vpn.transfer(vs!),false);assert.equal(dns.transfer(ds!),false);
+  await pool.query("UPDATE trial_grants SET activated_at=statement_timestamp()-interval '25 hours',access_expires_at=statement_timestamp()-interval '1 hour' WHERE order_id=$1",[order]);
+  await pool.query("UPDATE entitlements e SET starts_at=t.activated_at,expires_at=t.access_expires_at FROM trial_grants t WHERE t.order_id=$1 AND e.source_order_id=t.order_id",[order]);
+  await worker.expireDue();
+  assert.equal(await store.pendingOutboxForOrder(order),2);
+  assert.equal((await worker.processOnce(['vpn'])).status,'retry');
+  assert.equal((await worker.processOnce(['smart_dns'])).status,'retry');
+  vpn.setControlLink(true);dns.setControlLink(true);
+  await pool.query("UPDATE reconcile_outbox SET next_attempt_at=clock_timestamp() WHERE entitlement_id IN (SELECT id FROM entitlements WHERE source_order_id=$1) AND handled_at IS NULL",[order]);
+  for(let i=0;i<6;i++){
+   const result=await worker.processOnce();
+   if(result.status==='empty')break;
+  }
+  assert.equal(await store.pendingOutboxForOrder(order),0);
+  assert.equal(vpn.connect(v),null);assert.equal(dns.connect(d),null);
+ }finally{
+  const row=old.rows[0];
+  await pool.query("UPDATE trial_offers SET enabled=$1,dns_quota_bytes=$2 WHERE product='bundle'",[row.enabled,row.dns_quota_bytes]);
+ }
+});

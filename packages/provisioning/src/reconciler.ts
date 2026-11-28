@@ -30,7 +30,7 @@ export interface ReconcileStore {
   withLock<T>(entitlementId: string, fn: (fence: number) => Promise<T>): Promise<T>;
   readDesired(entitlementId: string): Promise<DesiredAccess>;
   /** Compare-and-swap requires matching revision AND current fencing token. */
-  acknowledge(entitlementId: string, revision: number, fence: number, observedEnabled: boolean): Promise<boolean>;
+  acknowledge(entitlementId: string, revision: number, fence: number, observedEnabled: boolean, observedExpiry?: Date | null): Promise<boolean>;
   requestReconcile(entitlementId: string, reason: string): Promise<void>;
 }
 
@@ -123,7 +123,7 @@ export async function reconcileEntitlement(
         await store.requestReconcile(entitlementId,'node_unverified');
         return {status:'retry_required',reason:'node_unverified'};
       }
-      if (await store.acknowledge(entitlementId, latest.revision, fence, observed.enabled)) {
+      if (await store.acknowledge(entitlementId, latest.revision, fence, observed.enabled, observed.expiresAt)) {
         return { status: 'synced', revision: latest.revision };
       }
       await store.requestReconcile(entitlementId, 'fence_lost');
