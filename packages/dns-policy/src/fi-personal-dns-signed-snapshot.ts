@@ -18,7 +18,7 @@ const GRANT_KEYS=['entitlementId','credentialRevision','tokenSha256','expiresAt'
 
 export type FiDnsGrant={
   entitlementId:string;credentialRevision:number;
-  tokenSha256:string;expiresAt:string;state:'ACTIVE'|'REVOKED';
+  tokenSha256:string;expiresAt:string;state:'ACTIVE'|'ACTIVE_TRIAL'|'REVOKED';
 };
 export type FiDnsUnsignedSnapshot={
   schemaVersion:1;nodeId:'fi-test-01';countryCode:'FI';revision:number;
@@ -57,7 +57,7 @@ function signedRows(rows:FiDnsGrant[],issuedAtMs:number):FiDnsGrant[] {
       row.credentialRevision<1||row.credentialRevision>1_000_000_000||
       !SHA.test(row.tokenSha256)||row.tokenSha256<=prev||
       seen.has(row.entitlementId)||
-      (row.state!=='ACTIVE'&&row.state!=='REVOKED')||
+      (row.state!=='ACTIVE'&&row.state!=='ACTIVE_TRIAL'&&row.state!=='REVOKED')||
       instant(row.expiresAt)>issuedAtMs+366*86400_000)
       throw Error('Untrusted FI DNS entitlement grant');
     prev=row.tokenSha256;
