@@ -208,6 +208,7 @@ export async function resolvePersonalDnsWithSettlement(
   reserve:DnsQueryReserve,finish:DnsQueryFinish,
   mapped:DnsResolver,direct:DnsResolver,
   signal?:AbortSignal,
+  meterAll=false,
 ):Promise<Uint8Array>{
   const label=parsePersonalDoTHostname(tlsSni);
   if(!label)throw Error('Unknown DoT identity');
@@ -216,13 +217,13 @@ export async function resolvePersonalDnsWithSettlement(
   let route:DnsRoute;
   try{route=await classify(question);}
   catch{return servfailDnsResponse(dnsWire);}
-  if(route==='direct')return direct(dnsWire,signal);
-  if(route!=='premium')throw Error('Untrusted DNS route classification');
+  if(route==='direct'&&!meterAll)return direct(dnsWire,signal);
+  if(route!=='premium'&&route!=='direct')throw Error('Untrusted DNS route classification');
   const id=randomUUID();
   let status:string;
   try{status=await reserve(label,id);}
   catch{return servfailDnsResponse(dnsWire);}
-  if(status!=='RESERVED')return expectedNonPremiumDenial(status)
+  if(status!=='RESERVED')return !meterAll&&expectedNonPremiumDenial(status)
     ?direct(dnsWire,signal):servfailDnsResponse(dnsWire);
   let released=false;
   const release=async()=>{
@@ -232,7 +233,7 @@ export async function resolvePersonalDnsWithSettlement(
   };
   if(signal?.aborted){await release();throw Error('DNS request aborted');}
   try{
-    const result=await mapped(dnsWire,signal);
+    const result=await (route==='direct'?direct:mapped)(dnsWire,signal);
     if(signal?.aborted||!dnsResponseMatchesQuestion(dnsWire,result)){
       await release();
       if(signal?.aborted)throw Error('DNS request aborted');
@@ -244,7 +245,7 @@ export async function resolvePersonalDnsWithSettlement(
     released=true;
     if(signal?.aborted)throw Error('DNS request aborted');
     if(verdict==='SETTLED')return result;
-    return expectedNonPremiumDenial(verdict)
+    return !meterAll&&expectedNonPremiumDenial(verdict)
       ?direct(dnsWire,signal):servfailDnsResponse(dnsWire);
   }catch(err){
     await release();
