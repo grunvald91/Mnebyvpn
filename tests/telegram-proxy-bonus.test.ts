@@ -4,7 +4,7 @@ import {
   parseBonusRoutes,parseOwnerProxyRoutes,sealProxySecret,openProxySecret,
   makeBonusLinks,makeOwnerProxyLinks,
   loadCustomerProxyBonus,bonusReleaseReady,ownerProxyReleaseReady,
-  parseWsProxyRoutes,wsProxyReleaseReady,makeWsProxyLinks,loadCustomerWsProxy,loadSharedTrialWsProxy,
+  parseWsProxyRoutes,wsProxyReleaseReady,makeWsProxyLinks,loadCustomerWsProxy,loadSharedTrialWsProxy,trialRegionalProxyLinks,loadSharedTrialCountryProxy,
 } from '../packages/web/src/telegram-proxy-bonus.ts';
 
 const id='11111111-1111-4111-8111-111111111111';
@@ -232,4 +232,26 @@ test('shared bundle trial proxy remains available without an expiry or personal 
  assert.equal(await loadSharedTrialWsProxy(db as never,account,routes),null);
  assert.equal(await loadSharedTrialWsProxy(db as never,'invalid',routes),null);
  assert.equal(calls,2);
+});
+
+test('trial country proxy routes require explicit independent verification and trial ownership',async()=>{
+ const route=(server:string)=>JSON.stringify([{route:'ru',server,secret:raw}]);
+ const env={
+  WEB_TELEGRAM_WS_PROXY_ENABLED:'yes',
+  WEB_TELEGRAM_WS_PROXY_ROUTES_JSON:route('shared.example.org/path'),
+  WEB_TRIAL_WS_PROXY_DE_ROUTES_JSON:route('de.example.org/path'),
+  WEB_TRIAL_WS_PROXY_FI_ROUTES_JSON:route('fi.example.org/path'),
+  WEB_TRIAL_WS_PROXY_DE_VERIFIED:'yes',
+  WEB_TRIAL_WS_PROXY_FI_VERIFIED:'yes',
+ };
+ assert.deepEqual(trialRegionalProxyLinks(env).map(l=>l.country),['DE','FI']);
+ assert.deepEqual(trialRegionalProxyLinks({...env,WEB_TRIAL_WS_PROXY_FI_VERIFIED:'no'}).map(l=>l.country),['DE']);
+ assert.deepEqual(trialRegionalProxyLinks({...env,WEB_TRIAL_WS_PROXY_FI_ROUTES_JSON:env.WEB_TRIAL_WS_PROXY_DE_ROUTES_JSON}),[]);
+ assert.deepEqual(trialRegionalProxyLinks({...env,WEB_TELEGRAM_WS_PROXY_ENABLED:'no'}),[]);
+ const yes={query:async()=>({rows:[{ok:1}]})};
+ const no={query:async()=>({rows:[]})};
+ const allowed=await loadSharedTrialCountryProxy(yes as never,id,env);
+ assert.equal(allowed?.regionalLinks.length,2);
+ assert.equal(allowed?.wsLinks.length,1);
+ assert.equal(await loadSharedTrialCountryProxy(no as never,id,env),null);
 });
