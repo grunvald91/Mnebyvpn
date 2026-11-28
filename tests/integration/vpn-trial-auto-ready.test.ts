@@ -203,7 +203,7 @@ test('bundle ready notice offers all three connection types without bearer links
  assert.match(message.text,/«3 в 1» готов/);
  assert.match(message.text,/VPN и Smart DNS/);
  const buttons=message.reply_markup.inline_keyboard.flat();
- for(const action of ['nav:dns','nav:trial-proxy','nav:device:android','nav:device:ios'])
+ for(const action of ['nav:trial-country:DE','nav:trial-country:FI','nav:trial-proxy'])
    assert.ok(buttons.some(b=>b.callback_data===action),action);
  assert.ok(!JSON.stringify(message).includes('/sub/'));
 });
