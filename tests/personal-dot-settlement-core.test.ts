@@ -133,3 +133,34 @@ test('abort before premium reply releases hold and never returns a mapped answer
   async q=>{direct++;return answer(q);},signal.signal),/aborted/);
  assert.equal(release,1);assert.equal(direct,0);
 });
+
+test('strict trial direct answers including repeated cached answers consume quota',async()=>{
+ const request=query('example.org');
+ let reserves=0,settles=0,resolves=0;
+ const cached=answer(request);
+ const run=()=>resolvePersonalDnsWithSettlement(host,request,()=> 'direct',
+  async()=>{reserves++;return reserves<=2?'RESERVED':'DENY_QUOTA';},
+  async(_id,ok)=>{assert.equal(ok,true);settles++;return 'SETTLED';},
+  async()=>{throw Error('mapped unexpected');},
+  async()=>{resolves++;return cached;},undefined,true);
+ assert.equal(isServfail(request,await run()),false);
+ assert.equal(isServfail(request,await run()),false);
+ assert.equal(isServfail(request,await run()),true);
+ assert.deepEqual([reserves,settles,resolves],[3,2,2]);
+});
+
+test('strict trial denies all routes on quota, expiry or DB outage without direct fallback',async()=>{
+ const request=query('claude.ai');
+ for(const route of ['direct','premium'] as const){
+  for(const verdict of ['DENY_QUOTA','DENY_INACTIVE','DB_ERROR']){
+   let calls=0;
+   const result=await resolvePersonalDnsWithSettlement(host,request,()=>route,
+    async()=>{if(verdict==='DB_ERROR')throw Error('DB offline');return verdict;},
+    async()=>{throw Error('unexpected settlement');},
+    async q=>{calls++;return answer(q);},async q=>{calls++;return answer(q);},
+    undefined,true);
+   assert.equal(isServfail(request,result),true);
+   assert.equal(calls,0);
+  }
+ }
+});
