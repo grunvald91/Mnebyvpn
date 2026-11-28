@@ -29,7 +29,7 @@ import {dnsAdminOwner,dnsAdminIntro,dnsAdminPrompt,dnsAdminSearchPrompt,dnsAdmin
 import {effectiveAccessState,formatRemainingTime,formatRemainingQuota} from '../../../packages/telegram-ui/src/access-format.ts';
 import {personalDnsTelegramMenu,personalDnsTelegramAction,personalDnsGuide,
   personalDnsPreview,bundleTrialDnsButtons,bundleTrialDnsAction} from './personal-dot-telegram-view.ts';
-import {loadSharedTrialCountryProxy,type TrialProxyCountry} from '../../../packages/web/src/telegram-proxy-bonus.ts';
+import {loadSharedTrialCountryProxy,sharedTrialProxyInstructions,sharedTrialProxyParameters,type ProxyWsLink,type TrialProxyCountry} from '../../../packages/web/src/telegram-proxy-bonus.ts';
 import {approvedPersonalDnsOffer} from '../../../packages/dns-policy/src/smart-dns-offers.ts';
 import {sendPersonalDnsMobileconfig} from '../../../packages/dns-policy/src/personal-dot-profile.ts';
 import {ownerDnsKey,ownerDnsLinksAction,ownerDnsExpiryPrompt,ownerDnsExpiryReply,OWNER_DNS_EXPIRY_PROMPT} from './owner-dns-links.ts';
@@ -534,18 +534,30 @@ async function sharedTrialProxy(id:number,country?:TrialProxyCountry){
   const selected=country??'DE';
   const name=selected==='FI'?'Финляндия':'Германия';
   const regional=(links?.regionalLinks??[]).filter(link=>link.country===selected);
+  const shared=(links?.wsLinks??[]).filter(link=>!regional.some(r=>r.url===link.url));
+  const rows:Button[][]=[];
+  const details:string[]=[];
+  function addProxy(link:ProxyWsLink,title:string){
+    rows.push([{text:title,url:link.url}]);
+    const copy:Button[]=[];
+    if(link.url.length<=256)copy.push({text:'Копировать ссылку',copy_text:{text:link.url}});
+    const params=sharedTrialProxyParameters(link);
+    if(params.length<=256)copy.push({text:'Копировать параметры',copy_text:{text:params}});
+    if(copy.length)rows.push(copy);
+    details.push(params+'\nСсылка: '+link.url);
+  }
+  for(const link of regional)addProxy(link,link.label);
+  for(const link of shared)addProxy({...link,label:'Общий прокси · '+(link.route==='ru'?'через РФ':'напрямую')},'Общий прокси · '+(link.route==='ru'?'через РФ':'напрямую'));
   const buttons:Button[][]=[
     [{text:'🇩🇪 Германия',callback_data:'nav:trial-country:DE'},{text:'🇫🇮 Финляндия',callback_data:'nav:trial-country:FI'}],
     [{text:'VPN и Smart DNS · '+name,url:'https://mnebyvpn.site/?trialCountry='+selected+'#account'}],
     ...(accountId&&personalDnsReady?await bundleTrialDnsButtons(pool,id,selected,regionalDnsReady):[]),
-    ...regional.map(link=>[{text:link.label,url:link.url},{text:'Копировать ссылку',copy_text:{text:link.url}}]),
-    ...(links?.wsLinks??[]).map(link=>[{text:'Общий прокси · '+(link.route==='ru'?'через РФ':'напрямую'),url:link.url}]),
-    [homeButton],
+    ...rows,[homeButton],
   ];
-  return msg('🌍 Пробный доступ «3 в 1» · '+name+'\n\n'+
-    'Выберите одинаковую страну для VPN, Smart DNS и Telegram-прокси. В кабинете откройте профили выбранной страны. Сначала отключите прежний VPN. Смена страны не продлевает 24 часа и не сбрасывает общий лимит 30 000 DNS-запросов. VPN — одно одновременное подключение.\n\n'+
-    (regional.length?'Подтверждённый прокси выбранной страны: откройте ссылку и подтвердите подключение в Telegram.':'Подтверждённый прокси выбранной страны пока недоступен.')+
-    '\nОбщие прокси без подтверждённой страны выхода доступны и после пробных суток. Ссылку можно скопировать и отправить себе в «Избранное», затем открыть её из сообщения.',buttons);
+  return msg('🌍 Настройки «3 в 1» · '+name+'\n\n'+
+    'VPN и Smart DNS доступны только при действующей подписке. Выбирайте одну страну для всех услуг. Смена страны не продлевает пробный срок и не сбрасывает лимит DNS. VPN — одно одновременное подключение.\n\n'+
+    (regional.length?'Подтверждённый прокси выбранной страны доступен.':'Подтверждённый прокси выбранной страны пока недоступен.')+
+    (details.length?'\n\n'+sharedTrialProxyInstructions+'\n\n'+details.join('\n\n'):'\nОбщие ссылки пока недоступны. VPN и Smart DNS можно настроить в кабинете.'),buttons);
 }
 async function trialCountry(id:number,country:TrialProxyCountry){
   if(!pool)throw Error('DB unavailable');
