@@ -36,7 +36,7 @@ test('private Telegram file uses actual multipart .mobileconfig upload',async()=
   assert.equal(calls.length,1);
   assert.equal(calls[0].url,'https://api.telegram.org/bot'+token+'/sendDocument');
   assert.equal(calls[0].method,'POST');
-  assert.equal(calls[0].filename,'MNEBYDNS-iPhone-iPad.mobileconfig');
+  assert.equal(calls[0].filename,'MNEBYDNS-Apple-DE.mobileconfig');
   assert.equal(calls[0].mime,'application/x-apple-aspen-config');
   assert.equal(calls[0].chat,'12345');
   assert.ok(calls[0].data?.includes(hostname));
