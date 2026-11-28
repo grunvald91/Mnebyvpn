@@ -254,6 +254,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f db/tests/0165_fi_bundle_trial_signed_meter_policy_contract.sql
           psql -v ON_ERROR_STOP=1 -f db/migrations/0166_trial_dns_telegram_profiles.sql >/dev/null
           psql -v ON_ERROR_STOP=1 -f db/tests/0166_trial_dns_telegram_profiles_contract.sql
+          psql -v ON_ERROR_STOP=1 -f db/migrations/0167_bundle_trial_recovery_missing_queue.sql >/dev/null
           node --check apps/web/public/app.js
           node --experimental-strip-types --test tests/ci/fi-dns-snapshot-publisher-pg.test.ts
       - name: Checkout exact reviewed FI node code for cross-repository E2E
