@@ -32,7 +32,8 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
         ORDER BY CASE WHEN next_attempt_at='infinity'::timestamptz THEN created_at ELSE next_attempt_at END LIMIT 1 FOR UPDATE SKIP LOCKED
       )
       UPDATE website_vpn_trial_requests r SET attempts=r.attempts+1,
-        locked_until=clock_timestamp()+interval '120 seconds'
+        locked_until=clock_timestamp()+interval '120 seconds',
+        requested_product=CASE WHEN r.status='PENDING' AND $1::boolean THEN 'bundle' ELSE r.requested_product END
       FROM pick WHERE r.account_id=pick.account_id RETURNING r.*`,[newProduct==='bundle']);
     const job=claimed.rows[0] as Job|undefined;
     if(!job)return;
@@ -59,6 +60,7 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
       // Resolve recipient from canonical verified account; require final node ACK.
       const observed=await pool.query(`SELECT a.email_address,t.product,t.access_expires_at,o.state,
           (t.activated_at IS NOT NULL AND t.access_expires_at>clock_timestamp()
+           AND (t.product='vpn' OR t.access_expires_at=t.activated_at+interval '24 hours')
            AND EXISTS (SELECT 1 FROM entitlements e JOIN provisioning_state p
              ON p.entitlement_id=e.id AND p.adapter='vpn'
              WHERE e.source_order_id=t.order_id AND e.account_id=t.account_id
@@ -74,7 +76,8 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
                AND d.quota_state='AVAILABLE'
                AND dp.applied_revision=d.revision AND dp.last_observed_at IS NOT NULL))) AS ready
          FROM trial_grants t JOIN accounts a ON a.id=t.account_id
-         JOIN orders o ON o.id=t.order_id AND o.provider='internal_trial'
+         JOIN orders o ON o.id=t.order_id AND o.account_id=t.account_id AND o.provider='internal_trial'
+           AND o.product=t.product AND o.amount_minor=0
          WHERE t.account_id=$1 AND t.order_id=$2`,[job.account_id,job.order_id]);
       const trial=observed.rows[0];
       if(!trial||!['vpn','bundle'].includes(trial.product)||trial.state!=='TRIAL'||
@@ -85,6 +88,11 @@ export async function recoverWebsiteVpnTrials(pool:Pool,store:Pick<PgBillingStor
       if(!trial.ready){
         await finish('WAITING',job.order_id,15,'WAITING_FOR_NODE');continue;
       }
+      // Do not send from a superseded worker lease.
+      const current=await pool.query(`SELECT 1 FROM website_vpn_trial_requests
+        WHERE account_id=$1 AND attempts=$2 AND status='WAITING' AND order_id=$3
+          AND locked_until>clock_timestamp()`,[job.account_id,job.attempts,job.order_id]);
+      if(current.rowCount!==1)continue;
       const delivered=await send(trial.email_address,new Date(trial.access_expires_at),secret,undefined,trial.product==='bundle'?'bundle':'vpn',job.order_id!);
       await finish(delivered?'SENT':'WAITING',job.order_id,delivered?0:retry,delivered?null:'MAIL_RETRY');
     }catch(error){
