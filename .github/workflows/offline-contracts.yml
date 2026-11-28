@@ -289,6 +289,18 @@ jobs:
           python3 -B -m unittest discover -s fi-trial-fixture/nodekit/tests -p 'test_fi_dns_metered_dot.py'
           python3 -B fi-trial-fixture/nodekit/fi_dns_customer_build.py fi-trial-fixture/nodekit "$RUNNER_TEMP/fi-trial-customer"
           python3 -B fi-trial-fixture/nodekit/fi_dns_pilot_build.py fi-trial-fixture/nodekit "$RUNNER_TEMP/fi-trial-pilot"
+      - name: Exercise trial TLS on exact companion runtime with shared PostgreSQL quota
+        env:
+          PGPASSWORD: test
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: test
+          PGDATABASE: mnebyvpn_test
+          FI_BUNDLE_TRIAL_E2E: '1'
+        run: |
+          set -Eeuo pipefail
+          export PYTHONPATH="$RUNNER_TEMP/fi-trial-customer:${GITHUB_WORKSPACE}/fi-trial-fixture/nodekit"
+          node --experimental-strip-types --test tests/ci/fi-dns-cross-repo-pg.test.ts
       - name: Payment integration with disposable PostgreSQL
         env:
           PGPASSWORD: test
