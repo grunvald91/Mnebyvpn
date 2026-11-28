@@ -190,13 +190,13 @@ function clearCachedCredentials(){
     }
   }catch{}
 }
-function triggerMobileconfigDownload(xml){
+function triggerMobileconfigDownload(xml,country='DE'){
   const blob=new Blob([xml],{type:'application/x-apple-aspen-config'});
   if(blob.size<200||blob.size>32768)throw Error('DNS_PROFILE_UNAVAILABLE');
   const url=URL.createObjectURL(blob);
   const link=node('a');
   link.href=url;
-  link.download='MNEBYDNS-Apple.mobileconfig';
+  link.download='MNEBYDNS-Apple-'+(country==='FI'?'FI':'DE')+'.mobileconfig';
   document.body.append(link);
   link.click();
   link.remove();
@@ -214,12 +214,12 @@ function renderPersonalDnsBox(item,hostname,xml,opts={}){
   box.append(node('h4','',(hasCreds?'✅ Smart DNS · ':'🧭 Smart DNS · ')+(country==='FI'?'Финляндия':'Германия')));
   if(xml){
     const dl=node('button','button button-primary setup-button',
-      apple?'⬇️ Скачать профиль Apple (.mobileconfig)':'Скачать профиль для iPhone / Mac (.mobileconfig)');
+      apple?'⬇️ Скачать профиль Apple (.mobileconfig)':'Скачать профиль для iPhone / iPad / Mac (.mobileconfig)');
     dl.type='button';
-    dl.addEventListener('click',()=>triggerMobileconfigDownload(xml));
+    dl.addEventListener('click',()=>triggerMobileconfigDownload(xml,country));
     box.append(dl);
     box.append(node('p','',
-      'Установка на Apple (iPhone, iPad, Mac): откройте страницу в Safari и нажмите кнопку выше → разрешите загрузку профиля → откройте «Настройки» → «Профиль загружен» → «Установить» (или «Основные» → «VPN и управление устройством»). На Mac — «Системные настройки» → «Основные» → «Управление устройством». Неустановленный профиль удаляется системой через 8 минут.'));
+      'Установка на Apple (iPhone, iPad, Mac): откройте страницу в Safari и нажмите кнопку выше → разрешите загрузку профиля → откройте «Настройки» → «Профиль загружен» → «Установить» (или «Основные» → «VPN и управление устройством»). На Mac — откройте файл и перейдите в «Системные настройки» → «Основные» → «Управление устройством». На iPhone/iPad неустановленный загруженный профиль удаляется примерно через 8 минут. При смене страны сначала удалите прежний DNS-профиль.'));
   }
   if(hostname){
     const row=node('div','journey-copy-field');
@@ -325,7 +325,7 @@ async function downloadAppleDnsProfile(entitlementId, button, item,country='DE',
     if(status.revoked)throw Error('DNS_ACCESS_REVOKED');
     const cached=readCachedPersonalDns(entitlementId,country);
     if(cached?.mobileconfig&&status.issued&&cached.revision===status.revision){
-      triggerMobileconfigDownload(cached.mobileconfig);
+      triggerMobileconfigDownload(cached.mobileconfig,country);
       if(item)renderPersonalDnsBox(item,cached.hostname,cached.mobileconfig,{entitlementId,issued:true,country,singleCountry});
       toast('Профиль Apple (.mobileconfig) загружен.');
       return;
@@ -353,7 +353,7 @@ async function downloadAppleDnsProfile(entitlementId, button, item,country='DE',
       const creds=await combined.json();
       creds.revision=action==='rotate'?status.revision+1:1;
       saveCachedPersonalDns(entitlementId,creds,country);
-      if(creds?.mobileconfig)triggerMobileconfigDownload(creds.mobileconfig);
+      if(creds?.mobileconfig)triggerMobileconfigDownload(creds.mobileconfig,country);
       if(item&&(creds?.hostname||creds?.mobileconfig))
         renderPersonalDnsBox(item,creds.hostname||'',creds.mobileconfig||'',{entitlementId,issued:true,country,singleCountry});
       if(country==='FI')button.hidden=true;
@@ -372,7 +372,7 @@ async function downloadAppleDnsProfile(entitlementId, button, item,country='DE',
     if(!(response.headers.get('content-type')||'').includes('application/x-apple-aspen-config'))
       throw Error('DNS_PROFILE_UNAVAILABLE');
     const xml=await response.text();
-    triggerMobileconfigDownload(xml);
+    triggerMobileconfigDownload(xml,country);
     if(item)renderPersonalDnsBox(item,'',xml,{entitlementId,issued:true,country,singleCountry});
     toast('Профиль создан. Сохраните файл. На iPhone/iPad откройте Настройки → Профиль загружен; на Mac — Системные настройки → Основные → Управление устройством.');
   }catch(error){
