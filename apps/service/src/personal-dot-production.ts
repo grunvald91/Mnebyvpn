@@ -5,7 +5,7 @@
  * Trust boundary: wildcard TLS cert + 12-symbol SNI + positive-only cached
  * PostgreSQL credential recognition for at most 60 seconds. Every premium
  * DNS message still performs database quota reservation and settlement;
- * ordinary/direct DNS messages remain unmetered. Revocation of direct-only
+ * ordinary/direct DNS messages remain unmetered for legacy credentials; bundle trials meter all answers. Revocation of direct-only
  * access becomes visible on the next recognition check, no later than 60s.
  */
 import {readFileSync} from 'node:fs';
@@ -135,6 +135,8 @@ export async function runPersonalDotProduction():Promise<void>{
     max:8,connectionTimeoutMillis:1200,statement_timeout:1150,
     query_timeout:1200,idleTimeoutMillis:10000});
   await db.query('SELECT 1');
+  // Require the migrated policy ABI before accepting any production traffic.
+  await db.query("SELECT personal_dns_meter_policy('aaaaaaaaaaaa')");
   const pooled=process.env.MNEBYDNS_DOT_POOL_ENABLED==='yes';
   const poolMaxConnections=dotPoolMaxConnections();
   const mappedPool=pooled?createVerifiedDotPool(mapped,{maxConnections:poolMaxConnections,idleMs:7500}):null;
@@ -153,7 +155,7 @@ export async function runPersonalDotProduction():Promise<void>{
     {maxEntries:1024,minTtlMs:5000,maxTtlMs:60000,nodataTtlMs:15000},
   );
   const tlsServer=createPersonalDotListener({
-    key,cert,db,classify,
+    key,cert,db,classify,trialMeterPolicy:true,
     ...(ownerLookup?{ownerLinkStatus:ownerLookup}:{}),
     queryTimeoutMs:8500,
     mapped:cachedMapped,
