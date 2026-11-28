@@ -529,16 +529,16 @@ async function sharedTrialProxy(id:number,country?:TrialProxyCountry){
   const account=await pool.query('SELECT id FROM accounts WHERE telegram_user_id=$1',[String(id)]);
   const accountId=account.rows[0]?.id;
   const links=accountId?await loadSharedTrialCountryProxy(pool,accountId,process.env):null;
-  if(!links)return msg('✈️ Telegram-прокси\n\nЕсли вы оформили «3 в 1», общие ссылки доступны в личном кабинете при готовности сервиса. Они не зависят от срока VPN и Smart DNS.',
+  if(!links&&!country)return msg('✈️ Telegram-прокси\n\nЕсли вы оформили «3 в 1», общие ссылки доступны в личном кабинете при готовности сервиса. Они не зависят от срока VPN и Smart DNS.',
     [[{text:'🌍 Мой доступ',url:'https://mnebyvpn.site/#account'}],[homeButton]]);
   const selected=country??'DE';
   const name=selected==='FI'?'Финляндия':'Германия';
-  const regional=links.regionalLinks.filter(link=>link.country===selected);
+  const regional=(links?.regionalLinks??[]).filter(link=>link.country===selected);
   const buttons:Button[][]=[
     [{text:'🇩🇪 Германия',callback_data:'nav:trial-country:DE'},{text:'🇫🇮 Финляндия',callback_data:'nav:trial-country:FI'}],
     [{text:'VPN и Smart DNS · '+name,url:'https://mnebyvpn.site/?trialCountry='+selected+'#account'}],
     ...regional.map(link=>[{text:link.label,url:link.url},{text:'Копировать ссылку',copy_text:{text:link.url}}]),
-    ...links.wsLinks.map(link=>[{text:'Общий прокси · '+(link.route==='ru'?'через РФ':'напрямую'),url:link.url}]),
+    ...(links?.wsLinks??[]).map(link=>[{text:'Общий прокси · '+(link.route==='ru'?'через РФ':'напрямую'),url:link.url}]),
     [homeButton],
   ];
   return msg('🌍 Пробный доступ «3 в 1» · '+name+'\n\n'+
