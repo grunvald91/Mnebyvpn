@@ -524,7 +524,7 @@ async function receiveStars(update:any){
   }
   return null;
 }
-async function sharedTrialProxy(id:number,country?:TrialProxyCountry){
+async function sharedTrialProxy(id:number,country?:TrialProxyCountry,detail?:number){
   if(!pool)throw Error('DB unavailable');
   const account=await pool.query('SELECT id FROM accounts WHERE telegram_user_id=$1',[String(id)]);
   const accountId=account.rows[0]?.id;
@@ -538,12 +538,14 @@ async function sharedTrialProxy(id:number,country?:TrialProxyCountry){
   const rows:Button[][]=[];
   const details:string[]=[];
   function addProxy(link:ProxyWsLink,title:string){
+    const index=details.length;
     rows.push([{text:title,url:link.url}]);
     const copy:Button[]=[];
     if(link.url.length<=256)copy.push({text:'Копировать ссылку',copy_text:{text:link.url}});
     const params=sharedTrialProxyParameters(link);
     if(params.length<=256)copy.push({text:'Копировать параметры',copy_text:{text:params}});
     if(copy.length)rows.push(copy);
+    rows.push([{text:'Ручные параметры · '+title,callback_data:'nav:trial-proxy-detail:'+selected+':'+index}]);
     details.push(params+'\nСсылка: '+link.url);
   }
   for(const link of regional)addProxy(link,link.label);
@@ -554,10 +556,17 @@ async function sharedTrialProxy(id:number,country?:TrialProxyCountry){
     ...(accountId&&personalDnsReady?await bundleTrialDnsButtons(pool,id,selected,regionalDnsReady):[]),
     ...rows,[homeButton],
   ];
-  return msg('🌍 Настройки «3 в 1» · '+name+'\n\n'+
+  if(detail!==undefined){
+    return msg(details[detail]?'✈️ Telegram-прокси · '+name+'\n\n'+details[detail]+'\n\n'+sharedTrialProxyInstructions:'Маршрут недоступен. Обновите настройки страны.',
+      [[{text:'↩️ Все прокси',callback_data:'nav:trial-country:'+selected}],[homeButton]]);
+  }
+  const introduction='🌍 Настройки «3 в 1» · '+name+'\n\n'+
     'VPN и Smart DNS доступны только при действующей подписке. Выбирайте одну страну для всех услуг. Смена страны не продлевает пробный срок и не сбрасывает лимит DNS. VPN — одно одновременное подключение.\n\n'+
     (regional.length?'Подтверждённый прокси выбранной страны доступен.':'Подтверждённый прокси выбранной страны пока недоступен.')+
-    (details.length?'\n\n'+sharedTrialProxyInstructions+'\n\n'+details.join('\n\n'):'\nОбщие ссылки пока недоступны. VPN и Smart DNS можно настроить в кабинете.'),buttons);
+    (details.length?'\n\n'+sharedTrialProxyInstructions:'\nОбщие ссылки пока недоступны. VPN и Smart DNS можно настроить в кабинете.');
+  const allDetails=details.join('\n\n');
+  const suffix=allDetails?(introduction.length+allDetails.length+2<=3900?'\n\n'+allDetails:'\n\nДля просмотра полных параметров нажмите «Ручные параметры» нужного маршрута.') : '';
+  return msg(introduction+suffix,buttons);
 }
 async function trialCountry(id:number,country:TrialProxyCountry){
   if(!pool)throw Error('DB unavailable');
@@ -645,6 +654,8 @@ async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
   if(data==='nav:trial')return trial(id);
   if(data==='trial:vpn'||data==='trial:smart_dns'||data==='trial:bundle')return trial(id,data.slice(6) as 'vpn'|'smart_dns'|'bundle');
   if(data==='nav:trial-proxy')return sharedTrialProxy(id);
+  const proxyDetail=/^nav:trial-proxy-detail:(DE|FI):([0-3])$/.exec(data);
+  if(proxyDetail)return sharedTrialProxy(id,proxyDetail[1] as TrialProxyCountry,Number(proxyDetail[2]));
   if(data==='nav:trial-country:DE'||data==='nav:trial-country:FI')return trialCountry(id,data.endsWith('FI')?'FI':'DE');
   if(data==='nav:connect')return pool?await activationView(pool,id)??dbUnavailable():dbUnavailable();
   if(data==='nav:manual')return pool?manualView(pool,id):dbUnavailable();
