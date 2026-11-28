@@ -49,3 +49,22 @@ test('private Telegram file uses actual multipart .mobileconfig upload',async()=
   assert.equal(await sendPersonalDnsMobileconfig(12345,hostname,token,wrong),false);
   assert.rejects(()=>sendPersonalDnsMobileconfig(0,hostname,token,mock));
 });
+
+test('Finnish Apple document is named by country and contains only its own DNS host',async()=>{
+ const fi='bb22cc33dd44.fi.mnebyvpn.site';
+ let sent=0;
+ const mock=(async(_url:string,init?:RequestInit)=>{
+  sent++;
+  const form=init?.body as FormData;
+  const file=form.get('document') as File;
+  assert.equal(file.name,'MNEBYDNS-Apple-FI.mobileconfig');
+  assert.equal(file.type,'application/x-apple-aspen-config');
+  const xml=await file.text();
+  assert.match(xml,/<key>ServerName<\/key><string>bb22cc33dd44\.fi\.mnebyvpn\.site<\/string>/);
+  assert.ok(!xml.includes(hostname));
+  assert.match(String(form.get('caption')),/iPhone, iPad и Mac/);
+  return new Response(JSON.stringify({ok:true,result:{chat:{id:12345}}}),{status:200});
+ }) as typeof fetch;
+ assert.equal(await sendPersonalDnsMobileconfig(12345,fi,token,mock),true);
+ assert.equal(sent,1);
+});
