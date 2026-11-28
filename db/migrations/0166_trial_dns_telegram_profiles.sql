@@ -29,14 +29,22 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,pu
 $$;
 CREATE FUNCTION public.telegram_bundle_trial_dns_issue(p_actor bigint,p_country text,p_label text,p_expected bigint)
 RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE v_id uuid; v_account uuid; v_hash text;
+DECLARE v_id uuid; v_account uuid; v_order uuid; v_hash text;
 BEGIN
  IF p_country IS NULL OR p_country NOT IN ('DE','FI') OR p_label IS NULL
  OR p_label !~ '^[a-z0-9]{12}$' OR p_expected IS NULL OR p_expected NOT BETWEEN 0 AND 999999999
  THEN RETURN 'DENY_INVALID'; END IF;
  v_id:=public.telegram_bundle_trial_dns_entitlement(p_actor);
- SELECT account_id INTO v_account FROM public.entitlements WHERE id=v_id FOR UPDATE;
- IF NOT FOUND OR public.telegram_bundle_trial_dns_entitlement(p_actor) IS DISTINCT FROM v_id
+ SELECT e.account_id,e.source_order_id INTO v_account,v_order FROM public.entitlements e WHERE e.id=v_id;
+ IF NOT FOUND THEN RETURN 'DENY_INACTIVE'; END IF;
+ -- Use the same lock order as joint activation: canonical grant, then
+ -- both component entitlements. Recheck after waiting on concurrent changes.
+ PERFORM 1 FROM public.trial_grants WHERE order_id=v_order AND account_id=v_account FOR UPDATE;
+ IF NOT FOUND THEN RETURN 'DENY_INACTIVE'; END IF;
+ PERFORM 1 FROM public.entitlements WHERE source_order_id=v_order AND account_id=v_account ORDER BY id FOR UPDATE;
+ IF public.telegram_bundle_trial_dns_entitlement(p_actor) IS DISTINCT FROM v_id
+ OR NOT EXISTS(SELECT 1 FROM public.trial_grants WHERE order_id=v_order
+   AND account_id=v_account AND access_expires_at>clock_timestamp())
  THEN RETURN 'DENY_INACTIVE'; END IF;
  IF p_country='FI' THEN
  RETURN public.issue_regional_dns_credential(v_account,v_id,'FI',p_label,p_expected);
