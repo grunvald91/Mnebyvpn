@@ -39,8 +39,8 @@ export function personalDnsPreview():PersonalDnsBotMessage{
 export function personalDnsGuide(kind:string):PersonalDnsBotMessage{
   if(kind==='ios')return message(
     '📱 Smart DNS на iPhone, iPad и Mac\n\n'+
-    '1. Дождитесь активации пробной или платной подписки и откройте «Мой Smart DNS» → «Получить персональный адрес».\n'+
-    '2. Бот пришлёт персональный файл MNEBYDNS-Apple.mobileconfig. Сохраните его.\n'+
+    '1. Дождитесь активации. Для пробного пакета откройте «Мои подключения» → «Выбрать страну 3 в 1»; для платного — «Мой Smart DNS».\n'+
+    '2. Получите и сохраните персональный файл MNEBYDNS-Apple-DE.mobileconfig (Германия) или MNEBYDNS-Apple-FI.mobileconfig (Финляндия).\n'+
     '3. Для надёжной установки откройте вложение .mobileconfig из приложения «Почта» (Mail) или скачайте через Safari с доверенной страницы. Если Telegram не открывает профиль для установки, отправьте вложение только на собственную почту и откройте в Mail.\n'+
     '4. Перейдите в «Настройки» → «Профиль загружен» → «Установить» и подтвердите код устройства. Если пункта нет: «Основные» → «VPN и управление устройством».\n'+
     'На Mac: откройте файл, затем «Системные настройки» → «Основные» → «Управление устройством», выберите загруженный профиль и установите. Перед сменой страны удалите прежний DNS-профиль.\n'+
@@ -49,7 +49,7 @@ export function personalDnsGuide(kind:string):PersonalDnsBotMessage{
     [[menu],...guideButtons]);
   if(kind==='android')return message(
     '🤖 Smart DNS на Android\n\n'+
-    '1. Откройте «Мой Smart DNS» и получите адрес.\n'+
+    '1. Для пробного пакета выберите страну в «Мои подключения», для платного откройте «Мой Smart DNS». Получите персональный адрес.\n'+
     '2. Настройки → Сеть и интернет (или Подключения) → Частный DNS.\n'+
     '3. Выберите «Имя хоста провайдера частного DNS», вставьте свой адрес целиком и сохраните.\n'+
     '4. При конфликте с VPN или DNS в отдельном браузере используйте штатные настройки приложения.\n\n'+
@@ -134,13 +134,13 @@ export async function personalDnsTelegramMenu(
 }
 type DeliverIosProfile=(hostname:string)=>Promise<boolean>;
 async function issuedMessage(
-  hostname:string,rotated:boolean,deliver?:DeliverIosProfile,region?:'Германия'|'Финляндия',
+  hostname:string,rotated:boolean,deliver?:DeliverIosProfile,region?:'Германия'|'Финляндия',trial=false,
 ):Promise<PersonalDnsBotMessage>{
   let sent=false;
   if(deliver){try{sent=await deliver(hostname);}catch{sent=false;}}
   const delivery=sent
     ?'📎 Файл .mobileconfig отправлен отдельным документом в этот чат.'
-    :'⚠️ Автоматическую отправку Apple-файла подтвердить не удалось. Сохраните DNS-адрес ниже. Для повторного выпуска файла потребуется замена адреса в «Мой Smart DNS».';
+    :'⚠️ Автоматическую отправку Apple-файла подтвердить не удалось. Сохраните DNS-адрес ниже. Для повторного выпуска файла потребуется подтверждённая замена адреса'+(trial?' в настройках выбранной страны пробного пакета.':' в «Мой Smart DNS».');
   return message(
     (region?'✅ Персональный Smart DNS · '+region:
       rotated?'✅ Персональный DNS заменён. Старый адрес отключён.':
@@ -152,7 +152,7 @@ async function issuedMessage(
     'Адрес и профиль — персональные. Не пересылайте посторонним.',
     [[{text:'📋 Скопировать DNS-адрес',copy_text:{text:hostname}}],
      [{text:'🍏 Как установить на Apple',callback_data:'dns:guide:ios'}],
-     [{text:'🤖 Android',callback_data:'dns:guide:android'}],[menu]]);
+     [{text:'🤖 Android',callback_data:'dns:guide:android'}],...(trial?[]:[[menu]])]);
 }
 export async function personalDnsTelegramAction(
   db:Pool,telegramUserId:number,action:string,deliver?:DeliverIosProfile,regionalEnabled=false,
@@ -223,7 +223,7 @@ export async function bundleTrialDnsAction(db:Pool,id:number,action:string,deliv
  if(m[2]!=='execute')return message('Некорректное действие.',[[back]]);
  const result=await issueTelegramBundleTrialDns(db,id,country,revision);
  if(result.kind!=='issued'&&result.kind!=='rotated')return message('Пробный профиль не выдан. Обновите статус.',[[back]]);
- const view=await issuedMessage(result.hostname,result.kind==='rotated',deliver,name);
+ const view=await issuedMessage(result.hostname,result.kind==='rotated',deliver,name,true);
  view.reply_markup.inline_keyboard.unshift([back]);
  return view;
 }
