@@ -1424,7 +1424,8 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
     // login+CSRF, paid ACTIVE entitlement and dedicated DB RPC authorization.
     const result=await issuePersonalDnsFromRequest(req,res,auth.raw);
     if(!result||result.kind!=='ready')return;
-    res.setHeader('Content-Disposition','attachment; filename="MNEBYDNS-Apple.mobileconfig"');
+    const countrySuffix=result.hostname.endsWith('.fi.mnebyvpn.site')?'FI':'DE';
+    res.setHeader('Content-Disposition','attachment; filename="MNEBYDNS-Apple-'+countrySuffix+'.mobileconfig"');
     res.setHeader('Pragma','no-cache');
     res.setHeader('X-Robots-Tag','noindex');
     send(res,200,result.xml,'application/x-apple-aspen-config');
