@@ -224,7 +224,7 @@
     if(heading)heading.hidden=next!=='payment';
     if(next==='setup'){
       updateSetup();
-      const activeDns=(lastAccount?.access||[]).filter(a=>a.product==='smart_dns'&&a.state==='ACTIVE'&&a.secondsRemaining>0);
+      const activeDns=(lastAccount?.access||[]).filter(a=>a.product==='smart_dns'&&a.state==='ACTIVE'&&a.secondsRemaining>0&&!isJointTrial(a));
       if(activeDns.length){
         const dnsTarget=activeDns[0];
         const isTrial=isTrialAccess(dnsTarget);
@@ -462,6 +462,9 @@
   function isTrialAccess(access){
     return Boolean(access&&(lastAccount?.orders||[]).some(o=>o.id===access.sourceOrderId&&o.state==='TRIAL'));
   }
+  function isJointTrial(access){
+    return typeof jointTrialAccess==='function'&&jointTrialAccess(access,lastAccount?.access||[],lastAccount?.orders||[]);
+  }
   function safeSubscriptionUrl(value){
     try{
       const url=new URL(value);
@@ -479,7 +482,10 @@
     // repeating the three-step installation guide on a compact phone screen.
     const installGuide=el('journey-vpn-guide');
     if(installGuide)installGuide.hidden=installed;
-    const value=state.loggedIn?state.guestSubscriptionUrl:null;
+    const activeVpn=(lastAccount?.access||[]).filter(a=>a.product==='vpn'&&a.state==='ACTIVE'&&a.secondsRemaining>0);
+    const selectedFi=typeof trialCountry!=='undefined'&&trialCountry==='FI'&&activeVpn.some(isJointTrial)&&
+      (activeVpn.every(isJointTrial)||activeVpn.some(a=>a.id===state.guestSubscriptionEntitlementId&&isJointTrial(a)));
+    const value=state.loggedIn&&!selectedFi?state.guestSubscriptionUrl:null;
     const valid=typeof value==='string'&&safeSubscriptionUrl(value);
     const activeDnsItem=(lastAccount?.access||[]).find(a=>a.product==='smart_dns'&&a.state==='ACTIVE'&&a.secondsRemaining>0);
     const activeDns=Boolean(activeDnsItem);
@@ -487,7 +493,7 @@
     const dnsSlot=el('journey-dns-setup-slot'),proxySlot=el('journey-proxy-setup-slot');
     const hasDnsContent=Boolean((dnsSlot?.children?.length||0)>0||(proxySlot?.children?.length||0)>0);
     const dnsWrap=el('journey-dns-proxy-setup');
-    if(dnsWrap)dnsWrap.hidden=!(activeDns&&hasDnsContent);
+    if(dnsWrap)dnsWrap.hidden=!(activeDns&&hasDnsContent)||isJointTrial(activeDnsItem);
     el('journey-setup-controls').hidden=!valid;
     const title=el('journey-setup-title');
     if(title){
@@ -503,6 +509,10 @@
       ['PENDING','WAITING'].includes(state.trialRequestStatus)
         ?'Заявка на бесплатный доступ сохранена. Подключение готовится автоматически. Когда доступ будет готов, пришлём письмо.'
         :'Проверяем активацию на сервере. Если оплата прошла недавно, подключение подготавливается.';
+    if(selectedFi){
+      if(title)title.textContent='Подключите «3 в 1» · Финляндия';
+      el('journey-setup-status').textContent='Настройки VPN, Smart DNS и Telegram-прокси выбранной страны находятся ниже.';
+    }
     if(!valid){
       el('journey-url').value='';
       el('journey-auto').removeAttribute('href');
@@ -531,6 +541,7 @@
       if(!safeSubscriptionUrl(res.subscriptionUrl))throw Error('INVALID_LINK');
       // Show the actual field for fallback copy in browsers that disallow clipboard.
       state.guestSubscriptionUrl=res.subscriptionUrl;
+      state.guestSubscriptionEntitlementId=id;
       el('journey-url').value=res.subscriptionUrl;
       if(field)field.value=res.subscriptionUrl;
       await copyLink(res.subscriptionUrl,field||el('journey-url'));
@@ -553,7 +564,7 @@
     }
     el('access-list').querySelectorAll('.access-item').forEach((card,index)=>{
       const data=(payload.access||[])[index];
-      if(!data||data.state!=='ACTIVE'||data.secondsRemaining<=0)return;
+      if(!data||data.state!=='ACTIVE'||data.secondsRemaining<=0||isJointTrial(data))return;
       if(data.product==='smart_dns'){
         if(typeof ensurePersonalDnsCredentials==='function'&&(state.personalDnsEnabled||state.appleDnsProfileEnabled)){
           void ensurePersonalDnsCredentials(data.id,{autoIssue:true,targets:[card]}).catch(()=>{});
@@ -650,8 +661,9 @@
         void deliverDnsAndProxyForSetup(dnsEntitlement.id,!entitlement);
       }
     }
-    if(view==='setup'&&activeDns.length){
-      const dnsTarget=activeDns[0];
+    const legacyDns=activeDns.filter(a=>!isJointTrial(a));
+    if(view==='setup'&&legacyDns.length){
+      const dnsTarget=legacyDns[0];
       const isTrial=isTrialAccess(dnsTarget);
       const dnsSlot=el('journey-dns-setup-slot'),proxySlot=el('journey-proxy-setup-slot');
       const needsDns=!dnsSlot?.children?.length&&(state.personalDnsEnabled||state.appleDnsProfileEnabled);
@@ -668,9 +680,9 @@
     // Automatically fetch its verified subscription when a polling refresh
     // reports ACTIVE, without asking the buyer to press a check button.
     if(view==='setup'&&!state.guestSubscriptionUrl&&!state.setupLoading&&active.length){
-      const target=active[0];
-      const last=lastSetupAttempt.get(target.id)||0;
-      if(Date.now()-last>30000){
+      const target=active.find(a=>!isJointTrial(a)||typeof trialCountry==='undefined'||trialCountry==='DE');
+      const last=target?(lastSetupAttempt.get(target.id)||0):0;
+      if(target&&Date.now()-last>30000){
         lastSetupAttempt.set(target.id,Date.now());
         void loadSubscription(target.id);
       }
@@ -813,7 +825,7 @@
   setView(getRoute());
   updatePlan();
   updateOrder();
-  window.MnebyvpnJourney={show:setView,beginCheckout,updatePlan,
+  window.MnebyvpnJourney={show:setView,beginCheckout,updatePlan,updateSetup,
     afterEmailAuthenticated(){
       if(view==='setup')return true; // successful trial already opened installer
       if(view==='trial-auth'){
