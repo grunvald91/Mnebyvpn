@@ -211,8 +211,8 @@ test('website bundle recovery waits for both final service revisions and keeps o
 
 
 test('bundle backfill restores a missing queue without replacing an existing grant and skips prior trial and claimed device',async()=>{
- const existing=randomUUID(),missed=randomUUID(),used=randomUUID(),claimed=randomUUID(),alreadyQueued=randomUUID();
- const ids=[existing,missed,used,claimed,alreadyQueued];
+ const existing=randomUUID(),missed=randomUUID(),used=randomUUID(),claimed=randomUUID(),alreadyQueued=randomUUID(),legacyPending=randomUUID();
+ const ids=[existing,missed,used,claimed,alreadyQueued,legacyPending];
  const store=new PgBillingStore(pool);
  await pool.query("UPDATE trial_offers SET enabled=true,dns_quota_bytes=1073741824 WHERE product='bundle'");
  await pool.query("UPDATE trial_offers SET enabled=true WHERE product='vpn'");
@@ -223,16 +223,21 @@ test('bundle backfill restores a missing queue without replacing an existing gra
  await pool.query('INSERT INTO trial_device_claims(device_hash,account_id) VALUES($1,$2)',[createHash('sha256').update(claimed).digest('hex'),claimed]);
  await rememberWebsiteVpnTrial(pool,alreadyQueued,createHash('sha256').update(alreadyQueued).digest('hex'),undefined,'bundle');
  const sql=await readFile(new URL('../../db/migrations/0167_bundle_trial_recovery_missing_queue.sql',import.meta.url),'utf8');
+ await pool.query("INSERT INTO website_vpn_trial_requests(account_id,device_hash,request_source) VALUES($1,NULL,'LEGACY_EMAIL')",[legacyPending]);
+ const upgrade=sql.slice(sql.indexOf('UPDATE public.website_vpn_trial_requests'),sql.indexOf('INSERT INTO public.website_vpn_trial_requests')).replace("WHERE q.request_source='LEGACY_EMAIL'","WHERE q.account_id=ANY($1::uuid[]) AND q.request_source='LEGACY_EMAIL'");
+ await pool.query(upgrade,[ids]);
  const seed=sql.slice(sql.indexOf('INSERT INTO public.website_vpn_trial_requests'),sql.lastIndexOf('COMMIT;')).replace('WHERE a.email_address IS NOT NULL','WHERE a.id=ANY($1::uuid[]) AND a.email_address IS NOT NULL');
  await pool.query(seed,[ids]);
  await pool.query(seed,[ids]);
  const selected=await pool.query('SELECT account_id,requested_product,request_source FROM website_vpn_trial_requests WHERE account_id=ANY($1::uuid[])',[ids]);
- assert.deepEqual(selected.rows.map(r=>r.account_id).sort(),[existing,missed,alreadyQueued].sort());
+ assert.deepEqual(selected.rows.map(r=>r.account_id).sort(),[existing,missed,alreadyQueued,legacyPending].sort());
  assert.ok(selected.rows.every(r=>r.requested_product==='bundle'));
  assert.equal(selected.rows.find(r=>r.account_id===alreadyQueued).request_source,'WEBSITE');
  await recoverWebsiteVpnTrials(pool,store,'test-only-secret',async()=>{throw Error('Must not send before readiness');},'vpn');
- assert.equal(await websiteVpnTrialStatus(pool,existing),'PENDING');
- await recoverWebsiteVpnTrials(pool,store,'test-only-secret',async()=>{throw Error('Must not send before readiness');},'bundle');
+ assert.equal(await websiteVpnTrialStatus(pool,existing),'WAITING');
+ assert.equal(await websiteVpnTrialStatus(pool,legacyPending),'PENDING');
+ assert.equal((await pool.query('SELECT count(*)::int AS n FROM trial_grants WHERE account_id=$1',[legacyPending])).rows[0].n,0);
+ for(let attempt=0;attempt<3;attempt++)await recoverWebsiteVpnTrials(pool,store,'test-only-secret',async()=>{throw Error('Must not send before readiness');},'bundle');
  const restored=(await pool.query('SELECT status,order_id FROM website_vpn_trial_requests WHERE account_id=$1',[existing])).rows[0];
  assert.equal(restored.status,'WAITING');
  assert.equal(restored.order_id,original.orderId);
