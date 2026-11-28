@@ -28,7 +28,7 @@ import {dnsAdminOwner,dnsAdminIntro,dnsAdminPrompt,dnsAdminSearchPrompt,dnsAdmin
   from './dns-admin.ts';
 import {effectiveAccessState,formatRemainingTime,formatRemainingQuota} from '../../../packages/telegram-ui/src/access-format.ts';
 import {personalDnsTelegramMenu,personalDnsTelegramAction,personalDnsGuide,
-  personalDnsPreview} from './personal-dot-telegram-view.ts';
+  personalDnsPreview,bundleTrialDnsButtons,bundleTrialDnsAction} from './personal-dot-telegram-view.ts';
 import {loadSharedTrialCountryProxy,type TrialProxyCountry} from '../../../packages/web/src/telegram-proxy-bonus.ts';
 import {approvedPersonalDnsOffer} from '../../../packages/dns-policy/src/smart-dns-offers.ts';
 import {sendPersonalDnsMobileconfig} from '../../../packages/dns-policy/src/personal-dot-profile.ts';
@@ -537,6 +537,7 @@ async function sharedTrialProxy(id:number,country?:TrialProxyCountry){
   const buttons:Button[][]=[
     [{text:'🇩🇪 Германия',callback_data:'nav:trial-country:DE'},{text:'🇫🇮 Финляндия',callback_data:'nav:trial-country:FI'}],
     [{text:'VPN и Smart DNS · '+name,url:'https://mnebyvpn.site/?trialCountry='+selected+'#account'}],
+    ...(accountId&&personalDnsReady?await bundleTrialDnsButtons(pool,id,selected,regionalDnsReady):[]),
     ...regional.map(link=>[{text:link.label,url:link.url},{text:'Копировать ссылку',copy_text:{text:link.url}}]),
     ...(links?.wsLinks??[]).map(link=>[{text:'Общий прокси · '+(link.route==='ru'?'через РФ':'напрямую'),url:link.url}]),
     [homeButton],
@@ -998,6 +999,11 @@ async function processUpdate(update:any){
     if(action==='nav:vpn:list')return oneAction(actor,await vpnPlans());
     if(/^dns:guide:(ios|android|router|services)$/.test(action))
       return oneAction(actor,personalDnsGuide(action.slice('dns:guide:'.length)));
+    if(/^dns:trial:(DE|FI):(confirm|execute):(0|[1-9][0-9]{0,8})$/.test(action)){
+      if(!personalDnsReady||!pool)return oneAction(actor,info('nav:dns',actor.id));
+      const view=await bundleTrialDnsAction(pool,actor.id,action,hostname=>sendPersonalDnsMobileconfig(actor.id,hostname,outboundBotToken),regionalDnsReady);
+      return {method:'sendMessage',chat_id:actor.id,...view};
+    }
     if(action==='dns:issue'||/^dns:rotate:(confirm|execute):[1-9][0-9]{0,12}$/.test(action)||
        (regionalDnsReady&&/^dns:fi:(confirm|execute):(0|[1-9][0-9]{0,8})$/.test(action))){
       // Paid entitlement and public DNS readiness are independent gates.
