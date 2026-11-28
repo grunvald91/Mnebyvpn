@@ -131,7 +131,7 @@ export function trialReadyMessage(job:VpnTrialReadyNotice){
   });
   if(job.product==='bundle')return {
     text:'🎉 MNEBYVPN — бесплатный пакет «3 в 1» готов!\n\n'+
-      '✅ VPN и Smart DNS готовы к настройке.\n'+
+      '✅ VPN и Smart DNS готовы к настройке.\nПробный доступ для одного устройства (одно одновременное VPN-подключение).\n'+
       '⏰ Действуют до '+deadline+' (МСК).\n\n'+
       'Выберите подключение. Общий Telegram-прокси не ограничен пробными сутками.',
     reply_markup:{inline_keyboard:[
