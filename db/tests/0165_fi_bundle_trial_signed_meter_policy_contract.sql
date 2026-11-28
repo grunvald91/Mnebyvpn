@@ -31,7 +31,8 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(snap->'grants') g WHERE g->>'entitlementId'=e::text AND g->>'state'='ACTIVE_TRIAL')
  OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(snap->'grants') g WHERE g->>'entitlementId'=paid_e::text AND g->>'state'='ACTIVE')
  THEN RAISE EXCEPTION 'incorrect signed accounting mode'; END IF;
- UPDATE entitlements SET expires_at=t WHERE id=e;
+ UPDATE entitlements SET starts_at=t-interval '24 hours',expires_at=t WHERE id=e;
+ UPDATE trial_grants SET activated_at=t-interval '24 hours',access_expires_at=t WHERE order_id=o;
  snap:=fi_dns_snapshot_next();
  IF EXISTS(SELECT 1 FROM jsonb_array_elements(snap->'grants') g WHERE g->>'entitlementId'=e::text)
  THEN RAISE EXCEPTION 'expired trial grant published'; END IF;
