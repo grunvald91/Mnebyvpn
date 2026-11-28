@@ -258,7 +258,7 @@
     const bundle=state.trialOffers.includes('bundle');
     if(title)title.textContent=bundle?'«3 в 1» бесплатно на 24 часа':isDns?'Ваши 24 часа Smart DNS':'Ваши 24 часа VPN';
     const explanation=trialAuth.querySelector?.('.journey-trial-explain');
-    if(explanation)explanation.textContent=bundle?'Войдите по email, чтобы получить VPN и Smart DNS на 24 часа. Telegram-прокси можно использовать и после пробного периода.':isDns?'Войдите по email, чтобы получить Smart DNS на 24 часа.':'Войдите по email, чтобы получить персональный VPN-доступ на 24 часа. После подтверждения кода покажем, как подключиться.';
+    if(explanation)explanation.textContent=bundle?'Войдите по email, чтобы получить VPN и Smart DNS на 24 часа для одного устройства (одно одновременное VPN-подключение). Telegram-прокси можно использовать и после пробного периода.':isDns?'Войдите по email, чтобы получить Smart DNS на 24 часа.':'Войдите по email, чтобы получить персональный VPN-доступ на 24 часа. После подтверждения кода покажем, как подключиться.';
     const emailOn=state.emailLoginEnabled===true;
     el('journey-email-unavailable').hidden=emailOn;
     if(view==='trial-auth'&&emailPanel){
@@ -495,7 +495,7 @@
         activeDns&&!valid?(activeDnsTrial?'Подключите Smart DNS (24 часа)':'Подключите Smart DNS и Прокси'):'Подключите VPN';
     }
     el('journey-setup-status').textContent=valid?
-      (activeDns?(activeDnsTrial?'VPN и Smart DNS готовы к настройке. Telegram-прокси доступен отдельно.':'Экосистема «3 в 1» готова: настройте VPN, Smart DNS и Telegram-прокси ниже.'):
+      (activeDns?(activeDnsTrial?'VPN и Smart DNS готовы к настройке. Пробный доступ — на одно устройство, одно одновременное VPN-подключение. Telegram-прокси доступен отдельно.':'Экосистема «3 в 1» готова: настройте VPN, Smart DNS и Telegram-прокси ниже.'):
         'Ваш VPN готов. Установите приложение, добавьте подписку и включите защиту.'):
       activeDns?(activeDnsTrial
         ?'Ваши 24 часа Smart DNS готовы! Персональный профиль Apple (.mobileconfig) и DoT-адрес выданы ниже.'
