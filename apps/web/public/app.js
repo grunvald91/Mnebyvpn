@@ -481,6 +481,11 @@ function renderProxyBonusBox(item,data){
 // Render it outside VPN/DNS cards and clear it on logout/account changes.
 let trialCountry='DE';
 let trialCountryOrder=null;
+const trialCountryRendered=new WeakMap();
+function jointTrialAccess(a,accesses,orders=state.lastOrders){
+  return Boolean(a&&orders.some(o=>o.id===a.sourceOrderId&&o.state==='TRIAL'&&o.product==='bundle'&&
+    ['vpn','smart_dns'].every(p=>accesses.some(x=>x.sourceOrderId===o.id&&x.product===p&&x.state==='ACTIVE'&&x.secondsRemaining>0))));
+}
 function renderSharedTrialProxy(data,accesses=[]){
   const active=accesses.filter(a=>a.state==='ACTIVE'&&a.secondsRemaining>0);
   const order=state.lastOrders.find(o=>o.state==='TRIAL'&&o.product==='bundle'&&
@@ -493,9 +498,12 @@ function renderSharedTrialProxy(data,accesses=[]){
   for(const id of ['cabinet-shared-trial-proxy','journey-shared-trial-proxy']){
     const slot=byId(id);
     if(!slot)continue;
-    slot.replaceChildren();
     const shared=Array.isArray(data?.wsLinks)?data.wsLinks:[];
     const regional=Array.isArray(data?.regionalLinks)?data.regionalLinks:[];
+    const key=JSON.stringify([order?.id??null,trialCountry,active.filter(a=>a.sourceOrderId===order?.id).map(a=>[a.id,a.product]),state.fiAwgRegistrationAvailable,state.personalDnsEnabled,state.appleDnsProfileEnabled,shared,regional]);
+    if(trialCountryRendered.get(slot)===key)continue;
+    trialCountryRendered.set(slot,key);
+    slot.replaceChildren();
     slot.hidden=!order&&!shared.length&&!regional.length;
     if(slot.hidden)continue;
     if(order){
@@ -507,13 +515,19 @@ function renderSharedTrialProxy(data,accesses=[]){
       for(const country of ['DE','FI']){
         const b=node('button','button '+(country===trialCountry?'button-primary':'button-secondary'),country==='DE'?'🇩🇪 Германия':'🇫🇮 Финляндия');
         b.type='button';b.setAttribute('aria-pressed',String(country===trialCountry));
-        b.addEventListener('click',()=>{trialCountry=country;renderSharedTrialProxy(data,accesses);});
+        b.addEventListener('click',()=>{
+          if(!b.isConnected||trialCountryOrder!==order.id)return;
+          if(trialCountry===country)return;
+          trialCountry=country;
+          renderSharedTrialProxy(data,accesses);
+          if(typeof window!=='undefined')window.MnebyvpnJourney?.updateSetup?.();
+        });
         slot.append(b);
       }
       const selected=trialCountry;
       const v=node('button','button button-secondary setup-button','VPN · '+name);
       v.type='button';v.disabled=selected==='FI'&&!state.fiAwgRegistrationAvailable;
-      v.addEventListener('click',()=>{if(selected==='FI')location.href='/awg/setup?entitlementId='+encodeURIComponent(vpn.id);else void loadSubscription(vpn.id);});
+      v.addEventListener('click',()=>{if(!v.isConnected||trialCountry!==selected||trialCountryOrder!==order.id)return;if(selected==='FI')location.href='/awg/setup?entitlementId='+encodeURIComponent(vpn.id);else void loadSubscription(vpn.id);});
       slot.append(v);
       if(v.disabled)slot.append(node('p','','VPN выбранной страны пока недоступен.'));
       const dnsPanel=node('section','trial-country-dns');
@@ -522,12 +536,12 @@ function renderSharedTrialProxy(data,accesses=[]){
       const info=node('p','','Проверяем доступность профиля…');
       dnsPanel.append(d,info);slot.append(dnsPanel);
       if(state.personalDnsEnabled||state.appleDnsProfileEnabled){
-        api('/api/dns/apple/status?entitlementId='+encodeURIComponent(dns.id)+(selected==='FI'?'&country=FI':'')).then(status=>{
+        Promise.resolve(dnsCredInFlight.get(dns.id)).catch(()=>null).then(()=>api('/api/dns/apple/status?entitlementId='+encodeURIComponent(dns.id)+(selected==='FI'?'&country=FI':''))).then(status=>{
           if(!dnsPanel.isConnected)return;
           if(status.revoked){info.textContent='Профиль отозван.';return;}
           const cached=readCachedPersonalDns(dns.id,selected);
           d.disabled=false;info.textContent='Получите адрес DoT и файл Apple. При смене страны старый профиль не заменяется автоматически.';
-          d.addEventListener('click',()=>void downloadAppleDnsProfile(dns.id,d,dnsPanel,selected,true));
+          d.addEventListener('click',()=>{if(dnsPanel.isConnected&&trialCountryOrder===order.id&&trialCountry===selected)void downloadAppleDnsProfile(dns.id,d,dnsPanel,selected,true);});
           if(status.issued&&cached?.revision===status.revision)renderPersonalDnsBox(dnsPanel,cached.hostname,cached.mobileconfig,{entitlementId:dns.id,issued:true,country:selected,singleCountry:true});
         }).catch(()=>{if(dnsPanel.isConnected)info.textContent='Профиль выбранной страны пока недоступен. Обновите кабинет.';});
       }else info.textContent='Выдача Smart DNS пока недоступна.';
@@ -607,6 +621,7 @@ function renderAccess(accesses) {
     return;
   }
   for(const a of accesses) {
+    const jointTrial=jointTrialAccess(a,accesses);
     const item=node('article','access-item');
     const top=node('div','access-top');
     const h=node('h4','',productNames[a.product] || a.product);
@@ -623,7 +638,7 @@ function renderAccess(accesses) {
           : 'Срок начнётся после подтверждённой активации.';
     item.append(top,node('p','',accessDetail));
     if (a.product==='smart_dns') {
-      const dnsCap=a.dnsQueryQuotaPer30d
+      const dnsCap=jointTrial?'Пакет Smart DNS: до 30 000 запросов / 24 часа (общий для двух стран)':a.dnsQueryQuotaPer30d
         ? 'Пакет Smart DNS: до ' + Number(a.dnsQueryQuotaPer30d).toLocaleString('ru-RU') + ' запросов / 30 дн'
         : a.quotaLimitBytes
           ? 'Пакет DNS: ' + fmtBytes(a.quotaLimitBytes)
@@ -644,7 +659,11 @@ function renderAccess(accesses) {
         box.append(track,totals);item.append(box);
       }
     }
-    if(a.product==='smart_dns'&&a.state==='ACTIVE'&&
+    if(jointTrial&&a.product==='smart_dns'&&(state.personalDnsEnabled||state.appleDnsProfileEnabled)){
+      // FI issuance requires the existing canonical DE credential. Provision it once through the existing deduplicated path, without showing a conflicting DE card.
+      void ensurePersonalDnsCredentials(a.id,{autoIssue:true,targets:[]}).catch(()=>{});
+    }
+    if(!jointTrial&&a.product==='smart_dns'&&a.state==='ACTIVE'&&
        a.secondsRemaining!==null&&a.secondsRemaining>0&&
        (state.personalDnsEnabled||state.appleDnsProfileEnabled)){
       const apple=node('button','button button-secondary setup-button','Получить профиль · Германия');
@@ -664,7 +683,7 @@ function renderAccess(accesses) {
       const cachedProxy=proxyCredCache.get(a.id);
       if(cachedProxy)renderProxyBonusBox(item,cachedProxy);
     }
-    if(a.product==='vpn' &&
+    if(!jointTrial&&a.product==='vpn' &&
        a.state==='ACTIVE' && a.secondsRemaining!==null && a.secondsRemaining>0){
       const setup=node('button','button button-secondary setup-button','Подключить VPN');
       setup.type='button';
