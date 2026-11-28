@@ -13,6 +13,19 @@ import {deriveSubscriptionAwgIdentity,verifiedIncyAwgLine}
 import {germanWebSocketOnly}
   from '../../packages/provisioning/src/incy-subscription-presentation.ts';
 
+// Do not drop a disposable database while its HTTP server still owns
+// PostgreSQL connections. Await actual exit, escalating only for the test child.
+async function stopTestWeb(child:ChildProcess|undefined):Promise<void>{
+ if(!child||child.exitCode!==null||child.signalCode!==null)return;
+ await new Promise<void>((resolve,reject)=>{
+   const timer=setTimeout(()=>child.kill('SIGKILL'),3000);
+   const done=()=>{clearTimeout(timer);resolve();};
+   child.once('exit',done);
+   child.once('error',err=>{clearTimeout(timer);reject(err);});
+   child.kill('SIGTERM');
+ });
+}
+
 test('public HTTPS subscription bridge serves only node-verified active bearer tokens',async()=>{
  const db='postgresql://'+(process.env.PGUSER||'test')+':'+
   (process.env.PGPASSWORD||'test')+'@'+(process.env.PGHOST||'localhost')+':'+
@@ -297,7 +310,7 @@ test('public HTTPS subscription bridge serves only node-verified active bearer t
    await pool.query('UPDATE vpn_subscription_links SET revoked_at=now() WHERE entitlement_id=$1',[entitlement]);
    assert.equal((await fetch(root+'/sub/'+issued!.token)).status,404);
  } finally {
-   child?.kill('SIGTERM');
+   await stopTestWeb(child);
    await new Promise<void>(resolve=>worker.close(()=>resolve()));
    await pool.query("UPDATE vpn_release_flags SET enabled=false WHERE feature='vpn_additional_nodes'").catch(()=>{});
    await pool.query('DELETE FROM vpn_additional_node_receipts WHERE entitlement_id=$1',[entitlement]).catch(()=>{});
@@ -521,7 +534,7 @@ test('public /sub keeps verified FI AWG available when DE bridge fails and retur
    assert.deepEqual(Buffer.from((await bothUp.text()).trim(),'base64')
      .toString('utf8').trim().split('\n'),[expectedFiLine,germanWebSocketOnly(profile)]);
  }finally{
-   child?.kill('SIGTERM');
+   await stopTestWeb(child);
    await new Promise<void>(resolve=>worker.close(()=>resolve()));
    await pool.end().catch(()=>{});
    if(tempCreated){
