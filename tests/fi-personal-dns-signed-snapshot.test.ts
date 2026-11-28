@@ -112,3 +112,16 @@ test('strict country-bound profiles are candidate only and not published',()=>{
  assert.notEqual(fi.tokenSha256,de.tokenSha256);
  assert.equal(fi.readyForCustomerRelease,false);
 });
+
+test('signed trial mode cannot be changed to paid legacy mode without invalidating signature',()=>{
+ const {privateKey,publicKey}=generateKeyPairSync('ed25519');
+ const signed=signFiPersonalDnsSnapshot({
+  revision:12,issuedAt:iso(now),validUntil:iso(now+90_000),
+  grants:[{...grant('a'.repeat(64),ent1),state:'ACTIVE_TRIAL'}],
+ },privateKey,now);
+ const signature=Buffer.from(signed.signature,'base64url');
+ assert.equal(signed.grants[0].state,'ACTIVE_TRIAL');
+ assert.ok(verify(null,fiDnsSnapshotTranscript(signed),publicKey,signature));
+ const tampered={...signed,grants:[{...signed.grants[0],state:'ACTIVE' as const}]};
+ assert.equal(verify(null,fiDnsSnapshotTranscript(tampered),publicKey,signature),false);
+});
