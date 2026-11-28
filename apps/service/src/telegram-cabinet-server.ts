@@ -29,7 +29,7 @@ import {dnsAdminOwner,dnsAdminIntro,dnsAdminPrompt,dnsAdminSearchPrompt,dnsAdmin
 import {effectiveAccessState,formatRemainingTime,formatRemainingQuota} from '../../../packages/telegram-ui/src/access-format.ts';
 import {personalDnsTelegramMenu,personalDnsTelegramAction,personalDnsGuide,
   personalDnsPreview} from './personal-dot-telegram-view.ts';
-import {loadSharedTrialWsProxy,parseWsProxyRoutes,wsProxyReleaseReady} from '../../../packages/web/src/telegram-proxy-bonus.ts';
+import {loadSharedTrialCountryProxy,type TrialProxyCountry} from '../../../packages/web/src/telegram-proxy-bonus.ts';
 import {approvedPersonalDnsOffer} from '../../../packages/dns-policy/src/smart-dns-offers.ts';
 import {sendPersonalDnsMobileconfig} from '../../../packages/dns-policy/src/personal-dot-profile.ts';
 import {ownerDnsKey,ownerDnsLinksAction,ownerDnsExpiryPrompt,ownerDnsExpiryReply,OWNER_DNS_EXPIRY_PROMPT} from './owner-dns-links.ts';
@@ -199,7 +199,8 @@ async function packages(id:number){
     [[{text:'🔁 Обновить',callback_data:'nav:status'},
       {text:'🔌 Подключить VPN',callback_data:'nav:connect'}],
      [{text:'🧭 Мой Smart DNS',callback_data:'nav:dns'}],
-     [{text:'✈️ Telegram-прокси',callback_data:'nav:trial-proxy'}],
+     [{text:'🌍 Выбрать страну «3 в 1»',callback_data:'nav:trial-country:DE'}],
+      [{text:'✈️ Telegram-прокси',callback_data:'nav:trial-proxy'}],
      [{text:'🌐 Тарифы VPN',callback_data:'nav:vpn'}],[homeButton]]);
 }
 
@@ -523,16 +524,35 @@ async function receiveStars(update:any){
   }
   return null;
 }
-async function sharedTrialProxy(id:number){
+async function sharedTrialProxy(id:number,country?:TrialProxyCountry){
   if(!pool)throw Error('DB unavailable');
   const account=await pool.query('SELECT id FROM accounts WHERE telegram_user_id=$1',[String(id)]);
   const accountId=account.rows[0]?.id;
-  const routes=wsProxyReleaseReady(process.env)?parseWsProxyRoutes(process.env.WEB_TELEGRAM_WS_PROXY_ROUTES_JSON):null;
-  const links=accountId&&routes?await loadSharedTrialWsProxy(pool,accountId,routes):null;
+  const links=accountId?await loadSharedTrialCountryProxy(pool,accountId,process.env):null;
   if(!links)return msg('✈️ Telegram-прокси\n\nЕсли вы оформили «3 в 1», общие ссылки доступны в личном кабинете при готовности сервиса. Они не зависят от срока VPN и Smart DNS.',
     [[{text:'🌍 Мой доступ',url:'https://mnebyvpn.site/#account'}],[homeButton]]);
-  return msg('✈️ Общий Telegram-прокси\n\nОткройте ссылку и подтвердите добавление в Telegram. Эти общие подключения остаются доступными после окончания пробных суток VPN и Smart DNS.',
-    [...links.wsLinks.map(link=>[{text:link.route==='ru'?'Подключить через российский сервер':'Подключить через зарубежный сервер',url:link.url}]),[homeButton]]);
+  const selected=country??'DE';
+  const name=selected==='FI'?'Финляндия':'Германия';
+  const regional=links.regionalLinks.filter(link=>link.country===selected);
+  const buttons:Button[][]=[
+    [{text:'🇩🇪 Германия',callback_data:'nav:trial-country:DE'},{text:'🇫🇮 Финляндия',callback_data:'nav:trial-country:FI'}],
+    [{text:'VPN и Smart DNS · '+name,url:'https://mnebyvpn.site/?trialCountry='+selected+'#account'}],
+    ...regional.map(link=>[{text:link.label,url:link.url},{text:'Копировать ссылку',copy_text:{text:link.url}}]),
+    ...links.wsLinks.map(link=>[{text:'Общий прокси · '+(link.route==='ru'?'через РФ':'напрямую'),url:link.url}]),
+    [homeButton],
+  ];
+  return msg('🌍 Пробный доступ «3 в 1» · '+name+'\n\n'+
+    'Выберите одинаковую страну для VPN, Smart DNS и Telegram-прокси. В кабинете откройте профили выбранной страны. Сначала отключите прежний VPN. Смена страны не продлевает 24 часа и не сбрасывает общий лимит 30 000 DNS-запросов. VPN — одно одновременное подключение.\n\n'+
+    (regional.length?'Подтверждённый прокси выбранной страны: откройте ссылку и подтвердите подключение в Telegram.':'Подтверждённый прокси выбранной страны пока недоступен.')+
+    '\nОбщие прокси без подтверждённой страны выхода доступны и после пробных суток. Ссылку можно скопировать и отправить себе в «Избранное», затем открыть её из сообщения.',buttons);
+}
+async function trialCountry(id:number,country:TrialProxyCountry){
+  if(!pool)throw Error('DB unavailable');
+  const r=await pool.query(`SELECT 1 FROM accounts a JOIN trial_grants t ON t.account_id=a.id
+    JOIN orders o ON o.id=t.order_id AND o.account_id=a.id
+    WHERE a.telegram_user_id=$1 AND t.product='bundle' AND o.product='bundle'\n      AND o.provider='internal_trial' AND o.state='TRIAL' AND o.amount_minor=0 LIMIT 1`,[String(id)]);
+  if(!r.rows.length)return msg('🎁 Пробный пакет «3 в 1» ещё не оформлен.',[[{text:'Попробовать бесплатно',callback_data:'trial:bundle'}],[homeButton]]);
+  return sharedTrialProxy(id,country);
 }
 async function trial(id:number,requested:'vpn'|'smart_dns'|'bundle'='vpn',inviteToken?:string){
   if(!store)throw new Error('DB unavailable');
@@ -561,6 +581,7 @@ async function trial(id:number,requested:'vpn'|'smart_dns'|'bundle'='vpn',invite
       : '🎁 Бесплатный доступ сейчас недоступен. Попробуйте позднее.';
     return msg(text,[[{text:'🔐 Мои подключения',callback_data:'nav:status'}],
       [{text:'🔌 VPN',callback_data:'nav:connect'},{text:'🧭 Smart DNS',callback_data:'nav:dns'}],
+      [{text:'🌍 Выбрать страну «3 в 1»',callback_data:'nav:trial-country:DE'}],
       [{text:'✈️ Telegram-прокси',callback_data:'nav:trial-proxy'}],
       [{text:'✨ Тарифы «3 в 1»',callback_data:'nav:bundle'}],[homeButton]]);
   }
@@ -611,6 +632,7 @@ async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
   if(data==='nav:trial')return trial(id);
   if(data==='trial:vpn'||data==='trial:smart_dns'||data==='trial:bundle')return trial(id,data.slice(6) as 'vpn'|'smart_dns'|'bundle');
   if(data==='nav:trial-proxy')return sharedTrialProxy(id);
+  if(data==='nav:trial-country:DE'||data==='nav:trial-country:FI')return trialCountry(id,data.endsWith('FI')?'FI':'DE');
   if(data==='nav:connect')return pool?await activationView(pool,id)??dbUnavailable():dbUnavailable();
   if(data==='nav:manual')return pool?manualView(pool,id):dbUnavailable();
   if(data.startsWith('nav:device:'))
@@ -620,7 +642,7 @@ async function render(id:number,data:string):Promise<ReturnType<typeof msg>>{
 function oneAction(actor:{id:number;messageId?:number;callbackId?:string;currentText?:string;data?:string},view:ReturnType<typeof msg>){
   // Shared proxy links may rotate without changing the message text. Do not
   // suppress the keyboard update in this case.
-  if(actor.callbackId&&actor.currentText===view.text&&actor.data!=='nav:trial-proxy')
+  if(actor.callbackId&&actor.currentText===view.text&&actor.data!=='nav:trial-proxy'&&!actor.data?.startsWith('nav:trial-country:'))
     return {method:'answerCallbackQuery',callback_query_id:actor.callbackId,
       text:'Список без изменений.',show_alert:false};
   if(actor.callbackId&&validId(actor.messageId))
