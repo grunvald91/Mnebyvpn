@@ -291,9 +291,9 @@ export function trialRegionalProxyLinks(env:NodeJS.ProcessEnv):TrialRegionalProx
     for(const link of makeWsProxyLinks(routes))result.push({...link,country,
       label:(country==='DE'?'Германия':'Финляндия')+' · '+link.label});
   }
-  // A single ingress+secret cannot be asserted to terminate in two countries.
-  const duplicates=new Set(result.filter(a=>result.some(b=>a.country!==b.country&&a.server===b.server&&a.secret===b.secret)).map(a=>a.server+'|'+a.secret));
-  return result.filter(a=>!duplicates.has(a.server+'|'+a.secret));
+  // A single ingress path cannot be asserted to terminate in two countries.
+  const duplicates=new Set(result.filter(a=>result.some(b=>a.country!==b.country&&a.server===b.server)).map(a=>a.server));
+  return result.filter(a=>!duplicates.has(a.server));
 }
 export async function loadSharedTrialCountryProxy(
   db:Pick<Pool,'query'>,accountId:string,env:NodeJS.ProcessEnv,
