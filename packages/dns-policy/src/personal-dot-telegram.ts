@@ -190,3 +190,30 @@ export async function rotateTelegramPersonalDns(
   }
   return {kind:'unavailable'};
 }
+
+/** Explicit bundle-only callbacks never resolve against the newest paid order. */
+export async function telegramBundleTrialDnsStatus(db:Pick<Pool,'query'>,id:number):
+ Promise<{deRevision:number|null;fiRevision:number|null}|null>{
+ actor(id);
+ const {rows}=await db.query('SELECT public.telegram_bundle_trial_dns_status($1) AS status',[String(id)]);
+ const s=rows[0]?.status;
+ if(!s||typeof s!=='object')return null;
+ const revision=(v:unknown)=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0&&v<=999999999?v:null;
+ return {deRevision:revision(s.deRevision),fiRevision:revision(s.fiRevision)};
+}
+export async function issueTelegramBundleTrialDns(db:Pick<Pool,'query'>,id:number,country:'DE'|'FI',expected:number):Promise<TelegramDnsAction>{
+ actor(id);
+ if(!['DE','FI'].includes(country)||!Number.isSafeInteger(expected)||expected<0||expected>999999999)return {kind:'stale'};
+ for(let attempt=0;attempt<MAX_RETRIES;attempt++){
+   const candidate=country==='DE'?identity():proposeRegionalPersonalDnsIdentity('FI');
+   const {rows}=await db.query('SELECT public.telegram_bundle_trial_dns_issue($1,$2,$3,$4) AS result',[String(id),country,candidate.label,expected]);
+   const status=String(rows[0]?.result??'');
+   if(status==='ISSUED'||status==='ROTATED')return {kind:status==='ISSUED'?'issued':'rotated',hostname:candidate.hostname,credentialRevision:expected+1};
+   if(status==='DENY_TOKEN_COLLISION')continue;
+   if(status==='DENY_INACTIVE')return {kind:'not-active'};
+   if(status==='DENY_REVOKED')return {kind:'revoked'};
+   if(['DENY_ALREADY_ASSIGNED','ALREADY_ISSUED','DENY_STALE','DENY_SAME'].includes(status))return {kind:'stale'};
+   return {kind:'unavailable'};
+ }
+ return {kind:'unavailable'};
+}
