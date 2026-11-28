@@ -274,6 +274,21 @@ jobs:
           python3 -B fi-node-fixture/nodekit/fi_dns_pilot_build.py fi-node-fixture/nodekit "$RUNNER_TEMP/fi-node-pilot"
           export PYTHONPATH="$RUNNER_TEMP/fi-node-pilot:${GITHUB_WORKSPACE}/fi-node-fixture/nodekit"
           node --experimental-strip-types --test tests/ci/fi-dns-cross-repo-pg.test.ts
+      - name: Checkout exact companion FI trial code for policy contracts
+        uses: actions/checkout@v4
+        with:
+          repository: grunvald91/telegram-proxy-infra
+          ref: 9f53501144e0843f6cea01c127894537cad3b1b9
+          path: fi-trial-fixture
+          persist-credentials: false
+      - name: Verify FI trial-aware policy and generated runtime
+        run: |
+          set -Eeuo pipefail
+          python3 -B -m unittest discover -s fi-trial-fixture/nodekit/tests -p 'test_fi_dns_customer_policy.py'
+          python3 -B -m unittest discover -s fi-trial-fixture/nodekit/tests -p 'test_fi_dns_signed_grants.py'
+          python3 -B -m unittest discover -s fi-trial-fixture/nodekit/tests -p 'test_fi_dns_metered_dot.py'
+          python3 -B fi-trial-fixture/nodekit/fi_dns_customer_build.py fi-trial-fixture/nodekit "$RUNNER_TEMP/fi-trial-customer"
+          python3 -B fi-trial-fixture/nodekit/fi_dns_pilot_build.py fi-trial-fixture/nodekit "$RUNNER_TEMP/fi-trial-pilot"
       - name: Payment integration with disposable PostgreSQL
         env:
           PGPASSWORD: test
