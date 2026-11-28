@@ -23,3 +23,47 @@ test('cabinet trial control follows catalog, login, busy and durable request sta
  state.trialRequestStatus='REJECTED';sync();assert.equal(retry.hidden,false);assert.equal(retry.disabled,false);
  state.loggedIn=false;sync();assert.equal(retry.hidden,true);
 });
+
+test('trial country selector keeps same entitlements and filters proxy links without issuing access',async()=>{
+ const start=source.indexOf("let trialCountry='DE';");
+ const end=source.indexOf('async function ensureProxyCredentials',start);
+ assert.ok(start>=0&&end>start);
+ class Element {
+  children:Element[]=[]; hidden=false; disabled=false; isConnected=true; type='';
+  handlers:Record<string,()=>void>={}; attrs:Record<string,string>={};
+  constructor(public tag:string,public textContent=''){}
+  append(...items:Element[]){this.children.push(...items);}
+  replaceChildren(){for(const child of this.children)child.isConnected=false;this.children=[];}
+  setAttribute(key:string,value:string){this.attrs[key]=value;}
+  addEventListener(key:string,fn:()=>void){this.handlers[key]=fn;}
+ }
+ const slot=new Element('section');
+ const shown:string[][]=[];const requests:string[]=[];const vpn:string[]=[];
+ const state={lastOrders:[{id:'trial',state:'TRIAL',product:'bundle'}],personalDnsEnabled:true,fiAwgRegistrationAvailable:true};
+ const accesses=[{id:'vpn1',product:'vpn',sourceOrderId:'trial',state:'ACTIVE',secondsRemaining:100},
+   {id:'dns1',product:'smart_dns',sourceOrderId:'trial',state:'ACTIVE',secondsRemaining:100}];
+ const data={wsLinks:[{label:'shared'}],regionalLinks:[{country:'DE',label:'de'},{country:'FI',label:'fi'}]};
+ const location={search:'',href:''};
+ const ctx=vm.createContext({state,location,URLSearchParams,accesses,data,
+   byId:(id:string)=>id==='cabinet-shared-trial-proxy'?slot:null,
+   node:(tag:string,_cls:string,label?:string)=>new Element(tag,label),
+   api:async(url:string)=>{requests.push(url);return {issued:false,revoked:false};},
+   readCachedPersonalDns:()=>null,renderPersonalDnsBox:()=>{},
+   renderProxyBonusBox:(_el:Element,value:{wsLinks:{label:string}[]})=>shown.push(value.wsLinks.map(l=>l.label)),
+   loadSubscription:(id:string)=>vpn.push(id),
+   downloadAppleDnsProfile:()=>{throw Error('country switch must never issue or rotate');},
+ });
+ vm.runInContext(source.slice(start,end)+'\nrenderSharedTrialProxy(data,accesses);',ctx);
+ assert.deepEqual(Array.from(shown[0]),['de']);
+ slot.children.find(x=>x.textContent==='VPN · Германия')!.handlers.click();
+ assert.deepEqual(vpn,['vpn1']);
+ slot.children.find(x=>x.textContent==='🇫🇮 Финляндия')!.handlers.click();
+ assert.deepEqual(Array.from(shown[2]),['fi']);
+ slot.children.find(x=>x.textContent==='VPN · Финляндия')!.handlers.click();
+ assert.equal(location.href,'/awg/setup?entitlementId=vpn1');
+ assert.deepEqual(requests,['/api/dns/apple/status?entitlementId=dns1','/api/dns/apple/status?entitlementId=dns1&country=FI']);
+ await Promise.resolve();
+ vm.runInContext("renderSharedTrialProxy(data,[]);",ctx);
+ assert.equal(slot.children.some(x=>x.textContent.includes('Пробный доступ')),false);
+ assert.ok(slot.children.some(x=>x.tag==='details'));
+});
