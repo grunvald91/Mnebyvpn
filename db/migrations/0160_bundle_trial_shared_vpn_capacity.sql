@@ -1,4 +1,4 @@
--- Trial bundle shares a fixed three concurrent VPN connections across DE/FI.
+-- Trial bundle allows one concurrent VPN connection across DE/FI.
 -- No fake paid order/terms or changes to node identities, gate, or paid caps.
 -- Only an independently activated canonical 24h bundle may use this policy.
 BEGIN;
@@ -32,7 +32,7 @@ BEGIN
  IF NOT FOUND THEN RETURN 'DENY_UNKNOWN'; END IF;
  v_time:=clock_timestamp();
  SELECT e.revision,e.expires_at,
-   CASE WHEN o.state='PAID' THEN t.device_limit ELSE 3 END
+   CASE WHEN o.state='PAID' THEN t.device_limit ELSE 1 END
  INTO v_revision,v_expiry,v_cap
  FROM public.entitlements e
  JOIN public.orders o ON o.id=e.source_order_id AND o.account_id=e.account_id
