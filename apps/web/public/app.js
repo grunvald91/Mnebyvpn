@@ -392,6 +392,7 @@ function renderProxyBonusBox(item,data){
   if(!item)return;
   const wsLinks=Array.isArray(data?.wsLinks)?data.wsLinks:[];
   const mtLinks=Array.isArray(data?.links)?data.links:[];
+  const sharedTrial=data?.sharedTrial===true;
   if(!wsLinks.length&&!mtLinks.length)return;
   const previous=item.querySelector('.dns-proxy-bonus-links');
   if(previous)previous.remove();
@@ -426,16 +427,38 @@ function renderProxyBonusBox(item,data){
         webAnchor.rel='noopener noreferrer';webAnchor.referrerPolicy='no-referrer';
         row.append(webAnchor);
       }
-      const manual=node('button','button button-secondary','Скопировать сервер и секрет');
+      if(sharedTrial&&targetUrl){
+        const field=node('input','');
+        field.type='text';field.readOnly=true;field.value=targetUrl;
+        field.setAttribute('aria-label','Ссылка подключения Telegram-прокси');
+        const copy=node('button','button button-secondary','Скопировать ссылку');
+        copy.type='button';
+        copy.addEventListener('click',async()=>{
+          try{await navigator.clipboard.writeText(targetUrl);toast('Ссылка скопирована. Отправьте её себе в «Избранное» Telegram.');}
+          catch{field.focus();field.select();toast('Скопируйте выделенную ссылку.');}
+        });
+        const copyRow=node('div','journey-copy-field');
+        copyRow.append(field,copy);row.append(copyRow);
+      }
+      const manual=node('button','button button-secondary',sharedTrial?'Скопировать параметры':'Скопировать сервер и секрет');
       manual.type='button';
+      const trialParams='Название: '+String(link.label||'Telegram-прокси')+'\nТип: WEB-прокси / WebSocket\nСервер: '+String(link.server||'')+'\nПорт: 443 (HTTPS)\nСекрет: '+String(link.secret||'');
+      let manualField=null;
+      if(sharedTrial){
+        const details=node('details','');
+        details.append(node('summary','','Ручная настройка'));
+        manualField=node('textarea','');manualField.readOnly=true;manualField.value=trialParams;
+        manualField.rows=5;manualField.setAttribute('aria-label','Ручные параметры Telegram-прокси');
+        details.append(manualField);row.append(details);
+      }
       manual.addEventListener('click',async()=>{
-        const txt='Сервер (WEB-прокси / WebSocket): '+String(link.server||'')+
+        const txt=sharedTrial?trialParams:'Сервер (WEB-прокси / WebSocket): '+String(link.server||'')+
           '\nСекрет: '+String(link.secret||'')+
           (tgTarget?'\nСсылка: '+tgTarget:'');
         try{
           await navigator.clipboard.writeText(txt);
           toast('Параметры WebSocket-прокси скопированы.');
-        }catch{toast('Копирование недоступно. Используйте кнопку подключения.');}
+        }catch{if(manualField){manualField.parentElement.open=true;manualField.focus();manualField.select();toast('Скопируйте выделенные параметры.');}else toast('Копирование недоступно. Используйте кнопку подключения.');}
       });
       row.append(manual);
       container.append(row);
@@ -443,7 +466,7 @@ function renderProxyBonusBox(item,data){
     container.append(node('h4','','Как включить WebSocket-прокси'));
     container.append(node('p','',
       '1. Нажмите «Подключить в Telegram» на нужном устройстве и подтвердите добавление прокси. '+
-      '2. Если кнопка не открывает клиент автоматически, скопируйте параметры и в Telegram откройте Настройки → Данные и память → Прокси (в Telegram Desktop: Продвинутые → Тип соединения) → выберите WEB-прокси / WebSocket и вставьте сервер и секрет.'));
+      (sharedTrial?'2. Если приложение не открылось, скопируйте ссылку, отправьте себе в «Избранное» Telegram и откройте её из сообщения. 3. Для ручного подключения откройте Настройки → Данные и память → Прокси (Desktop: Продвинутые → Тип соединения), выберите WEB-прокси / WebSocket, если он поддерживается клиентом, и введите сервер целиком, секрет и порт 443, если есть отдельное поле. Не выбирайте SOCKS5 или MTProto.':'2. Если кнопка не открывает клиент автоматически, скопируйте параметры и в Telegram откройте Настройки → Данные и память → Прокси (в Telegram Desktop: Продвинутые → Тип соединения) → выберите WEB-прокси / WebSocket и вставьте сервер и секрет.')));
   }
   if(mtLinks.length){
     container.append(node('h4','',wsLinks.length?'Резервный MTProto-прокси':'Ваш Telegram-прокси · бесплатно с DNS'));
@@ -546,17 +569,17 @@ function renderSharedTrialProxy(data,accesses=[]){
         }).catch(()=>{if(dnsPanel.isConnected){info.textContent='Профиль выбранной страны пока недоступен. Обновите кабинет.';trialCountryRendered.delete(slot);}});
       }else info.textContent='Выдача Smart DNS пока недоступна.';
       const matches=regional.filter(link=>link.country===selected);
-      if(matches.length)renderProxyBonusBox(slot,{wsLinks:matches});
+      if(matches.length)renderProxyBonusBox(slot,{wsLinks:matches,sharedTrial:true});
       else slot.append(node('p','','Подтверждённый Telegram-прокси для этой страны пока недоступен.'));
       slot.append(node('p','','Выбор здесь показывает настройки. Переключите VPN, DNS-профиль и прокси на устройстве вручную; сначала отключите предыдущий VPN.'));
     }else if(regional.length){
-      renderProxyBonusBox(slot,{wsLinks:regional});
+      renderProxyBonusBox(slot,{wsLinks:regional,sharedTrial:true});
     }
     if(shared.length){
       const fallback=node('details','trial-shared-proxy-fallback');
       fallback.append(node('summary','','Общие Telegram-прокси · бесплатно без ограничения срока'),
         node('p','','Эти ссылки остаются доступны после пробных суток. Страна выхода не подтверждена для выбора выше.'));
-      renderProxyBonusBox(fallback,{wsLinks:shared});
+      renderProxyBonusBox(fallback,{wsLinks:shared,sharedTrial:true});
       slot.append(fallback);
     }
   }
