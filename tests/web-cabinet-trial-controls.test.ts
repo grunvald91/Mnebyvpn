@@ -45,7 +45,7 @@ test('trial country selector keeps same entitlements and filters proxy links wit
    {id:'dns1',product:'smart_dns',sourceOrderId:'trial',state:'ACTIVE',secondsRemaining:100}];
  const data={wsLinks:[{label:'shared'}],regionalLinks:[{country:'DE',label:'de'},{country:'FI',label:'fi'}]};
  const location={search:'',href:''};
- const ctx=vm.createContext({state,location,URLSearchParams,accesses,data,
+ const ctx=vm.createContext({state,location,URLSearchParams,accesses,data,dnsCredInFlight:new Map(),
    byId:(id:string)=>id==='cabinet-shared-trial-proxy'?slot:null,
    node:(tag:string,_cls:string,label?:string)=>new Element(tag,label),
    api:async(url:string)=>{requests.push(url);return {issued:false,revoked:false};},
@@ -56,14 +56,18 @@ test('trial country selector keeps same entitlements and filters proxy links wit
  });
  vm.runInContext(source.slice(start,end)+'\nrenderSharedTrialProxy(data,accesses);',ctx);
  assert.deepEqual(Array.from(shown[0]),['de']);
+ const first=slot.children[0];
+ vm.runInContext('renderSharedTrialProxy(data,accesses);',ctx);
+ assert.equal(slot.children[0],first,'poll must preserve the current country panel');
+ await new Promise(resolve=>setImmediate(resolve));
  slot.children.find(x=>x.textContent==='VPN · Германия')!.handlers.click();
  assert.deepEqual(vpn,['vpn1']);
  slot.children.find(x=>x.textContent==='🇫🇮 Финляндия')!.handlers.click();
  assert.deepEqual(Array.from(shown[2]),['fi']);
  slot.children.find(x=>x.textContent==='VPN · Финляндия')!.handlers.click();
  assert.equal(location.href,'/awg/setup?entitlementId=vpn1');
+ await new Promise(resolve=>setImmediate(resolve));
  assert.deepEqual(requests,['/api/dns/apple/status?entitlementId=dns1','/api/dns/apple/status?entitlementId=dns1&country=FI']);
- await Promise.resolve();
  vm.runInContext("renderSharedTrialProxy(data,[]);",ctx);
  assert.equal(slot.children.some(x=>x.textContent.includes('Пробный доступ')),false);
  assert.ok(slot.children.some(x=>x.tag==='details'));
