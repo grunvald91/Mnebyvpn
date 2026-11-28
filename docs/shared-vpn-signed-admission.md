@@ -1,7 +1,6 @@
 # DE+FI signed admission V1: staged controller/node wire contract
 
-Status: **pure, offline-tested crypto ABI only**. Nothing listens on a port,
-calls PostgreSQL, edits Xray/AWG, starts a worker or changes the paid profiles.
+Status: **controller gateway core implemented; no deployed data-plane enforcement**. Migration 0168 and shared-vpn-admission-controller.ts connect the crypto ABI to restricted PostgreSQL RPCs. Nothing listens on a port, edits Xray/AWG, starts a worker or changes the paid profiles.
 
 - One purchased entitlement, one HTTPS subscription, both profiles named
   **MNEBYVPN Германия** and **MNEBYVPN Финляндия** after their own verified
@@ -36,3 +35,10 @@ calls PostgreSQL, edits Xray/AWG, starts a worker or changes the paid profiles.
 Tests: real Ed25519 DE/FI cross-signature rejection, tampering, stale
 requests/decisions, mismatched request hashes, lease lifetime, revoked/denied
 credentials, strict extra-field validation. They are not live connection tests.
+
+
+## Controller integration (trial final review follow-up)
+
+- Migration 0168 adds a scoped node identity lookup and an atomic decision RPC returning the actual ledger deadline, bounded by the peer grant, plus duplicate claim rejection. The controller library verifies the pinned Ed25519 envelope before mutation and signs only the returned committed result. Its database connection must be dedicated to the controller; do not pass an open caller-managed transaction.
+- This is not a running gateway. Remaining: privately authenticate and expose the controller endpoint; verify real independent peer receipts and populate bindings (no broad writer privileges); implement transport-specific local admission and fail-closed lease expiration in DE and FI; prove device/session semantics for VLESS multiplexing and AWG key reuse. A VLESS TCP stream or an AWG recent handshake is not itself a device identity. Never enable the global flag or claim one-device enforcement until live tests pass. Existing paid profiles remain untouched.
+- Test the SQL boundary on disposable PostgreSQL and the TypeScript signer with generated keys. Deploy only after independent review and real two-client tests, including country switching, controller outage, and expiry.
