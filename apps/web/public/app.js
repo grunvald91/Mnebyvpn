@@ -252,11 +252,11 @@ function renderPersonalDnsBox(item,hostname,xml,opts={}){
       'Персональный DoT-адрес и профиль Apple уже выпускались ранее в другой сессии (в базе хранится только хеш). Нажмите ниже, чтобы перевыпустить новый адрес и скачать новый файл .mobileconfig — старый адрес при этом отключится.'));
     const rotateBtn=node('button','button button-secondary setup-button','🔄 Перевыпустить адрес и профиль (.mobileconfig)');
     rotateBtn.type='button';
-    rotateBtn.addEventListener('click',()=>void downloadAppleDnsProfile(opts.entitlementId,rotateBtn,item,country));
+    rotateBtn.addEventListener('click',()=>void downloadAppleDnsProfile(opts.entitlementId,rotateBtn,item,country,opts.singleCountry===true));
     box.append(rotateBtn);
   }
   item.append(box);
-  if(country==='DE'&&opts.entitlementId){
+  if(country==='DE'&&opts.entitlementId&&!opts.singleCountry){
     box.append(node('p','','Если Smart DNS и VPN включены одновременно, выбирайте одну страну для обеих услуг: Германия с Германией, Финляндия с Финляндией. Иначе возможны проблемы с подключением и загрузкой сервисов.'));
     const fiBox=node('section','dns-country-fi');
     const fiButton=node('button','button button-secondary setup-button','Получить профиль · Финляндия');
@@ -317,7 +317,7 @@ async function ensurePersonalDnsCredentials(entitlementId,opts={}){
   dnsCredInFlight.set(entitlementId,job);
   return job;
 }
-async function downloadAppleDnsProfile(entitlementId, button, item,country='DE'){
+async function downloadAppleDnsProfile(entitlementId, button, item,country='DE',singleCountry=false){
   if(!state.loggedIn||button.disabled)return;
   button.disabled=true;
   try{
@@ -326,7 +326,7 @@ async function downloadAppleDnsProfile(entitlementId, button, item,country='DE')
     const cached=readCachedPersonalDns(entitlementId,country);
     if(cached?.mobileconfig&&status.issued&&cached.revision===status.revision){
       triggerMobileconfigDownload(cached.mobileconfig);
-      if(item)renderPersonalDnsBox(item,cached.hostname,cached.mobileconfig,{entitlementId,issued:true,country});
+      if(item)renderPersonalDnsBox(item,cached.hostname,cached.mobileconfig,{entitlementId,issued:true,country,singleCountry});
       toast('Профиль Apple (.mobileconfig) загружен.');
       return;
     }
@@ -355,7 +355,7 @@ async function downloadAppleDnsProfile(entitlementId, button, item,country='DE')
       saveCachedPersonalDns(entitlementId,creds,country);
       if(creds?.mobileconfig)triggerMobileconfigDownload(creds.mobileconfig);
       if(item&&(creds?.hostname||creds?.mobileconfig))
-        renderPersonalDnsBox(item,creds.hostname||'',creds.mobileconfig||'',{entitlementId,issued:true,country});
+        renderPersonalDnsBox(item,creds.hostname||'',creds.mobileconfig||'',{entitlementId,issued:true,country,singleCountry});
       if(country==='FI')button.hidden=true;
       toast('Smart DNS создан: профиль .mobileconfig загружен, адрес DoT показан в карточке.');
       return;
@@ -373,7 +373,7 @@ async function downloadAppleDnsProfile(entitlementId, button, item,country='DE')
       throw Error('DNS_PROFILE_UNAVAILABLE');
     const xml=await response.text();
     triggerMobileconfigDownload(xml);
-    if(item)renderPersonalDnsBox(item,'',xml,{entitlementId,issued:true,country});
+    if(item)renderPersonalDnsBox(item,'',xml,{entitlementId,issued:true,country,singleCountry});
     toast('Профиль создан. Сохраните файл. На iPhone/iPad откройте Настройки → Профиль загружен; на Mac — Системные настройки → Основные → Управление устройством.');
   }catch(error){
     const messages={
@@ -479,16 +479,72 @@ function renderProxyBonusBox(item,data){
 }
 // The free shared proxy is not an entitlement and survives trial expiration.
 // Render it outside VPN/DNS cards and clear it on logout/account changes.
-function renderSharedTrialProxy(data){
+let trialCountry='DE';
+let trialCountryOrder=null;
+function renderSharedTrialProxy(data,accesses=[]){
+  const active=accesses.filter(a=>a.state==='ACTIVE'&&a.secondsRemaining>0);
+  const order=state.lastOrders.find(o=>o.state==='TRIAL'&&o.product==='bundle'&&
+    ['vpn','smart_dns'].every(p=>active.some(a=>a.sourceOrderId===o.id&&a.product===p)));
+  if(order&&trialCountryOrder!==order.id){
+    trialCountryOrder=order.id;
+    trialCountry=new URLSearchParams(location.search).get('trialCountry')==='FI'?'FI':'DE';
+  }
+  if(!order){trialCountryOrder=null;trialCountry='DE';}
   for(const id of ['cabinet-shared-trial-proxy','journey-shared-trial-proxy']){
     const slot=byId(id);
     if(!slot)continue;
     slot.replaceChildren();
-    slot.hidden=!Array.isArray(data?.wsLinks)||!data.wsLinks.length;
+    const shared=Array.isArray(data?.wsLinks)?data.wsLinks:[];
+    const regional=Array.isArray(data?.regionalLinks)?data.regionalLinks:[];
+    slot.hidden=!order&&!shared.length&&!regional.length;
     if(slot.hidden)continue;
-    slot.append(node('h3','','Telegram-прокси · бесплатно без ограничения срока'),
-      node('p','','После завершения 24 часов VPN и Smart DNS эти общие подключения остаются доступны.'));
-    renderProxyBonusBox(slot,{wsLinks:data.wsLinks});
+    if(order){
+      const vpn=active.find(a=>a.sourceOrderId===order.id&&a.product==='vpn');
+      const dns=active.find(a=>a.sourceOrderId===order.id&&a.product==='smart_dns');
+      const name=trialCountry==='FI'?'Финляндия':'Германия';
+      slot.append(node('h3','','Пробный доступ «3 в 1» · '+name),
+        node('p','','Выберите одну страну для VPN, Smart DNS и Telegram-прокси. Переключение не продлевает 24 часа и не сбрасывает общий лимит 30 000 DNS-запросов. VPN — одно одновременное подключение.'));
+      for(const country of ['DE','FI']){
+        const b=node('button','button '+(country===trialCountry?'button-primary':'button-secondary'),country==='DE'?'🇩🇪 Германия':'🇫🇮 Финляндия');
+        b.type='button';b.setAttribute('aria-pressed',String(country===trialCountry));
+        b.addEventListener('click',()=>{trialCountry=country;renderSharedTrialProxy(data,accesses);});
+        slot.append(b);
+      }
+      const selected=trialCountry;
+      const v=node('button','button button-secondary setup-button','VPN · '+name);
+      v.type='button';v.disabled=selected==='FI'&&!state.fiAwgRegistrationAvailable;
+      v.addEventListener('click',()=>{if(selected==='FI')location.href='/awg/setup?entitlementId='+encodeURIComponent(vpn.id);else void loadSubscription(vpn.id);});
+      slot.append(v);
+      if(v.disabled)slot.append(node('p','','VPN выбранной страны пока недоступен.'));
+      const dnsPanel=node('section','trial-country-dns');
+      const d=node('button','button button-secondary setup-button','Smart DNS · '+name);
+      d.type='button';d.disabled=true;
+      const info=node('p','','Проверяем доступность профиля…');
+      dnsPanel.append(d,info);slot.append(dnsPanel);
+      if(state.personalDnsEnabled||state.appleDnsProfileEnabled){
+        api('/api/dns/apple/status?entitlementId='+encodeURIComponent(dns.id)+(selected==='FI'?'&country=FI':'')).then(status=>{
+          if(!dnsPanel.isConnected)return;
+          if(status.revoked){info.textContent='Профиль отозван.';return;}
+          const cached=readCachedPersonalDns(dns.id,selected);
+          d.disabled=false;info.textContent='Получите адрес DoT и файл Apple. При смене страны старый профиль не заменяется автоматически.';
+          d.addEventListener('click',()=>void downloadAppleDnsProfile(dns.id,d,dnsPanel,selected,true));
+          if(status.issued&&cached?.revision===status.revision)renderPersonalDnsBox(dnsPanel,cached.hostname,cached.mobileconfig,{entitlementId:dns.id,issued:true,country:selected,singleCountry:true});
+        }).catch(()=>{if(dnsPanel.isConnected)info.textContent='Профиль выбранной страны пока недоступен. Обновите кабинет.';});
+      }else info.textContent='Выдача Smart DNS пока недоступна.';
+      const matches=regional.filter(link=>link.country===selected);
+      if(matches.length)renderProxyBonusBox(slot,{wsLinks:matches});
+      else slot.append(node('p','','Подтверждённый Telegram-прокси для этой страны пока недоступен.'));
+      slot.append(node('p','','Выбор здесь показывает настройки. Переключите VPN, DNS-профиль и прокси на устройстве вручную; сначала отключите предыдущий VPN.'));
+    }else if(regional.length){
+      renderProxyBonusBox(slot,{wsLinks:regional});
+    }
+    if(shared.length){
+      const fallback=node('details','trial-shared-proxy-fallback');
+      fallback.append(node('summary','','Общие Telegram-прокси · бесплатно без ограничения срока'),
+        node('p','','Эти ссылки остаются доступны после пробных суток. Страна выхода не подтверждена для выбора выше.'));
+      renderProxyBonusBox(fallback,{wsLinks:shared});
+      slot.append(fallback);
+    }
   }
 }
 async function ensureProxyCredentials(entitlementId,targets=[]){
@@ -768,7 +824,7 @@ function renderAccount(payload) {
   text('days-left',timed.length?remaining(timed[0].secondsRemaining):'—');
   text('days-hint',timed.length?'До ближайшего окончания':'Нет активных подписок');
   renderAccess(accesses);renderOrders(payload.orders||[]);
-  renderSharedTrialProxy(payload.sharedTrialProxy);
+  renderSharedTrialProxy(payload.sharedTrialProxy,accesses);
   renderPurchaseResult(payload);
   byId('link-email').classList.toggle('hidden',!state.emailLoginEnabled||payload.identity?.emailLinked);
   byId('link-telegram').classList.toggle('hidden',!state.telegramLoginEnabled||payload.identity?.telegramLinked);
