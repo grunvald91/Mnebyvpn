@@ -263,7 +263,8 @@ test('post-purchase setup includes VPN app guides, Smart DNS Apple/DoT and WebSo
   assert.match(appJs,/ensurePersonalDnsCredentials/);
   assert.match(appJs,/ensureProxyCredentials/);
   assert.match(appJs,/tg:.*webproxy/);
-  assert.match(appJs,/MNEBYDNS-Apple\.mobileconfig/);
+  assert.match(appJs,/MNEBYDNS-Apple-/);
+  assert.match(appJs,/country==='FI'\?'FI':'DE'/);
 });
 test('real-world neon halo is visible without replacing the original globe',()=>{
   assert.match(index,/class="journey-world-halo"/);
