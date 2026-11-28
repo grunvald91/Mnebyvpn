@@ -31,7 +31,8 @@ test('trial country selector keeps same entitlements and filters proxy links wit
  class Element {
   children:Element[]=[]; hidden=false; disabled=false; isConnected=true; type='';
   handlers:Record<string,()=>void>={}; attrs:Record<string,string>={};
-  constructor(public tag:string,public textContent=''){}
+  tag:string; textContent:string;
+  constructor(tag:string,textContent=''){this.tag=tag;this.textContent=textContent;}
   append(...items:Element[]){this.children.push(...items);}
   replaceChildren(){for(const child of this.children)child.isConnected=false;this.children=[];}
   setAttribute(key:string,value:string){this.attrs[key]=value;}
