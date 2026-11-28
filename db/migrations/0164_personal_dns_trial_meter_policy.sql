@@ -2,7 +2,7 @@
 BEGIN;
 CREATE FUNCTION public.personal_dns_meter_policy(p_label text)
 RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $$
- SELECT CASE WHEN NOT public.recognize_personal_dns_credential(p_label) THEN 'UNKNOWN'
+ SELECT CASE WHEN public.recognize_personal_dns_credential(p_label) IS DISTINCT FROM true THEN 'UNKNOWN'
    WHEN EXISTS(SELECT 1 FROM public.personal_dns_credentials c
      JOIN public.entitlements e ON e.id=c.entitlement_id
      JOIN public.orders o ON o.id=e.source_order_id AND o.account_id=e.account_id
