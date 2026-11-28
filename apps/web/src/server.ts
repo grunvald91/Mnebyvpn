@@ -591,8 +591,8 @@ async function emailVerify(req:IncomingMessage,res:ServerResponse):Promise<void>
       }
       try{
         const bundleOn=await bundleWebsiteTrialEnabled();
-        if(body.trial==='vpn'||bundleOn)await rememberWebsiteVpnTrial(billingPool,result.accountId,
-          createHash('sha256').update('trial-device-v1:').update(device).digest('hex'),invite as string|undefined,bundleOn?'bundle':undefined);
+        if(body.trial==='vpn'||body.trial==='bundle'||bundleOn)await rememberWebsiteVpnTrial(billingPool,result.accountId,
+          createHash('sha256').update('trial-device-v1:').update(device).digest('hex'),invite as string|undefined,(bundleOn||body.trial==='bundle')?'bundle':undefined);
       }catch(error){
         const code=(error as {code?:unknown})?.code;
         console.error(typeof code==='string'&&/^[0-9A-Z]{5}$/.test(code)
@@ -1512,7 +1512,13 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
         // browser. Never let that retry consume the one-trial quota as VPN.
         const queuedBundle=await billingPool.query("SELECT 1 FROM website_vpn_trial_requests WHERE account_id=$1 AND requested_product='bundle' AND status='PENDING' AND order_id IS NULL",[auth.accountId]);
         if(queuedBundle.rowCount){json(res,202,{status:'PENDING',expiresAt:null});return;}
-        if(body.product==='bundle'){json(res,200,{status:'UNAVAILABLE',expiresAt:null});return;}
+        if(body.product==='bundle'){
+          if(auth.email&&emailLoginEnabled&&!await isReviewAccount(authPool,auth.accountId)){
+            const saved=await rememberWebsiteVpnTrial(billingPool,auth.accountId,deviceHash,body.inviteToken as string|undefined,'bundle');
+            if(saved){json(res,202,{status:'PENDING',expiresAt:null});return;}
+          }
+          json(res,200,{status:'UNAVAILABLE',expiresAt:null});return;
+        }
       }
       const product=bundleOn?'bundle':body.product as 'vpn'|'smart_dns'|'bundle';
       if((product==='vpn'||product==='bundle')&&auth.email&&emailLoginEnabled&&
@@ -1523,7 +1529,9 @@ if(req.method==='GET'&&url.pathname==='/api/support/status'){
           const code=(error as {code?:unknown})?.code;
           console.error(typeof code==='string'&&/^[0-9A-Z]{5}$/.test(code)
             ?'MNEBYVPN_WEB_TRIAL_QUEUE_SQLSTATE_'+code:'MNEBYVPN_WEB_TRIAL_QUEUE_ERROR');
-          // Queue failures must not prevent the existing direct grant.
+          // An email bundle must not start a clock without a durable ready-notice request.
+          if(product==='bundle'){json(res,503,{code:'TRIAL_SERVICE_UNAVAILABLE'});return;}
+          // Preserve legacy VPN direct-grant behavior.
         }
       }
       const result=await store.grantTrial(auth.accountId,
