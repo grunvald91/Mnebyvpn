@@ -24,6 +24,7 @@ test('the regional menu offers two separate profiles with one counter and honors
   assert.ok(!calls.some(x=>x.includes('telegram_regional_dns_revision')));
   const view=await personalDnsTelegramMenu(regionalDb,2222,[],[],true);
   assert.match(view.text,/Германия и Финляндия расходуют общий лимит/);
+  assert.match(view.text,/Финляндия с Финляндией, Германия с Германией/);
   const buttons=view.reply_markup.inline_keyboard.flat();
   assert.ok(buttons.some(x=>x.text.includes('Германия')&&x.callback_data==='dns:rotate:confirm:1'));
   assert.ok(buttons.some(x=>x.text.includes('Финляндия')&&x.callback_data==='dns:fi:execute:0'));
@@ -32,6 +33,7 @@ test('the regional menu offers two separate profiles with one counter and honors
   assert.ok(!calls.some(x=>x.includes('telegram_issue_regional_dns_credential')));
   const delivery=await personalDnsTelegramAction(regionalDb,2222,'dns:fi:execute:0',undefined,true);
   assert.match(delivery.text,/Финляндия/);
+  assert.match(delivery.text,/рекомендуем выбрать VPN Финляндия/);
   assert.match(delivery.text,/[a-z0-9]{12}\.fi\.mnebyvpn\.site/);
 });
 
