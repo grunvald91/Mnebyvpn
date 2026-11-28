@@ -56,20 +56,26 @@ BEGIN
  INSERT INTO trial_grants(account_id,order_id,product,activated_at,access_expires_at)
  VALUES(a,o,'bundle',at_time,at_time+interval '24 hours');
  IF vpn_shared_connection_claim(e,s1,de_node,repeat('c',64))<>'ADMITTED'
+ THEN RAISE EXCEPTION 'First trial session denied'; END IF;
+ IF vpn_shared_connection_claim(e,s2,fi_node,repeat('d',64))<>'DENY_LIMIT'
+ OR vpn_shared_connection_claim(e,s3,de_node,repeat('e',64))<>'DENY_LIMIT'
+ THEN RAISE EXCEPTION 'Second trial session admitted across DE/FI or on same node'; END IF;
+ IF vpn_shared_connection_claim(e,s1,de_node,repeat('c',64))<>'REFRESHED'
+ THEN RAISE EXCEPTION 'Existing trial session could not refresh'; END IF;
+ IF vpn_shared_connection_release(e,s1,de_node,repeat('c',64))<>'RELEASED'
  OR vpn_shared_connection_claim(e,s2,fi_node,repeat('d',64))<>'ADMITTED'
- OR vpn_shared_connection_claim(e,s3,fi_node,repeat('e',64))<>'ADMITTED'
- THEN RAISE EXCEPTION 'Trial did not admit three shared sessions'; END IF;
+ THEN RAISE EXCEPTION 'Trial could not switch from DE to FI'; END IF;
  IF vpn_shared_connection_claim(e,s4,de_node,repeat('f',64))<>'DENY_LIMIT'
- THEN RAISE EXCEPTION 'Fourth trial session admitted'; END IF;
+ THEN RAISE EXCEPTION 'DE session admitted while FI session active'; END IF;
  IF vpn_shared_connection_release(e,s2,fi_node,repeat('d',64))<>'RELEASED'
  OR vpn_shared_connection_claim(e,s4,de_node,repeat('f',64))<>'ADMITTED'
- THEN RAISE EXCEPTION 'Released regional slot was not reusable'; END IF;
+ THEN RAISE EXCEPTION 'Trial could not switch from FI to DE'; END IF;
  UPDATE entitlements SET expires_at=at_time+interval '25 hours' WHERE id=e;
- IF vpn_shared_connection_claim(e,s1,de_node,repeat('c',64))<>'DENY_ENTITLEMENT'
+ IF vpn_shared_connection_claim(e,s4,de_node,repeat('f',64))<>'DENY_ENTITLEMENT'
  THEN RAISE EXCEPTION 'Noncanonical trial deadline accepted'; END IF;
  UPDATE entitlements SET starts_at=at_time-interval '24 hours',expires_at=at_time WHERE id=e;
  UPDATE trial_grants SET activated_at=at_time-interval '24 hours',access_expires_at=at_time WHERE order_id=o;
- IF vpn_shared_connection_claim(e,s1,de_node,repeat('c',64))<>'DENY_ENTITLEMENT'
+ IF vpn_shared_connection_claim(e,s4,de_node,repeat('f',64))<>'DENY_ENTITLEMENT'
  THEN RAISE EXCEPTION 'Expired trial lease refreshed'; END IF;
  IF has_function_privilege('mnebyvpn_connection_admission',
    'public.vpn_shared_connection_claim(uuid,uuid,text,text)','EXECUTE')
