@@ -4,7 +4,7 @@ import {
   parseBonusRoutes,parseOwnerProxyRoutes,sealProxySecret,openProxySecret,
   makeBonusLinks,makeOwnerProxyLinks,
   loadCustomerProxyBonus,bonusReleaseReady,ownerProxyReleaseReady,
-  parseWsProxyRoutes,wsProxyReleaseReady,makeWsProxyLinks,loadCustomerWsProxy,loadSharedTrialWsProxy,trialRegionalProxyLinks,loadSharedTrialCountryProxy,
+  parseWsProxyRoutes,wsProxyReleaseReady,makeWsProxyLinks,loadCustomerWsProxy,loadSharedTrialWsProxy,trialRegionalProxyLinks,loadSharedTrialCountryProxy,sharedTrialProxyInstructions,sharedTrialProxyParameters,
 } from '../packages/web/src/telegram-proxy-bonus.ts';
 
 const id='11111111-1111-4111-8111-111111111111';
@@ -254,4 +254,24 @@ test('trial country proxy routes require explicit independent verification and t
  assert.equal(allowed?.regionalLinks.length,2);
  assert.equal(allowed?.wsLinks.length,1);
  assert.equal(await loadSharedTrialCountryProxy(no as never,id,env),null);
+});
+
+test('trial proxy instructions preserve the complete WebSocket path and separate HTTPS link from manual secret',()=>{
+ const link=makeWsProxyLinks([{route:'ru',server:'example.org/testpath',secret:raw}])[0];
+ const manual=sharedTrialProxyParameters(link);
+ assert.ok(manual.includes('Название: '+link.label));
+ assert.ok(manual.includes('Сервер: example.org/testpath'));
+ assert.ok(manual.includes('Порт: 443 (HTTPS)'));
+ assert.ok(manual.includes('Секрет: '+raw));
+ assert.match(sharedTrialProxyInstructions,/Избранное/);
+ assert.match(sharedTrialProxyInstructions,/если есть отдельное поле порта/);
+ assert.match(sharedTrialProxyInstructions,/не отключаются по окончании/);
+ const env={
+  WEB_TELEGRAM_WS_PROXY_ENABLED:'yes',
+  WEB_TELEGRAM_WS_PROXY_ROUTES_JSON:JSON.stringify([{route:'ru',server:'shared.example.org/path',secret:raw}]),
+  WEB_TRIAL_WS_PROXY_DE_VERIFIED:'yes',WEB_TRIAL_WS_PROXY_FI_VERIFIED:'yes',
+  WEB_TRIAL_WS_PROXY_DE_ROUTES_JSON:JSON.stringify([{route:'ru',server:'example.org/testpath',secret:raw}]),
+  WEB_TRIAL_WS_PROXY_FI_ROUTES_JSON:JSON.stringify([{route:'direct',server:'EXAMPLE.ORG/testpath',secret:'b'.repeat(32)}]),
+ };
+ assert.deepEqual(trialRegionalProxyLinks(env),[]);
 });
