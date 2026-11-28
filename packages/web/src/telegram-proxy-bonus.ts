@@ -292,8 +292,9 @@ export function trialRegionalProxyLinks(env:NodeJS.ProcessEnv):TrialRegionalProx
       label:(country==='DE'?'Германия':'Финляндия')+' · '+link.label});
   }
   // A single ingress path cannot be asserted to terminate in two countries.
-  const duplicates=new Set(result.filter(a=>result.some(b=>a.country!==b.country&&a.server===b.server)).map(a=>a.server));
-  return result.filter(a=>!duplicates.has(a.server));
+  const routeKey=(server:string)=>{const slash=server.indexOf('/');return server.slice(0,slash).toLowerCase()+server.slice(slash);};
+  const duplicates=new Set(result.filter(a=>result.some(b=>a.country!==b.country&&routeKey(a.server)===routeKey(b.server))).map(a=>routeKey(a.server)));
+  return result.filter(a=>!duplicates.has(routeKey(a.server)));
 }
 export async function loadSharedTrialCountryProxy(
   db:Pick<Pool,'query'>,accountId:string,env:NodeJS.ProcessEnv,
@@ -303,4 +304,14 @@ export async function loadSharedTrialCountryProxy(
   if(!routes)return null;
   const shared=await loadSharedTrialWsProxy(db,accountId,routes);
   return shared?{...shared,regionalLinks:trialRegionalProxyLinks(env)}:null;
+}
+
+
+/** Only for the common trial links, never personalized paid credentials. */
+export const sharedTrialProxyInstructions='1. Откройте ссылку подключения и подтвердите добавление прокси в Telegram.\n'+
+ '2. Если приложение не открылось, скопируйте ссылку, отправьте себе в «Избранное» и нажмите на неё из сообщения.\n'+
+ '3. Или откройте настройки Telegram → Данные и память → Прокси (Desktop: Продвинутые → Тип соединения). Если клиент поддерживает WEB-прокси / WebSocket, введите сервер целиком (включая путь), секрет и порт 443, если есть отдельное поле порта. Не выбирайте SOCKS5 или MTProto для этих параметров.\n'+
+ 'При смене страны выберите соответствующий прокси в Telegram. Общие ссылки не отключаются по окончании пробных суток VPN и DNS.';
+export function sharedTrialProxyParameters(link:ProxyWsLink):string{
+ return 'Название: '+link.label+'\nТип: WEB-прокси / WebSocket\nСервер: '+link.server+'\nПорт: 443 (HTTPS)\nСекрет: '+link.secret;
 }
