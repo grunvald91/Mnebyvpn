@@ -68,7 +68,11 @@ test('trial country selector keeps same entitlements and filters proxy links wit
  assert.equal(location.href,'/awg/setup?entitlementId=vpn1');
  await new Promise(resolve=>setImmediate(resolve));
  assert.deepEqual(requests,['/api/dns/apple/status?entitlementId=dns1','/api/dns/apple/status?entitlementId=dns1&country=FI']);
+ const obsolete=slot.children.find(x=>x.textContent==='VPN · Финляндия')!;
  vm.runInContext("renderSharedTrialProxy(data,[]);",ctx);
+ location.href='unchanged';
+ obsolete.handlers.click();
+ assert.equal(location.href,'unchanged','obsolete callback cannot reopen expired trial');
  assert.equal(slot.children.some(x=>x.textContent.includes('Пробный доступ')),false);
  assert.ok(slot.children.some(x=>x.tag==='details'));
 });
