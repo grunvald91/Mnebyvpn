@@ -543,7 +543,7 @@ function renderSharedTrialProxy(data,accesses=[]){
           d.disabled=false;info.textContent='Получите адрес DoT и файл Apple. При смене страны старый профиль не заменяется автоматически.';
           d.addEventListener('click',()=>{if(dnsPanel.isConnected&&trialCountryOrder===order.id&&trialCountry===selected)void downloadAppleDnsProfile(dns.id,d,dnsPanel,selected,true);});
           if(status.issued&&cached?.revision===status.revision)renderPersonalDnsBox(dnsPanel,cached.hostname,cached.mobileconfig,{entitlementId:dns.id,issued:true,country:selected,singleCountry:true});
-        }).catch(()=>{if(dnsPanel.isConnected)info.textContent='Профиль выбранной страны пока недоступен. Обновите кабинет.';});
+        }).catch(()=>{if(dnsPanel.isConnected){info.textContent='Профиль выбранной страны пока недоступен. Обновите кабинет.';trialCountryRendered.delete(slot);}});
       }else info.textContent='Выдача Smart DNS пока недоступна.';
       const matches=regional.filter(link=>link.country===selected);
       if(matches.length)renderProxyBonusBox(slot,{wsLinks:matches});
@@ -889,7 +889,7 @@ function syncLoginLinks(){
 function renderLoggedOut() {
   // A session that expires or is revoked must not leave stale private data on
   // a shared browser screen. Keep the public catalog and selected product.
-  state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;
+  state.loggedIn=false;state.csrf='';state.guestSubscriptionUrl=null;state.guestSubscriptionEntitlementId=null;
   state.trialRequestStatus='NONE';state.activeTrialProducts=[];state.hasPendingProvisioning=false;state.lastOrders=[];state.trialProduct='vpn';
   state.telegramProxyBonusEnabled=false;
   state.wsProxyEnabled=false;
@@ -1203,6 +1203,7 @@ async function loadSubscription(entitlementId){
     const data=await api('/api/vpn/subscription',{method:'POST',
       headers:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},
       body:JSON.stringify({entitlementId})});
+    state.guestSubscriptionEntitlementId=entitlementId;
     renderVpnSetup(data);
   }catch(error){
     toast(error.message==='VPN_NOT_ACTIVE'?
